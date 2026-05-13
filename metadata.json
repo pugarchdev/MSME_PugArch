@@ -1,0 +1,6 @@
+{
+  "name": "PugArch MSME Marketplace",
+  "description": "Multi-role procurement onboarding platform for buyers and sellers with admin oversight.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["Onboarding", "ERP", "User Management"]
+}

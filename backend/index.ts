@@ -89,7 +89,7 @@ async function startServer() {
         return callback(new Error(`CORS blocked for invalid origin: ${origin}`));
       }
 
-      if (!origin || configuredOrigins.includes(origin) || /^msme-portal-pug-arch-frontend(-[a-z0-9-]+)?\.vercel\.app$/.test(hostname)) {
+      if (!origin || configuredOrigins.includes(origin) || /^msme(-portal)?-pugarch-frontend(-[a-z0-9-]+)*\.vercel\.app$/.test(hostname)) {
         return callback(null, true);
       }
       callback(new Error(`CORS blocked for origin: ${origin}`));

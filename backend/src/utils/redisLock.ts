@@ -10,7 +10,7 @@ export const withDistributedLock = async <T>(
   options: { ttlMs?: number; waitMs?: number } = {}
 ) => {
   const ttlMs = options.ttlMs || 15_000;
-  const lockKey = `lock:${key}`;
+  const lockKey = key;
   const lockValue = randomToken(16);
 
   if (redis && isRedisReady()) {

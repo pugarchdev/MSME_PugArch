@@ -6,10 +6,13 @@ import { maskSensitive } from '../../utils/maskSensitive.js';
 import { randomToken, sha256 } from '../../utils/crypto.js';
 import { withDistributedLock } from '../../utils/redisLock.js';
 import { redisKeys } from '../../constants/redis-keys.js';
+import { getCache, setCache } from '../../services/cache.service.js';
+import { publishNotificationEvent } from '../../services/realtime.service.js';
 import { bankTransferProvider } from './bank-transfer.provider.js';
 import { cashfreeProvider } from './cashfree.provider.js';
 import { razorpayProvider } from './razorpay.provider.js';
 import type { PaymentGateway, PaymentProvider } from './payment.provider.js';
+import { paymentStatusEnumFor } from '../../services/workflow/status-transition.service.js';
 
 type Actor = {
   id: number;
@@ -30,6 +33,8 @@ const providerFor = (gateway?: string) => {
 };
 
 const paymentReference = () => `PAY-${new Date().getFullYear()}-${randomToken(6).toUpperCase()}`;
+const gatewayEnumFor = (gateway: string) => gateway.toUpperCase();
+const methodEnumFor = (method: string) => method === 'netbanking' ? 'NET_BANKING' : method.toUpperCase();
 
 const auditPayment = (actor: Actor | null, action: string, entityType: string, entityId: number | undefined, metadata?: Record<string, unknown>) =>
   auditLog({
@@ -44,7 +49,8 @@ const auditPayment = (actor: Actor | null, action: string, entityType: string, e
   });
 
 const notifySafe = async (userId: number, title: string, message: string, type: string) => {
-  await prisma.notification.create({ data: { userId, title, message, type } }).catch(() => undefined);
+  const notification = await prisma.notification.create({ data: { userId, title, message, type } }).catch(() => undefined);
+  if (notification) await publishNotificationEvent(userId, notification);
 };
 
 const paymentLookup = (referenceId?: string, gatewayOrderId?: string) => {
@@ -59,7 +65,7 @@ const paymentLookup = (referenceId?: string, gatewayOrderId?: string) => {
 export const initiatePayment = async (
   actor: Actor,
   input: { invoiceId: number; gateway?: PaymentGateway; method?: string; idempotencyKey?: string }
-) => {
+) => withDistributedLock(redisKeys.lockPayment(`invoice:${input.invoiceId}`), async () => {
   const provider = providerFor(input.gateway);
   const result = await prisma.$transaction(async (tx) => {
     const invoice = await tx.invoice.findUnique({ where: { id: input.invoiceId }, include: { purchaseOrder: true } });
@@ -69,7 +75,10 @@ export const initiatePayment = async (
       throw new ApiError(409, 'Invoice is not eligible for payment initiation', 'INVOICE_PAYMENT_NOT_ELIGIBLE');
     }
 
-    const existing = await tx.paymentTransaction.findFirst({ where: { invoiceId: invoice.id } });
+    const existing = await tx.paymentTransaction.findFirst({ where: { invoiceId: invoice.id, status: { notIn: ['failed', 'cancelled', 'refunded'] } } });
+    if (existing?.status === 'success' || existing?.status === 'escrow_released') {
+      throw new ApiError(409, 'Payment already completed for this invoice', 'PAYMENT_ALREADY_COMPLETED');
+    }
     const payment = existing || await tx.paymentTransaction.create({
       data: {
         referenceId: paymentReference(),
@@ -80,6 +89,7 @@ export const initiatePayment = async (
         amount: invoice.amount,
         currency: invoice.currency,
         status: 'initiated',
+        paymentStatus: paymentStatusEnumFor('initiated') as any,
         metadata: { source: 'payment_initiation' }
       }
     });
@@ -99,15 +109,34 @@ export const initiatePayment = async (
       where: { id: payment.id },
       data: {
         gateway: provider.gateway,
+        gatewayEnum: gatewayEnumFor(provider.gateway) as any,
         method: input.method || 'bank_transfer',
+        methodEnum: methodEnumFor(input.method || 'bank_transfer') as any,
         gatewayOrderId: payment.gatewayOrderId || order.gatewayOrderId,
         gatewaySignatureStatus: 'pending',
         idempotencyKey: input.idempotencyKey,
         status: 'gateway_order_created',
+        paymentStatus: paymentStatusEnumFor('gateway_order_created') as any,
         metadata: {
           ...(payment.metadata as Record<string, unknown> || {}),
+          providerOrder: {
+            gateway: order.gateway,
+            gatewayOrderId: order.gatewayOrderId,
+            referenceId: order.referenceId || payment.referenceId,
+            amount: order.amount || String(payment.amount),
+            currency: order.currency || payment.currency,
+            expiresAt: order.expiresAt
+          },
           providerInstructions: order.instructions,
-          tokenIssued: Boolean(order.paymentToken)
+          tokenIssued: Boolean(order.paymentToken),
+          taxSummary: {
+            taxableAmount: invoice.taxableAmount,
+            cgstAmount: invoice.cgstAmount,
+            sgstAmount: invoice.sgstAmount,
+            igstAmount: invoice.igstAmount,
+            totalTaxAmount: invoice.totalTaxAmount,
+            tdsAmount: invoice.tdsAmount
+          }
         }
       }
     });
@@ -128,7 +157,7 @@ export const initiatePayment = async (
   await notifySafe(result.payment.payerId, 'Payment initiated', `Payment ${result.payment.referenceId} has been initiated.`, 'payment_initiated');
 
   return result;
-};
+}, { ttlMs: 15_000 });
 
 export const processPaymentWebhook = async (
   gateway: PaymentGateway,
@@ -139,8 +168,19 @@ export const processPaymentWebhook = async (
   const rawPayloadHash = sha256(rawBody.toString('utf8'));
   const verified = provider.verifyWebhook(rawBody, headers);
   const eventId = verified.eventId || rawPayloadHash;
+  const webhookKey = redisKeys.webhook(gateway, eventId);
 
-  return withDistributedLock(redisKeys.webhook(gateway, eventId), async () => {
+  if (await getCache(webhookKey)) {
+    const existing = await prisma.paymentWebhookEvent.findUnique({
+      where: { paymentWebhookEventCompound: { gateway, eventId } }
+    });
+    if (existing?.processed) {
+      await auditPayment(null, 'payment.webhook.duplicate_ignored', 'paymentWebhookEvent', existing.id, { gateway, eventId });
+      return { duplicate: true, processed: true };
+    }
+  }
+
+  return withDistributedLock(webhookKey, async () => {
     const existing = await prisma.paymentWebhookEvent.findUnique({
       where: { paymentWebhookEventCompound: { gateway, eventId } }
     });
@@ -167,8 +207,9 @@ export const processPaymentWebhook = async (
         where: { id: event.id },
         data: { verified: false, processed: true, processedAt: new Date(), failureReason: verified.failureReason || 'Signature verification failed' }
       });
+      await setCache(webhookKey, { processed: true, verified: false }, 24 * 60 * 60);
       await auditPayment(null, 'payment.webhook.failed_verification', 'paymentWebhookEvent', event.id, { gateway, eventId });
-      return { verified: false, processed: false };
+      throw new ApiError(401, 'Invalid payment webhook signature', 'PAYMENT_WEBHOOK_SIGNATURE_INVALID');
     }
 
     if (verified.status === 'failed') {
@@ -180,6 +221,7 @@ export const processPaymentWebhook = async (
           where: { id: failedPayment.id },
           data: {
             status: 'failed',
+            paymentStatus: paymentStatusEnumFor('failed') as any,
             gatewaySignatureStatus: 'verified',
             gatewayPaymentId: verified.gatewayPaymentId || failedPayment.gatewayPaymentId,
             providerPaymentId: verified.gatewayPaymentId || failedPayment.providerPaymentId,
@@ -193,6 +235,7 @@ export const processPaymentWebhook = async (
         where: { id: event.id },
         data: { verified: true, processed: true, processedAt: new Date(), metadata: verified.metadata as any }
       });
+      await setCache(webhookKey, { processed: true, status: 'failed' }, 24 * 60 * 60);
       return { verified: true, processed: true, failed: true };
     }
 
@@ -201,6 +244,7 @@ export const processPaymentWebhook = async (
         where: { id: event.id },
         data: { verified: true, processed: true, processedAt: new Date(), metadata: verified.metadata as any }
       });
+      await setCache(webhookKey, { processed: true, status: 'ignored' }, 24 * 60 * 60);
       return { verified: true, processed: true, ignored: true };
     }
 
@@ -225,6 +269,7 @@ export const processPaymentWebhook = async (
       where: { id: event.id },
       data: { verified: true, processed: true, processedAt: new Date(), metadata: verified.metadata as any }
     });
+    await setCache(webhookKey, { processed: true, status: 'success' }, 24 * 60 * 60);
     return { verified: true, processed: true, payment: updated.payment, escrowAccount: updated.escrowAccount };
   });
 };
@@ -232,7 +277,7 @@ export const processPaymentWebhook = async (
 export const markPaymentConfirmedFromGateway = async (
   paymentId: number,
   input: { gatewayPaymentId?: string; gatewayOrderId?: string; eventId?: number } = {}
-) => {
+) => withDistributedLock(redisKeys.lockPayment(paymentId), async () => {
   const result = await prisma.$transaction(async (tx) => {
     const payment = await tx.paymentTransaction.findUnique({ where: { id: paymentId } });
     if (!payment) throw new ApiError(404, 'Payment not found', 'PAYMENT_NOT_FOUND');
@@ -245,6 +290,7 @@ export const markPaymentConfirmedFromGateway = async (
       where: { id: payment.id, version: payment.version },
       data: {
         status: 'success',
+        paymentStatus: paymentStatusEnumFor('success') as any,
         gatewayOrderId: input.gatewayOrderId || payment.gatewayOrderId,
         gatewayPaymentId: input.gatewayPaymentId || payment.gatewayPaymentId,
         providerPaymentId: input.gatewayPaymentId || payment.providerPaymentId,
@@ -322,6 +368,72 @@ export const markPaymentConfirmedFromGateway = async (
   await notifySafe(result.payment.payeeId, 'Escrow funded', `Escrow has been funded for payment ${result.payment.referenceId}.`, 'escrow_funded');
 
   return result;
+}, { ttlMs: 15_000 });
+
+export const createLedgerReversalEntry = async (
+  actor: Actor,
+  ledgerEntryId: number,
+  reason?: string
+) => {
+  if (actor.role !== 'admin') throw new ApiError(403, 'Only admins can reverse ledger entries', 'LEDGER_REVERSAL_ADMIN_ONLY');
+  const original = await prisma.financialLedgerEntry.findUnique({ where: { id: ledgerEntryId } });
+  if (!original) throw new ApiError(404, 'Ledger entry not found', 'LEDGER_ENTRY_NOT_FOUND');
+  const existing = await prisma.financialLedgerEntry.findFirst({
+    where: { entryType: 'reversal', metadata: { path: ['reversalOfEntryId'], equals: ledgerEntryId } as any }
+  });
+  if (existing) return { reversal: existing, reused: true };
+  const reversal = await prisma.financialLedgerEntry.create({
+    data: {
+      transactionId: original.transactionId,
+      entityType: original.entityType,
+      entityId: original.entityId,
+      debitAccount: original.creditAccount,
+      creditAccount: original.debitAccount,
+      amount: original.amount,
+      currency: original.currency,
+      entryType: 'reversal',
+      metadata: {
+        reversalOfEntryId: original.id,
+        originalEntryType: original.entryType,
+        reason
+      }
+    }
+  });
+  await auditPayment(actor, 'ledger.reversal_created', 'financialLedgerEntry', reversal.id, { originalEntryId: original.id, reason });
+  return { reversal, reused: false };
+};
+
+export const reconcilePayment = async (
+  actor: Actor,
+  paymentId: number,
+  input: { status: 'success' | 'failed' | 'refunded' | 'cancelled'; remarks?: string; reversalLedgerEntryId?: number }
+) => {
+  if (actor.role !== 'admin') throw new ApiError(403, 'Only admins can reconcile payments', 'PAYMENT_RECONCILE_ADMIN_ONLY');
+  return withDistributedLock(`${redisKeys.lockPayment(paymentId)}:reconcile`, async () => {
+    if (input.status === 'success') {
+      return markPaymentConfirmedFromGateway(paymentId, {});
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentTransaction.findUnique({ where: { id: paymentId } });
+      if (!payment) throw new ApiError(404, 'Payment not found', 'PAYMENT_NOT_FOUND');
+      if (payment.status === input.status) return { payment, reused: true };
+      const updated = await tx.paymentTransaction.update({
+        where: { id: payment.id, version: payment.version },
+        data: {
+          status: input.status,
+          paymentStatus: paymentStatusEnumFor(input.status) as any,
+          metadata: { ...(payment.metadata as any || {}), reconcileRemarks: input.remarks },
+          version: { increment: 1 }
+        }
+      });
+      return { payment: updated, reused: false };
+    });
+    if (input.reversalLedgerEntryId) {
+      await createLedgerReversalEntry(actor, input.reversalLedgerEntryId, input.remarks);
+    }
+    await auditPayment(actor, 'payment.reconciled', 'paymentTransaction', paymentId, input);
+    return result;
+  }, { ttlMs: 15_000 });
 };
 
 export const listEscrowAccounts = async (actor: Actor) => {
@@ -342,7 +454,7 @@ export const createMilestone = async (
   actor: Actor,
   escrowAccountId: number,
   input: { title: string; description?: string; amount: number; dueDate?: string; metadata?: Record<string, unknown> }
-) => {
+) => withDistributedLock(redisKeys.lockEscrow(escrowAccountId), async () => {
   const escrow = await prisma.escrowAccount.findUnique({ where: { id: escrowAccountId } });
   if (!escrow) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');
   if (actor.role !== 'admin' && escrow.buyerId !== actor.id) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');
@@ -361,9 +473,9 @@ export const createMilestone = async (
   });
   await auditPayment(actor, 'escrow.milestone.created', 'milestone', milestone.id, { escrowAccountId });
   return milestone;
-};
+}, { ttlMs: 10_000 });
 
-export const completeMilestone = async (actor: Actor, milestoneId: number) => {
+export const completeMilestone = async (actor: Actor, milestoneId: number) => withDistributedLock(redisKeys.lockMilestone(milestoneId), async () => {
   const milestone = await prisma.milestone.findUnique({ where: { id: milestoneId }, include: { escrowAccount: true } });
   if (!milestone) throw new ApiError(404, 'Milestone not found', 'MILESTONE_NOT_FOUND');
   if (actor.role !== 'admin' && milestone.escrowAccount.sellerId !== actor.id) throw new ApiError(404, 'Milestone not found', 'MILESTONE_NOT_FOUND');
@@ -376,10 +488,10 @@ export const completeMilestone = async (actor: Actor, milestoneId: number) => {
   await auditPayment(actor, 'escrow.milestone.completed', 'milestone', milestone.id, { escrowAccountId: milestone.escrowAccountId });
   await notifySafe(milestone.escrowAccount.buyerId, 'Milestone completed', `${milestone.title} is ready for approval.`, 'milestone_completed');
   return updated;
-};
+}, { ttlMs: 10_000 });
 
 export const approveMilestone = async (actor: Actor, milestoneId: number, reason?: string) =>
-  withDistributedLock(`escrow:milestone:${milestoneId}:approve`, async () => {
+  withDistributedLock(`${redisKeys.lockMilestone(milestoneId)}:release`, async () => {
     const result = await prisma.$transaction(async (tx) => {
       const milestone = await tx.milestone.findUnique({ where: { id: milestoneId }, include: { escrowAccount: true } });
       if (!milestone) throw new ApiError(404, 'Milestone not found', 'MILESTONE_NOT_FOUND');
@@ -446,7 +558,7 @@ export const approveMilestone = async (actor: Actor, milestoneId: number, reason
     return result;
   });
 
-export const freezeEscrow = async (actor: Actor, escrowAccountId: number, reason?: string) => {
+export const freezeEscrow = async (actor: Actor, escrowAccountId: number, reason?: string) => withDistributedLock(redisKeys.lockEscrow(escrowAccountId), async () => {
   const escrow = await prisma.escrowAccount.findUnique({ where: { id: escrowAccountId } });
   if (!escrow) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');
   if (actor.role !== 'admin' && escrow.buyerId !== actor.id) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');
@@ -457,10 +569,23 @@ export const freezeEscrow = async (actor: Actor, escrowAccountId: number, reason
   await auditPayment(actor, 'escrow.frozen', 'escrowAccount', escrow.id, { reason });
   await notifySafe(escrow.sellerId, 'Escrow frozen', 'An escrow account has been frozen for review.', 'escrow_frozen');
   return updated;
-};
+}, { ttlMs: 10_000 });
+
+export const unfreezeEscrow = async (actor: Actor, escrowAccountId: number, reason?: string) => withDistributedLock(redisKeys.lockEscrow(escrowAccountId), async () => {
+  const escrow = await prisma.escrowAccount.findUnique({ where: { id: escrowAccountId } });
+  if (!escrow) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');
+  if (actor.role !== 'admin' && escrow.buyerId !== actor.id) throw new ApiError(403, 'Only admins or the buyer can unfreeze escrow', 'ESCROW_UNFREEZE_UNAUTHORIZED');
+  if (escrow.status !== 'frozen') return escrow;
+  const updated = await prisma.escrowAccount.update({
+    where: { id: escrow.id, version: escrow.version },
+    data: { status: 'held', escrowStatus: 'HELD', version: { increment: 1 }, metadata: { ...(escrow.metadata as any || {}), unfreezeReason: reason } }
+  });
+  await auditPayment(actor, 'escrow.unfrozen', 'escrowAccount', escrow.id, { reason });
+  return updated;
+}, { ttlMs: 10_000 });
 
 export const refundEscrow = async (actor: Actor, escrowAccountId: number, reason?: string) =>
-  withDistributedLock(`escrow:${escrowAccountId}:refund`, async () => {
+  withDistributedLock(`${redisKeys.lockEscrow(escrowAccountId)}:refund`, async () => {
     const result = await prisma.$transaction(async (tx) => {
       const escrow = await tx.escrowAccount.findUnique({ where: { id: escrowAccountId } });
       if (!escrow) throw new ApiError(404, 'Escrow account not found', 'ESCROW_NOT_FOUND');

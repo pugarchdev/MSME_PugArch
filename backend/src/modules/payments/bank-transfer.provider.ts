@@ -9,6 +9,10 @@ export const bankTransferProvider: PaymentProvider = {
     return {
       gateway: 'bank_transfer',
       gatewayOrderId: `bt_${randomToken(12)}`,
+      referenceId: input.referenceId,
+      amount: input.amount,
+      currency: input.currency,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       instructions: `Transfer ${input.currency} ${input.amount} to the configured virtual account using reference ${input.referenceId}. Backend confirmation/webhook is required before payment is marked successful.${env.BANK_TRANSFER_VIRTUAL_ACCOUNT ? ` Virtual account: ${env.BANK_TRANSFER_VIRTUAL_ACCOUNT}` : ''}`
     };
   },

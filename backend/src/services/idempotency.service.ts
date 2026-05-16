@@ -1,5 +1,7 @@
 import type { Request } from 'express';
 import prisma from '../config/prisma.js';
+import { isRedisReady, redis } from '../config/redis.js';
+import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';
 import { sha256 } from '../utils/crypto.js';
 import { maskSensitive } from '../utils/maskSensitive.js';
@@ -41,7 +43,30 @@ export const withIdempotency = async <T extends Record<string, unknown>>(input: 
   handler: () => Promise<T>;
 }) => {
   const requestHash = requestHashFor(input.req, input.route);
-  const expiresAt = new Date(Date.now() + (input.ttlSeconds || 24 * 60 * 60) * 1000);
+  const ttlSeconds = input.ttlSeconds || 24 * 60 * 60;
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+  const isPaymentRoute = input.route.toLowerCase().includes('payment');
+  const redisIdemKey = isPaymentRoute ? redisKeys.idemPayment(input.key) : null;
+
+  if (redisIdemKey && redis && isRedisReady()) {
+    const acquired = await redis.set(redisIdemKey, requestHash, 'EX', ttlSeconds, 'NX');
+    if (acquired !== 'OK') {
+      const existing = await prisma.idempotencyKey.findUnique({
+        where: {
+          idempotencyKeyCompound: {
+            key: input.key,
+            userId: input.userId,
+            route: input.route
+          }
+        }
+      });
+      if (existing?.requestHash && existing.requestHash !== requestHash) {
+        throw new ApiError(409, 'Idempotency key reused with a different request', 'IDEMPOTENCY_CONFLICT');
+      }
+      if (existing?.status === 'completed' && existing.responseBody) return existing.responseBody as T;
+      throw new ApiError(409, 'Request is already being processed', 'IDEMPOTENCY_PROCESSING');
+    }
+  }
 
   try {
     await prisma.idempotencyKey.create({
@@ -69,6 +94,9 @@ export const withIdempotency = async <T extends Record<string, unknown>>(input: 
       await prisma.idempotencyKey.deleteMany({
         where: { key: input.key, userId: input.userId, route: input.route }
       });
+      if (redisIdemKey && redis && isRedisReady()) {
+        await redis.del(redisIdemKey).catch(() => undefined);
+      }
       return withIdempotency(input);
     }
 
@@ -101,6 +129,9 @@ export const withIdempotency = async <T extends Record<string, unknown>>(input: 
     });
     return response;
   } catch (error) {
+    if (redisIdemKey && redis && isRedisReady()) {
+      await redis.del(redisIdemKey).catch(() => undefined);
+    }
     await prisma.idempotencyKey.update({
       where: {
         idempotencyKeyCompound: {

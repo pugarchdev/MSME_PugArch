@@ -71,24 +71,8 @@ const districtOrganisationOverrides: Record<string, string[]> = {
   ]
 };
 
-const getDistrictOrganisations = (state: string, district: string) => {
-  if (!state || !district) return [];
-  
-  const overrides = districtOrganisationOverrides[`${state}:${district}`];
-  if (overrides && overrides.length > 0) return overrides;
-
-  // Fallback realistic dummy data for each district if no override exists
-  return [
-    `${district} District Central Co-operative Bank Ltd.`,
-    `${district} Zilla Parishad Office`,
-    `${district} Municipal Corporation / Nagar Palika`,
-    `${state} State Electricity Distribution Co. Ltd - ${district} Division`,
-    `${district} Sahakari Dudh Utpadak Sangh (Dairy)`,
-    `Department of Agriculture - ${district} Unit`,
-    `District Rural Development Agency (DRDA) - ${district}`,
-    `Integrated Child Development Services (ICDS) - ${district} Project`
-  ];
-};
+const getDistrictOrganisations = (state: string, district: string) =>
+  state && district ? districtOrganisationOverrides[`${state}:${district}`] || [] : [];
 
 export default function RegistrationDetailsFlow({ businessType, onBack, role }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(1);
@@ -200,7 +184,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
     formData.officeZoneName
   );
   const districtOptions = formData.state ? indiaStatesDistricts[formData.state] || [] : [];
-  const organisationOptions = getDistrictOrganisations(formData.state, formData.district);
+  getDistrictOrganisations(formData.state, formData.district);
   const missingPrimaryBuyerFields = [
     !formData.organisationType && 'Organisation Type',
     !formData.state && 'State',

@@ -59,6 +59,19 @@ const complianceRules = [
   ['POLICY_VIOLATION', 'Policy violation', 'A platform policy or procurement control was violated.', 'HIGH']
 ] as const;
 
+const categories = [
+  ['IT Equipment', 'it-equipment', 'PRODUCT'],
+  ['Office Supplies', 'office-supplies', 'PRODUCT'],
+  ['Machinery', 'machinery', 'PRODUCT'],
+  ['Services', 'services', 'SERVICE'],
+  ['Construction', 'construction', 'BOTH'],
+  ['Consulting', 'consulting', 'SERVICE'],
+  ['Furniture', 'furniture', 'PRODUCT'],
+  ['Medical Supplies', 'medical-supplies', 'PRODUCT'],
+  ['Logistics', 'logistics', 'SERVICE'],
+  ['Software & Cloud', 'software-cloud', 'BOTH']
+] as const;
+
 async function main() {
   const roleRecords = new Map<string, { id: number }>();
   const permissionRecords = new Map<string, { id: number }>();
@@ -112,6 +125,14 @@ async function main() {
       where: { code },
       update: { title, description, severity, isActive: true },
       create: { code, title, description, severity, isActive: true }
+    });
+  }
+
+  for (const [name, slug, type] of categories) {
+    await prisma.category.upsert({
+      where: { slug },
+      update: { name, type, isActive: true },
+      create: { name, slug, type, isActive: true }
     });
   }
 }

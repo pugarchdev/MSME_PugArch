@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { isRedisReady, redis } from '../config/redis.js';
-import { redisKeys } from '../constants/redis-keys.js';
+import { redisKeyPrefixes, redisKeys } from '../constants/redis-keys.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { sha256 } from '../utils/crypto.js';
 import { normalizeSpaces } from '../utils/sanitize.js';
@@ -41,7 +41,7 @@ const emailAwareKey = (scope: string) => (req: Request) => {
 const routeLimiter = (options: RateLimitOptions) => {
   const keyFor = (req: Request) => {
     const generated = options.keyGenerator?.(req) || defaultKeyGenerator(req);
-    return generated.startsWith('rate:') ? generated : `rate:${options.name}:${generated}`;
+    return generated.startsWith(redisKeyPrefixes.rate) ? generated : redisKeys.rateNamed(options.name, generated);
   };
 
   return async (req: Request, res: Response, next: NextFunction) => {

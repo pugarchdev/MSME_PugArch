@@ -14,11 +14,15 @@ const parsePayload = (rawBody: Buffer) => {
 export const cashfreeProvider: PaymentProvider = {
   gateway: 'cashfree',
 
-  async createOrder() {
+  async createOrder(input) {
     return {
       gateway: 'cashfree',
       gatewayOrderId: `cf_order_${randomToken(12)}`,
       paymentToken: env.CASHFREE_APP_ID,
+      referenceId: input.referenceId,
+      amount: input.amount,
+      currency: input.currency,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       instructions: 'Use the Cashfree order token client side. Sensitive payment credentials must never touch this server.'
     };
   },

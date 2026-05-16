@@ -75,10 +75,19 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
       try {
         const [onboardingRes, statsRes] = await Promise.all([
           api.fetch('/api/admin/onboarding', { ...authOptions, skipCache: true }),
-          api.fetch('/api/admin/stats', { ...authOptions, skipCache: true })
+          api.fetch(section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement', { ...authOptions, skipCache: true })
         ]);
-        if (onboardingRes.ok) setData(await onboardingRes.json());
-        if (statsRes.ok) setStats(await statsRes.json());
+        if (onboardingRes.ok) {
+          const body = await onboardingRes.json();
+          const users = body?.data ?? body;
+          setData(Array.isArray(users)
+            ? { sellers: users.filter((item: any) => item.role === 'seller'), buyers: users.filter((item: any) => item.role === 'buyer') }
+            : { sellers: users?.sellers || [], buyers: users?.buyers || [] });
+        }
+        if (statsRes.ok) {
+          const body = await statsRes.json();
+          setStats(body?.data ?? body);
+        }
       } catch (err) {
         toast.error('Unable to load admin dashboard records');
       } finally {

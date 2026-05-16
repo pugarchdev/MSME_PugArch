@@ -31,7 +31,8 @@ const backendSecuritySurface = [
   read('backend/src/config/security.ts'),
   read('backend/src/middleware/securityHeaders.ts'),
   read('backend/src/middleware/rateLimit.ts'),
-  read('backend/src/services/storage/storage.service.ts')
+  read('backend/src/services/storage/storage.service.ts'),
+  read('backend/src/services/workflow/tender-workflow.service.ts')
 ].join('\n');
 const schema = read('backend/prisma/schema.prisma');
 
@@ -44,7 +45,7 @@ const requiredSecurityPatterns = [
   ['file validation', 'validateFile'],
   ['payment idempotency', 'withIdempotency'],
   ['webhook replay table', 'PaymentWebhookEvent'],
-  ['auction Redis lock', 'withRedisLock(`auction:'],
+  ['auction Redis lock', 'redisKeys.lockAuction'],
   ['message anti-spam', "consumeActionBudget(req, 'messages'"],
   ['dispute access controls', 'canAccessDispute'],
   ['grievance access controls', 'canAccessGrievance']

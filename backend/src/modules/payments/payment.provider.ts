@@ -18,6 +18,10 @@ export type PaymentOrderResult = {
   gatewayOrderId: string;
   paymentToken?: string;
   instructions?: string;
+  referenceId?: string;
+  amount?: string;
+  currency?: string;
+  expiresAt?: string;
 };
 
 export type VerifiedWebhook = {

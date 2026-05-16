@@ -60,6 +60,7 @@ import { createHashFingerprint, randomToken, sha256 } from './src/utils/crypto.j
 import { ApiError } from './src/utils/ApiError.js';
 import { maskAadhaar, maskBankAccount, maskGST, maskPAN, maskSensitive, maskValue } from './src/utils/maskSensitive.js';
 import { redisKeys } from './src/constants/redis-keys.js';
+import { publishNotificationEvent } from './src/services/realtime.service.js';
 
 // Cloudinary Configuration
 if (configureCloudinary()) {
@@ -92,10 +93,6 @@ export async function startServer() {
   const app = createApp();
   const PORT = env.PORT;
 
-  app.use('/api/auth/login', authLoginRateLimit);
-  app.use('/api/auth/send-email-otp', otpSendRateLimit);
-  app.use('/api/auth/forgot-password', forgotPasswordRateLimit);
-  app.use('/api/auth/reset-password', forgotPasswordRateLimit);
   app.use('/api/utils/gst-verify', verificationRateLimit);
   app.use('/api/gst', verificationRateLimit);
   app.use('/api/pan', verificationRateLimit);
@@ -106,7 +103,6 @@ export async function startServer() {
   app.use('/api/payments', paymentRateLimit);
   app.use('/api/catalogue/search', catalogueSearchRateLimit);
   app.use('/api/catalog/search', catalogueSearchRateLimit);
-  app.use('/api/payments', paymentRoutes);
   app.use('/api', (req, res, next) => {
     const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
     if (!writeMethods.has(req.method)) return next();
@@ -171,6 +167,7 @@ export async function startServer() {
         }
       });
       emitNotification(payload.userId, notification);
+      await publishNotificationEvent(payload.userId, notification);
       return notification;
     } catch (err) {
       console.error('[Notification] Failed to create notification:', err);
@@ -335,7 +332,7 @@ export async function startServer() {
       throw new ApiError(503, 'Critical operation lock service is unavailable. Please retry shortly.', 'REDIS_LOCK_UNAVAILABLE');
     }
 
-    const lockKey = `lock:${key}`;
+    const lockKey = key;
     const token = randomToken(16);
     const acquired = await (redis as any).set(lockKey, token, 'PX', ttlMs, 'NX');
     if (acquired !== 'OK') {
@@ -356,7 +353,7 @@ export async function startServer() {
 
   const consumeActionBudget = async (req: AuthRequest, scope: string, limit: number, windowSeconds: number) => {
     const userPart = req.user?.id ? `u:${req.user.id}` : `ip:${req.ip}`;
-    const key = `anti_spam:${scope}:${userPart}`;
+    const key = redisKeys.actionBudget(scope, userPart);
     if (redis && isRedisReady()) {
       const count = await redis.incr(key);
       if (count === 1) await redis.expire(key, windowSeconds);
@@ -387,29 +384,6 @@ export async function startServer() {
     }
   };
 
-  const sendOtpEmail = async (email: string, otp: string, subject = '[SECURE AUTH] Verification Code') => {
-    if (!env.SMTP_USER || !env.SMTP_PASS) {
-      console.warn('[OTP] SMTP credentials missing; OTP generated but not logged for security.');
-      return false;
-    }
-
-    await transporter.sendMail({
-      from: `"Government Procurement Support" <${env.SMTP_USER}>`,
-      to: email,
-      subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-          <div style="background:#12335f;color:white;padding:18px;text-align:center;font-weight:700;">PugArch MSME Secure Verification</div>
-          <div style="padding:28px;color:#1e293b;">
-            <p>Use this verification code to continue:</p>
-            <div style="font-size:32px;letter-spacing:10px;font-weight:800;text-align:center;margin:24px 0;color:#12335f;">${otp}</div>
-            <p style="font-size:12px;color:#64748b;">This code expires in 5 minutes. If you did not request it, ignore this message and contact support.</p>
-          </div>
-        </div>
-      `
-    });
-    return true;
-  };
 
   const notifyAdminsOfApplication = async (applicant: any, organizationName: string, applicationType: 'buyer' | 'seller') => {
     try {
@@ -848,43 +822,6 @@ export async function startServer() {
     else if (!accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits';
 
     return { values, errors, isValid: Object.keys(errors).length === 0 };
-  };
-
-  const validatePersonalVerification = (role: unknown, details: any, dob: unknown, mobile: unknown) => {
-    const errors: Record<string, string> = {};
-    const method = String(details?.verificationMethod || '').trim();
-    const mobileValue = String(mobile || '').trim();
-    const dobValue = String(dob || '').trim();
-
-    if (role !== 'seller') return { errors, isValid: true };
-    if (!['aadhaar', 'pan'].includes(method)) {
-      errors.verificationMethod = 'Select Aadhaar or Personal PAN verification';
-      return { errors, isValid: false };
-    }
-
-    if (method === 'aadhaar') {
-      const aadhaarValue = String(details?.aadhaarNumber || '').trim();
-      const validIdentity = /^\d{12}$/.test(aadhaarValue) || /^\d{16}$/.test(aadhaarValue);
-      const validMobile = /^[6-9]\d{9}$/.test(mobileValue) && !/^(\d)\1{9}$/.test(mobileValue);
-      if (!validIdentity) errors.aadhaarNumber = 'Aadhaar must be 12 digits or Virtual ID must be 16 digits';
-      if (!validMobile) errors.mobile = 'Aadhaar-linked mobile must be a valid 10 digit Indian mobile number';
-      if (!details?.isAadhaarVerified) errors.aadhaarVerified = 'Aadhaar verification is required';
-    }
-
-    if (method === 'pan') {
-      const pan = String(details?.pan || '').trim().toUpperCase();
-      const name = normalizeSpaces(details?.accountName);
-      const parsedDob = dobValue ? new Date(dobValue) : null;
-      const now = new Date();
-      const age = parsedDob
-        ? now.getFullYear() - parsedDob.getFullYear() - (now < new Date(now.getFullYear(), parsedDob.getMonth(), parsedDob.getDate()) ? 1 : 0)
-        : 0;
-      if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) errors.pan = 'PAN must follow ABCDE1234F format';
-      if (!/^[A-Za-z .-]{2,100}$/.test(name)) errors.accountName = 'Name as on PAN must be 2-100 valid text characters';
-      if (!parsedDob || parsedDob > now || age < 18) errors.dob = 'Date of birth must not be future and user must be at least 18 years old';
-    }
-
-    return { errors, isValid: Object.keys(errors).length === 0 };
   };
 
   const compactParts = (...parts: unknown[]) =>
@@ -1379,6 +1316,26 @@ export async function startServer() {
       res.json(maskSensitive(bids));
     } catch (err: any) {
       handleSecureRouteError(res, err, 'Unable to load bids');
+    }
+  });
+
+  app.get('/api/bids/:id', authenticate, authorize('seller', 'buyer', 'admin'), async (req: AuthRequest, res) => {
+    try {
+      const bidId = Number(req.params.id);
+      const allowed = await checkOwnership('bid', bidId, req.user!);
+      if (!allowed) return res.status(404).json({ message: 'Bid not found' });
+
+      const bid = await prisma.bid.findUnique({
+        where: { id: bidId },
+        include: {
+          tender: true,
+          seller: { include: { sellerProfile: true } }
+        }
+      });
+      if (!bid) return res.status(404).json({ message: 'Bid not found' });
+      res.json(toBidResponse(bid, req.user!));
+    } catch (err: any) {
+      handleSecureRouteError(res, err, 'Unable to load bid');
     }
   });
 
@@ -2130,620 +2087,6 @@ export async function startServer() {
     }
   });
 
-  // --- Auth APIs ---
-  app.post('/api/auth/send-email-otp', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      if (!email) return res.status(400).json({ message: 'Email is required' });
-
-      // Preemptive check: Does user already exist in DB?
-      const existingUser = await prisma.user.findUnique({ where: { email } });
-      if (existingUser) {
-        await auditLog({
-          action: 'auth.otp.rejected_existing_user',
-          entityType: 'auth',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(email) }
-        });
-        return res.status(400).json({ message: 'User already exists. Please login directly.' });
-      }
-      const otp = generateOtp();
-
-      await storeEmailOtp(email, otp);
-
-      const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Email verification code');
-      await auditLog({
-        action: 'auth.otp.sent',
-        entityType: 'auth',
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        metadata: { emailHash: sha256(email), purpose: 'registration_email', deliveryConfigured }
-      });
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error('[Email OTP] Failed:', err);
-      handleSecureRouteError(res, err, 'Unable to send OTP right now. Please try again.');
-    }
-  });
-
-  app.post('/api/auth/verify-email-otp', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const otp = String(req.body.otp || '').trim();
-      const result = await verifyEmailOtp(email, otp);
-      if (!result.ok && result.reason === 'expired') {
-        await auditLog({
-          action: 'auth.otp.failed',
-          entityType: 'auth',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(email), reason: 'expired' }
-        });
-        return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
-      }
-      if (!result.ok) {
-        await auditLog({
-          action: 'auth.otp.failed',
-          entityType: 'auth',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(email), reason: result.reason }
-        });
-        return res.status(400).json({ message: 'Invalid OTP' });
-      }
-      await auditLog({
-        action: 'auth.otp.verified',
-        entityType: 'auth',
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        metadata: { emailHash: sha256(email) }
-      });
-      res.json({ success: true });
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
-  app.get('/api/auth/mobile-exists', async (req, res) => {
-    try {
-      const mobile = String(req.query.mobile || '').trim();
-      if (!/^[6-9]\d{9}$/.test(mobile) || /^(\d)\1{9}$/.test(mobile)) {
-        return res.status(400).json({ message: 'Enter a valid 10 digit Indian mobile number' });
-      }
-
-      const existingUser = await prisma.user.findFirst({
-        where: { mobile },
-        select: { id: true }
-      });
-
-      res.json({ exists: Boolean(existingUser) });
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
-  app.post('/api/auth/register', async (req, res) => {
-    try {
-      const { password, role, registrationDetails, mobile, dob } = req.body;
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const name = String(
-        req.body.name ||
-        registrationDetails?.accountName ||
-        registrationDetails?.userId ||
-        registrationDetails?.businessName ||
-        email
-      ).trim();
-      const otpRecord = await assertEmailOtpVerified(email);
-      if (!otpRecord.ok && otpRecord.reason === 'expired') {
-        return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
-      }
-      if (!otpRecord.ok) return res.status(400).json({ message: 'Verify email first' });
-
-      const passwordValidation = validatePasswordStrength(String(password || ''));
-      if (!passwordValidation.ok) {
-        return res.status(400).json({
-          message: 'Password does not meet security requirements',
-          errors: passwordValidation.errors
-        });
-      }
-
-      const existingEmail = await prisma.user.findUnique({ where: { email } });
-      if (existingEmail) return res.status(400).json({ message: 'Email already registered. Please log in.' });
-
-      if (mobile) {
-        const existingMobile = await prisma.user.findFirst({ where: { mobile: String(mobile).trim() } });
-        if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
-      }
-
-      const personalValidation = validatePersonalVerification(role, registrationDetails, dob, mobile);
-      if (!personalValidation.isValid) {
-        return res.status(400).json({
-          message: 'Invalid personal verification details',
-          errors: personalValidation.errors
-        });
-      }
-
-      const hashedPassword = await hashPassword(password);
-      const user = await prisma.user.create({
-        data: {
-          name, email, password: hashedPassword,
-          role: role as Role,
-          mobile,
-          dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
-          emailVerified: true,
-          lastPasswordChangeAt: new Date(),
-          registrationStatus: RegistrationStatus.completed,
-          registrationDetails: registrationDetails || {}
-        }
-      });
-
-      await consumeEmailOtp(email);
-
-      const tokens = issueAuthResponse(user);
-      await auditLog({
-        actorUserId: user.id,
-        action: 'auth.register',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        metadata: { role: user.role }
-      });
-      res.status(201).json({ ...tokens, user: toSafeUser(user) });
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to register right now. Please try again.');
-    }
-  });
-
-  app.post('/api/auth/login', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const { password } = req.body;
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        await recordLoginEvent({ req, success: false, reason: 'user_not_found' });
-        await auditLog({
-          action: 'auth.login.failed',
-          entityType: 'auth',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(String(email || '').toLowerCase()), reason: 'not_found' }
-        });
-        return res.status(400).json({ message: 'Invalid credentials' });
-      }
-
-      if (user.lockedUntil && user.lockedUntil > new Date()) {
-        await recordLoginEvent({ req, userId: user.id, success: false, reason: 'account_locked' });
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.login.locked',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent']
-        });
-        return res.status(423).json({ message: 'Account is temporarily locked. Please try again later.' });
-      }
-
-      const isMatch = await verifyPassword(String(password || ''), user.password);
-      if (!isMatch) {
-        const nextFailedCount = user.failedLoginCount + 1;
-        const shouldLock = nextFailedCount >= env.FAILED_LOGIN_LOCK_THRESHOLD;
-        const lockedUntil = shouldLock
-          ? new Date(Date.now() + env.FAILED_LOGIN_LOCK_MINUTES * 60 * 1000)
-          : null;
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failedLoginCount: nextFailedCount,
-            ...(lockedUntil ? { lockedUntil } : {})
-          }
-        });
-        await recordLoginEvent({ req, userId: user.id, success: false, reason: shouldLock ? 'account_locked' : 'password_mismatch' });
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.login.failed',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { reason: 'password_mismatch', failedLoginCount: nextFailedCount, locked: shouldLock }
-        });
-        if (shouldLock) {
-          await createNotificationSafe({
-            userId: user.id,
-            title: 'Account temporarily locked',
-            message: `Your account was temporarily locked after repeated failed login attempts. Try again after ${env.FAILED_LOGIN_LOCK_MINUTES} minutes or contact an administrator.`,
-            type: 'account_locked'
-          });
-          await auditLog({
-            actorUserId: user.id,
-            actorRole: user.role,
-            action: 'auth.account.locked',
-            entityType: 'user',
-            entityId: user.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-            metadata: { lockedUntil }
-          });
-        }
-        return res.status(400).json({ message: 'Invalid credentials' });
-      }
-
-      if (user.twoFactorEnabled) {
-        const otp = generateOtp();
-        await storeOtp('two_factor_login', email, otp, { userId: user.id });
-        const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Two-factor login code');
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.2fa.challenge_sent',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { deliveryConfigured }
-        });
-        await recordLoginEvent({ req, userId: user.id, success: false, reason: 'two_factor_required' });
-        return res.json({ requiresTwoFactor: true, email, message: 'Two-factor verification required' });
-      }
-
-      const updatedUser = await prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
-      });
-      const tokens = issueAuthResponse(updatedUser);
-      await auditLog({
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: 'auth.login.success',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      await recordLoginEvent({ req, userId: user.id, success: true, reason: 'password_login' });
-      res.json({ ...tokens, user: toSafeUser(updatedUser) });
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to sign in right now. Please try again.');
-    }
-  });
-
-  app.get('/api/bids/:id', authenticate, authorize('seller', 'buyer', 'admin'), async (req: AuthRequest, res) => {
-    try {
-      const bidId = Number(req.params.id);
-      const allowed = await checkOwnership('bid', bidId, req.user!);
-      if (!allowed) return res.status(404).json({ message: 'Bid not found' });
-
-      const bid = await prisma.bid.findUnique({
-        where: { id: bidId },
-        include: {
-          tender: true,
-          seller: { include: { sellerProfile: true } }
-        }
-      });
-      if (!bid) return res.status(404).json({ message: 'Bid not found' });
-      res.json(toBidResponse(bid, req.user!));
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to load bid');
-    }
-  });
-
-  app.post('/api/auth/2fa/verify', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const otp = String(req.body.otp || '').trim();
-      const result = await verifyOtp('two_factor_login', email, otp);
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return res.status(400).json({ message: 'Invalid verification request' });
-
-      if (!result.ok) {
-        await recordLoginEvent({ req, userId: user.id, success: false, reason: `two_factor_${result.reason}` });
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.otp.failed',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { purpose: 'two_factor_login', reason: result.reason }
-        });
-        return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
-      }
-
-      await consumeOtp('two_factor_login', email);
-      const updatedUser = await prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
-      });
-      const tokens = issueAuthResponse(updatedUser);
-      await auditLog({
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: 'auth.otp.verified',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        metadata: { purpose: 'two_factor_login' }
-      });
-      await recordLoginEvent({ req, userId: user.id, success: true, reason: 'two_factor_login' });
-      res.json({ ...tokens, user: toSafeUser(updatedUser) });
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to check mobile number right now. Please try again.');
-    }
-  });
-
-  app.post('/api/auth/refresh', async (req, res) => {
-    try {
-      const refreshToken = String(req.body.refreshToken || '');
-      const decoded = verifyRefreshToken(refreshToken);
-      if (decoded.type !== 'refresh' || !decoded.id || Number.isNaN(Number(decoded.sessionVersion))) {
-        return res.status(401).json({ message: 'Invalid refresh token' });
-      }
-
-      const user = await prisma.user.findUnique({ where: { id: Number(decoded.id) } });
-      if (!user || user.sessionVersion !== Number(decoded.sessionVersion)) {
-        return res.status(401).json({ message: 'Session expired. Please sign in again.' });
-      }
-
-      const accessToken = signAccessToken({ id: user.id, role: user.role, sessionVersion: user.sessionVersion });
-      res.json({ token: accessToken, accessToken, expiresIn: env.JWT_ACCESS_EXPIRES_IN });
-    } catch {
-      res.status(401).json({ message: 'Invalid refresh token' });
-    }
-  });
-
-  app.post('/api/auth/logout', authenticate, async (req: AuthRequest, res) => {
-    try {
-      await prisma.user.update({
-        where: { id: Number(req.user?.id) },
-        data: { sessionVersion: { increment: 1 } }
-      });
-      await auditLog({
-        actorUserId: Number(req.user?.id),
-        actorRole: req.user?.role,
-        action: 'auth.logout',
-        entityType: 'user',
-        entityId: Number(req.user?.id),
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      res.json({ success: true });
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to register right now. Please try again.');
-    }
-  });
-
-  app.post('/api/auth/forgot-password', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const user = await prisma.user.findUnique({ where: { email } });
-
-      if (user) {
-        const otp = generateOtp();
-        await storeOtp('forgot_password', email, otp, { userId: user.id });
-        const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Password reset code');
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.password_reset.requested',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { deliveryConfigured }
-        });
-      } else {
-        await auditLog({
-          action: 'auth.password_reset.requested_unknown',
-          entityType: 'auth',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(email) }
-        });
-      }
-
-      res.json({ success: true, message: 'If the account exists, a reset code has been sent.' });
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
-  app.post('/api/auth/reset-password', async (req, res) => {
-    try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const otp = String(req.body.otp || '').trim();
-      const newPassword = String(req.body.newPassword || '');
-      const passwordValidation = validatePasswordStrength(newPassword);
-      if (!passwordValidation.ok) {
-        return res.status(400).json({ message: 'Password does not meet security requirements', errors: passwordValidation.errors });
-      }
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return res.status(400).json({ message: 'Invalid reset request' });
-
-      const result = await verifyOtp('forgot_password', email, otp);
-      if (!result.ok) {
-        await auditLog({
-          actorUserId: user.id,
-          actorRole: user.role,
-          action: 'auth.otp.failed',
-          entityType: 'user',
-          entityId: user.id,
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { purpose: 'forgot_password', reason: result.reason }
-        });
-        return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
-      }
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          password: await hashPassword(newPassword),
-          passwordResetVersion: { increment: 1 },
-          sessionVersion: { increment: 1 },
-          failedLoginCount: 0,
-          lockedUntil: null,
-          lastPasswordChangeAt: new Date()
-        }
-      });
-      await consumeOtp('forgot_password', email);
-      await auditLog({
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: 'auth.password_reset.completed',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      res.json({ success: true, message: 'Password reset successful. Please sign in again.' });
-    } catch (err: any) {
-      handleSecureRouteError(res, err, 'Unable to sign in right now. Please try again.');
-    }
-  });
-
-  app.post('/api/auth/2fa/enable', authenticate, async (req: AuthRequest, res) => {
-    try {
-      const user = await prisma.user.findUnique({ where: { id: Number(req.user?.id) } });
-      if (!user) return res.status(404).json({ message: 'User not found' });
-
-      const otp = String(req.body.otp || '').trim();
-      if (!otp) {
-        const code = generateOtp();
-        await storeOtp('two_factor_login', user.email, code, { userId: user.id, action: 'enable_2fa' });
-        await sendOtpEmail(user.email, code, '[SECURE AUTH] Enable 2FA code');
-        return res.json({ success: true, pendingVerification: true });
-      }
-
-      const result = await verifyOtp('two_factor_login', user.email, otp);
-      if (!result.ok) return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
-
-      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true } });
-      await consumeOtp('two_factor_login', user.email);
-      await auditLog({
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: 'auth.2fa.enabled',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      res.json({ success: true, twoFactorEnabled: true });
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
-  app.post('/api/auth/2fa/disable', authenticate, async (req: AuthRequest, res) => {
-    try {
-      const user = await prisma.user.findUnique({ where: { id: Number(req.user?.id) } });
-      if (!user) return res.status(404).json({ message: 'User not found' });
-
-      const password = String(req.body.password || '');
-      if (!(await verifyPassword(password, user.password))) {
-        return res.status(400).json({ message: 'Invalid credentials' });
-      }
-
-      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false } });
-      await auditLog({
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: 'auth.2fa.disabled',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      res.json({ success: true, twoFactorEnabled: false });
-    } catch (err: any) {
-      return handleFinancialRouteError(res, err);
-    }
-  });
-
-  app.get('/api/auth/me', authenticate, async (req: AuthRequest, res) => {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: Number(req.user?.id) },
-        include: {
-          sellerProfile: {
-            include: {
-              offices: true,
-              bankAccounts: true
-            }
-          },
-          buyerProfile: true
-        }
-      });
-      if (!user) return res.status(404).json({ message: 'Not found' });
-
-      const { password, ...userData } = user;
-      res.json(maskSensitive({
-        user: { ...userData, _id: user.id },
-        profile: user.role === 'seller' ? user.sellerProfile : user.buyerProfile
-      }));
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
-  app.post('/api/auth/change-password', authenticate, async (req: AuthRequest, res) => {
-    try {
-      const { currentPassword, newPassword } = req.body;
-      const userId = Number(req.user?.id);
-
-      if (!currentPassword || !newPassword) {
-        return res.status(400).json({ message: 'Current and new passwords are required' });
-      }
-
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) return res.status(404).json({ message: 'User not found' });
-
-      const isMatch = await verifyPassword(currentPassword, user.password);
-      if (!isMatch) return res.status(400).json({ message: 'Current password incorrect' });
-
-      const passwordValidation = validatePasswordStrength(String(newPassword || ''));
-      if (!passwordValidation.ok) {
-        return res.status(400).json({
-          message: 'Password does not meet security requirements',
-          errors: passwordValidation.errors
-        });
-      }
-
-      const hashedPassword = await hashPassword(newPassword);
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          password: hashedPassword,
-          passwordResetVersion: { increment: 1 },
-          sessionVersion: { increment: 1 },
-          lastPasswordChangeAt: new Date()
-        }
-      });
-
-      await auditLog({
-        actorUserId: userId,
-        actorRole: req.user?.role,
-        action: 'auth.password.changed',
-        entityType: 'user',
-        entityId: userId,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      res.json({ message: 'Password updated successfully' });
-    } catch (err: any) {
-      handleSecureRouteError(res, err);
-    }
-  });
-
   // --- Profile APIs ---
   app.post('/api/seller/register', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
     try {
@@ -2752,7 +2095,7 @@ export async function startServer() {
       if (!editCheck.editable) return res.status(editCheck.status || 403).json({ message: editCheck.message });
       const { password, ...rawData } = req.body;
 
-      if (password || rawData.mobile || rawData.dob) {
+      if (password || rawData.email || rawData.mobile || rawData.dob) {
         const updateData: any = {};
         if (password) {
           const passwordValidation = validatePasswordStrength(String(password));
@@ -2763,6 +2106,14 @@ export async function startServer() {
           updateData.passwordResetVersion = { increment: 1 };
           updateData.sessionVersion = { increment: 1 };
           updateData.lastPasswordChangeAt = new Date();
+        }
+        if (rawData.email) {
+          const existingEmail = await prisma.user.findFirst({
+            where: { email: String(rawData.email).trim().toLowerCase(), id: { not: userId } },
+            select: { id: true }
+          });
+          if (existingEmail) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+          updateData.email = String(rawData.email).trim().toLowerCase();
         }
         if (rawData.mobile) {
           const existingMobile = await prisma.user.findFirst({
@@ -3091,7 +2442,7 @@ export async function startServer() {
         return res.status(400).json({ message: 'Mobile number is required to complete buyer onboarding' });
       }
 
-      if (password || rawData.mobile) {
+      if (password || rawData.email || rawData.mobile) {
         const updateData: any = {};
         if (password) {
           const passwordValidation = validatePasswordStrength(String(password));
@@ -3102,6 +2453,14 @@ export async function startServer() {
           updateData.passwordResetVersion = { increment: 1 };
           updateData.sessionVersion = { increment: 1 };
           updateData.lastPasswordChangeAt = new Date();
+        }
+        if (rawData.email) {
+          const existingEmail = await prisma.user.findFirst({
+            where: { email: String(rawData.email).trim().toLowerCase(), id: { not: userId } },
+            select: { id: true }
+          });
+          if (existingEmail) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+          updateData.email = String(rawData.email).trim().toLowerCase();
         }
         if (rawData.mobile) {
           const existingMobile = await prisma.user.findFirst({

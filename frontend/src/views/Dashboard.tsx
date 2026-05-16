@@ -16,7 +16,7 @@ export default function Dashboard() {
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const cachedMe = token ? api.peek('/api/auth/me', { headers: authHeaders }) : null;
   const cachedNotifications = token ? api.peek('/api/notifications', { headers: authHeaders }) : null;
-  const cachedAdminStats = token ? api.peek('/api/admin/stats', { headers: authHeaders }) : null;
+  const cachedAdminStats = token ? api.peek('/api/admin/reports/summary', { headers: authHeaders }) : null;
   const [profile, setProfile] = useState<any>(cachedMe?.profile || null);
   const [isLoading, setIsLoading] = useState(!cachedMe);
   const [adminStats, setAdminStats] = useState<any>(cachedAdminStats || null);
@@ -44,10 +44,10 @@ export default function Dashboard() {
         setProfile(profileData.profile);
 
         if (profileData.user?.role === 'admin') {
-          const statsRes = await api.fetch('/api/admin/stats', { headers });
+          const statsRes = await api.fetch('/api/admin/reports/summary', { headers });
           if (statsRes.ok) {
             const statsData = await statsRes.json();
-            setAdminStats(statsData);
+            setAdminStats(statsData?.data ?? statsData);
           }
         }
 

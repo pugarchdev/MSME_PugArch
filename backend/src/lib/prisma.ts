@@ -1,7 +1,25 @@
 import { PrismaClient } from '@prisma/client'
 
 const prismaClientSingleton = () => {
-  return new PrismaClient()
+  const client = new PrismaClient()
+  return client.$extends({
+    query: {
+      financialLedgerEntry: {
+        update() {
+          throw new Error('Financial ledger entries are immutable; create a reversal entry instead.')
+        },
+        updateMany() {
+          throw new Error('Financial ledger entries are immutable; create reversal entries instead.')
+        },
+        delete() {
+          throw new Error('Financial ledger entries are immutable; create a reversal entry instead.')
+        },
+        deleteMany() {
+          throw new Error('Financial ledger entries are immutable; create reversal entries instead.')
+        }
+      }
+    }
+  })
 }
 
 declare global {

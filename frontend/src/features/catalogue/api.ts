@@ -1,0 +1,18 @@
+import { getApi, postApi, putApi, deleteApi } from '../shared/apiClient';
+import type { CatalogueItemDto, CategoryDto, ListParams } from '../shared/types';
+
+const query = (params: ListParams = {}) => new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])).toString();
+
+export const catalogueApi = {
+  categories: () => getApi<CategoryDto[]>('/api/categories'),
+  searchProducts: (params: ListParams = {}) => getApi<CatalogueItemDto[]>(`/api/products/search?${query(params)}`),
+  searchServices: (params: ListParams = {}) => getApi<CatalogueItemDto[]>(`/api/services/search?${query(params)}`),
+  sellerProducts: () => getApi<CatalogueItemDto[]>('/api/seller/products'),
+  createProduct: (payload: unknown) => postApi<CatalogueItemDto>('/api/seller/products', payload),
+  updateProduct: (id: number, payload: unknown) => putApi<CatalogueItemDto>(`/api/seller/products/${id}`, payload),
+  deleteProduct: (id: number) => deleteApi<CatalogueItemDto>(`/api/seller/products/${id}`),
+  sellerServices: () => getApi<CatalogueItemDto[]>('/api/seller/services'),
+  createService: (payload: unknown) => postApi<CatalogueItemDto>('/api/seller/services', payload),
+  updateService: (id: number, payload: unknown) => putApi<CatalogueItemDto>(`/api/seller/services/${id}`, payload),
+  deleteService: (id: number) => deleteApi<CatalogueItemDto>(`/api/seller/services/${id}`)
+};

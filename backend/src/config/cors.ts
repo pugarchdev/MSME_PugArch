@@ -10,6 +10,8 @@ const staticOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://msme-portal-pug-arch-frontend.vercel.app',
+  'https://msme-pugarch.vercel.app',
+  'https://msme-pugarch-backend.vercel.app',
   'https://msme-portal-pug-arch-frontend-onet.vercel.app'
 ];
 

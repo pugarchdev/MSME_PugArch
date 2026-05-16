@@ -22,6 +22,10 @@ export const razorpayProvider: PaymentProvider = {
       gateway: 'razorpay',
       gatewayOrderId: `rzp_order_${randomToken(12)}`,
       paymentToken: env.RAZORPAY_KEY_ID,
+      referenceId: input.referenceId,
+      amount: input.amount,
+      currency: input.currency,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       instructions: 'Use the gateway order id with Razorpay Checkout. Do not send or store card data on this server.'
     };
   },

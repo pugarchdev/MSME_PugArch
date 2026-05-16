@@ -83,6 +83,41 @@ test('payment idempotency and webhook replay protections exist', () => {
   assert.match(schema, /@@unique\(\[gateway, eventId\]/, 'webhook event id must be unique per gateway');
 });
 
+test('duplicate payment initiation is blocked with idempotency and invoice payment guard', () => {
+  assert.match(paymentService, /lockPayment\(`invoice:\$\{input\.invoiceId\}`\)/, 'payment initiation must lock by invoice');
+  assert.match(paymentService, /PAYMENT_ALREADY_COMPLETED/, 'completed invoice payments must not be duplicated');
+  assert.match(paymentService, /idempotencyKey/, 'payment initiation must persist the idempotency key');
+});
+
+test('webhook replay and invalid signatures are rejected', () => {
+  const paymentRoutes = fs.readFileSync(path.join(root, 'backend/src/modules/payments/payment.routes.ts'), 'utf8');
+  assert.match(paymentRoutes, /PAYMENT_WEBHOOK_REPLAY_BLOCKED/, 'webhook replay must return a blocked response');
+  assert.match(paymentService, /PAYMENT_WEBHOOK_SIGNATURE_INVALID/, 'invalid webhook signatures must be rejected');
+  assert.match(paymentService, /redisKeys\.webhook/, 'webhook replay protection must use Redis key builders');
+  assert.match(paymentService, /paymentWebhookEvent\.create/, 'webhook replay protection must persist DB events');
+});
+
+test('escrow and milestone release paths are protected against double release', () => {
+  assert.match(paymentService, /lockMilestone\(milestoneId\).*:release/s, 'milestone release must use the milestone Redis lock');
+  assert.match(paymentService, /milestone\.status === 'approved'/, 'approved milestones must be treated as already released');
+  assert.match(paymentService, /escrow\.status === 'frozen'/, 'frozen escrow must block release');
+});
+
+test('ledger entries are immutable and support reversals', () => {
+  const prismaClient = fs.readFileSync(path.join(root, 'backend/src/lib/prisma.ts'), 'utf8');
+  assert.match(prismaClient, /financialLedgerEntry/, 'ledger model must be guarded at Prisma client level');
+  assert.match(prismaClient, /create a reversal entry instead/, 'ledger update/delete must be rejected');
+  assert.match(paymentService, /createLedgerReversalEntry/, 'ledger reversals must be represented as new entries');
+  assert.match(paymentService, /entryType: 'reversal'/, 'reversal entries must use a reversal type');
+});
+
+test('unauthorized payment access is blocked and reconciliation is admin-only', () => {
+  const paymentRoutes = fs.readFileSync(path.join(root, 'backend/src/modules/payments/payment.routes.ts'), 'utf8');
+  assert.match(paymentRoutes, /payment\.payerId !== req\.user\?\.id && payment\.payeeId !== req\.user\?\.id/, 'payment detail must check payer/payee ownership');
+  assert.match(paymentRoutes, /authorize\('admin'\)/, 'payment reconciliation must be admin-only');
+  assert.match(paymentService, /PAYMENT_RECONCILE_ADMIN_ONLY/, 'reconciliation service must enforce admin authorization');
+});
+
 test('auction race conditions are protected', () => {
   assert.match(backendIndex, /redisKeys\.lockAuction\(auctionId\)/, 'auction bid must use centralized Redis lock key');
   assert.match(backendIndex, /AUCTION_MIN_DECREMENT/, 'auction minimum decrement must be enforced');

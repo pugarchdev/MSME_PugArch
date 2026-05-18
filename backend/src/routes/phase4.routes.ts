@@ -1055,10 +1055,122 @@ router.get('/ratings/buyer/:buyerId', authenticate, asyncRoute(async (req, res) 
 }));
 
 // Admin reports
-router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => ok(res, await db.user.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }))));
-router.get('/admin/audit-logs', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => ok(res, await db.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }))));
-router.get('/admin/fraud-alerts', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => ok(res, await db.fraudAlert.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }))));
-router.get('/admin/compliance-rules', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => ok(res, await db.complianceRule.findMany({ orderBy: { createdAt: 'desc' } }))));
+router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const query = parse(paginationQuery.extend({
+    role: z.string().trim().optional(),
+    onboardingStatus: z.string().trim().optional(),
+    accountStatus: z.string().trim().optional()
+  }), req.query);
+  const where: any = {};
+  if (query.role) where.role = query.role;
+  if (query.onboardingStatus) where.onboardingStatus = query.onboardingStatus;
+  if (query.accountStatus) where.accountStatus = query.accountStatus;
+  if (query.q) {
+    where.OR = [
+      { name: { contains: query.q, mode: 'insensitive' } },
+      { email: { contains: query.q, mode: 'insensitive' } },
+      { mobile: { contains: query.q, mode: 'insensitive' } },
+      { userId: { contains: query.q, mode: 'insensitive' } }
+    ];
+  }
+  const [records, total] = await Promise.all([
+    db.user.findMany({
+      where,
+      include: {
+        organization: true,
+        buyerProfile: true,
+        sellerProfile: true,
+        sessions: { orderBy: { createdAt: 'desc' }, take: 3 },
+        complianceViolations: { orderBy: { createdAt: 'desc' }, take: 5 },
+        fraudAlerts: { orderBy: { createdAt: 'desc' }, take: 5 }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: query.skip,
+      take: query.take
+    }),
+    db.user.count({ where })
+  ]);
+  ok(res, { records, total, filters: query });
+}));
+
+router.get('/admin/audit-logs', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const query = parse(paginationQuery.extend({
+    action: z.string().trim().optional(),
+    entityType: z.string().trim().optional(),
+    userId: z.coerce.number().int().positive().optional()
+  }), req.query);
+  const where: any = {};
+  if (query.action) where.action = { contains: query.action, mode: 'insensitive' };
+  if (query.entityType) where.entityType = { contains: query.entityType, mode: 'insensitive' };
+  if (query.userId) where.userId = query.userId;
+  if (query.q) {
+    where.OR = [
+      { action: { contains: query.q, mode: 'insensitive' } },
+      { entityType: { contains: query.q, mode: 'insensitive' } }
+    ];
+  }
+  const [records, total] = await Promise.all([
+    db.auditLog.findMany({ where, include: { User: { select: { id: true, name: true, email: true, role: true } } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.auditLog.count({ where })
+  ]);
+  ok(res, { records, total, filters: query });
+}));
+
+router.get('/admin/fraud-alerts', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const query = parse(paginationQuery.extend({
+    severity: z.string().trim().optional(),
+    alertType: z.string().trim().optional()
+  }), req.query);
+  const where: any = {};
+  if (query.status) where.status = query.status;
+  if (query.severity) where.severity = query.severity;
+  if (query.alertType) where.alertType = query.alertType;
+  if (query.q) {
+    where.OR = [
+      { entityType: { contains: query.q, mode: 'insensitive' } },
+      { user: { name: { contains: query.q, mode: 'insensitive' } } },
+      { user: { email: { contains: query.q, mode: 'insensitive' } } }
+    ];
+  }
+  const [records, total, openComplianceFlags, failedLogins] = await Promise.all([
+    db.fraudAlert.findMany({ where, include: { user: { select: { id: true, name: true, email: true, role: true } }, organization: true, reviewedBy: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.fraudAlert.count({ where }),
+    db.complianceViolation.count({ where: { status: 'open', severity: { in: ['high', 'critical'] } } }).catch(() => 0),
+    db.loginEvent.count({ where: { success: false } }).catch(() => 0)
+  ]);
+  ok(res, { records, total, filters: query, summary: { openComplianceFlags, failedLogins } });
+}));
+
+router.get('/admin/compliance-rules', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const defaults = [
+    { code: 'KYC_PAN_REQUIRED', title: 'PAN verification required', description: 'Seller and buyer onboarding must include a valid PAN verification result.', severity: 'HIGH' },
+    { code: 'GSTIN_FORMAT_CHECK', title: 'GSTIN format and ownership check', description: 'GSTIN must match the registered legal entity wherever applicable.', severity: 'MEDIUM' },
+    { code: 'BANK_ACCOUNT_DUPLICATE', title: 'Duplicate bank account prevention', description: 'Multiple sellers using the same bank account require manual compliance review.', severity: 'HIGH' },
+    { code: 'BID_DEADLINE_ENFORCEMENT', title: 'Bid deadline enforcement', description: 'Bids and bid modifications after deadline must be blocked.', severity: 'CRITICAL' }
+  ];
+  if (await db.complianceRule.count().catch(() => 0) === 0) {
+    await Promise.all(defaults.map(rule => db.complianceRule.upsert({ where: { code: rule.code }, update: {}, create: rule }).catch(() => null)));
+  }
+  const query = parse(paginationQuery.extend({
+    severity: z.string().trim().optional(),
+    isActive: z.coerce.boolean().optional()
+  }), req.query);
+  const where: any = {};
+  if (query.severity) where.severity = query.severity;
+  if (query.isActive !== undefined) where.isActive = query.isActive;
+  if (query.q) {
+    where.OR = [
+      { code: { contains: query.q, mode: 'insensitive' } },
+      { title: { contains: query.q, mode: 'insensitive' } },
+      { description: { contains: query.q, mode: 'insensitive' } }
+    ];
+  }
+  const [records, total] = await Promise.all([
+    db.complianceRule.findMany({ where, include: { violations: { orderBy: { createdAt: 'desc' }, take: 5 } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.complianceRule.count({ where })
+  ]);
+  ok(res, { records, total, filters: query });
+}));
 
 router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
   const [users, tenders, bids, purchaseOrders, payments, disputes] = await Promise.all([

@@ -27,7 +27,6 @@ const Tenders = dynamic(() => import('./views/Tenders'), { ssr: false, loading: 
 const Vendors = dynamic(() => import('./views/Vendors'), { ssr: false, loading: LoadingSpinner });
 const Quotations = dynamic(() => import('./views/Quotations'), { ssr: false, loading: LoadingSpinner });
 const PurchaseOrders = dynamic(() => import('./views/PurchaseOrders'), { ssr: false, loading: LoadingSpinner });
-const PaymentsEscrow = dynamic(() => import('./views/PaymentsEscrow'), { ssr: false, loading: LoadingSpinner });
 const ParcelTracking = dynamic(() => import('./views/ParcelTracking'), { ssr: false, loading: LoadingSpinner });
 const SellerTenders = dynamic(() => import('./views/SellerTenders'), { ssr: false, loading: LoadingSpinner });
 const CreateQuotation = dynamic(() => import('./views/CreateQuotation'), { ssr: false, loading: LoadingSpinner });
@@ -36,6 +35,8 @@ const Profile = dynamic(() => import('./views/Profile'), { ssr: false, loading: 
 const CataloguePage = dynamic(() => import('./features/catalogue/pages/CataloguePage'), { ssr: false, loading: LoadingSpinner });
 const GenericFeaturePage = dynamic(() => import('./features/shared/GenericFeaturePage'), { ssr: false, loading: LoadingSpinner });
 const PaymentHistoryPage = dynamic(() => import('./features/payments/pages/PaymentHistoryPage'), { ssr: false, loading: LoadingSpinner });
+const EscrowPage = dynamic(() => import('./features/escrow/pages/EscrowPage'), { ssr: false, loading: LoadingSpinner });
+const AdminRecordsPage = dynamic(() => import('./features/admin/pages/AdminRecordsPage'), { ssr: false, loading: LoadingSpinner });
 
 import Sidebar, { Header } from './components/layout/Navbar';
 
@@ -119,26 +120,26 @@ export default function App() {
     if (pathname === '/buyer/inspection' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Inspection" eyebrow="Quality Control" description="Inspection reports connected to purchase orders." endpoint="/api/purchase-orders"/>;
     if (pathname === '/buyer/invoices' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Invoices" eyebrow="Finance" description="Invoices requiring buyer action." endpoint="/api/invoices"/>;
     if (pathname === '/buyer/payments' && roleOk(user.role,['buyer'])) return <PaymentHistoryPage/>;
-    if (pathname === '/buyer/escrow' && roleOk(user.role,['buyer'])) return <PaymentsEscrow/>;
+    if (pathname === '/buyer/escrow' && roleOk(user.role,['buyer'])) return <EscrowPage/>;
     if (pathname === '/buyer/disputes' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Disputes" eyebrow="Resolution" description="Dispute records available to this buyer." endpoint="/api/disputes"/>;
     if (pathname === '/buyer/messages' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Messages" eyebrow="Messaging" description="Procurement conversations and notifications." endpoint="/api/messages"/>;
     if (pathname === '/buyer/ratings' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Ratings" eyebrow="Performance" description="Buyer ratings received after order completion." endpoint={`/api/ratings/buyer/${user.id}`}/>;
     if (pathname === '/payments' && roleOk(user.role,['buyer','seller','admin'])) return <PaymentHistoryPage admin={user.role === 'admin'}/>;
-    if (pathname === '/escrow' && roleOk(user.role,['buyer','seller','admin'])) return <PaymentsEscrow/>;
+    if (pathname === '/escrow' && roleOk(user.role,['buyer','seller','admin'])) return <EscrowPage/>;
     if (pathname === '/buyer/tracking' && roleOk(user.role,['buyer'])) return <ParcelTracking/>;
     if (pathname === '/profile') return <Profile/>;
     if (pathname === '/admin/onboarding' && roleOk(user.role,['admin'])) return <AdminOnboarding/>;
-    if (pathname === '/admin/users' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Users" eyebrow="Admin" description="User registry from admin APIs." endpoint="/api/admin/users"/>;
+    if (pathname === '/admin/users' && roleOk(user.role,['admin'])) return <AdminRecordsPage kind="users"/>;
     if (pathname === '/admin/categories' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Categories" eyebrow="Admin" description="Category taxonomy loaded from catalogue API." endpoint="/api/categories"/>;
-    if (pathname === '/admin/audit-logs' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Audit Logs" eyebrow="Admin" description="Administrative audit trail." endpoint="/api/admin/audit-logs"/>;
-    if (pathname === '/admin/fraud-alerts' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Fraud Alerts" eyebrow="Risk" description="Fraud alerts from risk monitoring APIs." endpoint="/api/admin/fraud-alerts"/>;
+    if (pathname === '/admin/audit-logs' && roleOk(user.role,['admin'])) return <AdminRecordsPage kind="audit"/>;
+    if (pathname === '/admin/fraud-alerts' && roleOk(user.role,['admin'])) return <AdminRecordsPage kind="fraud"/>;
     if (pathname === '/admin/disputes' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Disputes" eyebrow="Admin" description="Platform dispute queue." endpoint="/api/disputes"/>;
     if (pathname === '/admin/grievances' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Grievances" eyebrow="Admin" description="Grievance records and statuses." endpoint="/api/grievances"/>;
     if (pathname === '/admin/payments' && roleOk(user.role,['admin'])) return <PaymentHistoryPage admin/>;
     if (pathname === '/admin/reports/procurement' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Procurement Report" eyebrow="Reports" description="Procurement summary from backend reporting APIs." endpoint="/api/admin/reports/procurement"/>;
     if (pathname === '/admin/reports/payments' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Payments Report" eyebrow="Reports" description="Payments summary from backend reporting APIs." endpoint="/api/admin/reports/payments"/>;
     if (pathname === '/admin/reports/suppliers' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Suppliers Report" eyebrow="Reports" description="Supplier report from backend reporting APIs." endpoint="/api/admin/reports/suppliers"/>;
-    if (pathname === '/admin/compliance-rules' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Compliance Rules" eyebrow="Compliance" description="Policy rules used by compliance workflows." endpoint="/api/admin/compliance-rules"/>;
+    if (pathname === '/admin/compliance-rules' && roleOk(user.role,['admin'])) return <AdminRecordsPage kind="rules"/>;
     if (pathname === '/admin/security-monitoring' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Security Monitoring" eyebrow="Security" description="Audit and fraud signals for platform operations." endpoint="/api/admin/fraud-alerts"/>;
     if (pathname === '/admin/procurement' && roleOk(user.role,['admin'])) return <AdminOperations section="procurement"/>;
     if (pathname === '/admin/compliance' && roleOk(user.role,['admin'])) return <AdminOperations section="compliance"/>;

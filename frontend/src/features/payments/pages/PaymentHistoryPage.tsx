@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CreditCard, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { CreditCard, Eye, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { getApi } from '../../shared/apiClient';
@@ -14,8 +14,13 @@ type PaymentRow = {
   status?: string;
   gateway?: string;
   method?: string;
+  invoiceId?: number;
   createdAt?: string;
   completedAt?: string;
+  payer?: { id: number; name?: string; email?: string };
+  payee?: { id: number; name?: string; email?: string };
+  invoice?: { id: number; invoiceNumber?: string; status?: string };
+  purchaseOrder?: { id: number; poNumber?: string; title?: string };
   metadata?: any;
   ledgerEntries?: Array<{ id: number; entryType: string; amount: string | number; createdAt?: string }>;
   escrowAccount?: { id: number; status?: string; amount?: string | number };
@@ -25,14 +30,20 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [gatewayFilter, setGatewayFilter] = useState('');
+  const [selected, setSelected] = useState<PaymentRow | null>(null);
 
   const reload = async () => {
     setLoading(true);
-    setError(null);
-    try {
+      setError(null);
+      setWarning(null);
+      try {
       const body = await getApi<any>('/api/payments', true);
       setPayments(Array.isArray(body) ? body : body.payments || body.data || []);
+      setWarning(body?.warning || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load payments');
     } finally {
@@ -46,8 +57,13 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
 
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return payments.filter(payment => !term || [payment.referenceId, payment.status, payment.gateway, payment.method].filter(Boolean).join(' ').toLowerCase().includes(term));
-  }, [payments, searchTerm]);
+    return payments.filter(payment => {
+      const matchesTerm = !term || [payment.referenceId, payment.status, payment.gateway, payment.method, payment.invoice?.invoiceNumber, payment.purchaseOrder?.poNumber, payment.payer?.email, payment.payee?.email].filter(Boolean).join(' ').toLowerCase().includes(term);
+      const matchesStatus = !statusFilter || payment.status === statusFilter;
+      const matchesGateway = !gatewayFilter || payment.gateway === gatewayFilter;
+      return matchesTerm && matchesStatus && matchesGateway;
+    });
+  }, [gatewayFilter, payments, searchTerm, statusFilter]);
 
   if (loading) return <LoadingState label="Loading payment history..." />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
@@ -69,19 +85,22 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         <Metric label="Escrow Held" value={payments.filter(payment => payment.escrowAccount?.status === 'held').length} icon={ShieldCheck} />
       </div>
 
-      <Card><CardContent className="p-4"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search reference, status, gateway..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></div></CardContent></Card>
+      {warning && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{warning}</div>}
+
+      <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px]"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search reference, invoice, PO, payer, payee..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></div><select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All statuses</option><option value="initiated">Initiated</option><option value="gateway_order_created">Gateway order</option><option value="success">Success</option><option value="escrow_released">Escrow released</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select><select value={gatewayFilter} onChange={event => setGatewayFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All gateways</option><option value="bank_transfer">Bank transfer</option><option value="razorpay">Razorpay</option><option value="cashfree">Cashfree</option></select></CardContent></Card>
 
       {filtered.length === 0 ? <EmptyState title="No payments found" /> : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="p-3">Reference</th><th className="p-3">Gateway</th><th className="p-3">Amount</th><th className="p-3">Tax/TDS</th><th className="p-3">Escrow</th><th className="p-3">Ledger</th><th className="p-3">Status</th><th className="p-3">Date</th></tr></thead>
+              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="p-3">Reference</th><th className="p-3">Parties</th><th className="p-3">Gateway</th><th className="p-3">Amount</th><th className="p-3">Tax/TDS</th><th className="p-3">Escrow</th><th className="p-3">Ledger</th><th className="p-3">Status</th><th className="p-3">Date</th><th className="p-3">Action</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(payment => {
                   const tax = payment.metadata?.taxSummary || {};
                   return (
                     <tr key={payment.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono text-xs font-black text-[#12335f]">{payment.referenceId}</td>
+                      <td className="p-3"><p className="font-mono text-xs font-black text-[#12335f]">{payment.referenceId}</p><p className="text-[10px] font-semibold text-slate-500">Invoice {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}</p></td>
+                      <td className="p-3 text-[10px] font-bold text-slate-500">From {payment.payer?.name || `#${payment.payer?.id || '-'}`}<br />To {payment.payee?.name || `#${payment.payee?.id || '-'}`}</td>
                       <td className="p-3 text-xs font-bold uppercase text-slate-600">{payment.gateway || 'manual'} / {payment.method || 'bank_transfer'}</td>
                       <td className="p-3 text-xs font-black">{formatCurrency(payment.amount)}</td>
                       <td className="p-3 text-[10px] font-bold text-slate-500">GST {formatCurrency(tax.totalTaxAmount || 0)} | TDS {formatCurrency(tax.tdsAmount || 0)}</td>
@@ -89,6 +108,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                       <td className="p-3 text-xs font-bold text-slate-600">{payment.ledgerEntries?.length || 0} entries</td>
                       <td className="p-3"><span className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase text-blue-700">{String(payment.status || 'initiated').replace(/_/g, ' ')}</span></td>
                       <td className="p-3 text-xs font-bold text-slate-500">{formatDate(payment.completedAt || payment.createdAt)}</td>
+                      <td className="p-3"><Button variant="outline" onClick={() => setSelected(payment)} className="h-9 rounded-lg text-xs font-black"><Eye className="mr-2 h-4 w-4" />View</Button></td>
                     </tr>
                   );
                 })}
@@ -97,10 +117,41 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
           </div>
         </div>
       )}
+      {selected && <PaymentDetail payment={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
 
 function Metric({ label, value, icon: Icon }: { label: string; value: number; icon: any }) {
   return <Card><CardContent className="flex items-center justify-between p-4"><div><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-2xl font-black text-slate-950">{value}</p></div><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white"><Icon className="h-5 w-5" /></div></CardContent></Card>;
+}
+
+function PaymentDetail({ payment, onClose }: { payment: PaymentRow; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
+      <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Payment Detail</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">{payment.referenceId}</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{payment.gateway || 'manual'} | {payment.status || 'initiated'}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Close detail"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="grid gap-3 md:grid-cols-3">
+            <DetailMetric label="Amount" value={formatCurrency(payment.amount)} />
+            <DetailMetric label="Invoice" value={String(payment.invoice?.invoiceNumber || payment.invoiceId || '-')} />
+            <DetailMetric label="Ledger Entries" value={String(payment.ledgerEntries?.length || 0)} />
+          </div>
+          <Card><CardContent className="space-y-3 p-4"><p className="text-xs font-black uppercase tracking-widest text-slate-500">Ledger</p>{(payment.ledgerEntries || []).length === 0 ? <p className="text-sm font-semibold text-slate-500">No ledger entries recorded yet.</p> : payment.ledgerEntries?.map(entry => <div key={entry.id} className="rounded-lg border border-slate-200 p-3 text-sm"><p className="font-black text-slate-900">{entry.entryType} | {formatCurrency(entry.amount)}</p><p className="text-xs font-semibold text-slate-500">{formatDate(entry.createdAt)}</p></div>)}</CardContent></Card>
+          <pre className="max-h-[460px] overflow-auto rounded-lg bg-slate-950 p-4 text-xs font-semibold leading-relaxed text-slate-100">{JSON.stringify(payment, null, 2)}</pre>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-sm font-black text-slate-900">{value}</p></div>;
 }

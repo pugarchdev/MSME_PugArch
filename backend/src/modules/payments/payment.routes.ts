@@ -28,6 +28,41 @@ const handleError = (res: any, err: any) =>
     code: err?.code || 'PAYMENT_OPERATION_FAILED'
   });
 
+const listPaymentsForActor = async (where: Record<string, unknown>) => {
+  try {
+    return {
+      payments: await prisma.paymentTransaction.findMany({
+        where,
+        include: {
+          invoice: { select: { id: true, invoiceNumber: true, status: true, taxableAmount: true, totalTaxAmount: true, tdsAmount: true } },
+          purchaseOrder: { select: { id: true, poNumber: true, title: true, status: true } },
+          payer: { select: { id: true, name: true, email: true, role: true } },
+          payee: { select: { id: true, name: true, email: true, role: true } },
+          escrowAccount: { include: { milestones: true, transactions: true } },
+          ledgerEntries: { orderBy: { createdAt: 'asc' } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      }),
+      warning: null
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('Unknown field') && !message.includes('does not exist') && !message.includes('relation') && !message.includes('column')) {
+      throw error;
+    }
+
+    return {
+      payments: await prisma.paymentTransaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      }),
+      warning: 'Payment records were loaded without newer ledger/escrow relation details. Run the latest Prisma migrations to enable the full finance view.'
+    };
+  }
+};
+
 const webhookHandler = async (req: any, res: any) => {
   try {
     const gateway = String(req.params.gateway || '');
@@ -62,16 +97,8 @@ router.get('/', authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, 
         ? { payerId: userId }
         : { payeeId: userId };
 
-    const payments = await prisma.paymentTransaction.findMany({
-      where,
-      include: {
-        escrowAccount: { include: { milestones: true, transactions: true } },
-        ledgerEntries: { orderBy: { createdAt: 'asc' } }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100
-    });
-    res.json({ success: true, payments: maskSensitive(payments) });
+    const result = await listPaymentsForActor(where);
+    res.json({ success: true, payments: maskSensitive(result.payments), warning: result.warning });
   } catch (err: any) {
     return handleError(res, err);
   }

@@ -157,6 +157,42 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
+
+  const getOtpSentMessage = (data: any) => {
+    if (typeof data?.sendsRemaining !== 'number') return 'OTP sent successfully';
+    if (data.sendsRemaining <= 0) return 'OTP sent. No resends remaining.';
+    if (data.sendsRemaining === 1) return 'OTP sent. Last resend is remaining.';
+    return `OTP sent. ${data.sendsRemaining} resends are remaining.`;
+  };
+
+  const getFriendlyFieldError = (field: string, message?: string) => {
+    if (field === 'mobile') return 'Enter a valid 10 digit mobile number starting with 6, 7, 8, or 9.';
+    if (field === 'password') return 'Password must be 12-128 characters and include uppercase, lowercase, number, and special character.';
+    if (field === 'email') return 'Enter a valid email address.';
+    if (field === 'role') return 'Select a valid registration type.';
+    return message || 'Please check this field.';
+  };
+
+  const handleRegistrationError = (data: any) => {
+    const fieldErrors = data?.details?.fieldErrors || {};
+    const nextErrors = Object.entries(fieldErrors).reduce<Record<string, string>>((acc, [field, messages]) => {
+      acc[field] = getFriendlyFieldError(field, Array.isArray(messages) ? String(messages[0] || '') : undefined);
+      return acc;
+    }, {});
+
+    if (Object.keys(nextErrors).length > 0) {
+      setSubmitErrors(nextErrors);
+      if (nextErrors.mobile) setCurrentSubStep(2);
+      else if (nextErrors.email) setCurrentSubStep(3);
+      else if (nextErrors.password || nextErrors.name || nextErrors.role) setCurrentSubStep(4);
+      const firstError = Object.values(nextErrors)[0];
+      toast.error(firstError);
+      return;
+    }
+
+    toast.error(data?.message || 'Registration failed. Please check the highlighted fields.');
+  };
 
   const steps = [
     { id: 1, title: 'Organisation Details', icon: Building2 },
@@ -275,6 +311,12 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
 
   const handleAadhaarFieldChange = (patch: Partial<typeof formData>) => {
     setFormData({ ...formData, ...patch });
+    if ('mobile' in patch || 'aadhaarNumber' in patch) {
+      setSubmitErrors(prev => {
+        const { mobile, aadhaarNumber, ...rest } = prev;
+        return rest;
+      });
+    }
     setIsAadhaarVerified(false);
     setAadhaarOtpSent(false);
     setAadhaarOtp('');
@@ -384,11 +426,11 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
     setIsSendingOtp(true);
     try {
       const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
+      const data = await res.json();
       if (res.ok) {
         setOtpSent(true);
-        toast.success('OTP sent successfully');
+        toast.success(getOtpSentMessage(data));
       } else {
-        const data = await res.json();
         toast.error(data.message || 'Failed to send OTP');
       }
     } catch (err) {
@@ -402,11 +444,11 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
     if (!emailOtp) return toast.error('Enter OTP');
     try {
       const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp: emailOtp });
+      const data = await res.json();
       if (res.ok) {
         setIsEmailVerified(true);
         toast.success('Email verified!');
       } else {
-        const data = await res.json();
         toast.error(data.message || 'Invalid OTP');
       }
     } catch (err) {
@@ -418,8 +460,22 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
     if (role === 'buyer' && !formData.userId) {
       return toast.error('Please enter user id');
     }
+    if (formData.personalVerificationMethod === 'aadhaar' && !isMobileValid) {
+      const message = getFriendlyFieldError('mobile');
+      setSubmitErrors(prev => ({ ...prev, mobile: message }));
+      setCurrentSubStep(2);
+      toast.error(message);
+      return;
+    }
     if (formData.password !== formData.confirmPassword) {
+      setSubmitErrors(prev => ({ ...prev, confirmPassword: 'Passwords do not match.' }));
       return toast.error('Passwords do not match');
+    }
+    if (!isPasswordStrong(formData.password)) {
+      const message = getFriendlyFieldError('password');
+      setSubmitErrors(prev => ({ ...prev, password: message }));
+      toast.error(message);
+      return;
     }
     
     setIsLoading(true);
@@ -456,7 +512,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
         toast.success(`Registration completed! Proceeding to ${role} onboarding.`);
         router.push(`/${role}/onboarding`);
       } else {
-        toast.error(data.message || 'Registration failed');
+        handleRegistrationError(data);
       }
     } catch (err) {
       toast.error('Registration failed');
@@ -721,10 +777,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                         value={formData.mobile}
                         onChange={(e) => handleAadhaarFieldChange({ mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                         disabled={isAadhaarVerified || aadhaarOtpSent}
-                        error={mobileAlreadyRegistered ? 'This mobile number is already registered.' : undefined}
+                        error={submitErrors.mobile || aadhaarErrors.mobile || (mobileAlreadyRegistered ? 'This mobile number is already registered.' : undefined)}
                         className={cn(
                           "h-11 rounded-lg bg-white",
-                          mobileAlreadyRegistered ? "border-red-400" : "border-slate-200"
+                          submitErrors.mobile || aadhaarErrors.mobile || mobileAlreadyRegistered ? "border-red-400" : "border-slate-200"
                         )}
                       />
                     </div>
@@ -927,10 +983,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                               disabled={isAadhaarVerified || aadhaarOtpSent}
                               className={cn(
                                 "h-11 w-full rounded border bg-white px-4 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60",
-                                aadhaarErrors.mobile || mobileAlreadyRegistered ? "border-red-400 focus:ring-red-500" : "border-slate-300 focus:ring-blue-500"
+                                submitErrors.mobile || aadhaarErrors.mobile || mobileAlreadyRegistered ? "border-red-400 focus:ring-red-500" : "border-slate-300 focus:ring-blue-500"
                               )}
                             />
-                            {aadhaarErrors.mobile && <p className="text-xs font-medium text-red-600">{aadhaarErrors.mobile}</p>}
+                            {(submitErrors.mobile || aadhaarErrors.mobile) && <p className="text-xs font-medium text-red-600">{submitErrors.mobile || aadhaarErrors.mobile}</p>}
                             {isMobileValid && mobileAvailability === 'checking' && <p className="text-xs font-medium text-slate-500">Checking mobile number...</p>}
                             {mobileAlreadyRegistered && <p className="text-xs font-medium text-red-600">This mobile number is already registered.</p>}
                           </div>
@@ -1267,9 +1323,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                     </div>
                     <button 
                       onClick={handleSendOtp} 
+                      disabled={isSendingOtp}
                       className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 underline decoration-slate-400 underline-offset-4"
                     >
-                      Didn't receive? Resend Code
+                      {isSendingOtp ? 'Sending...' : "Didn't receive? Resend Code"}
                     </button>
                   </div>
                 )}

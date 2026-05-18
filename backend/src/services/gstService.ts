@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
+import prisma from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
 const APISETU_APIKEY = process.env.APIPSETU_API_KEY || process.env.GST_APISETU_APIKEY;
 const APISETU_CLIENTID = process.env.APIPSETU_CLIENT_ID || process.env.GST_APISETU_CLIENTID;
 

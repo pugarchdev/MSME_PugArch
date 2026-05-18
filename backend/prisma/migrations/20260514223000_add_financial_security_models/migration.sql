@@ -1,3 +1,9 @@
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "userId" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "mobile" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "dob" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isDualRole" BOOLEAN DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_userId_key" ON "User"("userId");
+
 ALTER TABLE "BuyerProfile" ADD COLUMN IF NOT EXISTS "panMasked" TEXT;
 ALTER TABLE "BuyerProfile" ADD COLUMN IF NOT EXISTS "panFingerprint" TEXT;
 ALTER TABLE "BuyerProfile" ADD COLUMN IF NOT EXISTS "gstMasked" TEXT;
@@ -9,6 +15,40 @@ ALTER TABLE "SellerProfile" ADD COLUMN IF NOT EXISTS "panMasked" TEXT;
 ALTER TABLE "SellerProfile" ADD COLUMN IF NOT EXISTS "panFingerprint" TEXT;
 ALTER TABLE "SellerProfile" ADD COLUMN IF NOT EXISTS "aadhaarMasked" TEXT;
 ALTER TABLE "SellerProfile" ADD COLUMN IF NOT EXISTS "aadhaarFingerprint" TEXT;
+
+CREATE TABLE IF NOT EXISTS "SellerOffice" (
+  "id" SERIAL PRIMARY KEY,
+  "sellerProfileId" INTEGER NOT NULL,
+  "name" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "gstRegistered" BOOLEAN NOT NULL DEFAULT false,
+  "gstNumber" TEXT,
+  "declaringAs" TEXT,
+  "pincode" TEXT NOT NULL,
+  "state" TEXT NOT NULL,
+  "city" TEXT NOT NULL,
+  "address" TEXT NOT NULL,
+  "contactNumber" TEXT,
+  "isMandatory" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SellerOffice_sellerProfileId_fkey" FOREIGN KEY ("sellerProfileId") REFERENCES "SellerProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "SellerBankAccount" (
+  "id" SERIAL PRIMARY KEY,
+  "sellerProfileId" INTEGER NOT NULL,
+  "ifsc" TEXT NOT NULL,
+  "bankName" TEXT NOT NULL,
+  "bankAddress" TEXT NOT NULL,
+  "holderName" TEXT NOT NULL,
+  "accountNumber" TEXT NOT NULL,
+  "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+  "isVerified" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SellerBankAccount_sellerProfileId_fkey" FOREIGN KEY ("sellerProfileId") REFERENCES "SellerProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
 
 ALTER TABLE "SellerOffice" ADD COLUMN IF NOT EXISTS "gstMasked" TEXT;
 ALTER TABLE "SellerOffice" ADD COLUMN IF NOT EXISTS "gstFingerprint" TEXT;
@@ -34,6 +74,63 @@ CREATE INDEX IF NOT EXISTS "SellerOffice_sellerProfileId_idx" ON "SellerOffice"(
 CREATE INDEX IF NOT EXISTS "SellerOffice_gstFingerprint_idx" ON "SellerOffice"("gstFingerprint");
 CREATE INDEX IF NOT EXISTS "SellerBankAccount_sellerProfileId_idx" ON "SellerBankAccount"("sellerProfileId");
 CREATE INDEX IF NOT EXISTS "SellerBankAccount_bankFingerprint_idx" ON "SellerBankAccount"("bankFingerprint");
+
+CREATE TABLE IF NOT EXISTS "Bid" (
+  "id" SERIAL PRIMARY KEY,
+  "tenderId" INTEGER NOT NULL,
+  "sellerId" INTEGER NOT NULL,
+  "unitPrice" DOUBLE PRECISION NOT NULL,
+  "quantity" INTEGER NOT NULL,
+  "deliveryDays" INTEGER NOT NULL,
+  "warranty" TEXT,
+  "validTill" TIMESTAMP(3),
+  "note" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Bid_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "Tender"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "Bid_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "QuoteRequest" (
+  "id" SERIAL PRIMARY KEY,
+  "buyerId" INTEGER NOT NULL,
+  "sellerId" INTEGER NOT NULL,
+  "subject" TEXT NOT NULL,
+  "message" TEXT NOT NULL,
+  "documentUrl" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "QuoteRequest_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "QuoteRequest_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "Notification" (
+  "id" SERIAL PRIMARY KEY,
+  "userId" INTEGER NOT NULL,
+  "title" TEXT NOT NULL,
+  "message" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "isRead" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "Auction" (
+  "id" SERIAL PRIMARY KEY,
+  "tenderId" INTEGER NOT NULL,
+  "startPrice" DOUBLE PRECISION NOT NULL,
+  "currentBid" DOUBLE PRECISION,
+  "startTime" TIMESTAMP(3) NOT NULL,
+  "endTime" TIMESTAMP(3) NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'scheduled',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Auction_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "Tender"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Bid_tenderId_sellerId_key" ON "Bid"("tenderId", "sellerId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Auction_tenderId_key" ON "Auction"("tenderId");
 CREATE INDEX IF NOT EXISTS "Tender_buyerId_status_idx" ON "Tender"("buyerId", "status");
 CREATE INDEX IF NOT EXISTS "Tender_createdAt_idx" ON "Tender"("createdAt");
 CREATE INDEX IF NOT EXISTS "Bid_sellerId_status_idx" ON "Bid"("sellerId", "status");
@@ -70,7 +167,17 @@ ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "amount" DECIMAL(18,2);
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "metadata" JSONB;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3);
-UPDATE "PurchaseOrder" SET "amount" = COALESCE("amount", "totalValue"::DECIMAL(18,2), 0) WHERE "amount" IS NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'PurchaseOrder' AND column_name = 'totalValue'
+  ) THEN
+    UPDATE "PurchaseOrder" SET "amount" = COALESCE("amount", "totalValue"::DECIMAL(18,2), 0) WHERE "amount" IS NULL;
+  ELSE
+    UPDATE "PurchaseOrder" SET "amount" = COALESCE("amount", 0) WHERE "amount" IS NULL;
+  END IF;
+END $$;
 ALTER TABLE "PurchaseOrder" ALTER COLUMN "amount" SET NOT NULL;
 
 DO $$
@@ -137,7 +244,17 @@ ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAUL
 ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "fileAssetId" INTEGER;
 ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "metadata" JSONB;
 ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3);
-UPDATE "Invoice" SET "invoiceNumber" = COALESCE("invoiceNumber", "invoiceNo", 'INV-MIGRATED-' || "id"::TEXT) WHERE "invoiceNumber" IS NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'Invoice' AND column_name = 'invoiceNo'
+  ) THEN
+    UPDATE "Invoice" SET "invoiceNumber" = COALESCE("invoiceNumber", "invoiceNo", 'INV-MIGRATED-' || "id"::TEXT) WHERE "invoiceNumber" IS NULL;
+  ELSE
+    UPDATE "Invoice" SET "invoiceNumber" = COALESCE("invoiceNumber", 'INV-MIGRATED-' || "id"::TEXT) WHERE "invoiceNumber" IS NULL;
+  END IF;
+END $$;
 ALTER TABLE "Invoice" ALTER COLUMN "invoiceNumber" SET NOT NULL;
 ALTER TABLE "Invoice" ALTER COLUMN "amount" TYPE DECIMAL(18,2) USING "amount"::DECIMAL(18,2);
 

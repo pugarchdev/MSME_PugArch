@@ -61,7 +61,7 @@ export const authController = {
       }
       const otp = generateOtp();
 
-      await storeEmailOtp(email, otp);
+      const otpState = await storeEmailOtp(email, otp);
 
       const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Email verification code');
       await auditLog({
@@ -71,7 +71,7 @@ export const authController = {
         userAgent: req.headers['user-agent'],
         metadata: { emailHash: sha256(email), purpose: 'registration_email', deliveryConfigured }
       });
-      res.json({ success: true });
+      res.json({ success: true, sendsRemaining: otpState.sendsRemaining });
     } catch (err: any) {
       console.error('[Email OTP] Failed:', err);
       handleSecureRouteError(res, err, 'Unable to send OTP right now. Please try again.');
@@ -101,7 +101,12 @@ export const authController = {
           userAgent: req.headers['user-agent'],
           metadata: { emailHash: sha256(email), reason: result.reason }
         });
-        return res.status(400).json({ message: 'Invalid OTP' });
+        const remaining = result.attemptsRemaining ?? 0;
+        if (result.reason === 'max_attempts' || remaining <= 0) {
+          return res.status(400).json({ message: 'Invalid OTP. No attempts remaining. Please request a new code.', attemptsRemaining: 0 });
+        }
+        const label = remaining === 1 ? 'last trial is remaining' : `${remaining} trials are remaining`;
+        return res.status(400).json({ message: `Invalid OTP. ${label}.`, attemptsRemaining: remaining });
       }
       await auditLog({
         action: 'auth.otp.verified',

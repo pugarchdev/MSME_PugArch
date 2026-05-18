@@ -11,11 +11,13 @@ export type OtpPurpose =
   | 'two_factor_login';
 
 const OTP_TTL_SECONDS = 5 * 60;
-const RESEND_COOLDOWN_SECONDS = 60;
 const MAX_OTP_ATTEMPTS = 5;
+const OTP_SEND_WINDOW_SECONDS = 15 * 60;
+const MAX_OTP_SENDS = 5;
 
 type OtpState = {
   otpHash: string;
+  otpHashes?: string[];
   verified: boolean;
   attempts: number;
   createdAt: string;
@@ -26,7 +28,7 @@ type OtpState = {
 const normalizeIdentity = (identity: string) => identity.trim().toLowerCase();
 const keyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otp(purpose, identity);
 const attemptsKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpAttempts(purpose, identity);
-const cooldownKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpCooldown(purpose, identity);
+const sendCountKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpCooldown(purpose, identity);
 
 export const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
@@ -45,15 +47,25 @@ export const storeOtp = async (
     throw new ApiError(503, 'OTP service is temporarily unavailable', 'OTP_REDIS_UNAVAILABLE');
   }
 
-  const cooldownKey = cooldownKeyFor(purpose, normalizedIdentity);
-  if (await redis.get(cooldownKey)) {
-    throw new ApiError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN');
+  const sendCountKey = sendCountKeyFor(purpose, normalizedIdentity);
+  const sendCount = Number(await redis.incr(sendCountKey));
+  if (sendCount === 1) await redis.expire(sendCountKey, OTP_SEND_WINDOW_SECONDS);
+  if (sendCount > MAX_OTP_SENDS) {
+    await redis.decr(sendCountKey).catch(() => undefined);
+    throw new ApiError(429, 'OTP resend limit reached. Please try again after 15 minutes.', 'OTP_RESEND_LIMIT');
   }
+
+  const existingRaw = await redis.get(keyFor(purpose, normalizedIdentity));
+  const existingState = existingRaw ? JSON.parse(existingRaw) as OtpState : null;
+  const previousHashes = existingState && !existingState.verified && new Date(existingState.expiresAt) >= now
+    ? existingState.otpHashes || [existingState.otpHash]
+    : [];
 
   const state: OtpState = {
     otpHash,
+    otpHashes: [otpHash, ...previousHashes.filter(hash => hash !== otpHash)].slice(0, MAX_OTP_SENDS),
     verified: false,
-    attempts: 0,
+    attempts: existingState?.attempts || 0,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
     metadata
@@ -61,7 +73,6 @@ export const storeOtp = async (
 
   await redis.set(keyFor(purpose, normalizedIdentity), JSON.stringify(state), 'EX', OTP_TTL_SECONDS);
   await redis.set(attemptsKeyFor(purpose, normalizedIdentity), '0', 'EX', OTP_TTL_SECONDS);
-  await redis.set(cooldownKey, '1', 'EX', RESEND_COOLDOWN_SECONDS);
   await prisma.otpVerification.create({
     data: {
       identifier: normalizedIdentity,
@@ -72,6 +83,10 @@ export const storeOtp = async (
       expiresAt
     }
   }).catch(() => undefined);
+
+  return {
+    sendsRemaining: Math.max(0, MAX_OTP_SENDS - sendCount)
+  };
 };
 
 export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: string) => {
@@ -83,7 +98,7 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
 
   const key = keyFor(purpose, normalizedIdentity);
   const raw = await redis.get(key);
-  if (!raw) return { ok: false, reason: 'invalid' as const };
+  if (!raw) return { ok: false, reason: 'invalid' as const, attemptsRemaining: MAX_OTP_ATTEMPTS };
 
   const state = JSON.parse(raw) as OtpState;
   if (new Date(state.expiresAt) < new Date()) {
@@ -93,10 +108,13 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
 
   if (state.attempts >= MAX_OTP_ATTEMPTS) {
     await redis.del(key);
-    return { ok: false, reason: 'max_attempts' as const };
+    return { ok: false, reason: 'max_attempts' as const, attemptsRemaining: 0 };
   }
 
-  if (state.otpHash !== sha256(otp)) {
+  const submittedHash = sha256(otp);
+  const validHashes = state.otpHashes || [state.otpHash];
+
+  if (!validHashes.includes(submittedHash)) {
     state.attempts += 1;
     await redis.set(key, JSON.stringify(state), 'KEEPTTL');
     await redis.incr(attemptsKeyFor(purpose, normalizedIdentity));
@@ -143,7 +161,7 @@ export const consumeOtp = async (purpose: OtpPurpose, identity: string) => {
   if (!redis || !isRedisReady()) return;
   await redis.del(keyFor(purpose, normalizedIdentity));
   await redis.del(attemptsKeyFor(purpose, normalizedIdentity));
-  await redis.del(cooldownKeyFor(purpose, normalizedIdentity));
+  await redis.del(sendCountKeyFor(purpose, normalizedIdentity));
 };
 
 export const storeEmailOtp = (email: string, otp: string) => storeOtp('registration_email', email, otp);

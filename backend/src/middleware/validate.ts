@@ -18,7 +18,14 @@ export const validate = (schemas: RequestSchemas) => {
       return next();
     } catch (error) {
       if (error instanceof ZodError) {
-        return apiResponse.error(res, 400, 'Request validation failed', 'VALIDATION_ERROR', error.flatten());
+        const details = error.flatten();
+        const fieldErrors = details.fieldErrors as Record<string, string[] | undefined>;
+        const passwordErrors = fieldErrors.password;
+        const message = passwordErrors?.length
+          ? 'Password must be between 12 and 128 characters.'
+          : 'Request validation failed';
+
+        return apiResponse.error(res, 400, message, 'VALIDATION_ERROR', details);
       }
       return next(error);
     }

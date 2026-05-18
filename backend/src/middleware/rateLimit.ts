@@ -100,10 +100,10 @@ export const authLoginRateLimit = routeLimiter({
 });
 
 export const otpSendRateLimit = routeLimiter({
-  name: 'otp-send',
+  name: 'otp-send-guard',
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  keyGenerator: emailAwareKey('otp')
+  max: 20,
+  keyGenerator: emailAwareKey('otp-guard')
 });
 
 export const forgotPasswordRateLimit = routeLimiter({

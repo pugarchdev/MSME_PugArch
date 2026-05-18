@@ -15,6 +15,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     email: '',
     password: '',
   });
+  const [passwordError, setPasswordError] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
@@ -25,6 +26,31 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   const { login } = useAuth();
   const router = useRouter();
 
+  const getPasswordError = (password: string) => {
+    const errors: string[] = [];
+    if (password.length < 12) errors.push('at least 12 characters');
+    if (!/[A-Z]/.test(password)) errors.push('one uppercase letter');
+    if (!/[a-z]/.test(password)) errors.push('one lowercase letter');
+    if (!/\d/.test(password)) errors.push('one number');
+    if (!/[^A-Za-z0-9]/.test(password)) errors.push('one special character');
+    return errors.length ? `Password must include ${errors.join(', ')}.` : '';
+  };
+
+  const getApiErrorMessage = (data: any) => {
+    const fieldErrors = data?.details?.fieldErrors;
+    const firstFieldError = fieldErrors && Object.values(fieldErrors).flat().find(Boolean);
+    if (typeof firstFieldError === 'string' && !firstFieldError.includes('*')) return firstFieldError;
+    if (fieldErrors?.password?.length) return 'Password must be at least 12 characters.';
+    return data?.message || 'Registration failed';
+  };
+
+  const getOtpSentMessage = (data: any) => {
+    if (typeof data?.sendsRemaining !== 'number') return 'Verification code sent to your email';
+    if (data.sendsRemaining <= 0) return 'Verification code sent. No resends remaining.';
+    if (data.sendsRemaining === 1) return 'Verification code sent. Last resend is remaining.';
+    return `Verification code sent. ${data.sendsRemaining} resends are remaining.`;
+  };
+
   const handleSendOtp = async () => {
     if (!formData.email) {
       toast.error('Please enter an email address first');
@@ -33,11 +59,11 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     setIsSendingOtp(true);
     try {
       const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
+      const data = await res.json();
       if (res.ok) {
         setOtpSent(true);
-        toast.success('Verification code sent to your email');
+        toast.success(getOtpSentMessage(data));
       } else {
-        const data = await res.json();
         toast.error(data.message || 'Failed to send OTP');
       }
     } catch (err: any) {
@@ -55,11 +81,11 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     setIsVerifyingOtp(true);
     try {
       const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp });
+      const data = await res.json();
       if (res.ok) {
         setIsEmailVerified(true);
         toast.success('Email verified successfully!');
       } else {
-        const data = await res.json();
         toast.error(data.message || 'Invalid code');
       }
     } catch (err: any) {
@@ -75,6 +101,12 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
       toast.error('Please verify your email address to continue');
       return;
     }
+    const nextPasswordError = getPasswordError(formData.password);
+    setPasswordError(nextPasswordError);
+    if (nextPasswordError) {
+      toast.error(nextPasswordError);
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -88,7 +120,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
         else if (type === 'buyer') router.push('/buyer/onboarding');
         else router.push('/dashboard');
       } else {
-        toast.error(data.message || 'Registration failed');
+        toast.error(getApiErrorMessage(data));
       }
     } catch (err: any) {
       toast.error(err?.message || 'Something went wrong');
@@ -190,7 +222,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                       {isVerifyingOtp ? 'Checking...' : 'Apply Code'}
                     </Button>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold  ml-1">Code expires in 5 minutes. No code? <button type="button" onClick={handleSendOtp} className="text-indigo-600 underline">Resend</button></p>
+                  <p className="text-[10px] text-slate-400 font-bold  ml-1">Code expires in 5 minutes. No code? <button type="button" onClick={handleSendOtp} disabled={isSendingOtp} className="text-indigo-600 underline disabled:text-slate-400 disabled:no-underline">{isSendingOtp ? 'Sending...' : 'Resend'}</button></p>
                 </div>
               </div>
             )}
@@ -200,9 +232,14 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               type="password"
               placeholder="12+ chars with upper, lower, number, symbol"
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              onChange={(e) => {
+                const password = e.target.value;
+                setFormData({ ...formData, password });
+                if (passwordError) setPasswordError(getPasswordError(password));
+              }}
               required
               minLength={12}
+              error={passwordError}
               className="rounded-xl border-slate-200"
             />
             

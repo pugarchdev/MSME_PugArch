@@ -99,6 +99,8 @@ export default function SellerOnboarding() {
     dob: '',
     roleInOrg: ''
   };
+
+  const normalizeList = (value: unknown) => Array.isArray(value) ? value : [];
   
   const [formData, setFormData] = useState<any>({
     ...sellerFormDefaults,
@@ -112,8 +114,8 @@ export default function SellerOnboarding() {
     dob: toDateInputValue(cachedProfile.dob) || toDateInputValue(cachedMe?.user?.dob),
     roleInOrg: cachedProfile.roleInOrg || cachedRegDetails.roleInOrg || '',
     pan: cachedProfile.pan || cachedRegDetails.pan || '',
-    offices: cachedProfile.offices || [],
-    bankAccounts: cachedProfile.bankAccounts || []
+    offices: normalizeList(cachedProfile.offices),
+    bankAccounts: normalizeList(cachedProfile.bankAccounts)
   });
 
   useEffect(() => {
@@ -142,8 +144,8 @@ export default function SellerOnboarding() {
           dob: toDateInputValue(profile.dob) || toDateInputValue(data.user?.dob) || prev.dob,
           roleInOrg: profile.roleInOrg || regDetails.roleInOrg || prev.roleInOrg,
           pan: profile.pan || regDetails.pan || prev.pan,
-          offices: profile.offices || [],
-          bankAccounts: profile.bankAccounts || []
+          offices: normalizeList(profile.offices),
+          bankAccounts: normalizeList(profile.bankAccounts)
         }));
       } catch (err) {
         console.error(err);
@@ -370,7 +372,7 @@ export default function SellerOnboarding() {
         const data = await res.json();
         setFormData((prev: any) => ({
           ...prev,
-          bankAccounts: data.bankAccounts || [...prev.bankAccounts.map((bank: any) => ({
+          bankAccounts: normalizeList(data.bankAccounts).length > 0 ? normalizeList(data.bankAccounts) : [...normalizeList(prev.bankAccounts).map((bank: any) => ({
             ...bank,
             isPrimary: data.bank?.isPrimary ? false : bank.isPrimary
           })), data.bank]
@@ -410,7 +412,7 @@ export default function SellerOnboarding() {
         const data = await res.json();
         setFormData((prev: any) => ({
           ...prev,
-          bankAccounts: data.bankAccounts || prev.bankAccounts.filter((bank: any) => bank.id !== id)
+          bankAccounts: normalizeList(data.bankAccounts).length > 0 ? normalizeList(data.bankAccounts) : normalizeList(prev.bankAccounts).filter((bank: any) => bank.id !== id)
         }));
         toast.success('Bank account deleted');
       } else {
@@ -425,6 +427,7 @@ export default function SellerOnboarding() {
   const normalizeSpaces = (value: string) => value.replace(/\s+/g, ' ').trim();
 
   const validateBankForm = (candidate = newBank) => {
+    const bankAccounts = normalizeList(formData.bankAccounts);
     const values = {
       ifsc: candidate.ifsc.trim().toUpperCase(),
       bankName: normalizeSpaces(candidate.bankName),
@@ -462,13 +465,13 @@ export default function SellerOnboarding() {
     if (!values.confirmAccountNumber) errors.confirmAccountNumber = 'Please confirm the account number.';
     else if (values.accountNumber !== values.confirmAccountNumber) errors.confirmAccountNumber = 'Account numbers do not match.';
 
-    const isDuplicate = formData.bankAccounts.some((bank: any) =>
+    const isDuplicate = bankAccounts.some((bank: any) =>
       String(bank.accountNumber) === values.accountNumber &&
       String(bank.ifsc).toUpperCase() === values.ifsc
     );
     if (isDuplicate) errors.accountNumber = 'This bank account is already added.';
 
-    if (formData.bankAccounts.length === 0 && !values.isPrimary) {
+    if (bankAccounts.length === 0 && !values.isPrimary) {
       errors.isPrimary = 'The first bank account must be marked as primary.';
     }
 
@@ -503,7 +506,7 @@ export default function SellerOnboarding() {
 
   const bankValidation = validateBankForm({
     ...newBank,
-    isPrimary: formData.bankAccounts.length === 0 ? true : newBank.isPrimary
+    isPrimary: normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary
   });
 
   const calculateCompletion = () => {
@@ -511,8 +514,8 @@ export default function SellerOnboarding() {
     if (formData.panVerified) completed += 1;
     if (formData.businessName && formData.dateOfIncorporation) completed += 1;
     if (formData.isStartup || formData.isUdyamCertified) completed += 1; // Simplification
-    if (formData.offices.length > 0) completed += 1;
-    if (formData.bankAccounts.length > 0) completed += 1;
+    if (normalizeList(formData.offices).length > 0) completed += 1;
+    if (normalizeList(formData.bankAccounts).length > 0) completed += 1;
     if (formData.turnoverMax3Yrs) completed += 1;
     if (formData.ownershipDeclarationAccepted) completed += 1;
     return Math.round((completed / 7) * 100);
@@ -523,8 +526,8 @@ export default function SellerOnboarding() {
     status.pan = formData.panVerified || savedSections.includes('pan') ? 'completed' : 'pending';
     status.details = (formData.businessName && formData.dateOfIncorporation) || savedSections.includes('details') ? 'completed' : 'pending';
     status.additional = savedSections.includes('additional') || formData.isStartup || formData.isUdyamCertified || formData.participateInBid || formData.optForSahay ? 'completed' : 'pending';
-    status.offices = formData.offices.length > 0 ? 'completed' : 'pending';
-    status.bank = formData.bankAccounts.length > 0 ? 'completed' : 'pending';
+    status.offices = normalizeList(formData.offices).length > 0 ? 'completed' : 'pending';
+    status.bank = normalizeList(formData.bankAccounts).length > 0 ? 'completed' : 'pending';
     status.einvoicing = formData.turnoverMax3Yrs || savedSections.includes('einvoicing') ? 'completed' : 'pending';
     status.ownership = formData.ownershipDeclarationAccepted || savedSections.includes('ownership') ? 'completed' : 'pending';
     return status;
@@ -890,7 +893,7 @@ export default function SellerOnboarding() {
                                  </tr>
                               </thead>
                               <tbody>
-                                 {formData.bankAccounts.length === 0 ? (
+                                 {normalizeList(formData.bankAccounts).length === 0 ? (
                                     <tr>
                                        <td colSpan={8} className="py-6 px-0 text-gray-500">
                                           <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
@@ -900,7 +903,7 @@ export default function SellerOnboarding() {
                                        </td>
                                     </tr>
                                  ) : (
-                                    [...formData.bankAccounts].sort((a: any, b: any) => String(a[bankSortKey] ?? '').localeCompare(String(b[bankSortKey] ?? ''))).map((bank: any, index: number) => (
+                                    [...normalizeList(formData.bankAccounts)].sort((a: any, b: any) => String(a[bankSortKey] ?? '').localeCompare(String(b[bankSortKey] ?? ''))).map((bank: any, index: number) => (
                                         <tr key={bank.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors text-xs">
                                            <td className="px-3 py-3 font-mono font-bold text-gray-400">{String(index + 1).padStart(2, '0')}</td>
                                            <td className="px-3 py-3 text-gray-600 font-medium">{bank.ifsc}</td>
@@ -1001,21 +1004,21 @@ export default function SellerOnboarding() {
                            <input
                             id="new-bank-primary"
                             type="checkbox"
-                            checked={formData.bankAccounts.length === 0 ? true : newBank.isPrimary}
+                            checked={normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary}
                             onChange={(event) => updateNewBank('isPrimary', event.target.checked)}
-                            disabled={formData.bankAccounts.length === 0}
+                            disabled={normalizeList(formData.bankAccounts).length === 0}
                             className="w-4 h-4 text-blue-600 rounded border-gray-300"
                            />
                            <span className="text-sm font-medium text-gray-700">Is Primary Account?</span>
                         </label>
-                        {formData.bankAccounts.length === 0 && <p className="text-xs font-medium text-blue-700">First bank account will be saved as the primary account.</p>}
+                        {normalizeList(formData.bankAccounts).length === 0 && <p className="text-xs font-medium text-blue-700">First bank account will be saved as the primary account.</p>}
                         {bankErrors.isPrimary && <p className="text-xs font-medium text-red-600">{bankErrors.isPrimary}</p>}
                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-8 pt-6 border-t border-gray-100">
                            <p className="text-sm font-medium text-gray-800 mb-4 sm:mb-0">Complete validation to add a new bank account</p>
                            <Button onClick={() => {
                              const validation = validateBankForm({
                                ...newBank,
-                               isPrimary: formData.bankAccounts.length === 0 ? true : newBank.isPrimary
+                               isPrimary: normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary
                              });
                              setBankErrors(validation.errors);
                              if (!validation.isValid) {
@@ -1189,10 +1192,9 @@ export default function SellerOnboarding() {
                    </div>
                    <div className="space-y-2">
                       <p className="text-xs font-medium text-slate-500">Click on the play button to listen consent / सहमति सुनने के लिए प्ले बटन पर क्लिक करें।</p>
-                      <audio controls className="w-full max-w-md h-10">
-                         <source src="" type="audio/mpeg" />
-                         Your browser does not support the audio element.
-                      </audio>
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-xs font-medium text-slate-600">
+                         Consent audio is currently not configured. Please read the consent text above before continuing.
+                      </div>
                    </div>
                    <div className="flex justify-end border-t border-gray-100 pt-6">
                       <Button disabled className="bg-gray-300 text-gray-500 rounded px-6 h-10 font-bold uppercase text-xs tracking-wide">
@@ -1261,7 +1263,7 @@ export default function SellerOnboarding() {
                    <div className="bg-[#fff8e1] border border-[#ffe082] p-4 rounded-lg text-xs text-slate-800 space-y-2 font-medium">
                       <div className="flex gap-2 items-start">
                          <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                         <p>Please complete your profile to start transacting on GeM</p>
+                         <p>Please complete your profile to start transacting on MSME </p>
                       </div>
                       <div className="flex gap-2 items-start">
                          <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />

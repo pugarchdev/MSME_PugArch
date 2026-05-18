@@ -6,6 +6,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
+import { InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 
 type Milestone = {
@@ -108,7 +109,6 @@ export default function EscrowPage() {
   const milestoneCount = escrows.reduce((sum, item) => sum + (item.milestones?.length || 0), 0);
 
   if (loading) return <div className="flex min-h-[240px] items-center justify-center text-sm font-black text-[#12335f]"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading escrow ledger...</div>;
-  if (error) return <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-center"><p className="text-sm font-black text-rose-700">{error}</p><Button onClick={load} className="mt-4 bg-rose-700 text-white">Retry</Button></div>;
 
   return (
     <div className="space-y-4">
@@ -127,6 +127,8 @@ export default function EscrowPage() {
         <Metric label="Milestones" value={milestoneCount} icon={CheckCircle2} />
         <Metric label="Frozen" value={frozenCount} icon={ShieldAlert} />
       </div>
+
+      {error && <InlineError message={error} onRetry={load} />}
 
       <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px]">
         <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></div>

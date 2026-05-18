@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, Filter, MapPin, PackageCheck, Refre
 import { Badge, Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
-import { EmptyState, ErrorState, LoadingState } from '../features/shared/FeatureStates';
+import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 import { formatCurrency, formatDate } from '../features/shared/format';
 import { useFeatureQuery } from '../features/shared/hooks';
 import type { DeliveryTrackingDto, PurchaseOrderDto } from '../features/shared/types';
@@ -44,7 +44,6 @@ export default function ParcelTracking() {
   const riskCount = deliveries.filter(item => ['DELAYED', 'RETURNED', 'CANCELLED'].includes(String(item.status))).length;
 
   if (loading) return <LoadingState label="Loading delivery tracking..." />;
-  if (error) return <ErrorState message={error} onRetry={reload} />;
 
   return (
     <div className="space-y-4">
@@ -62,6 +61,8 @@ export default function ParcelTracking() {
         <MetricCard label="Delivered" value={deliveredCount} hint="Receipt completed" icon={PackageCheck} />
         <MetricCard label="SLA Attention" value={riskCount} hint="Delayed / returned / cancelled" icon={AlertTriangle} />
       </div>
+
+      {error && <InlineError message={error} onRetry={reload} />}
 
       <Card>
         <CardContent className="space-y-3 p-4">

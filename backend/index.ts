@@ -138,6 +138,10 @@ export async function startServer() {
   };
 
   const normalizeSpaces = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim();
+  const normalizeStringList = (value: unknown) =>
+    Array.isArray(value)
+      ? value.map(item => normalizeSpaces(item)).filter(Boolean)
+      : [];
   const notificationClients = new Map<number, Set<Response>>();
   const localActionBudget = new Map<string, { count: number; resetAt: number }>();
 
@@ -2128,15 +2132,20 @@ export async function startServer() {
       }
 
       // Filter only allowed fields for SellerProfile (GeM Style)
+      const requestedPan = normalizeSpaces(rawData.pan).toUpperCase();
+      if (!requestedPan) {
+        return res.status(400).json({ message: 'Business PAN is required before saving seller details.' });
+      }
+
       const profileData: any = {
         organizationType: rawData.organizationType,
-        pan: rawData.pan ? normalizeSpaces(rawData.pan).toUpperCase() : rawData.pan,
+        pan: requestedPan,
         ...sensitiveProfileFields({ pan: rawData.pan, aadhaarNumber: rawData.aadhaarNumber }),
         nameAsInPan: rawData.nameAsInPan,
-        dateAsInPan: rawData.dateAsInPan ? new Date(rawData.dateAsInPan) : null,
+        dateAsInPan: (rawData.dateAsInPan && !isNaN(Date.parse(rawData.dateAsInPan))) ? new Date(rawData.dateAsInPan) : null,
         panVerified: rawData.panVerified ?? false,
         businessName: rawData.businessName,
-        dateOfIncorporation: rawData.dateOfIncorporation ? new Date(rawData.dateOfIncorporation) : null,
+        dateOfIncorporation: (rawData.dateOfIncorporation && !isNaN(Date.parse(rawData.dateOfIncorporation))) ? new Date(rawData.dateOfIncorporation) : null,
         detailsUpdated: rawData.detailsUpdated ?? false,
         isStartup: rawData.isStartup ?? false,
         isUdyamCertified: rawData.isUdyamCertified ?? false,
@@ -2147,7 +2156,7 @@ export async function startServer() {
         ownershipDeclarationAccepted: rawData.ownershipDeclarationAccepted ?? false,
         ownershipVerified: rawData.ownershipVerified ?? false,
         msmeCategory: rawData.msmeCategory,
-        productCategories: rawData.productCategories,
+        productCategories: normalizeStringList(rawData.productCategories),
         otherCategoryDetails: rawData.otherCategoryDetails,
         productList: rawData.productList,
         detailedProductName: rawData.detailedProductName,
@@ -2161,7 +2170,6 @@ export async function startServer() {
         termsAccepted: rawData.agreeTerms ?? false
       };
 
-      const requestedPan = normalizeSpaces(profileData.pan).toUpperCase();
       if (requestedPan) {
         const duplicatePan = await prisma.sellerProfile.findFirst({
           where: { pan: requestedPan, userId: { not: userId } },

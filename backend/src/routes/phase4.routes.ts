@@ -489,7 +489,7 @@ router.post('/direct-purchases', authenticate, authorize('buyer'), asyncRoute(as
 
 router.get('/direct-purchases', authenticate, asyncRoute(async (req, res) => {
   const where = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { sellerId: userId(req) };
-  const rows = await db.directPurchase.findMany({ where, orderBy: { updatedAt: 'desc' } });
+  const rows = await db.directPurchase.findMany({ where, include: { seller: { select: { id: true, name: true } }, buyer: { select: { id: true, name: true } }, requirement: true }, orderBy: { updatedAt: 'desc' } });
   ok(res, rows);
 }));
 
@@ -528,7 +528,7 @@ router.post('/quote-requests', authenticate, authorize('buyer'), asyncRoute(asyn
 
 router.get('/quote-requests', authenticate, asyncRoute(async (req, res) => {
   const where = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { sellerId: userId(req) };
-  ok(res, await db.quoteRequest.findMany({ where, include: { quoteResponses: true }, orderBy: { updatedAt: 'desc' } }));
+  ok(res, await db.quoteRequest.findMany({ where, include: { quoteResponses: true, seller: { select: { id: true, name: true } }, buyer: { select: { id: true, name: true } } }, orderBy: { updatedAt: 'desc' } }));
 }));
 
 router.get('/quote-requests/:id', authenticate, asyncRoute(async (req, res) => {
@@ -575,7 +575,8 @@ router.post('/tenders', authenticate, authorize('buyer'), asyncRoute(async (req,
 
 router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
   const where = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { status: { in: ['published', 'bid_submission'] } };
-  ok(res, await db.tender.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }));
+  const tenders = await db.tender.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 });
+  res.json(maskSensitive(tenders));
 }));
 
 router.get('/tenders/public', asyncRoute(async (req, res) => {
@@ -587,10 +588,13 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
     take: query.take,
     orderBy: { createdAt: 'desc' }
   }), 120);
-  ok(res, tenders);
+  res.json(maskSensitive(tenders));
 }));
 
-router.get('/tenders/:id', authenticate, asyncRoute(async (req, res) => ok(res, await assertTenderAccess(req, parse(idParams, req.params).id))));
+router.get('/tenders/:id', authenticate, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  ok(res, await assertTenderAccess(req, id));
+}));
 
 router.put('/tenders/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
@@ -653,13 +657,17 @@ router.post('/tenders/:id/bids', authenticate, authorize('seller'), asyncRoute(a
   ok(res, bid, 201);
 }));
 
-router.get('/bids/my', authenticate, authorize('seller'), asyncRoute(async (req, res) => ok(res, await db.bid.findMany({ where: { sellerId: userId(req) }, include: { tender: true }, orderBy: { createdAt: 'desc' } }))));
+router.get('/bids/my', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const bids = await db.bid.findMany({ where: { sellerId: userId(req) }, include: { tender: true }, orderBy: { createdAt: 'desc' } });
+  res.json(maskSensitive(bids));
+}));
 
 router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
-  ok(res, await db.bid.findMany({ where: { tenderId: id }, include: { seller: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } }));
+  const bids = await db.bid.findMany({ where: { tenderId: id }, include: { seller: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } });
+  res.json(maskSensitive(bids));
 }));
 
 router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
@@ -828,7 +836,17 @@ router.post('/purchase-orders/generate', authenticate, authorize('buyer', 'admin
 
 router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
   const where = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { sellerId: userId(req) };
-  ok(res, await db.purchaseOrder.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 100 }));
+  ok(res, await db.purchaseOrder.findMany({
+    where,
+    include: {
+      buyer: { select: { id: true, name: true, email: true } },
+      seller: { select: { id: true, name: true, email: true } },
+      deliveryTrackings: { include: { events: { orderBy: { occurredAt: 'desc' } } } },
+      invoices: true
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 100
+  }));
 }));
 
 router.get('/purchase-orders/:id', authenticate, asyncRoute(async (req, res) => {

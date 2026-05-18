@@ -37,6 +37,8 @@ const GenericFeaturePage = dynamic(() => import('./features/shared/GenericFeatur
 const PaymentHistoryPage = dynamic(() => import('./features/payments/pages/PaymentHistoryPage'), { ssr: false, loading: LoadingSpinner });
 const EscrowPage = dynamic(() => import('./features/escrow/pages/EscrowPage'), { ssr: false, loading: LoadingSpinner });
 const AdminRecordsPage = dynamic(() => import('./features/admin/pages/AdminRecordsPage'), { ssr: false, loading: LoadingSpinner });
+const InvoiceRegisterPage = dynamic(() => import('./features/invoices/pages/InvoiceRegisterPage'), { ssr: false, loading: LoadingSpinner });
+const RatingsPage = dynamic(() => import('./features/ratings/pages/RatingsPage'), { ssr: false, loading: LoadingSpinner });
 
 import Sidebar, { Header } from './components/layout/Navbar';
 
@@ -98,10 +100,10 @@ export default function App() {
     if (/^\/seller\/services\/[^/]+\/edit$/.test(pathname) && roleOk(user.role,['seller'])) return <GenericFeaturePage title="Edit Service" eyebrow="Seller Catalogue" description="Review and update seller service details." endpoint="/api/seller/services"/>;
     if (pathname === '/seller/orders' && roleOk(user.role,['seller'])) return <PurchaseOrders/>;
     if (pathname === '/seller/delivery' && roleOk(user.role,['seller'])) return <ParcelTracking/>;
-    if (pathname === '/seller/invoices' && roleOk(user.role,['seller'])) return <GenericFeaturePage title="Seller Invoices" eyebrow="Finance" description="Invoice records loaded from live invoice APIs." endpoint="/api/invoices"/>;
+    if (pathname === '/seller/invoices' && roleOk(user.role,['seller'])) return <InvoiceRegisterPage role="seller"/>;
     if (pathname === '/seller/disputes' && roleOk(user.role,['seller'])) return <GenericFeaturePage title="Seller Disputes" eyebrow="Resolution" description="Dispute records available to this seller." endpoint="/api/disputes"/>;
     if (pathname === '/seller/messages' && roleOk(user.role,['seller'])) return <GenericFeaturePage title="Messages" eyebrow="Messaging" description="Procurement conversations and notifications." endpoint="/api/messages"/>;
-    if (pathname === '/seller/ratings' && roleOk(user.role,['seller'])) return <GenericFeaturePage title="Seller Ratings" eyebrow="Performance" description="Ratings and feedback for completed orders." endpoint={`/api/ratings/supplier/${user.id}`}/>;
+    if (pathname === '/seller/ratings' && roleOk(user.role,['seller'])) return <RatingsPage endpoint={`/api/ratings/supplier/${user.id}`} mode="supplier"/>;
     if (pathname === '/seller/tenders' && roleOk(user.role,['seller'])) return <SellerTenders/>;
     if (pathname === '/seller/settings' && roleOk(user.role,['seller'])) return <SellerSettings/>;
     if (/^\/seller\/tenders\/[^/]+\/bid$/.test(pathname) && roleOk(user.role,['seller'])) return <CreateQuotation/>;
@@ -118,12 +120,12 @@ export default function App() {
     if (pathname === '/quotations' && roleOk(user.role,['buyer','seller'])) return <Quotations/>;
     if (pathname === '/buyer/orders' && roleOk(user.role,['buyer'])) return <PurchaseOrders/>;
     if (pathname === '/buyer/inspection' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Inspection" eyebrow="Quality Control" description="Inspection reports connected to purchase orders." endpoint="/api/purchase-orders"/>;
-    if (pathname === '/buyer/invoices' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Invoices" eyebrow="Finance" description="Invoices requiring buyer action." endpoint="/api/invoices"/>;
+    if (pathname === '/buyer/invoices' && roleOk(user.role,['buyer'])) return <InvoiceRegisterPage role="buyer"/>;
     if (pathname === '/buyer/payments' && roleOk(user.role,['buyer'])) return <PaymentHistoryPage/>;
     if (pathname === '/buyer/escrow' && roleOk(user.role,['buyer'])) return <EscrowPage/>;
     if (pathname === '/buyer/disputes' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Disputes" eyebrow="Resolution" description="Dispute records available to this buyer." endpoint="/api/disputes"/>;
     if (pathname === '/buyer/messages' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Messages" eyebrow="Messaging" description="Procurement conversations and notifications." endpoint="/api/messages"/>;
-    if (pathname === '/buyer/ratings' && roleOk(user.role,['buyer'])) return <GenericFeaturePage title="Buyer Ratings" eyebrow="Performance" description="Buyer ratings received after order completion." endpoint={`/api/ratings/buyer/${user.id}`}/>;
+    if (pathname === '/buyer/ratings' && roleOk(user.role,['buyer'])) return <RatingsPage endpoint={`/api/ratings/buyer/${user.id}`} mode="buyer"/>;
     if (pathname === '/payments' && roleOk(user.role,['buyer','seller','admin'])) return <PaymentHistoryPage admin={user.role === 'admin'}/>;
     if (pathname === '/escrow' && roleOk(user.role,['buyer','seller','admin'])) return <EscrowPage/>;
     if (pathname === '/buyer/tracking' && roleOk(user.role,['buyer'])) return <ParcelTracking/>;

@@ -4,6 +4,7 @@ import { logger } from './logger.js';
 
 const redisOptions = {
   keyPrefix: env.REDIS_PREFIX,
+  db: env.REDIS_DB,
   lazyConnect: true,
   maxRetriesPerRequest: 1,
   enableReadyCheck: true,
@@ -21,7 +22,6 @@ const getRedisInstance = () => {
       host: env.REDIS_HOST,
       port: env.REDIS_PORT,
       password: env.REDIS_PASSWORD,
-      db: env.REDIS_DB,
       ...redisOptions
     });
   }

@@ -3,7 +3,7 @@ import { CreditCard, Eye, RefreshCw, Search, ShieldCheck, X } from 'lucide-react
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { getApi } from '../../shared/apiClient';
-import { EmptyState, ErrorState, LoadingState } from '../../shared/FeatureStates';
+import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 
 type PaymentRow = {
@@ -66,7 +66,6 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   }, [gatewayFilter, payments, searchTerm, statusFilter]);
 
   if (loading) return <LoadingState label="Loading payment history..." />;
-  if (error) return <ErrorState message={error} onRetry={reload} />;
 
   return (
     <div className="space-y-4">
@@ -85,6 +84,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         <Metric label="Escrow Held" value={payments.filter(payment => payment.escrowAccount?.status === 'held').length} icon={ShieldCheck} />
       </div>
 
+      {error && <InlineError message={error} onRetry={reload} />}
       {warning && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{warning}</div>}
 
       <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px]"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search reference, invoice, PO, payer, payee..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></div><select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All statuses</option><option value="initiated">Initiated</option><option value="gateway_order_created">Gateway order</option><option value="success">Success</option><option value="escrow_released">Escrow released</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select><select value={gatewayFilter} onChange={event => setGatewayFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All gateways</option><option value="bank_transfer">Bank transfer</option><option value="razorpay">Razorpay</option><option value="cashfree">Cashfree</option></select></CardContent></Card>

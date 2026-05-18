@@ -152,7 +152,7 @@ export default function SellerSettings() {
           companyName={profileData?.businessName || user?.name || "Seller Company"} 
           completionPercentage={calculateCompletion()} 
           warnings={[
-            "Please complete your profile to start transacting on GeM",
+            "Please complete your profile to start transacting on MSME",
             "Please complete 'Beneficial Ownership Compliance'. Click here"
           ]} 
         />
@@ -161,7 +161,7 @@ export default function SellerSettings() {
           <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg mb-8 space-y-2">
              <div className="flex items-start gap-2 text-amber-800">
                 <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <p className="text-sm font-bold uppercase tracking-tight ">Please complete your profile to start transacting on GeM</p>
+                <p className="text-sm font-bold uppercase tracking-tight ">Please complete your profile to start transacting on MSME Portal</p>
              </div>
              <div className="flex items-start gap-2 text-amber-800">
                 <AlertTriangle className="h-4 w-4 mt-0.5" />

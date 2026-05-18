@@ -30,3 +30,18 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
     </div>
   );
 }
+
+export function InlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-red-900">Live data unavailable</p>
+          <p className="mt-1 text-xs font-semibold text-red-700">{message}</p>
+        </div>
+      </div>
+      {onRetry && <Button onClick={onRetry} className="h-9 shrink-0 rounded-md bg-red-700 px-4 text-xs font-black text-white">Retry</Button>}
+    </div>
+  );
+}

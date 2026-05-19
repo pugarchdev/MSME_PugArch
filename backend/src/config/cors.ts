@@ -44,7 +44,7 @@ const isAllowedVercelFrontendOrigin = (origin: string) => {
     const isLocalPreview = !isProduction && hostname.endsWith('.vercel.app');
     const isVercelPreview = 
       hostname.endsWith('.vercel.app') &&
-      (hostname.startsWith('msme-frontend-') || hostname.includes('msme-frontend') || hostname.includes('-anands-projects-'));
+      (hostname.startsWith('msme-frontend') || hostname.startsWith('msme-backend'));
 
     return isLocalPreview || isVercelPreview;
   } catch {

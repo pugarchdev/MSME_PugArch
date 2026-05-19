@@ -33,19 +33,22 @@ const getRedisInstance = () => {
 
 export const redis = getRedisInstance();
 
-let connectionStarted = false;
 let errorLogCount = 0;
 
-export const connectRedis = async () => {
-  if (!redis || connectionStarted || redis.status === 'ready') return redis;
-  connectionStarted = true;
-
+if (redis) {
   redis.on('error', error => {
     errorLogCount += 1;
     if (errorLogCount <= 3) {
       logger.warn({ err: error, tls: env.REDIS_TLS }, 'Redis connection failed; using in-memory fallback where available');
     }
   });
+}
+
+let connectionStarted = false;
+
+export const connectRedis = async () => {
+  if (!redis || connectionStarted || redis.status === 'ready') return redis;
+  connectionStarted = true;
 
   await redis.connect().catch(error => {
     logger.warn({ err: error, tls: env.REDIS_TLS }, 'Redis unavailable; continuing with fallback mode');

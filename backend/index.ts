@@ -69,11 +69,6 @@ if (configureCloudinary()) {
 
 logger.info({ apiSetuConfigured: Boolean(env.APISETU_API_KEY) }, 'Backend environment loaded');
 
-// Initialize Redis connection and event handlers at startup
-void connectRedis().catch(error => {
-  logger.warn('Failed to start Redis connection sequence: ' + (error instanceof Error ? error.message : error));
-});
-
 const serverlessApp = createApp();
 
 export default serverlessApp;

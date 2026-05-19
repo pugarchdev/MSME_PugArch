@@ -103,6 +103,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         localStorage.setItem('msme_user_cache', JSON.stringify(data.user));
       } else {
+        if (![401, 403].includes(res.status)) return;
+
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
           logout();

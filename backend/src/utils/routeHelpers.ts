@@ -9,6 +9,15 @@ export const safeRouteMessage = (err: any, fallback = 'Unable to complete reques
   if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
     return 'Database is temporarily unavailable. Please try again in a few minutes.';
   }
+  if (
+    ['P2021', 'P2022', 'P2023', 'P2025'].includes(String(err?.code || '')) ||
+    message.includes('does not exist') ||
+    message.includes('Unknown field') ||
+    message.includes('relation') ||
+    message.includes('column')
+  ) {
+    return 'Database schema is not up to date. Run Prisma migrations and redeploy the backend.';
+  }
   if (message.includes('Invalid `prisma.') || message.includes('PrismaClient')) {
     return fallback;
   }

@@ -91,7 +91,9 @@ if (missingCritical.length > 0) {
   throw new Error(`Missing critical environment variable(s): ${missingCritical.join(', ')}`);
 }
 
-if (parsed.data.NODE_ENV === 'production') {
+const isTrueProduction = parsed.data.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'preview';
+
+if (isTrueProduction) {
   if (parsed.data.JWT_SECRET && parsed.data.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters in production');
   }

@@ -69,6 +69,10 @@ if (configureCloudinary()) {
 
 logger.info({ apiSetuConfigured: Boolean(env.APISETU_API_KEY) }, 'Backend environment loaded');
 
+const serverlessApp = createApp();
+
+export default serverlessApp;
+
 // Nodemailer Transporter
 const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,

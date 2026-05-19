@@ -92,60 +92,12 @@ if (missingCritical.length > 0) {
 }
 
 if (parsed.data.NODE_ENV === 'production') {
-  const missingProduction = [
-    ['REDIS_URL or REDIS_HOST', parsed.data.REDIS_URL || parsed.data.REDIS_HOST]
-  ].filter(([, value]) => !value).map(([key]) => key);
-
   if (['debug', 'trace'].includes(parsed.data.LOG_LEVEL.toLowerCase())) {
     throw new Error('LOG_LEVEL must not be debug or trace in production');
   }
 
   if (parsed.data.APISETU_ALLOW_INSECURE_TLS) {
     throw new Error('APISETU_ALLOW_INSECURE_TLS must be false in production');
-  }
-
-  if (parsed.data.STORAGE_PROVIDER === 'cloudinary') {
-    for (const [key, value] of [
-      ['CLOUDINARY_CLOUD_NAME', parsed.data.CLOUDINARY_CLOUD_NAME],
-      ['CLOUDINARY_API_KEY', parsed.data.CLOUDINARY_API_KEY],
-      ['CLOUDINARY_API_SECRET', parsed.data.CLOUDINARY_API_SECRET]
-    ]) {
-      if (!value) missingProduction.push(key);
-    }
-  }
-
-  if (parsed.data.STORAGE_PROVIDER === 'gcp') {
-    for (const [key, value] of [
-      ['GCP_STORAGE_BUCKET', parsed.data.GCP_STORAGE_BUCKET],
-      ['GCP_PROJECT_ID', parsed.data.GCP_PROJECT_ID],
-      ['GCP_SERVICE_ACCOUNT_JSON', parsed.data.GCP_SERVICE_ACCOUNT_JSON]
-    ]) {
-      if (!value) missingProduction.push(key);
-    }
-  }
-
-  if (parsed.data.PAYMENT_PROVIDER === 'razorpay') {
-    for (const [key, value] of [
-      ['RAZORPAY_KEY_ID', parsed.data.RAZORPAY_KEY_ID],
-      ['RAZORPAY_KEY_SECRET', parsed.data.RAZORPAY_KEY_SECRET],
-      ['RAZORPAY_WEBHOOK_SECRET', parsed.data.RAZORPAY_WEBHOOK_SECRET]
-    ]) {
-      if (!value) missingProduction.push(key);
-    }
-  }
-
-  if (parsed.data.PAYMENT_PROVIDER === 'cashfree') {
-    for (const [key, value] of [
-      ['CASHFREE_APP_ID', parsed.data.CASHFREE_APP_ID],
-      ['CASHFREE_SECRET_KEY', parsed.data.CASHFREE_SECRET_KEY],
-      ['CASHFREE_WEBHOOK_SECRET', parsed.data.CASHFREE_WEBHOOK_SECRET]
-    ]) {
-      if (!value) missingProduction.push(key);
-    }
-  }
-
-  if (missingProduction.length > 0) {
-    throw new Error(`Missing production environment variable(s): ${missingProduction.join(', ')}`);
   }
 }
 

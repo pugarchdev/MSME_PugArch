@@ -8,6 +8,7 @@ export const createApp = () => {
   const app = express();
 
   app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
   applySecurityMiddleware(app);
 
   // Unified API Routing layer

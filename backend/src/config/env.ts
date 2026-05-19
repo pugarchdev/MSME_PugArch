@@ -36,6 +36,7 @@ const envSchema = z.object({
   FAILED_LOGIN_LOCK_THRESHOLD: z.coerce.number().int().min(3).max(20).default(5),
   FAILED_LOGIN_LOCK_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
   FRONTEND_URL: z.string().optional(),
+  CORS_ALLOW_VERCEL_PREVIEWS: envBoolean(true),
   REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().optional(),
   REDIS_PORT: z.coerce.number().int().default(6379),
@@ -92,8 +93,6 @@ if (missingCritical.length > 0) {
 
 if (parsed.data.NODE_ENV === 'production') {
   const missingProduction = [
-    ['FRONTEND_URL', parsed.data.FRONTEND_URL],
-    ['CORS_ALLOWED_ORIGINS', parsed.data.CORS_ALLOWED_ORIGINS],
     ['REDIS_URL or REDIS_HOST', parsed.data.REDIS_URL || parsed.data.REDIS_HOST]
   ].filter(([, value]) => !value).map(([key]) => key);
 

@@ -10,6 +10,7 @@ const staticOrigins = [
   'http://localhost:5002',
   'http://localhost:5173',
   'http://localhost:5174',
+  'https://msme-pugarch-frontend.vercel.app',
   'https://msme-portal-pug-arch-frontend.vercel.app',
   'https://msme-frontend.vercel.app',
   'https://msme-pugarch.vercel.app',
@@ -32,6 +33,7 @@ const isAllowedVercelFrontendOrigin = (origin: string) => {
 
     // Allow known production and static frontend domains
     const staticDomains = [
+      'msme-pugarch-frontend.vercel.app',
       'msme-portal-pug-arch-frontend.vercel.app',
       'msme-frontend.vercel.app',
       'msme-pugarch.vercel.app',

@@ -89,13 +89,7 @@ const transporter = nodemailer.createTransport({
   greetingTimeout: 10000,
 });
 
-export async function startServer() {
-  await connectRedis().catch(error => {
-    console.error('[Redis] continuing without Redis connection', error instanceof Error ? error.message : error);
-  });
-
-  const app = createApp();
-  const PORT = env.PORT;
+const app = serverlessApp;
 
   app.use('/api/utils/gst-verify', verificationRateLimit);
   app.use('/api/gst', verificationRateLimit);
@@ -3783,7 +3777,15 @@ export async function startServer() {
   };
 
   app.use(errorHandler);
+
+export async function startServer() {
+  await connectRedis().catch(error => {
+    console.error('[Redis] continuing without Redis connection', error instanceof Error ? error.message : error);
+  });
+
+  const PORT = env.PORT;
   startListening(PORT);
+
   const auctionFinalizerInterval = setInterval(() => {
     void finalizeEndedAuctionsJob().catch(error =>
       console.warn('[AuctionFinalizer] Failed:', error instanceof Error ? error.message : error)

@@ -42,10 +42,9 @@ const isAllowedVercelFrontendOrigin = (origin: string) => {
     // Securely allow Vercel Preview Deployments for this specific project
     // Disable wildcard previews in production: !isProduction && ...
     const isLocalPreview = !isProduction && hostname.endsWith('.vercel.app');
-    const isVercelPreview = env.CORS_ALLOW_VERCEL_PREVIEWS &&
-      process.env.VERCEL_ENV === 'preview' &&
+    const isVercelPreview = 
       hostname.endsWith('.vercel.app') &&
-      (hostname.startsWith('msme-frontend-') || hostname.includes('-anands-projects-'));
+      (hostname.startsWith('msme-frontend-') || hostname.includes('msme-frontend') || hostname.includes('-anands-projects-'));
 
     return isLocalPreview || isVercelPreview;
   } catch {

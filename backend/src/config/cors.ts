@@ -1,4 +1,5 @@
 import type { CorsOptions } from 'cors';
+import type { NextFunction, Request, Response } from 'express';
 import { env, isProduction } from './env.js';
 
 const staticOrigins = [
@@ -45,21 +46,44 @@ const isAllowedVercelFrontendOrigin = (origin: string) => {
   }
 };
 
+export const isAllowedCorsOrigin = (origin?: string) => {
+  if (!origin) return true;
+
+  try {
+    new URL(origin);
+  } catch {
+    return false;
+  }
+
+  return configuredOrigins.includes(origin) || isAllowedVercelFrontendOrigin(origin);
+};
+
+export const applyCorsHeaders = (req: Request, res: Response) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedCorsOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    String(req.headers['access-control-request-headers'] || 'Content-Type, Authorization, X-Requested-With, X-Request-Id, Idempotency-Key')
+  );
+  res.setHeader('Access-Control-Max-Age', '86400');
+};
+
+export const preflightCors = (req: Request, res: Response, next: NextFunction) => {
+  applyCorsHeaders(req, res);
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  return next();
+};
+
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-
-    try {
-      new URL(origin);
-    } catch {
-      return callback(null, false);
-    }
-
-    if (configuredOrigins.includes(origin) || isAllowedVercelFrontendOrigin(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(null, false);
+    return callback(null, isAllowedCorsOrigin(origin));
   },
   credentials: true,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

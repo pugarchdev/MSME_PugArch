@@ -15,25 +15,43 @@ const staticOrigins = [
   'https://msme-portal-pug-arch-frontend-onet.vercel.app'
 ];
 
+const vercelFrontendProjectPrefixes = [
+  'msme-portal-pug-arch-frontend',
+  'msme-portal-pugarch-frontend',
+  'msme-pugarch'
+];
+
 const configuredOrigins = [
   ...(isProduction ? [] : staticOrigins),
   ...(env.FRONTEND_URL ? env.FRONTEND_URL.split(',') : []),
   ...(env.CORS_ALLOWED_ORIGINS ? env.CORS_ALLOWED_ORIGINS.split(',') : [])
 ].map(origin => origin.trim()).filter(Boolean);
 
+const isAllowedVercelFrontendOrigin = (origin: string) => {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:' || !url.hostname.endsWith('.vercel.app')) return false;
+
+    return vercelFrontendProjectPrefixes.some(prefix =>
+      url.hostname === `${prefix}.vercel.app` ||
+      url.hostname.startsWith(`${prefix}-`)
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    let hostname = '';
     try {
-      hostname = new URL(origin).hostname;
+      new URL(origin);
     } catch {
       return callback(new Error(`CORS blocked for invalid origin: ${origin}`));
     }
 
-    const isAllowedPreview = !isProduction && /^msme(-portal)?-pugarch-frontend(-[a-z0-9-]+)*\.vercel\.app$/.test(hostname);
-    if (configuredOrigins.includes(origin) || isAllowedPreview) {
+    if (configuredOrigins.includes(origin) || isAllowedVercelFrontendOrigin(origin)) {
       return callback(null, true);
     }
 

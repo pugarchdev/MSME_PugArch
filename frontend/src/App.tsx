@@ -34,6 +34,7 @@ import RatingsPage from './features/ratings/pages/RatingsPage';
 import RbacPanel from './views/RbacPanel';
 import OrganizationManagement from './views/OrganizationManagement';
 import NotificationCenter from './views/NotificationCenter';
+import MISReports from './views/MISReports';
 
 import Sidebar, { Header } from './components/layout/Navbar';
 
@@ -141,7 +142,7 @@ export default function App() {
     if (pathname === '/admin/security-monitoring' && roleOk(user.role,['admin'])) return <GenericFeaturePage title="Security Monitoring" eyebrow="Security" description="Audit and fraud signals for platform operations." endpoint="/api/admin/fraud-alerts"/>;
     if (pathname === '/admin/procurement' && roleOk(user.role,['admin'])) return <AdminOperations section="procurement"/>;
     if (pathname === '/admin/compliance' && roleOk(user.role,['admin'])) return <AdminOperations section="compliance"/>;
-    if (pathname === '/admin/reports' && roleOk(user.role,['admin'])) return <AdminOperations section="reports"/>;
+    if (pathname === '/admin/reports' && roleOk(user.role,['admin'])) return <MISReports/>;
     if (pathname === '/admin/rbac' && roleOk(user.role,['admin'])) return <RbacPanel/>;
     if (pathname === '/admin/organizations' && roleOk(user.role,['admin'])) return <OrganizationManagement/>;
     if (pathname === '/notifications') return <NotificationCenter/>;

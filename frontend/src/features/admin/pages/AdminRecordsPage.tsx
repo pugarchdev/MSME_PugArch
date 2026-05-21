@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Eye, Filter, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Eye, Filter, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/FeatureStates';
@@ -75,11 +75,21 @@ const severityClass = (value: unknown) => {
 
 export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
   const cfg = config[kind];
+  const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
   const [severity, setSeverity] = useState('');
   const [selected, setSelected] = useState<RecordMap | null>(null);
+  
+  const [sortKey, setSortKey] = useState<string>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    const handler = setTimeout(() => setQuery(searchInput), 400);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
   const params = new URLSearchParams();
   if (query.trim()) params.set('q', query.trim());
   if (role) params.set('role', role);
@@ -88,9 +98,48 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
   if (severity) params.set('severity', severity);
   const endpoint = `${cfg.endpoint}${params.toString() ? `?${params.toString()}` : ''}`;
   const { data, loading, error, reload } = useFeatureQuery<any>(endpoint, { records: [] });
-  const records = readRecords(data);
+  let records = readRecords(data);
   const total = totalOf(data, records.length);
   const Icon = cfg.icon;
+
+  const valueForSort = (record: RecordMap) => {
+    if (sortKey === 'record') return rowTitle(kind, record);
+    if (sortKey === 'status') return String(statusOf(kind, record));
+    if (sortKey === 'severity') return record.severity || record.role || record.alertType || '';
+    if (sortKey === 'date') return new Date(record.createdAt || record.updatedAt || 0).getTime();
+    return '';
+  };
+
+  records = [...records].sort((a, b) => {
+    const aVal = valueForSort(a);
+    const bVal = valueForSort(b);
+    const res = typeof aVal === 'number' && typeof bVal === 'number' 
+      ? aVal - bVal 
+      : String(aVal).localeCompare(String(bVal));
+    return sortDirection === 'asc' ? res : -res;
+  });
+
+  const toggleSort = (key: string) => {
+    setSortDirection(prev => sortKey === key && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(key);
+  };
+
+  const SortHead = ({ label, field }: { label: string; field: string }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(field)}
+      className="inline-flex items-center gap-1 text-left hover:text-slate-700"
+    >
+      {label}
+      <span className="text-slate-400">
+        {sortKey === field ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-50" />
+        )}
+      </span>
+    </button>
+  );
 
   const metrics = useMemo(() => {
     const open = records.filter(record => ['open', 'pending', 'PENDING', 'under_compliance_review'].includes(String(statusOf(kind, record)))).length;
@@ -123,7 +172,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
       </div>
 
       <Card><CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_160px_160px_160px]">
-        <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${cfg.title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1d4ed8]/20" /></div>
+        <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${cfg.title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1d4ed8]/20" /></div>
         <select value={role} onChange={event => setRole(event.target.value)} disabled={kind !== 'users'} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold disabled:bg-slate-50 disabled:text-slate-300"><option value="">All roles</option><option value="admin">Admin</option><option value="buyer">Buyer</option><option value="seller">Seller</option></select>
         <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All statuses</option><option value="PENDING">Pending</option><option value="ACTIVE">Active</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option><option value="approved_for_procurement">Approved onboarding</option></select>
         <select value={severity} onChange={event => setSeverity(event.target.value)} disabled={!['fraud', 'rules'].includes(kind)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold disabled:bg-slate-50 disabled:text-slate-300"><option value="">All severity</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select>
@@ -134,7 +183,16 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full min-w-[940px] text-left text-sm">
-            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="p-3">Record</th><th className="p-3">Status</th><th className="p-3">Severity/Role</th><th className="p-3">Signals</th><th className="p-3">Date</th><th className="p-3">Action</th></tr></thead>
+            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="p-3"><SortHead label="Record" field="record" /></th>
+                <th className="p-3"><SortHead label="Status" field="status" /></th>
+                <th className="p-3"><SortHead label="Severity/Role" field="severity" /></th>
+                <th className="p-3">Signals</th>
+                <th className="p-3"><SortHead label="Date" field="date" /></th>
+                <th className="p-3">Action</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-slate-100">
               {records.map(record => (
                 <tr key={`${kind}-${record.id || rowTitle(kind, record)}`} className="hover:bg-slate-50">

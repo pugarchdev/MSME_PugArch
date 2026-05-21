@@ -10,7 +10,7 @@ export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
     setLoading(true);
     setError(null);
     try {
-      setData(await getApi<T>(endpoint, true));
+      setData(await getApi<T>(endpoint, false));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load data');
     } finally {

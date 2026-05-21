@@ -43,15 +43,15 @@ export const maskSensitive = <T>(input: T): T => {
   if (Array.isArray(input)) return input.map(item => maskSensitive(item)) as T;
 
   return Object.entries(input as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    if (/pan/i.test(key)) {
+    if (/^pan$|panNumber/i.test(key)) {
       acc[key] = value ? maskPAN(value) : value;
-    } else if (/gst/i.test(key)) {
+    } else if (/^gst$|gstNumber|gstin/i.test(key)) {
       acc[key] = value ? maskGST(value) : value;
-    } else if (/aadhaar/i.test(key)) {
+    } else if (/^aadhaar$/i.test(key)) {
       acc[key] = value ? maskAadhaar(value) : value;
     } else if (/accountNumber|bankAccount/i.test(key)) {
       acc[key] = value ? maskBankAccount(value) : value;
-    } else if (sensitiveKeys.has(key) || /password|secret|token|account/i.test(key)) {
+    } else if (sensitiveKeys.has(key) || /password|secret|token/i.test(key)) {
       acc[key] = value ? maskValue(value) : value;
     } else {
       acc[key] = maskSensitive(value);

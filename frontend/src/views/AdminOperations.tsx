@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BarChart3,
   CheckCircle2,
   ClipboardCheck,
@@ -191,7 +194,13 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
       className="inline-flex items-center gap-1 text-left text-[10px] font-black uppercase tracking-wider text-[#1d4ed8] hover:text-[#1e3a8a]"
     >
       {label}
-      <span className="text-[9px] text-slate-400">{sortKey === field ? sortDirection.toUpperCase() : 'SORT'}</span>
+      <span className="text-slate-400">
+        {sortKey === field ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-50" />
+        )}
+      </span>
     </button>
   );
 

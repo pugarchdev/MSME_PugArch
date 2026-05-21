@@ -208,7 +208,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
           size="sm" 
           onClick={handleLogout} 
           title="Logout"
-          className={cn("w-full bg-white/10 border-white/10 text-blue-50 hover:bg-white hover:text-[#1d4ed8] py-2", isActuallyCollapsed && "lg:px-0")}
+          className={cn("w-full bg-red/300 border-white/20 text-white hover:bg-white hover:text-red-500 py-2", isActuallyCollapsed && "lg:px-0")}
         >
           <LogOut className={cn("h-4 w-4", !isActuallyCollapsed && "mr-2")} />
           <span className={cn(isActuallyCollapsed && "lg:hidden")}>Logout</span>

@@ -38,6 +38,20 @@ export const safeRouteMessage = (err: any, fallback = 'Unable to complete reques
 };
 
 export const handleSecureRouteError = (res: Response, err: any, fallback = 'Unable to complete request') => {
+  if (err?.name === 'ZodError' || Array.isArray(err?.issues)) {
+    const fieldErrors = err.issues.map((issue: any) => {
+      const field = issue.path.join('.');
+      return `${field ? field + ': ' : ''}${issue.message}`;
+    });
+    const combinedMessage = fieldErrors.join('; ');
+    return res.status(400).json({
+      success: false,
+      message: combinedMessage || 'Validation failed',
+      errors: err.issues,
+      code: 'VALIDATION_ERROR'
+    });
+  }
+
   logServerRouteError(err, fallback);
   const statusCode = err?.statusCode || 500;
   return res.status(statusCode).json({

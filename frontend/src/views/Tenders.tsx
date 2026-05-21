@@ -151,6 +151,24 @@ export default function Tenders() {
 
   const handleCreateTender = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (newTender.title.trim().length < 3) {
+      toast.error('Title must be at least 3 characters long');
+      return;
+    }
+    if (!newTender.category) {
+      toast.error('Please select a category');
+      return;
+    }
+    if (Number(newTender.budget) <= 0) {
+      toast.error('Budget must be a positive number');
+      return;
+    }
+    if (newTender.description.trim().length < 5) {
+      toast.error('Brief description must be at least 5 characters long');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await api.post('/api/tenders', {
@@ -167,7 +185,8 @@ export default function Tenders() {
         setNewTender({ title: '', category: '', budget: '', description: '', documentUrl: '' });
         fetchTenders();
       } else {
-        toast.error('Failed to create tender');
+        const errorData = await res.json().catch(() => null);
+        toast.error(errorData?.message || 'Failed to create tender');
       }
     } catch (err) {
       toast.error('Network error');
@@ -456,7 +475,6 @@ export default function Tenders() {
                 <h2 className="text-xl font-extrabold tracking-tight text-[#1d4ed8]">New Tender</h2>
                 <p className="text-xs text-slate-500 font-medium">Save as draft now. You can add line items and publish from the draft list.</p>
               </div>
-
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Title</label>
@@ -465,8 +483,14 @@ export default function Tenders() {
                     value={newTender.title}
                     onChange={(e) => setNewTender({...newTender, title: e.target.value})}
                     placeholder="Supply of 500 ergonomic office chairs"
-                    className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all text-blue-900"
+                    className={cn(
+                      "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all text-blue-900",
+                      newTender.title && newTender.title.trim().length < 3 && "border-red-500 focus:ring-red-500/20"
+                    )}
                   />
+                  {newTender.title && newTender.title.trim().length < 3 && (
+                    <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Title must be at least 3 characters long.</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -494,8 +518,14 @@ export default function Tenders() {
                       value={newTender.budget}
                       onChange={(e) => setNewTender({...newTender, budget: e.target.value})}
                       placeholder="2500000"
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all text-blue-900"
+                      className={cn(
+                        "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all text-blue-900",
+                        newTender.budget && Number(newTender.budget) <= 0 && "border-red-500 focus:ring-red-500/20"
+                      )}
                     />
+                    {newTender.budget && Number(newTender.budget) <= 0 && (
+                      <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Budget must be a positive number.</p>
+                    )}
                   </div>
                 </div>
 
@@ -507,8 +537,14 @@ export default function Tenders() {
                     onChange={(e) => setNewTender({...newTender, description: e.target.value})}
                     placeholder="Specifications, delivery timelines, etc."
                     rows={4}
-                    className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all resize-none text-blue-900"
+                    className={cn(
+                      "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 transition-all resize-none text-blue-900",
+                      newTender.description && newTender.description.trim().length < 5 && "border-red-500 focus:ring-red-500/20"
+                    )}
                   />
+                  {newTender.description && newTender.description.trim().length < 5 && (
+                    <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Brief description must be at least 5 characters long.</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

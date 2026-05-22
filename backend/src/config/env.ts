@@ -87,8 +87,17 @@ const missingCritical = [
   ['JWT_SECRET', parsed.data.JWT_SECRET]
 ].filter(([, value]) => !value).map(([key]) => key);
 
+const isStrictProduction = parsed.data.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production';
+
 if (missingCritical.length > 0) {
-  throw new Error(`Missing critical environment variable(s): ${missingCritical.join(', ')}`);
+  if (isStrictProduction) {
+    throw new Error(`Missing critical environment variable(s): ${missingCritical.join(', ')}`);
+  }
+
+  console.warn(
+    `[env] Missing critical environment variable(s) in non-production runtime: ${missingCritical.join(', ')}. ` +
+      'Using safe placeholders to keep the serverless function bootable for diagnostics.'
+  );
 }
 
 const isTrueProduction = parsed.data.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'preview';
@@ -109,8 +118,8 @@ if (isTrueProduction) {
 
 export const env = {
   ...parsed.data,
-  DATABASE_URL: parsed.data.DATABASE_URL as string,
-  JWT_SECRET: parsed.data.JWT_SECRET as string
+  DATABASE_URL: parsed.data.DATABASE_URL ?? 'postgresql://placeholder/diagnostic',
+  JWT_SECRET: parsed.data.JWT_SECRET ?? 'non-production-placeholder-jwt-secret'
 };
 
 export const isProduction = env.NODE_ENV === 'production';

@@ -148,9 +148,18 @@ const app = serverlessApp;
     const clients = notificationClients.get(userId);
     if (!clients) return;
     for (const client of clients) {
-      client.write('event: notification\n');
-      client.write(`data: ${JSON.stringify(notification)}\n\n`);
+      if (client.destroyed || client.writableEnded) {
+        clients.delete(client);
+        continue;
+      }
+      try {
+        client.write('event: notification\n');
+        client.write(`data: ${JSON.stringify(notification)}\n\n`);
+      } catch {
+        clients.delete(client);
+      }
     }
+    if (clients.size === 0) notificationClients.delete(userId);
   };
 
   const sanitizePortalText = (value: unknown, maxLength = 2000) =>
@@ -1097,29 +1106,6 @@ const app = serverlessApp;
       '37': 'Andhra Pradesh (New)', '38': 'Ladakh'
     };
 
-    const stateName = gstStateMap[gstin.substring(0, 2)] || 'Maharashtra';
-    const gstinPart = gstin.substring(2, 12);
-    const mockDealerPayload = {
-      requestedGstin: gstin,
-      responseGstin: gstin,
-      legalName: `JsgSmile ${gstinPart} Industries Private Limited`,
-      tradeName: `JsgSmile ${gstinPart} Enterprise`,
-      organizationName: `JsgSmile ${gstinPart} Industries Private Limited`,
-      address: `Sector 4, Plot 12, Industrial Area, ${stateName}`,
-      registeredOfficeAddress: `Sector 4, Plot 12, Industrial Area, ${stateName}`,
-      country: 'India',
-      state: stateName,
-      city: 'Mumbai',
-      district: 'Mumbai',
-      pincode: '400001',
-      pinCode: '400001',
-      pan: gstinPart,
-      status: 'Active',
-      isRegisteredDealer: true,
-      source: 'mocked_dealer_payload',
-      message: undefined
-    };
-
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -1129,8 +1115,8 @@ const app = serverlessApp;
       logger.debug({ gstinHash: sha256(gstin), apiSetuConfigured: Boolean(apiKey), clientConfigured: Boolean(clientId) }, 'GST verification requested');
 
       if (!apiKey || apiKey.includes('YOUR_') || apiKey.includes('placeholder') || !clientId || clientId.includes('YOUR_') || clientId.includes('placeholder')) {
-        console.warn('[GST Verify] API keys are missing or placeholders. Returning mock dealer payload.');
-        return res.json(mockDealerPayload);
+        logger.error('[GST Verify] API keys are missing or unconfigured.');
+        return res.status(400).json({ message: 'GST verification service is not configured (API credentials missing).' });
       }
 
       const apiUrl = urlTemplate.includes('{gstin}')
@@ -1150,8 +1136,8 @@ const app = serverlessApp;
       logger.debug({ status: providerResponse.status, gstinHash: sha256(gstin) }, 'API Setu GST response received');
 
       if (!providerResponse.ok) {
-        console.error(`[GST Verify] API Setu Error: ${providerResponse.status} - ${providerResponse.text}. Returning mock dealer payload.`);
-        return res.json(mockDealerPayload);
+        logger.error(`[GST Verify] API Setu Error: ${providerResponse.status} - ${providerResponse.text}`);
+        return res.status(400).json({ message: `GST verification failed: API Setu returned status ${providerResponse.status}` });
       }
 
       const result: any = providerResponse.body;
@@ -1166,13 +1152,13 @@ const app = serverlessApp;
       }, 'Mapped GST provider output');
 
       if (normalized.responseGstin && normalized.responseGstin !== gstin) {
-        console.warn(`[GST Verify] GSTIN mismatch (requested ${gstin}, response ${normalized.responseGstin}). Returning mock dealer payload.`);
-        return res.json(mockDealerPayload);
+        logger.warn(`[GST Verify] GSTIN mismatch (requested ${gstin}, response ${normalized.responseGstin}).`);
+        return res.status(400).json({ message: `GSTIN mismatch: requested ${gstin}, but API returned ${normalized.responseGstin}` });
       }
 
       if (!normalized.legalName && !normalized.tradeName) {
-        console.warn('[GST Verify] Provider returned incomplete GST data. Returning mock dealer payload.');
-        return res.json(mockDealerPayload);
+        logger.warn('[GST Verify] Provider returned incomplete GST data.');
+        return res.status(400).json({ message: 'GST verification failed: Provider returned incomplete GST data.' });
       }
 
       res.json({
@@ -1181,8 +1167,8 @@ const app = serverlessApp;
         message: normalized.address ? undefined : 'Address not available from GST API. Please enter manually.'
       });
     } catch (err: any) {
-      logger.warn({ err, requestId: req.id }, 'GST verification failed. Returning mock dealer payload.');
-      res.json(mockDealerPayload);
+      logger.error({ err, requestId: req.id }, 'GST verification failed.');
+      res.status(500).json({ message: `GST verification failed: ${err.message || err}` });
     }
   });
 
@@ -3753,12 +3739,14 @@ const app = serverlessApp;
         throw new ApiError(423, 'Account is temporarily locked', 'ACCOUNT_LOCKED');
       }
 
+      req.socket.setKeepAlive(true);
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no'
       });
+      res.flushHeaders?.();
       res.write('retry: 1000\n');
       res.write('event: connected\n');
       res.write('data: {"ok":true}\n\n');
@@ -3767,30 +3755,43 @@ const app = serverlessApp;
       clients.add(res);
       notificationClients.set(userId, clients);
 
+      let closed = false;
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        clearTimeout(timeoutId);
+        clients.delete(res);
+        if (clients.size === 0) notificationClients.delete(userId);
+      };
+
       const heartbeat = setInterval(() => {
-        res.write('event: heartbeat\n');
-        res.write('data: {}\n\n');
+        if (closed || res.destroyed || res.writableEnded) {
+          cleanup();
+          return;
+        }
+        try {
+          res.write('event: heartbeat\n');
+          res.write('data: {}\n\n');
+        } catch {
+          cleanup();
+        }
       }, 25000);
 
       // Prevent Vercel Serverless Function timeout (300 seconds limit)
       // by gracefully closing the connection after 30 seconds.
       // The frontend EventSource client will automatically reconnect after 1 second because of 'retry: 1000'.
       const timeoutId = setTimeout(() => {
-        clearInterval(heartbeat);
-        clients.delete(res);
-        if (clients.size === 0) notificationClients.delete(userId);
-        
-        res.write('event: close\n');
-        res.write('data: {"closed":true}\n\n');
-        res.end();
+        if (!closed && !res.destroyed && !res.writableEnded) {
+          res.write('event: close\n');
+          res.write('data: {"closed":true}\n\n');
+          res.end();
+        }
+        cleanup();
       }, 30000);
 
-      req.on('close', () => {
-        clearInterval(heartbeat);
-        clearTimeout(timeoutId);
-        clients.delete(res);
-        if (clients.size === 0) notificationClients.delete(userId);
-      });
+      req.on('close', cleanup);
+      res.on('error', cleanup);
     } catch (err: any) {
       await auditLog({
         action: 'security.unauthorized_access',

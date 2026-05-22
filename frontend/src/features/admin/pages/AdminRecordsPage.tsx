@@ -13,7 +13,7 @@ const config = {
   users: {
     title: 'Users',
     eyebrow: 'Admin Registry',
-    description: 'Account status, role, onboarding state, sessions, and compliance signals.',
+    description: 'Account status, registration status, role, onboarding state, sessions, and compliance signals.',
     endpoint: '/api/admin/users',
     icon: Users
   },
@@ -52,14 +52,14 @@ const rowTitle = (kind: AdminKind, record: RecordMap) => {
 };
 
 const rowSubtitle = (kind: AdminKind, record: RecordMap) => {
-  if (kind === 'users') return [record.email, record.mobile, record.organization?.name].filter(Boolean).join(' | ');
+  if (kind === 'users') return [record.email, record.mobile, record.organization?.name, record.registrationStatus && `registration: ${record.registrationStatus}`, record.onboardingStatus && `onboarding: ${record.onboardingStatus}`].filter(Boolean).join(' | ');
   if (kind === 'audit') return [record.User?.email, record.entityType && `${record.entityType} #${record.entityId || '-'}`].filter(Boolean).join(' | ');
   if (kind === 'fraud') return [record.user?.email, record.entityType && `${record.entityType} #${record.entityId || '-'}`].filter(Boolean).join(' | ');
   return record.description || record.code || '-';
 };
 
 const statusOf = (kind: AdminKind, record: RecordMap) => {
-  if (kind === 'users') return record.accountStatus || record.onboardingStatus || record.role;
+  if (kind === 'users') return record.registrationStatus || record.onboardingStatus || record.accountStatus || record.role;
   if (kind === 'audit') return record.entityType || 'recorded';
   if (kind === 'rules') return record.isActive === false ? 'inactive' : 'active';
   return record.status || 'open';
@@ -94,7 +94,10 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
   if (query.trim()) params.set('q', query.trim());
   if (role) params.set('role', role);
   if (status) params.set('status', status);
-  if (kind === 'users' && status) params.set('accountStatus', status);
+  if (kind === 'users' && status) {
+    if (['completed', 'incomplete'].includes(status)) params.set('registrationStatus', status);
+    else params.set('accountStatus', status);
+  }
   if (severity) params.set('severity', severity);
   const endpoint = `${cfg.endpoint}${params.toString() ? `?${params.toString()}` : ''}`;
   const { data, loading, error, reload } = useFeatureQuery<any>(endpoint, { records: [] });
@@ -174,7 +177,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
       <Card><CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_160px_160px_160px]">
         <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${cfg.title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1d4ed8]/20" /></div>
         <select value={role} onChange={event => setRole(event.target.value)} disabled={kind !== 'users'} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold disabled:bg-slate-50 disabled:text-slate-300"><option value="">All roles</option><option value="admin">Admin</option><option value="buyer">Buyer</option><option value="seller">Seller</option></select>
-        <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All statuses</option><option value="PENDING">Pending</option><option value="ACTIVE">Active</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option><option value="approved_for_procurement">Approved onboarding</option></select>
+        <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold"><option value="">All statuses</option><option value="completed">Registration completed</option><option value="incomplete">Registration incomplete</option><option value="approved_for_procurement">Approved onboarding</option><option value="PENDING">Pending account</option><option value="ACTIVE">Active account</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option></select>
         <select value={severity} onChange={event => setSeverity(event.target.value)} disabled={!['fraud', 'rules'].includes(kind)} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold disabled:bg-slate-50 disabled:text-slate-300"><option value="">All severity</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select>
       </CardContent></Card>
 

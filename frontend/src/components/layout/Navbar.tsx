@@ -297,9 +297,20 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 
     let eventSource: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
+    let disposed = false;
+
+    const scheduleReconnect = () => {
+      if (disposed || retryTimeout) return;
+      retryTimeout = setTimeout(() => {
+        retryTimeout = null;
+        connectStream();
+      }, 1000);
+    };
 
     const connectStream = () => {
+      if (disposed) return;
       try {
+        eventSource?.close();
         eventSource = new EventSource(streamUrl);
 
         eventSource.addEventListener('connected', () => {
@@ -320,23 +331,26 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
           }
         });
 
+        eventSource.addEventListener('close', () => {
+          eventSource?.close();
+          eventSource = null;
+          scheduleReconnect();
+        });
+
         eventSource.addEventListener('error', (err) => {
-          console.warn('[SSE] EventSource connection error. Reconnecting...', err);
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          retryTimeout = setTimeout(connectStream, 5000);
+          if (disposed) return;
+          console.warn('[SSE] EventSource connection error. Waiting for browser reconnect...', err);
         });
       } catch (err) {
         console.error('[SSE] Failed to initialize EventSource:', err);
-        retryTimeout = setTimeout(connectStream, 5000);
+        scheduleReconnect();
       }
     };
 
     connectStream();
 
     return () => {
+      disposed = true;
       if (eventSource) {
         eventSource.close();
       }

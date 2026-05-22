@@ -34,6 +34,8 @@ const keyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otp(purpose,
 const attemptsKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpAttempts(purpose, identity);
 const sendCountKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpCooldown(purpose, identity);
 
+const dbOtpIdentity = (purpose: OtpPurpose, identity: string) => `${purpose}:${identity}`;
+
 export const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
 export const storeOtp = async (
@@ -100,6 +102,14 @@ export const storeOtp = async (
     await redis.set(attemptsKeyFor(purpose, normalizedIdentity), '0', 'EX', OTP_TTL_SECONDS);
   } else {
     localOtpStore.set(keyFor(purpose, normalizedIdentity), state);
+    await prisma.otp.create({
+      data: {
+        email: dbOtpIdentity(purpose, normalizedIdentity),
+        otp,
+        isVerified: false,
+        expiresAt
+      }
+    }).catch(() => undefined);
   }
 
   await prisma.otpVerification.create({
@@ -131,6 +141,29 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
     if (raw) state = JSON.parse(raw) as OtpState;
   } else {
     state = localOtpStore.get(key) || null;
+  }
+
+  if (!state && !useRedis) {
+    const dbRecord = await prisma.otp.findFirst({
+      where: {
+        email: dbOtpIdentity(purpose, normalizedIdentity),
+        isVerified: false,
+        expiresAt: { gte: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    }).catch(() => null);
+
+    if (dbRecord) {
+      state = {
+        otpHash: sha256(dbRecord.otp),
+        otpHashes: [sha256(dbRecord.otp)],
+        verified: false,
+        attempts: 0,
+        createdAt: dbRecord.createdAt.toISOString(),
+        expiresAt: dbRecord.expiresAt.toISOString()
+      };
+      localOtpStore.set(key, state);
+    }
   }
 
   if (!state) return { ok: false, reason: 'invalid' as const, attemptsRemaining: MAX_OTP_ATTEMPTS };
@@ -176,6 +209,14 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
     await redis.set(key, JSON.stringify(state), 'KEEPTTL');
   } else {
     localOtpStore.set(key, state);
+    await prisma.otp.updateMany({
+      where: {
+        email: dbOtpIdentity(purpose, normalizedIdentity),
+        isVerified: false,
+        expiresAt: { gte: new Date() }
+      },
+      data: { isVerified: true }
+    }).catch(() => undefined);
   }
 
   await prisma.otpVerification.updateMany({
@@ -227,6 +268,9 @@ export const consumeOtp = async (purpose: OtpPurpose, identity: string) => {
   } else {
     localOtpStore.delete(keyFor(purpose, normalizedIdentity));
     localSendCounts.delete(`${purpose}:${normalizedIdentity}:cooldown`);
+    await prisma.otp.deleteMany({
+      where: { email: dbOtpIdentity(purpose, normalizedIdentity) }
+    }).catch(() => undefined);
   }
 };
 

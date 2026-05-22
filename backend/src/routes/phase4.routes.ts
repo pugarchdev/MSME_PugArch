@@ -408,6 +408,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
           businessName: true,
           productCategories: true,
           pan: true,
+          msmeCategory: true,
           documents: true,
           sellerDocuments: {
             include: {
@@ -479,8 +480,17 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
 // Verification
 router.get('/verify/gst/:gstin', authenticate, verificationRateLimit, asyncRoute(async (req, res) => {
   const { gstin } = parse(gstParams, req.params);
-  await db.apiVerificationLog.create({ data: { userId: userId(req), provider: 'internal', verificationType: 'GST', requestReference: gstin, status: 'VERIFIED' } }).catch(() => undefined);
-  ok(res, { gstin: gstin.toUpperCase(), verified: true });
+  const gstResult = await verifyGstinInternal(gstin.toUpperCase());
+  await db.apiVerificationLog.create({
+    data: {
+      userId: userId(req),
+      provider: 'apisetu',
+      verificationType: 'GST',
+      requestReference: gstin.toUpperCase(),
+      status: 'VERIFIED'
+    }
+  }).catch(() => undefined);
+  ok(res, { gstin: gstin.toUpperCase(), verified: true, details: gstResult });
 }));
 
 async function verifyGstinInternal(gstin: string) {
@@ -498,33 +508,13 @@ async function verifyGstinInternal(gstin: string) {
 
   const stateName = gstStateMap[gstin.substring(0, 2)] || 'Maharashtra';
   const gstinPart = gstin.substring(2, 12);
-  const mockDealerPayload = {
-    requestedGstin: gstin,
-    responseGstin: gstin,
-    legalName: `JsgSmile ${gstinPart} Industries Private Limited`,
-    tradeName: `JsgSmile ${gstinPart} Enterprise`,
-    organizationName: `JsgSmile ${gstinPart} Industries Private Limited`,
-    address: `Sector 4, Plot 12, Industrial Area, ${stateName}`,
-    registeredOfficeAddress: `Sector 4, Plot 12, Industrial Area, ${stateName}`,
-    country: 'India',
-    state: stateName,
-    city: 'Mumbai',
-    district: 'Mumbai',
-    pincode: '400001',
-    pinCode: '400001',
-    pan: gstinPart,
-    status: 'Active',
-    isRegisteredDealer: true,
-    source: 'mocked_dealer_payload',
-    message: undefined
-  };
 
   const apiKey = process.env.APISETU_API_KEY ? String(process.env.APISETU_API_KEY).trim().replace(/^['"]|['"]$/g, '') : '';
   const clientId = process.env.APISETU_CLIENT_ID ? String(process.env.APISETU_CLIENT_ID).trim().replace(/^['"]|['"]$/g, '') : '';
   const urlTemplate = process.env.APISETU_GST_URL ? String(process.env.APISETU_GST_URL).trim().replace(/^['"]|['"]$/g, '') : 'https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}';
 
   if (!apiKey || apiKey.includes('YOUR_') || apiKey.includes('placeholder') || !clientId || clientId.includes('YOUR_') || clientId.includes('placeholder')) {
-    return mockDealerPayload;
+    throw new ApiError(400, 'GST verification service is not configured (API credentials missing).');
   }
 
   try {
@@ -544,7 +534,7 @@ async function verifyGstinInternal(gstin: string) {
     });
 
     if (!response.ok) {
-      return mockDealerPayload;
+      throw new ApiError(400, `GST verification failed: API Setu returned status ${response.status}`);
     }
 
     const raw = await response.json();
@@ -554,6 +544,11 @@ async function verifyGstinInternal(gstin: string) {
 
     const legalName = payload?.legalNameOfBusiness || payload?.lgnm || payload?.legalName || payload?.legal_name || payload?.legalNam || payload?.legal_name_of_business || payload?.name || '';
     const tradeName = payload?.tradeNam || payload?.tradeName || payload?.trade_name || payload?.trade_name_of_business || payload?.businessName || '';
+
+    if (!legalName && !tradeName) {
+      throw new ApiError(400, 'GST verification failed: Provider returned incomplete GST data.');
+    }
+
     const pincode = addressSource?.pncd || addressSource?.pinCode || addressSource?.pincode || addressSource?.pin || addressSource?.zip || '400001';
     const district = addressSource?.dst || addressSource?.district || addressSource?.dist || addressSource?.districtName || 'Mumbai';
     const city = addressSource?.city || addressSource?.town || addressSource?.village || addressSource?.location || district || 'Mumbai';
@@ -579,8 +574,11 @@ async function verifyGstinInternal(gstin: string) {
       source: 'live_apisetu',
       message: undefined
     };
-  } catch (e) {
-    return mockDealerPayload;
+  } catch (e: any) {
+    if (e instanceof ApiError) {
+      throw e;
+    }
+    throw new ApiError(500, `GST verification failed: ${e.message || e}`);
   }
 }
 
@@ -1616,12 +1614,14 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
   const query = parse(paginationQuery.extend({
     role: z.string().trim().optional(),
     onboardingStatus: z.string().trim().optional(),
-    accountStatus: z.string().trim().optional()
+    accountStatus: z.string().trim().optional(),
+    registrationStatus: z.string().trim().optional()
   }), req.query);
   const where: any = {};
   if (query.role) where.role = query.role;
   if (query.onboardingStatus) where.onboardingStatus = query.onboardingStatus;
   if (query.accountStatus) where.accountStatus = query.accountStatus;
+  if (query.registrationStatus) where.registrationStatus = query.registrationStatus;
   if (query.q) {
     where.OR = [
       { name: { contains: query.q, mode: 'insensitive' } },

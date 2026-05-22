@@ -3714,6 +3714,7 @@ const app = serverlessApp;
   });
 
   app.get('/api/notifications/stream', async (req, res) => {
+    const unauthorizedAuditAction = 'security.unauthorized_access';
     try {
       const token = String(req.query.token || '').trim();
       if (!token) throw new ApiError(401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
@@ -3794,7 +3795,7 @@ const app = serverlessApp;
       res.on('error', cleanup);
     } catch (err: any) {
       await auditLog({
-        action: 'security.unauthorized_access',
+        action: unauthorizedAuditAction,
         entityType: 'notifications',
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],

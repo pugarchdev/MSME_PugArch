@@ -582,6 +582,54 @@ async function verifyGstinInternal(gstin: string) {
   }
 }
 
+// ── Auto-create / find Organization from verified GST data ──
+async function upsertOrganizationFromGst(
+  gstResult: any,
+  normalizedGstin: string,
+  role: string
+) {
+  // Try to find an existing Organization by the same GSTIN
+  let org = await db.organization.findFirst({
+    where: { gstin: normalizedGstin }
+  });
+
+  if (!org) {
+    const orgType = role === 'buyer' ? 'GOVERNMENT' : 'MSME';
+    org = await db.organization.create({
+      data: {
+        organizationName: gstResult.legalName || gstResult.tradeName || 'Verified Organization',
+        organizationType: orgType as any,
+        gstin: normalizedGstin,
+        panNumber: gstResult.pan || null,
+        state: gstResult.state || null,
+        city: gstResult.city || null,
+        district: gstResult.district || null,
+        pincode: gstResult.pincode || null,
+        addressLine1: gstResult.address || null,
+        country: 'India',
+        verificationStatus: 'VERIFIED' as any
+      }
+    });
+  } else {
+    // Update the existing org with latest verified details if names changed
+    await db.organization.update({
+      where: { id: org.id },
+      data: {
+        organizationName: gstResult.legalName || gstResult.tradeName || org.organizationName,
+        panNumber: gstResult.pan || org.panNumber,
+        state: gstResult.state || org.state,
+        city: gstResult.city || org.city,
+        district: gstResult.district || org.district,
+        pincode: gstResult.pincode || org.pincode,
+        addressLine1: gstResult.address || org.addressLine1,
+        verificationStatus: 'VERIFIED' as any
+      }
+    });
+  }
+
+  return org;
+}
+
 router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req, res) => {
   const { gstin } = parse(z.object({ gstin: z.string().trim().min(15).max(15) }), req.body);
   const normalizedGstin = gstin.toUpperCase();
@@ -681,6 +729,11 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
       });
     }
 
+    // ── Auto-create/link Organization for seller ──
+    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'seller');
+    await db.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
+    await db.sellerProfile.update({ where: { id: sellerProfile.id }, data: { organizationId: org.id } });
+
     finalSectionStatus.offices = 'approved';
     finalSectionStatus.details = 'approved';
   } else if (user.role === 'buyer') {
@@ -711,6 +764,14 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
         where: { id: buyerProfile.id },
         data: profileData
       });
+    }
+
+    // ── Auto-create/link Organization for buyer ──
+    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'buyer');
+    await db.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
+    const bpRecord = await db.buyerProfile.findUnique({ where: { userId: user.id } });
+    if (bpRecord) {
+      await db.buyerProfile.update({ where: { id: bpRecord.id }, data: { organizationId: org.id } });
     }
 
     finalSectionStatus.org = 'approved';

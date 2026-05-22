@@ -31,20 +31,12 @@ import {
   PanelLeftOpen,
   BarChart3,
   FileSearch,
-  Info
+  Info,
+  Check,
+  CheckSquare
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-
-interface PortalNotification {
-  id: number | string;
-  title: string;
-  message: string;
-  type: string;
-  isRead?: boolean;
-  createdAt?: string;
-  route?: string;
-  redirectUrl?: string;
-}
+import { routeForNotification, type PortalNotification } from '../../lib/notifications';
 
 interface SidebarItem {
   label: string;
@@ -377,6 +369,38 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 
   const unreadCount = Array.isArray(notifications) ? notifications.filter(n => !n.isRead).length : 0;
 
+  const markNotificationAsRead = async (id: number | string) => {
+    if (!authToken) return;
+    try {
+      await api.post(`/api/notifications/${id}/read`, {}, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      window.dispatchEvent(new CustomEvent('notifications:updated'));
+    } catch {
+      // Keep the dropdown usable if the read receipt fails.
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    if (!authToken || unreadCount === 0) return;
+    try {
+      await api.post('/api/notifications/read-all', {}, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      window.dispatchEvent(new CustomEvent('notifications:updated'));
+    } catch {
+      // Keep the dropdown usable if the read receipt fails.
+    }
+  };
+
+  const openNotification = async (item: PortalNotification) => {
+    if (!item.isRead) await markNotificationAsRead(item.id);
+    router.push(routeForNotification(item, user?.role));
+    setIsNotificationsOpen(false);
+  };
+
   return (
     <header className="h-14 bg-white border-b border-slate-200 sticky top-0 z-40 transition-all duration-300">
       <div className="h-full px-4 flex items-center justify-between">
@@ -425,11 +449,23 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
               <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <h3 className="text-xs font-black uppercase tracking-widest text-[#1d4ed8]">Notifications</h3>
-                  {unreadCount > 0 && (
-                    <Badge variant="secondary" className="bg-white text-[#1d4ed8] border-slate-200 font-bold text-[10px]">
-                      {unreadCount} NEW
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {unreadCount > 0 && (
+                      <Badge variant="secondary" className="bg-white text-[#1d4ed8] border-slate-200 font-bold text-[10px]">
+                        {unreadCount} NEW
+                      </Badge>
+                    )}
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllNotificationsAsRead}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wide text-slate-500 transition-colors hover:text-[#1d4ed8]"
+                        title="Mark all as read"
+                      >
+                        <CheckSquare className="h-3.5 w-3.5" />
+                        All
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                   {Array.isArray(notifications) && notifications.length > 0 ? (
@@ -441,21 +477,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                       return (
                         <button
                           key={item.id}
-                          onClick={async () => {
-                            if (!item.isRead && authToken) {
-                              try {
-                                await api.post(`/api/notifications/${item.id}/read`, {}, {
-                                  headers: { Authorization: `Bearer ${authToken}` }
-                                });
-                                setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, isRead: true } : n));
-                              } catch {
-                                // Keep the menu usable even if the read receipt fails.
-                              }
-                            }
-                            const targetRoute = item.route || item.redirectUrl;
-                            if (targetRoute) router.push(targetRoute);
-                            setIsNotificationsOpen(false);
-                          }}
+                          onClick={() => openNotification(item)}
                           className={cn(
                             "w-full p-4 text-left border-b border-slate-100 transition-all hover:bg-slate-50 group",
                             !item.isRead ? "bg-blue-50/30" : "opacity-75"
@@ -469,10 +491,33 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                               <Icon className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <p className={cn(
-                                "text-[10px] font-black uppercase tracking-widest",
-                                isWarning ? "text-red-600" : isSuccess ? "text-emerald-700" : "text-[#1d4ed8]"
-                              )}>{item.title}</p>
+                              <div className="flex items-start justify-between gap-3">
+                                <p className={cn(
+                                  "text-[10px] font-black uppercase tracking-widest",
+                                  isWarning ? "text-red-600" : isSuccess ? "text-emerald-700" : "text-[#1d4ed8]"
+                                )}>{item.title}</p>
+                                {!item.isRead && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      markNotificationAsRead(item.id);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        markNotificationAsRead(item.id);
+                                      }
+                                    }}
+                                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 transition-colors hover:text-emerald-600"
+                                    title="Mark as read"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
+                              </div>
                               <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-800">{item.message}</p>
                               {item.createdAt && (
                                 <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">

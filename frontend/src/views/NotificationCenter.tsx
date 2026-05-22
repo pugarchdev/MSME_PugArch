@@ -5,17 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, CheckCircle2, AlertTriangle, Info, ArrowLeft, Check, CheckSquare } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
-
-interface PortalNotification {
-  id: number | string;
-  title: string;
-  message: string;
-  type: string;
-  isRead?: boolean;
-  createdAt?: string;
-  route?: string;
-  redirectUrl?: string;
-}
+import { routeForNotification, type PortalNotification } from '../lib/notifications';
 
 export default function NotificationCenter() {
   const { token, user } = useAuth();
@@ -81,6 +71,11 @@ export default function NotificationCenter() {
       console.error('Failed to mark all as read:', err);
       toast.error("Failed to update notifications");
     }
+  };
+
+  const handleOpenNotification = async (item: PortalNotification) => {
+    if (!item.isRead) await handleMarkAsRead(item.id);
+    router.push(routeForNotification(item, user?.role));
   };
 
   if (isLoading) {
@@ -177,19 +172,14 @@ export default function NotificationCenter() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
-                    {(item.route || item.redirectUrl) && (
-                      <Button
-                        onClick={() => {
-                          const route = item.route || item.redirectUrl;
-                          if (route) router.push(route);
-                        }}
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#1d4ed8] hover:bg-slate-100 text-xs font-bold uppercase tracking-wider h-8"
-                      >
-                        Navigate
-                      </Button>
-                    )}
+                    <Button
+                      onClick={() => handleOpenNotification(item)}
+                      variant="ghost"
+                      size="sm"
+                      className="text-[#1d4ed8] hover:bg-slate-100 text-xs font-bold uppercase tracking-wider h-8"
+                    >
+                      Open
+                    </Button>
 
                     {!item.isRead && (
                       <button

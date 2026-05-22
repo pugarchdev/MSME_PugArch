@@ -23,6 +23,7 @@ import { validatePersonalVerification } from '../../utils/validationHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { publishNotificationEvent } from '../../services/realtime.service.js';
+import { notificationService } from '../../services/notification.service.js';
 
 // CreateNotificationSafe mock for backward compatibility if not globally service-ified yet
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
@@ -206,6 +207,23 @@ export const authController = {
         userAgent: req.headers['user-agent'],
         metadata: { role: user.role }
       });
+
+      if (user.role === Role.buyer || user.role === Role.seller) {
+        try {
+          await notificationService.notifyAdminsWithEmail({
+            title: 'New User Registered',
+            message: `${user.name} (${user.role}) has completed account registration and is ready for onboarding review.`,
+            type: 'user_registered',
+            priority: 'medium',
+            redirectUrl: '/admin/onboarding',
+            emailSubject: 'New User Registration — MSME Procurement Portal',
+            emailHtml: `<p>A new ${user.role} account has completed registration.</p><p><strong>Name:</strong> ${user.name}</p><p><strong>Email:</strong> ${user.email}</p><p><strong>Next Step:</strong> Monitor onboarding completion in Admin Onboarding.</p>`
+          });
+        } catch (_error) {
+          // Suppress notification errors to keep registration non-blocking.
+        }
+      }
+
       res.status(201).json({ ...tokens, user: toSafeUser(user) });
     } catch (err: any) {
       handleSecureRouteError(res, err, 'Unable to register right now. Please try again.');

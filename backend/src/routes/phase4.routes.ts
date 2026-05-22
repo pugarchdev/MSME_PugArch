@@ -1576,12 +1576,14 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
   const query = parse(paginationQuery.extend({
     role: z.string().trim().optional(),
     onboardingStatus: z.string().trim().optional(),
-    accountStatus: z.string().trim().optional()
+    accountStatus: z.string().trim().optional(),
+    registrationStatus: z.string().trim().optional()
   }), req.query);
   const where: any = {};
   if (query.role) where.role = query.role;
   if (query.onboardingStatus) where.onboardingStatus = query.onboardingStatus;
   if (query.accountStatus) where.accountStatus = query.accountStatus;
+  if (query.registrationStatus) where.registrationStatus = query.registrationStatus;
   if (query.q) {
     where.OR = [
       { name: { contains: query.q, mode: 'insensitive' } },

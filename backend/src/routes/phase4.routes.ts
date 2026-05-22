@@ -211,6 +211,21 @@ router.get('/onboarding/me', authenticate, asyncRoute(async (req, res) => {
 
 router.put('/seller/onboarding', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const data = req.body || {};
+  const exists = await db.sellerProfile.findUnique({ where: { userId: userId(req) } });
+  if (!exists) {
+    try {
+      const u = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true } });
+      await notificationService.notifyAdmins({
+        title: 'Seller Started Onboarding',
+        message: `${u?.name || 'A stakeholder'} has started their onboarding process and is filling out details.`,
+        type: 'onboarding_started',
+        priority: 'low',
+        redirectUrl: '/admin/onboarding'
+      });
+    } catch (err) {
+      console.error('[Onboarding Started Notification] Failed:', err);
+    }
+  }
   const profile = await db.sellerProfile.upsert({
     where: { userId: userId(req) },
     update: { ...data, userId: undefined },
@@ -228,6 +243,21 @@ router.put('/seller/onboarding', authenticate, authorize('seller'), asyncRoute(a
 
 router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const data = req.body || {};
+  const exists = await db.buyerProfile.findUnique({ where: { userId: userId(req) } });
+  if (!exists) {
+    try {
+      const u = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true } });
+      await notificationService.notifyAdmins({
+        title: 'Buyer Started Onboarding',
+        message: `${u?.name || 'A stakeholder'} has started their onboarding process and is filling out details.`,
+        type: 'onboarding_started',
+        priority: 'low',
+        redirectUrl: '/admin/onboarding'
+      });
+    } catch (err) {
+      console.error('[Onboarding Started Notification] Failed:', err);
+    }
+  }
   const profile = await db.buyerProfile.upsert({
     where: { userId: userId(req) },
     update: { ...data, userId: undefined },
@@ -371,10 +401,20 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
       adminFeedback: true,
       complianceViolations: true,
       buyerProfile: {
-        select: { organizationName: true, procurementCategories: true, industry: true, gst: true, pan: true, state: true }
+        select: { organizationName: true, procurementCategories: true, industry: true, gst: true, pan: true, state: true, documents: true }
       },
       sellerProfile: {
-        select: { businessName: true, productCategories: true, industry: true, pan: true, state: true }
+        select: {
+          businessName: true,
+          productCategories: true,
+          pan: true,
+          documents: true,
+          sellerDocuments: {
+            include: {
+              fileAsset: true
+            }
+          }
+        }
       }
     },
     orderBy: { updatedAt: 'desc' },
@@ -402,7 +442,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
     else buyers.push(item);
   }
 
-  ok(res, { sellers, buyers });
+  res.json(maskSensitive({ sellers, buyers }));
 }));
 
 router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
@@ -1783,9 +1823,9 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
   // Active Procurement Value
   const activePOs = await db.purchaseOrder.aggregate({
     where: { status: { in: ['accepted', 'in_progress', 'delivered'] } },
-    _sum: { totalAmount: true }
+    _sum: { amount: true }
   });
-  const activeProcurementValue = '₹' + (Number(activePOs._sum.totalAmount || 0) / 10000000).toFixed(2) + 'Cr';
+  const activeProcurementValue = '₹' + (Number(activePOs._sum.amount || 0) / 10000000).toFixed(2) + 'Cr';
 
   // Tender Success Rate
   const closedTenders = await db.tender.count({ where: { status: 'closed' } });
@@ -2096,43 +2136,5 @@ router.post('/notifications/read-all', authenticate, asyncRoute(async (req, res)
   });
   ok(res, { success: true });
 }));
-
-router.get('/notifications/stream', async (req, res) => {
-  const token = String(req.query.token || '');
-  if (!token) {
-    return res.status(401).json({ message: 'Token required' });
-  }
-
-  try {
-    const { verifyAccessToken } = await import('../services/token.service.js');
-    const decoded = verifyAccessToken(token);
-    const userIdVal = Number(decoded.id);
-    if (!userIdVal) return res.status(401).json({ message: 'Invalid token' });
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
-    // Send connected event
-    res.write(`event: connected\ndata: ${JSON.stringify({ status: 'connected' })}\n\n`);
-
-    const { subscribeRealtimeChannel } = await import('../services/realtime.service.js');
-    const { redisKeys } = await import('../constants/redis-keys.js');
-
-    const channel = redisKeys.notificationsUser(userIdVal);
-    const handler = (payload: any) => {
-      res.write(`event: notification\ndata: ${JSON.stringify(payload)}\n\n`);
-    };
-
-    await subscribeRealtimeChannel(channel, handler);
-
-    req.on('close', () => {
-      // Client closed connection
-    });
-  } catch (err) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-});
 
 export default router;

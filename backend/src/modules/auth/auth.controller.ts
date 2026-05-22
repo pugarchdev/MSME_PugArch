@@ -23,6 +23,7 @@ import { validatePersonalVerification } from '../../utils/validationHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { publishNotificationEvent } from '../../services/realtime.service.js';
+import { notificationService } from '../../services/notification.service.js';
 
 // CreateNotificationSafe mock for backward compatibility if not globally service-ified yet
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
@@ -195,6 +196,18 @@ export const authController = {
       });
 
       await consumeEmailOtp(email);
+
+      try {
+        await notificationService.notifyAdmins({
+          title: 'New Stakeholder Registered',
+          message: `${user.name} has registered as a new ${user.role}. Email: ${user.email}.`,
+          type: 'stakeholder_registered',
+          priority: 'medium',
+          redirectUrl: '/admin/onboarding'
+        });
+      } catch (err) {
+        console.error('[Register Notification] Failed to notify admins:', err);
+      }
 
       const tokens = issueAuthResponse(user);
       await auditLog({

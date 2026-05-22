@@ -40,6 +40,8 @@ export const maskBankAccount = (value: unknown) => maskValue(String(value ?? '')
 
 export const maskSensitive = <T>(input: T): T => {
   if (!input || typeof input !== 'object') return input;
+  if (input instanceof Date) return input;
+  if (input.constructor && (input.constructor.name === 'Decimal' || (input as any)._isDecimal === true)) return input;
   if (Array.isArray(input)) return input.map(item => maskSensitive(item)) as T;
 
   return Object.entries(input as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, value]) => {

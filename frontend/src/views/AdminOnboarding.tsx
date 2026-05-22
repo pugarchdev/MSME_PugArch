@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
+import { formatDate } from "../features/shared/format";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -38,6 +39,9 @@ import {
   BarChart3,
   ClipboardCheck,
   RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -45,7 +49,8 @@ export default function AdminOnboarding() {
   const authOptions = {
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
   };
-  const cachedData = api.peek("/api/admin/onboarding", authOptions);
+  const cachedRaw = api.peek("/api/admin/onboarding", authOptions);
+  const cachedData = cachedRaw?.data ?? cachedRaw;
   const [sellers, setSellers] = useState<any[]>(cachedData?.sellers || []);
   const [buyers, setBuyers] = useState<any[]>(cachedData?.buyers || []);
   const [activeTab, setActiveTab] = useState("sellers");
@@ -68,7 +73,8 @@ export default function AdminOnboarding() {
     if (!cachedData) setIsLoading(true);
     try {
       const res = await api.fetch("/api/admin/onboarding", authOptions);
-      const data = await res.json();
+      const raw = await res.json();
+      const data = raw?.data ?? raw;
       setSellers(data.sellers || []);
       setBuyers(data.buyers || []);
     } catch (err) {
@@ -336,16 +342,33 @@ export default function AdminOnboarding() {
     return Math.round((count / sections.length) * 100);
   };
 
+  const getDisplayText = (value: unknown, fallback: string) => {
+    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return fallback;
+  };
   const getEntityName = (item: any) =>
-    item.profile?.businessName || item.profile?.organizationName || "N/A";
-  const getPrimaryCategory = (item: any) =>
-    item.role === "buyer"
-      ? item.profile?.procurementCategories?.[0] || "General Procurement"
-      : Array.isArray(item.profile?.productCategories)
-        ? item.profile.productCategories[0]
-        : item.profile?.industry || "Manufacturing";
-  const getSubmittedDate = (item: any) =>
-    new Date(item.createdAt || Date.now());
+    getDisplayText(
+      item.profile?.businessName || item.profile?.organizationName,
+      "N/A",
+    );
+  const getPrimaryCategory = (item: any) => {
+    const category =
+      item.role === "buyer"
+        ? item.profile?.procurementCategories?.[0]
+        : Array.isArray(item.profile?.productCategories)
+          ? item.profile.productCategories[0]
+          : item.profile?.industry;
+
+    return getDisplayText(
+      category,
+      item.role === "buyer" ? "General Procurement" : "Manufacturing",
+    );
+  };
+  const getSubmittedDate = (item: any) => {
+    const d = new Date(item.createdAt || Date.now());
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  };
   const isPendingStatus = (status: string) =>
     ["pending", "pending_validation", "manual_review_required", "under_compliance_review"].includes(
       status,
@@ -389,13 +412,27 @@ export default function AdminOnboarding() {
       .sort((a, b) => {
         if (sortBy === "oldest")
           return getSubmittedDate(a).getTime() - getSubmittedDate(b).getTime();
+        if (sortBy === "newest")
+          return getSubmittedDate(b).getTime() - getSubmittedDate(a).getTime();
+        
         if (sortBy === "progress") return getProgress(b) - getProgress(a);
+        if (sortBy === "progress_asc") return getProgress(a) - getProgress(b);
+
         if (sortBy === "entity")
           return getEntityName(a).localeCompare(getEntityName(b));
+        if (sortBy === "entity_desc")
+          return getEntityName(b).localeCompare(getEntityName(a));
+
         if (sortBy === "status")
           return String(a.onboardingStatus || "").localeCompare(String(b.onboardingStatus || ""));
+        if (sortBy === "status_desc")
+          return String(b.onboardingStatus || "").localeCompare(String(a.onboardingStatus || ""));
+
         if (sortBy === "category")
           return getPrimaryCategory(a).localeCompare(getPrimaryCategory(b));
+        if (sortBy === "category_desc")
+          return getPrimaryCategory(b).localeCompare(getPrimaryCategory(a));
+
         return getSubmittedDate(b).getTime() - getSubmittedDate(a).getTime();
       });
   };
@@ -437,15 +474,17 @@ export default function AdminOnboarding() {
     : 0;
 
   const toggleAdminSort = (key: string) => {
-    const map: Record<string, string> = {
-      name: "entity",
-      entity: "entity",
-      category: "category",
-      submitted: sortBy === "oldest" ? "newest" : "oldest",
-      progress: "progress",
-      status: "status",
-    };
-    setSortBy(map[key] || "newest");
+    if (key === "submitted") {
+      setSortBy(sortBy === "oldest" ? "newest" : "oldest");
+    } else if (key === "progress") {
+      setSortBy(sortBy === "progress" ? "progress_asc" : "progress");
+    } else if (key === "entity" || key === "name") {
+      setSortBy(sortBy === "entity" ? "entity_desc" : "entity");
+    } else if (key === "category") {
+      setSortBy(sortBy === "category" ? "category_desc" : "category");
+    } else if (key === "status") {
+      setSortBy(sortBy === "status" ? "status_desc" : "status");
+    }
   };
 
   const SortTableHead = ({
@@ -456,18 +495,51 @@ export default function AdminOnboarding() {
     label: string;
     sortKey: string;
     className?: string;
-  }) => (
-    <TableHead className={cn("px-6 py-4", className)}>
-      <button
-        type="button"
-        onClick={() => toggleAdminSort(sortKey)}
-        className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#1d4ed8]"
-      >
-        {label}
-        <span className="text-[9px]">SORT</span>
-      </button>
-    </TableHead>
-  );
+  }) => {
+    let isActive = false;
+    let isAsc = true;
+
+    if (sortKey === "submitted") {
+      isActive = sortBy === "oldest" || sortBy === "newest";
+      isAsc = sortBy === "oldest";
+    } else if (sortKey === "progress") {
+      isActive = sortBy === "progress" || sortBy === "progress_asc";
+      isAsc = sortBy === "progress_asc";
+    } else if (sortKey === "entity" || sortKey === "name") {
+      isActive = sortBy === "entity" || sortBy === "entity_desc";
+      isAsc = sortBy === "entity";
+    } else if (sortKey === "category") {
+      isActive = sortBy === "category" || sortBy === "category_desc";
+      isAsc = sortBy === "category";
+    } else if (sortKey === "status") {
+      isActive = sortBy === "status" || sortBy === "status_desc";
+      isAsc = sortBy === "status";
+    }
+
+    return (
+      <TableHead className={cn("px-6 py-4", className)}>
+        <button
+          type="button"
+          onClick={() => toggleAdminSort(sortKey)}
+          className={cn(
+            "inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-[#1d4ed8] transition-colors",
+            isActive && "text-[#1d4ed8]"
+          )}
+        >
+          {label}
+          {isActive ? (
+            isAsc ? (
+              <ArrowUp className="h-3 w-3 text-[#1d4ed8]" />
+            ) : (
+              <ArrowDown className="h-3 w-3 text-[#1d4ed8]" />
+            )
+          ) : (
+            <ArrowUpDown className="h-3 w-3 opacity-40" />
+          )}
+        </button>
+      </TableHead>
+    );
+  };
 
   const handleKpiClick = (target: string) => {
     if (target === "pending") {
@@ -498,7 +570,7 @@ export default function AdminOnboarding() {
       GST: item.profile?.gst || "",
       State: item.profile?.state || "",
       Category: getPrimaryCategory(item),
-      "Submitted Date": getSubmittedDate(item).toISOString().split("T")[0],
+      "Submitted Date": formatDate(item.createdAt),
       Status: item.onboardingStatus || "pending",
       "Verification Progress": `${getProgress(item)}%`,
     }));
@@ -559,81 +631,7 @@ export default function AdminOnboarding() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-20 lg:self-start">
-            <p className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Admin Workbench
-            </p>
-            {[
-              {
-                id: "applications",
-                label: "Applications Registry",
-                icon: ClipboardCheck,
-                hint: `${totalNetwork} records`,
-              },
-              {
-                id: "scrutiny",
-                label: "Scrutiny Queue",
-                icon: Clock,
-                hint: `${pendingTotal} pending`,
-              },
-              {
-                id: "reports",
-                label: "MIS & Compliance",
-                icon: BarChart3,
-                hint: `${averageProgress}% avg progress`,
-              },
-              {
-                id: "flags",
-                label: "Correction Flags",
-                icon: AlertTriangle,
-                hint: `${correctionTotal + rejectedTotal} flagged`,
-              },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setAdminView(item.id);
-                  if (item.id === "scrutiny") setStatusFilter("pending");
-                  if (item.id === "flags")
-                    setStatusFilter(
-                      correctionTotal > 0 ? "resubmission" : "rejected",
-                    );
-                  if (item.id === "applications") setStatusFilter("all");
-                }}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-all",
-                  adminView === item.id
-                    ? "bg-[#1d4ed8] text-white shadow-md"
-                    : "text-slate-600 hover:bg-slate-50",
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "h-4 w-4 shrink-0",
-                    adminView === item.id ? "text-white" : "text-[#1d4ed8]",
-                  )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-black">
-                    {item.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "block text-[10px] font-bold",
-                      adminView === item.id
-                        ? "text-blue-100"
-                        : "text-slate-400",
-                    )}
-                  >
-                    {item.hint}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </aside>
-
+        <div className="grid grid-cols-1 gap-4">
           <div className="min-w-0 space-y-6">
             {/* Stats Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -902,11 +900,7 @@ export default function AdminOnboarding() {
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="text-xs font-bold text-slate-500 font-mono">
-                                  {
-                                    getSubmittedDate(item)
-                                      .toISOString()
-                                      .split("T")[0]
-                                  }
+                                  {formatDate(item.createdAt)}
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
@@ -2100,6 +2094,114 @@ export default function AdminOnboarding() {
                                 : "PENDING"
                             }
                           />
+                        </div>
+                      </div>
+
+                      {/* Section 8: Submitted Verification Documents */}
+                      <div className="group rounded-lg border border-slate-200 bg-white p-5 pb-6 shadow-sm animate-in slide-in-from-bottom-4 duration-300">
+                        <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100 relative">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-9 h-9 rounded-md bg-blue-50 text-[#1d4ed8] flex items-center justify-center shadow-sm">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <h4 className="text-xs font-extrabold text-[#1d4ed8] uppercase tracking-wide">
+                              8. Submitted Verification Documents
+                            </h4>
+                          </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {/* Render sellerDocuments (relational) */}
+                          {selectedItem.profile?.sellerDocuments && selectedItem.profile.sellerDocuments.length > 0 ? (
+                            selectedItem.profile.sellerDocuments.map((doc: any) => {
+                              const file = doc.fileAsset;
+                              if (!file) return null;
+                              return (
+                                <div key={doc.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                                  <div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                        {doc.documentType}
+                                      </span>
+                                      <Badge variant="default" className={cn(
+                                        "text-[9px] font-bold px-1.5 py-0.5",
+                                        doc.verificationStatus === 'APPROVED' ? "bg-green-50 text-green-700 border-green-200" :
+                                        doc.verificationStatus === 'REJECTED' ? "bg-red-50 text-red-700 border-red-200" :
+                                        "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                      )}>
+                                        {doc.verificationStatus}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-700 mt-1 line-clamp-1" title={file.originalName}>
+                                      {file.originalName}
+                                    </p>
+                                    {doc.uploadedAt && (
+                                      <p className="text-[9px] text-slate-400 mt-0.5">
+                                        Uploaded: {formatDate(doc.uploadedAt)}
+                                      </p>
+                                    )}
+                                    {doc.remarks && (
+                                      <p className="text-[10px] text-slate-500 mt-1 italic">
+                                        Note: {doc.remarks}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="pt-2 border-t border-slate-100 mt-2">
+                                    <a
+                                      href={file.url || "#"}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs font-bold text-[#1d4ed8] hover:underline inline-flex items-center gap-1"
+                                    >
+                                      <Eye className="h-3 w-3" /> View Document
+                                    </a>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : null}
+
+                          {/* Render documents JSON if any */}
+                          {selectedItem.profile?.documents &&
+                            Object.entries(selectedItem.profile.documents).map(
+                              ([key, url]: [string, any]) => {
+                                if (!url) return null;
+                                // Avoid duplication if already in sellerDocuments
+                                const isDup = selectedItem.profile?.sellerDocuments?.some(
+                                  (d: any) => d.documentType.toLowerCase() === key.toLowerCase()
+                                );
+                                if (isDup) return null;
+                                return (
+                                  <div key={key} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                                    <div>
+                                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                        {key}
+                                      </span>
+                                      <p className="text-xs font-bold text-slate-700 mt-1">
+                                        Legacy Link Document
+                                      </p>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-100 mt-2">
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-xs font-bold text-[#1d4ed8] hover:underline inline-flex items-center gap-1"
+                                      >
+                                        <Eye className="h-3 w-3" /> View Document
+                                      </a>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            )}
+
+                          {(!selectedItem.profile?.sellerDocuments || selectedItem.profile.sellerDocuments.length === 0) &&
+                           (!selectedItem.profile?.documents || Object.keys(selectedItem.profile.documents).length === 0) && (
+                            <div className="col-span-full py-4 text-center text-xs text-slate-400 font-medium">
+                              No uploaded documents found for this seller profile.
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>

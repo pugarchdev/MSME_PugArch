@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
-import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { cn } from '../lib/utils';
@@ -22,6 +22,66 @@ export default function PurchaseOrders() {
   const [sortBy, setSortBy] = useState('newest');
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
 
+  const toggleSort = (key: string) => {
+    if (key === 'po') {
+      setSortBy(sortBy === 'po_asc' ? 'po_desc' : 'po_asc');
+    } else if (key === 'title') {
+      setSortBy(sortBy === 'title_asc' ? 'title_desc' : 'title_asc');
+    } else if (key === 'party') {
+      setSortBy(sortBy === 'party_asc' ? 'party_desc' : 'party_asc');
+    } else if (key === 'value') {
+      setSortBy(sortBy === 'value_low' ? 'value_high' : 'value_low');
+    } else if (key === 'expected') {
+      setSortBy(sortBy === 'expected_asc' ? 'expected_desc' : 'expected_asc');
+    } else if (key === 'status') {
+      setSortBy(sortBy === 'status_asc' ? 'status_desc' : 'status_asc');
+    }
+  };
+
+  const SortHeader = ({ label, columnKey, className = '' }: { label: string, columnKey: string, className?: string }) => {
+    let isActive = false;
+    let isAsc = true;
+
+    if (columnKey === 'po') {
+      isActive = sortBy === 'po_asc' || sortBy === 'po_desc';
+      isAsc = sortBy === 'po_asc';
+    } else if (columnKey === 'title') {
+      isActive = sortBy === 'title_asc' || sortBy === 'title_desc';
+      isAsc = sortBy === 'title_asc';
+    } else if (columnKey === 'party') {
+      isActive = sortBy === 'party_asc' || sortBy === 'party_desc';
+      isAsc = sortBy === 'party_asc';
+    } else if (columnKey === 'value') {
+      isActive = sortBy === 'value_low' || sortBy === 'value_high';
+      isAsc = sortBy === 'value_low';
+    } else if (columnKey === 'expected') {
+      isActive = sortBy === 'expected_asc' || sortBy === 'expected_desc';
+      isAsc = sortBy === 'expected_asc';
+    } else if (columnKey === 'status') {
+      isActive = sortBy === 'status' || sortBy === 'status_asc' || sortBy === 'status_desc';
+      isAsc = sortBy === 'status' || sortBy === 'status_asc';
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(columnKey)}
+        className={cn("inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[#1d4ed8] transition-colors", isActive && "text-[#1d4ed8]", className)}
+      >
+        {label}
+        {isActive ? (
+          isAsc ? (
+            <ArrowUp className="h-3 w-3 text-[#1d4ed8]" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-[#1d4ed8]" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+    );
+  };
+
   const filteredOrders = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return orders
@@ -37,7 +97,30 @@ export default function PurchaseOrders() {
       .sort((a, b) => {
         if (sortBy === 'value_high') return Number(b.amount || b.totalValue || 0) - Number(a.amount || a.totalValue || 0);
         if (sortBy === 'value_low') return Number(a.amount || a.totalValue || 0) - Number(b.amount || b.totalValue || 0);
-        if (sortBy === 'status') return String(a.status || '').localeCompare(String(b.status || ''));
+        
+        if (sortBy === 'status' || sortBy === 'status_asc') return String(a.status || '').localeCompare(String(b.status || ''));
+        if (sortBy === 'status_desc') return String(b.status || '').localeCompare(String(a.status || ''));
+
+        if (sortBy === 'po_asc') return String(a.poNumber || '').localeCompare(String(b.poNumber || ''));
+        if (sortBy === 'po_desc') return String(b.poNumber || '').localeCompare(String(a.poNumber || ''));
+
+        if (sortBy === 'title_asc') return String(a.title || '').localeCompare(String(b.title || ''));
+        if (sortBy === 'title_desc') return String(b.title || '').localeCompare(String(a.title || ''));
+
+        if (sortBy === 'party_asc') {
+          const aParty = a.seller?.name || a.buyer?.name || '';
+          const bParty = b.seller?.name || b.buyer?.name || '';
+          return aParty.localeCompare(bParty);
+        }
+        if (sortBy === 'party_desc') {
+          const aParty = a.seller?.name || a.buyer?.name || '';
+          const bParty = b.seller?.name || b.buyer?.name || '';
+          return bParty.localeCompare(aParty);
+        }
+
+        if (sortBy === 'expected_asc') return new Date(a.expectedDelivery || 0).getTime() - new Date(b.expectedDelivery || 0).getTime();
+        if (sortBy === 'expected_desc') return new Date(b.expectedDelivery || 0).getTime() - new Date(a.expectedDelivery || 0).getTime();
+
         return String(b.createdAt || b.poNumber).localeCompare(String(a.createdAt || a.poNumber));
       });
   }, [activeTab, orders, searchTerm, sortBy]);
@@ -141,7 +224,15 @@ export default function PurchaseOrders() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr><th className="p-3">PO</th><th className="p-3">Title</th><th className="p-3">Party</th><th className="p-3">Value</th><th className="p-3">Expected</th><th className="p-3">Status</th><th className="p-3 text-right">Actions</th></tr>
+                <tr>
+                  <th className="p-3"><SortHeader label="PO" columnKey="po" /></th>
+                  <th className="p-3"><SortHeader label="Title" columnKey="title" /></th>
+                  <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
+                  <th className="p-3"><SortHeader label="Value" columnKey="value" /></th>
+                  <th className="p-3"><SortHeader label="Expected" columnKey="expected" /></th>
+                  <th className="p-3"><SortHeader label="Status" columnKey="status" /></th>
+                  <th className="p-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredOrders.map(order => (

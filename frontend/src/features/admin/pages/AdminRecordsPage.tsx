@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Eye, Filter, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -181,7 +181,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
       {records.length === 0 ? (
         <EmptyState title={kind === 'fraud' ? 'No active fraud alerts' : `No ${cfg.title.toLowerCase()} found`} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full min-w-[940px] text-left text-sm">
             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
               <tr>
@@ -224,9 +224,170 @@ function signalText(kind: AdminKind, record: RecordMap) {
 function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: RecordMap; onClose: () => void }) {
   const safeRecord = { ...record };
   delete safeRecord.password;
+
+  // For users kind, show a structured detail view
+  if (kind === 'users') {
+    const profile = record.profile || {};
+    const org = record.organization || {};
+    const sessions = record.sessions || [];
+    const violations = record.complianceViolations || [];
+    const sectionStatus = record.sectionStatus || {};
+
+    return (
+      <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30" onClick={onClose}>
+        <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className="sticky top-0 z-10 border-b border-slate-200 bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] p-5 text-white">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white/15 text-lg font-black backdrop-blur-sm">
+                  {(record.name || '?').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-200">User Detail</p>
+                  <h2 className="mt-0.5 text-xl font-black">{record.name || 'Unnamed User'}</h2>
+                  <p className="mt-0.5 text-xs font-medium text-blue-100">{record.email || 'No email'}</p>
+                </div>
+              </div>
+              <button onClick={onClose} className="rounded-lg border border-white/20 bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Close detail"><X className="h-4 w-4" /></button>
+            </div>
+          </div>
+
+          <div className="space-y-5 p-5">
+            {/* Quick Status Cards */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <DetailMetric label="Account Status" value={label(record.accountStatus || record.onboardingStatus || 'pending')} />
+              <DetailMetric label="Role" value={label(record.role || '-')} />
+              <DetailMetric label="Registered" value={formatDate(record.createdAt)} />
+            </div>
+
+            {/* Contact Information */}
+            <DetailSection title="Contact Information">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Full Name" value={record.name} />
+                <DetailField label="Email" value={record.email} />
+                <DetailField label="Mobile" value={record.mobile || record.phone} />
+                <DetailField label="Alternate Phone" value={record.alternatePhone} />
+              </div>
+            </DetailSection>
+
+            {/* Organization */}
+            {(org.id || org.organizationName || profile.businessName || profile.organizationName) && (
+              <DetailSection title="Organization">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailField label="Organization Name" value={org.organizationName || profile.businessName || profile.organizationName} />
+                  {org.id && <DetailField label="Org ID" value={`ORG-${org.id}`} />}
+                  <DetailField label="GSTIN" value={org.gstin || profile.gst} />
+                  <DetailField label="Verification" value={org.verificationStatus} />
+                </div>
+              </DetailSection>
+            )}
+
+            {/* Profile / Business Details */}
+            {Object.keys(profile).length > 0 && (
+              <DetailSection title="Business Profile">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailField label="PAN" value={profile.pan} />
+                  <DetailField label="GST" value={profile.gst} />
+                  <DetailField label="Udyam Number" value={profile.udyamNumber} />
+                  <DetailField label="Industry" value={profile.industry} />
+                  <DetailField label="State" value={profile.state} />
+                  <DetailField label="City" value={profile.city} />
+                  <DetailField label="Annual Turnover" value={profile.annualTurnover} />
+                  <DetailField label="Annual Budget" value={profile.annualBudget} />
+                  {profile.productCategories && (
+                    <DetailField label="Product Categories" value={Array.isArray(profile.productCategories) ? profile.productCategories.join(', ') : profile.productCategories} />
+                  )}
+                  {profile.procurementCategories && (
+                    <DetailField label="Procurement Categories" value={Array.isArray(profile.procurementCategories) ? profile.procurementCategories.join(', ') : profile.procurementCategories} />
+                  )}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* Onboarding Section Status */}
+            {Object.keys(sectionStatus).length > 0 && (
+              <DetailSection title="Onboarding Verification">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {Object.entries(sectionStatus).map(([section, status]) => (
+                    <div key={section} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-slate-600">{section}</span>
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${
+                        status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : status === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : status === 'resubmission_required' ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-blue-200 bg-blue-50 text-blue-700'
+                      }`}>{label(String(status))}</span>
+                    </div>
+                  ))}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* Sessions */}
+            {sessions.length > 0 && (
+              <DetailSection title={`Active Sessions (${sessions.length})`}>
+                <div className="space-y-2">
+                  {sessions.slice(0, 5).map((session: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                      <div>
+                        <span className="font-bold text-slate-700">{session.device || session.userAgent || 'Unknown Device'}</span>
+                        {session.ip && <span className="ml-2 text-slate-400">({session.ip})</span>}
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">{formatDate(session.lastActive || session.createdAt)}</span>
+                    </div>
+                  ))}
+                  {sessions.length > 5 && (
+                    <p className="text-center text-[10px] font-bold text-slate-400">+{sessions.length - 5} more sessions</p>
+                  )}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* Compliance Violations */}
+            {violations.length > 0 && (
+              <DetailSection title={`Compliance Flags (${violations.length})`}>
+                <div className="space-y-2">
+                  {violations.map((v: any, idx: number) => (
+                    <div key={idx} className="rounded-lg border border-slate-100 bg-slate-50/50 p-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-700">{v.rule || v.ruleCode || v.type || `Flag #${idx + 1}`}</span>
+                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${severityClass(v.severity)}`}>{v.severity || 'info'}</span>
+                      </div>
+                      {v.description && <p className="mt-1 text-slate-500">{v.description}</p>}
+                      {v.createdAt && <p className="mt-1 text-[10px] text-slate-400">Flagged: {formatDate(v.createdAt)}</p>}
+                    </div>
+                  ))}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* Admin Feedback */}
+            {record.adminFeedback && (
+              <DetailSection title="Admin Feedback">
+                <p className="text-xs font-medium leading-relaxed text-slate-600">{record.adminFeedback}</p>
+              </DetailSection>
+            )}
+
+            {/* Timestamps */}
+            <DetailSection title="Timestamps">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Created At" value={formatDate(record.createdAt)} />
+                <DetailField label="Updated At" value={formatDate(record.updatedAt)} />
+                <DetailField label="Last Login" value={formatDate(record.lastLoginAt)} />
+                <DetailField label="Email Verified" value={record.emailVerified ? 'Yes' : 'No'} />
+              </div>
+            </DetailSection>
+          </div>
+        </aside>
+      </div>
+    );
+  }
+
+  // For non-users kinds (audit, fraud, rules) keep the JSON view
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
-      <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30" onClick={onClose}>
+      <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-[#1d4ed8]">{config[kind].title} Detail</p>
@@ -253,4 +414,25 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
 
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-sm font-black text-blue-900">{value}</p></div>;
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">{title}</h3>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value?: string | number | null }) {
+  const display = value != null && value !== '' ? String(value) : '—';
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="text-xs font-bold text-slate-700 break-all">{display}</p>
+    </div>
+  );
 }

@@ -16,10 +16,14 @@ import {
   Package,
   Wrench,
   BookOpen,
-  Briefcase
+  Briefcase,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
+import { cn } from '../lib/utils';
 
 interface Organization {
   id: number;
@@ -52,6 +56,59 @@ export default function OrganizationManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const [sortKey, setSortKey] = useState<'name' | 'gst' | 'status' | 'scope'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (key: 'name' | 'gst' | 'status' | 'scope') => {
+    if (sortKey === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortHeader = ({ label, columnKey, className = '' }: { label: string, columnKey: 'name' | 'gst' | 'status' | 'scope', className?: string }) => {
+    const isActive = sortKey === columnKey;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(columnKey)}
+        className={cn("inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#0c2340] transition-colors", isActive && "text-[#0c2340]", className)}
+      >
+        {label}
+        {isActive ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3 text-[#0c2340]" /> : <ArrowDown className="h-3 w-3 text-[#0c2340]" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+    );
+  };
+
+  const sortedOrgs = useMemo(() => {
+    return [...orgs].sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'name') {
+        return (a.organizationName || '').localeCompare(b.organizationName || '') * direction;
+      }
+      if (sortKey === 'gst') {
+        const aTax = a.gstin || a.panNumber || '';
+        const bTax = b.gstin || b.panNumber || '';
+        return aTax.localeCompare(bTax) * direction;
+      }
+      if (sortKey === 'status') {
+        return (a.verificationStatus || '').localeCompare(b.verificationStatus || '') * direction;
+      }
+      if (sortKey === 'scope') {
+        const aCount = (a._count?.users ?? 0) + (a._count?.products ?? 0) + (a._count?.services ?? 0);
+        const bCount = (b._count?.users ?? 0) + (b._count?.products ?? 0) + (b._count?.services ?? 0);
+        return (aCount - bCount) * direction;
+      }
+      return 0;
+    });
+  }, [orgs, sortKey, sortDirection]);
+
   // Modal / Detail States
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [isFeatureModalOpen, setIsFeatureModalOpen] = useState(false);
@@ -78,9 +135,11 @@ export default function OrganizationManagement() {
 
       const res = await api.fetch(url, { ...authHeaders, skipCache: true });
       if (res.ok) {
-        const data = await res.json();
-        setOrgs(data.organizations || data.data || []);
-        setTotal(data.total || 0);
+        const raw = await res.json();
+        // Backend wraps in { success: true, data: { organizations, total } }
+        const data = raw?.data ?? raw;
+        setOrgs(data.organizations || data.records || []);
+        setTotal(data.total || (data.organizations || data.records || []).length);
       } else {
         toast.error('Failed to load organization records.');
       }
@@ -277,16 +336,16 @@ export default function OrganizationManagement() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  <th className="px-6 py-4">Company Details</th>
-                  <th className="px-6 py-4">Tax Identifications</th>
-                  <th className="px-6 py-4 text-center">Operational Features</th>
-                  <th className="px-6 py-4 text-center">Scope Stats</th>
-                  <th className="px-6 py-4 text-center">Status</th>
+                  <th className="px-6 py-4"><SortHeader label="Company Details" columnKey="name" /></th>
+                  <th className="px-6 py-4"><SortHeader label="Tax Identifications" columnKey="gst" /></th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Operational Features</th>
+                  <th className="px-6 py-4 text-center"><SortHeader label="Scope Stats" columnKey="scope" className="justify-center w-full" /></th>
+                  <th className="px-6 py-4 text-center"><SortHeader label="Status" columnKey="status" className="justify-center w-full" /></th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {orgs.map((org) => (
+                {sortedOrgs.map((org) => (
                   <tr key={org.id} className="hover:bg-slate-50/50 transition-colors">
                     {/* Details */}
                     <td className="px-6 py-4.5">

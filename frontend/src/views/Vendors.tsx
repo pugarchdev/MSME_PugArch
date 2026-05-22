@@ -472,8 +472,8 @@ const Vendors = () => {
             </div>
           ) : (
             /* LIST VIEW (Table style high density) */
-            <div className="bg-white border border-[#dadce0] rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto bg-white border border-[#dadce0] rounded-xl shadow-sm">
+              <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-[#f8f9fa] border-b border-[#dadce0]">
                   <tr>
                     <th className="p-3 text-[10px] font-black uppercase tracking-wider text-[#1d4ed8]">Sr. No.</th>

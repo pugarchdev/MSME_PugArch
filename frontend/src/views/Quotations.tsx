@@ -14,7 +14,10 @@ import {
   XCircle,
   LayoutGrid,
   List,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';

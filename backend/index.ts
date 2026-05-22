@@ -2901,7 +2901,18 @@ const app = serverlessApp;
     try {
       const sellers = await prisma.user.findMany({
         where: { role: 'seller' },
-        include: { sellerProfile: true, complianceViolations: { where: { status: 'open' }, orderBy: { createdAt: 'desc' } } },
+        include: {
+          sellerProfile: {
+            include: {
+              sellerDocuments: {
+                include: {
+                  fileAsset: true
+                }
+              }
+            }
+          },
+          complianceViolations: { where: { status: 'open' }, orderBy: { createdAt: 'desc' } }
+        },
         orderBy: { createdAt: 'desc' }
       });
       const buyers = await prisma.user.findMany({
@@ -2994,10 +3005,30 @@ const app = serverlessApp;
     try {
       const vendors = await prisma.user.findMany({
         where: { role: 'seller', onboardingStatus: 'approved_for_procurement' },
-        include: { sellerProfile: true }
+        include: {
+          sellerProfile: {
+            include: {
+              offices: true
+            }
+          }
+        }
       });
       res.json(maskSensitive(vendors.map(v => {
         const { password, ...safeVendor } = v;
+        if (safeVendor.sellerProfile) {
+          const profileAny = safeVendor.sellerProfile as any;
+          const offices = safeVendor.sellerProfile.offices || [];
+          const gstOffice = offices.find((o: any) => o.gstNumber);
+          profileAny.gst = gstOffice?.gstNumber || null;
+          
+          if (gstOffice) {
+            profileAny.city = profileAny.city || gstOffice.city;
+            profileAny.state = profileAny.state || gstOffice.state;
+          } else if (offices[0]) {
+            profileAny.city = profileAny.city || offices[0].city;
+            profileAny.state = profileAny.state || offices[0].state;
+          }
+        }
         return { ...safeVendor, _id: v.id };
       })));
     } catch (err: any) {
@@ -3701,7 +3732,12 @@ const app = serverlessApp;
       const token = String(req.query.token || '').trim();
       if (!token) throw new ApiError(401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
 
-      const decoded = verifyAccessToken(token);
+      let decoded;
+      try {
+        decoded = verifyAccessToken(token);
+      } catch (jwtErr: any) {
+        throw new ApiError(401, jwtErr.name === 'TokenExpiredError' ? 'Authentication token expired' : 'Invalid authentication token', 'AUTH_TOKEN_INVALID');
+      }
       const userId = Number(decoded.id);
       const sessionVersion = Number(decoded.sessionVersion);
       if (!userId || Number.isNaN(sessionVersion)) throw new ApiError(401, 'Invalid authentication token', 'AUTH_TOKEN_INVALID');
@@ -3723,6 +3759,7 @@ const app = serverlessApp;
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no'
       });
+      res.write('retry: 1000\n');
       res.write('event: connected\n');
       res.write('data: {"ok":true}\n\n');
 
@@ -3735,8 +3772,22 @@ const app = serverlessApp;
         res.write('data: {}\n\n');
       }, 25000);
 
+      // Prevent Vercel Serverless Function timeout (300 seconds limit)
+      // by gracefully closing the connection after 30 seconds.
+      // The frontend EventSource client will automatically reconnect after 1 second because of 'retry: 1000'.
+      const timeoutId = setTimeout(() => {
+        clearInterval(heartbeat);
+        clients.delete(res);
+        if (clients.size === 0) notificationClients.delete(userId);
+        
+        res.write('event: close\n');
+        res.write('data: {"closed":true}\n\n');
+        res.end();
+      }, 30000);
+
       req.on('close', () => {
         clearInterval(heartbeat);
+        clearTimeout(timeoutId);
         clients.delete(res);
         if (clients.size === 0) notificationClients.delete(userId);
       });

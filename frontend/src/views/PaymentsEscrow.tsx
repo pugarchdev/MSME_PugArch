@@ -209,7 +209,7 @@ export default function PaymentsEscrow() {
             </CardContent>
           </Card>
 
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
                 <tr>

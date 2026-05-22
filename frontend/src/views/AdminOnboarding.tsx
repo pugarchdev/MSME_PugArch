@@ -68,9 +68,10 @@ export default function AdminOnboarding() {
     if (!cachedData) setIsLoading(true);
     try {
       const res = await api.fetch("/api/admin/onboarding", authOptions);
-      const data = await res.json();
-      setSellers(data.sellers || []);
-      setBuyers(data.buyers || []);
+      const payload = await res.json();
+      const data = payload?.data || payload || {};
+      setSellers(Array.isArray(data.sellers) ? data.sellers : []);
+      setBuyers(Array.isArray(data.buyers) ? data.buyers : []);
     } catch (err) {
       toast.error("Failed to load registrations");
     } finally {
@@ -94,8 +95,8 @@ export default function AdminOnboarding() {
         }
       }
       const res = await api.post(
-        "/api/admin/status",
-        { userId, status, reason },
+        `/api/admin/onboarding/${userId}/status`,
+        { onboardingStatus: status, adminFeedback: reason || undefined },
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -147,8 +148,19 @@ export default function AdminOnboarding() {
   ) => {
     try {
       const res = await api.post(
-        "/api/admin/section-status",
-        { userId, section, status, rejectionReason: reason },
+        `/api/admin/onboarding/${userId}/section-status`,
+        {
+          sectionStatus: {
+            ...((selectedItem?._id === userId ? selectedItem.sectionStatus : undefined) || {}),
+            [section]: status,
+          },
+          sectionRejectionReasons: reason
+            ? {
+                ...((selectedItem?._id === userId ? selectedItem.sectionRejectionReasons : undefined) || {}),
+                [section]: reason,
+              }
+            : undefined,
+        },
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,

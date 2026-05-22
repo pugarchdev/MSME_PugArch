@@ -78,9 +78,10 @@ export default function OrganizationManagement() {
 
       const res = await api.fetch(url, { ...authHeaders, skipCache: true });
       if (res.ok) {
-        const data = await res.json();
-        setOrgs(data.organizations || data.data || []);
-        setTotal(data.total || 0);
+        const payload = await res.json();
+        const data = payload?.data || payload || {};
+        setOrgs(Array.isArray(data.organizations) ? data.organizations : []);
+        setTotal(typeof data.total === "number" ? data.total : 0);
       } else {
         toast.error('Failed to load organization records.');
       }
@@ -146,7 +147,8 @@ export default function OrganizationManagement() {
         verificationStatus: selectedVerifyStatus
       }, authHeaders);
       if (res.ok) {
-        const updated = await res.json();
+        const payload = await res.json();
+        const updated = payload?.data || payload || {};
         toast.success(`Organization status updated to: ${selectedVerifyStatus}`);
         setOrgs(prev => prev.map(o => o.id === selectedOrg.id ? { ...o, ...updated } : o));
         setIsVerifyModalOpen(false);
@@ -176,7 +178,8 @@ export default function OrganizationManagement() {
         blacklistReason: isBlacklisting ? blacklistReason : ''
       }, authHeaders);
       if (res.ok) {
-        const updated = await res.json();
+        const payload = await res.json();
+        const updated = payload?.data || payload || {};
         toast.success(isBlacklisting ? 'Organization access restricted.' : 'Organization access restriction cleared.');
         setOrgs(prev => prev.map(o => o.id === selectedOrg.id ? { ...o, ...updated } : o));
         setIsBlacklistModalOpen(false);

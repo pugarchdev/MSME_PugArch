@@ -170,32 +170,19 @@ export default function AdminOnboarding() {
         setIsOverrideModalOpen(false);
         setOverrideReason("");
         if (selectedItem && selectedItem._id === userId) {
-          const sectionStatus =
-            status === "approved"
-              ? {
-                  pan: "approved",
-                  details: "approved",
-                  additional: "approved",
-                  offices: "approved",
-                  bank: "approved",
-                  einvoicing: "approved",
-                  ownership: "approved",
-                  documents: "approved",
-                }
-              : status === "rejected"
-                ? {
-                    pan: "rejected",
-                    details: "rejected",
-                    additional: "rejected",
-                    offices: "rejected",
-                    bank: "rejected",
-                    einvoicing: "rejected",
-                    ownership: "rejected",
-                    documents: "rejected",
-                  }
-                : selectedItem.sectionStatus;
+          const isBuyer = selectedItem.role === "buyer";
+          const buyerKeys = ["org", "rep", "address", "procurement", "docs"];
+          const sellerKeys = ["pan", "details", "additional", "offices", "bank", "einvoicing", "ownership", "documents"];
+          const keys = isBuyer ? buyerKeys : sellerKeys;
 
-          setSelectedItem({ ...selectedItem, status, sectionStatus });
+          let sectionStatus = selectedItem.sectionStatus;
+          if (status === "approved_for_procurement") {
+            sectionStatus = Object.fromEntries(keys.map((k) => [k, "approved"]));
+          } else if (status === "rejected") {
+            sectionStatus = Object.fromEntries(keys.map((k) => [k, "rejected"]));
+          }
+
+          setSelectedItem({ ...selectedItem, onboardingStatus: status, sectionStatus });
         }
         fetchData();
       } else {
@@ -1182,9 +1169,7 @@ export default function AdminOnboarding() {
                         </div>
                       </div>
                       <div className="flex pt-3 border-t border-slate-200/50">
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
-                          Under Compliance Review
-                        </div>
+                        {getStatusBadge(selectedItem.onboardingStatus || "pending")}
                       </div>
                     </div>
                   </div>
@@ -1242,7 +1227,7 @@ export default function AdminOnboarding() {
                         )
                       }
                       disabled={
-                        selectedItem.status === "approved_for_procurement"
+                        selectedItem.onboardingStatus === "approved_for_procurement"
                       }
                       className="h-12 w-full rounded-md bg-[#1d4ed8] font-bold uppercase tracking-wide text-white hover:bg-[#1e3a8a]"
                     >

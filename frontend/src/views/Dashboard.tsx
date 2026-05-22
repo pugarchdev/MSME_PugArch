@@ -9,7 +9,7 @@ import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, Shie
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
-import ParcelTracking from './ParcelTracking';
+
 
 export default function Dashboard() {
   const { user, token, logout } = useAuth();
@@ -330,44 +330,8 @@ export default function Dashboard() {
         </button>
       </div>
       
-      {/* Procurement Method Selection - Only for Approved Buyers */}
-      {user?.role === 'buyer' && user?.onboardingStatus === 'approved_for_procurement' && (
-        <div className="space-y-4 animate-in slide-in-from-top-4 duration-700">
-           <div className="bg-[#2563eb] px-4 py-2.5 rounded-lg shadow-sm flex items-center justify-between">
-              <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em]">Procurement Method Selection</h2>
-              <Badge className="bg-white/15 text-white border-none rounded px-3 py-1 font-bold text-[9px]">OFFICIAL CHANNELS</Badge>
-           </div>
-           
-           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {[
-                { label: 'Direct Purchase', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', hover: 'hover:bg-blue-100', path: '/buyer/vendors' },
-                { label: 'Request for Quotation (RFQ)', icon: MessageSquare, color: 'bg-slate-50 text-[#2563eb]', hover: 'hover:bg-slate-100', path: '/quotations' },
-                { label: 'Tender Management', icon: FileText, color: 'bg-emerald-50 text-emerald-600', hover: 'hover:bg-emerald-100', path: '/buyer/tenders' },
-                { label: 'Reverse Auction', icon: Gavel, color: 'bg-amber-50 text-amber-700', hover: 'hover:bg-amber-100', path: '/buyer/tenders' },
-                { label: 'Service Procurement', icon: Briefcase, color: 'bg-orange-50 text-orange-700', hover: 'hover:bg-orange-100', path: '/buyer/vendors' }
-              ].map((method) => (
-                <Link 
-                  key={method.label} 
-                  href={method.path}
-                  className={cn(
-                    "flex flex-col items-center justify-center p-4 rounded-lg border border-slate-200 bg-white transition-all duration-300 hover:shadow-md group focus:outline-none focus:ring-2 focus:ring-[#2563eb]",
-                    method.hover
-                  )}
-                >
-                   <div className={cn("h-11 w-11 rounded-md flex items-center justify-center mb-3 transition-transform group-hover:scale-105", method.color)}>
-                      <method.icon className="h-5 w-5" />
-                   </div>
-                   <p className="text-[10px] font-bold text-blue-900 uppercase text-center leading-tight px-2">{method.label}</p>
-                </Link>
-              ))}
-           </div>
 
-           {/* Parcel Tracking Section */}
-           <div className="mt-8">
-              <ParcelTracking />
-           </div>
-        </div>
-      )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Onboarding Status Tracker */}

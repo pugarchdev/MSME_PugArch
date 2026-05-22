@@ -798,7 +798,23 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
 router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const body = parse(z.object({ onboardingStatus: z.string().trim().min(2), adminFeedback: z.string().trim().max(2000).optional() }), req.body);
-  const user = await db.user.update({ where: { id }, data: body });
+
+  // Fetch the existing user to determine role and build correct section statuses
+  const existing = await db.user.findUnique({ where: { id }, select: { role: true } });
+  if (!existing) throw new ApiError(404, 'User not found');
+
+  const updateData: Record<string, unknown> = { ...body };
+
+  // When approving or rejecting the entire application, sync all individual section statuses
+  // so that subsequent re-derivations of onboardingStatus from sections stay consistent.
+  if (body.onboardingStatus === 'approved_for_procurement' || body.onboardingStatus === 'rejected') {
+    const sectionValue = body.onboardingStatus === 'approved_for_procurement' ? 'approved' : 'rejected';
+    const buyerSections = { org: sectionValue, rep: sectionValue, address: sectionValue, procurement: sectionValue, docs: sectionValue };
+    const sellerSections = { pan: sectionValue, details: sectionValue, additional: sectionValue, offices: sectionValue, bank: sectionValue, einvoicing: sectionValue, ownership: sectionValue, documents: sectionValue };
+    updateData.sectionStatus = existing.role === 'buyer' ? buyerSections : sellerSections;
+  }
+
+  const user = await db.user.update({ where: { id }, data: updateData });
   await auditWrite(req, 'admin.onboarding.status_updated', 'user', id, body);
   
   try {

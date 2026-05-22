@@ -374,7 +374,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
         select: { organizationName: true, procurementCategories: true, industry: true, gst: true, pan: true, state: true }
       },
       sellerProfile: {
-        select: { businessName: true, productCategories: true, industry: true, pan: true, state: true }
+        select: { businessName: true, productCategories: true, pan: true, msmeCategory: true }
       }
     },
     orderBy: { updatedAt: 'desc' },
@@ -1785,9 +1785,9 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
   // Active Procurement Value
   const activePOs = await db.purchaseOrder.aggregate({
     where: { status: { in: ['accepted', 'in_progress', 'delivered'] } },
-    _sum: { totalAmount: true }
+    _sum: { amount: true }
   });
-  const activeProcurementValue = '₹' + (Number(activePOs._sum.totalAmount || 0) / 10000000).toFixed(2) + 'Cr';
+  const activeProcurementValue = '₹' + (Number(activePOs._sum.amount || 0) / 10000000).toFixed(2) + 'Cr';
 
   // Tender Success Rate
   const closedTenders = await db.tender.count({ where: { status: 'closed' } });

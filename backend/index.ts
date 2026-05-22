@@ -31,6 +31,7 @@ import { auditLog } from './src/modules/audit/audit.service.js';
 import { createComplianceFlag, flagDuplicateBankAccount, flagDuplicateSellerIdentifiers, markUserForManualReview } from './src/modules/compliance/compliance.service.js';
 import { recordLoginEvent } from './src/modules/auth/login-event.service.js';
 import { assertEmailOtpVerified, consumeEmailOtp, consumeOtp, generateOtp, storeEmailOtp, storeOtp, verifyEmailOtp, verifyOtp } from './src/services/otp.service.js';
+import { sendOtpEmail } from './src/services/mail.service.js';
 import { hashPassword, validatePasswordStrength, verifyPassword } from './src/services/password.service.js';
 import { issueAuthResponse, signAccessToken, verifyAccessToken, verifyRefreshToken } from './src/services/token.service.js';
 import {
@@ -339,11 +340,25 @@ const app = serverlessApp;
     return fallback;
   };
 
+  const prismaUniqueMessage = (err: any) => {
+    if (err?.code !== 'P2002') return null;
+    const target = Array.isArray(err?.meta?.target)
+      ? err.meta.target.join(', ')
+      : String(err?.meta?.target || '');
+    if (/panFingerprint|pan/i.test(target)) {
+      return 'PAN is already associated with another seller account.';
+    }
+    if (/email/i.test(target)) return 'Email address already in use. Please use unique details.';
+    if (/mobile/i.test(target)) return 'Mobile number already in use. Please use unique details.';
+    return 'This record already exists. Please use unique details.';
+  };
+
   const handleSecureRouteError = (res: any, err: any, fallback = 'Unable to complete request') => {
-    const statusCode = err?.statusCode || 500;
+    const uniqueMessage = prismaUniqueMessage(err);
+    const statusCode = uniqueMessage ? 409 : err?.statusCode || 500;
     return res.status(statusCode).json({
       success: false,
-      message: safeRouteMessage(err, fallback),
+      message: uniqueMessage || safeRouteMessage(err, fallback),
       code: err?.code || 'REQUEST_FAILED'
     });
   };
@@ -2150,8 +2165,12 @@ const app = serverlessApp;
       };
 
       if (requestedPan) {
+        const requestedPanFingerprint = createHashFingerprint(requestedPan, 'pan');
         const duplicatePan = await prisma.sellerProfile.findFirst({
-          where: { pan: requestedPan, userId: { not: userId } },
+          where: {
+            userId: { not: userId },
+            OR: [{ pan: requestedPan }, { panFingerprint: requestedPanFingerprint }]
+          },
           select: { userId: true }
         });
         if (duplicatePan) {
@@ -2337,6 +2356,43 @@ const app = serverlessApp;
     }
   });
   
+  app.post('/api/seller/ownership/send-otp', authenticate, authorize('seller'), otpSendRateLimit, async (req: AuthRequest, res) => {
+    try {
+      const userId = Number(req.user?.id);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, role: true }
+      });
+      if (!user?.email) return res.status(400).json({ message: 'Login email is not available for OTP delivery.' });
+
+      const otp = generateOtp();
+      const otpState = await storeOtp('ownership_submission', user.email, otp, { userId: user.id, action: 'seller_final_submission' });
+      const deliveryConfigured = await sendOtpEmail(user.email, otp, '[MSME Portal] Final submission OTP');
+
+      await auditLog({
+        actorUserId: user.id,
+        actorRole: user.role,
+        action: 'seller.ownership_otp.sent',
+        entityType: 'sellerProfile',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { emailHash: sha256(user.email), deliveryConfigured }
+      });
+      if (!deliveryConfigured) {
+        return res.status(503).json({ message: 'Email delivery is not configured. Please configure SMTP to send OTP.' });
+      }
+
+      res.json({
+        success: true,
+        email: user.email,
+        sendsRemaining: otpState.sendsRemaining,
+        deliveryConfigured
+      });
+    } catch (err: any) {
+      handleSecureRouteError(res, err, 'Unable to send ownership verification OTP right now.');
+    }
+  });
+
   app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
     try {
       const userId = Number(req.user?.id);
@@ -2348,6 +2404,36 @@ const app = serverlessApp;
         include: { sellerProfile: true }
       });
       if (!existingUser) return res.status(404).json({ message: 'User not found' });
+      if (!existingUser.email) return res.status(400).json({ message: 'Login email is required for OTP verification.' });
+
+      const otp = String(req.body?.otp || '').trim();
+      if (!/^\d{6}$/.test(otp)) {
+        return res.status(400).json({ message: 'Enter the 6-digit OTP sent to your login email.' });
+      }
+
+      const otpResult = await verifyOtp('ownership_submission', existingUser.email, otp);
+      if (!otpResult.ok) {
+        await auditLog({
+          actorUserId: userId,
+          actorRole: req.user?.role,
+          action: 'seller.ownership_otp.failed',
+          entityType: 'sellerProfile',
+          entityId: existingUser.sellerProfile?.id,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: { reason: otpResult.reason, emailHash: sha256(existingUser.email) }
+        });
+        if (otpResult.reason === 'expired') return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
+        const remaining = otpResult.attemptsRemaining ?? 0;
+        return res.status(400).json({
+          message: remaining > 0 ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.` : 'Invalid OTP. Please request a new code.',
+          attemptsRemaining: remaining
+        });
+      }
+      const metadataUserId = Number((otpResult.metadata as any)?.userId);
+      if (metadataUserId && metadataUserId !== userId) {
+        return res.status(400).json({ message: 'OTP does not belong to this seller session.' });
+      }
       
       const sectionStatus = (existingUser.sectionStatus as Record<string, any>) || {};
       const sections = ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership'];
@@ -2375,8 +2461,28 @@ const app = serverlessApp;
         data: { 
           onboardingStatus: onboardingStatus as any,
           registrationStatus: registrationStatus as any,
-          sectionStatus: finalSectionStatus
+          sectionStatus: finalSectionStatus,
+          sellerProfile: existingUser.sellerProfile
+            ? {
+                update: {
+                  ownershipDeclarationAccepted: true,
+                  ownershipVerified: true
+                }
+              }
+            : undefined
         }
+      });
+
+      await consumeOtp('ownership_submission', existingUser.email);
+      await auditLog({
+        actorUserId: userId,
+        actorRole: req.user?.role,
+        action: 'seller.ownership_otp.verified',
+        entityType: 'sellerProfile',
+        entityId: existingUser.sellerProfile?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { emailHash: sha256(existingUser.email) }
       });
 
       if (existingUser.onboardingStatus !== 'under_compliance_review' && onboardingStatus !== 'approved_for_procurement') {
@@ -2907,13 +3013,55 @@ const app = serverlessApp;
         orderBy: { createdAt: 'desc' }
       });
 
+      const getDocumentEntries = (documents: any) =>
+        documents && typeof documents === 'object' && !Array.isArray(documents)
+          ? Object.entries(documents as Record<string, any>)
+          : [];
+      const documentOwners = [...new Set([
+        ...sellers.filter((u: any) => getDocumentEntries(u.sellerProfile?.documents).length > 0).map((u: any) => u.id),
+        ...buyers.filter((u: any) => getDocumentEntries(u.buyerProfile?.documents).length > 0).map((u: any) => u.id)
+      ])];
+      const documentAssets = documentOwners.length > 0
+        ? await prisma.fileAsset.findMany({
+            where: { ownerId: { in: documentOwners }, status: 'active' },
+            select: { id: true, ownerId: true, key: true, url: true, originalName: true, mimeType: true }
+          })
+        : [];
+      const findDocumentAsset = (ownerId: number, url: string) => {
+        const decodedUrl = (() => {
+          try {
+            return decodeURIComponent(url);
+          } catch {
+            return url;
+          }
+        })();
+        return documentAssets.find(asset =>
+          asset.ownerId === ownerId &&
+          (asset.url === url || decodedUrl.includes(asset.key))
+        );
+      };
+      const enrichDocuments = (ownerId: number, documents: any) => {
+        if (!documents || typeof documents !== 'object' || Array.isArray(documents)) return documents;
+        return Object.fromEntries(getDocumentEntries(documents).map(([key, value]) => {
+          const url = typeof value === 'string' ? value : value?.url;
+          const asset = typeof url === 'string' ? findDocumentAsset(ownerId, url) : null;
+          return [
+            key,
+            asset
+              ? { url, fileId: asset.id, originalName: asset.originalName, mimeType: asset.mimeType }
+              : value
+          ];
+        }));
+      };
+
       // Exclude passwords and format for frontend
       const formatUser = (u: any) => {
         const { password, ...rest } = u;
+        const profile = u.sellerProfile || u.buyerProfile;
         return maskSensitive({
           ...rest,
           _id: u.id,
-          profile: u.sellerProfile || u.buyerProfile,
+          profile: profile ? { ...profile, documents: enrichDocuments(u.id, profile.documents) } : profile,
           status: u.onboardingStatus
         });
       };

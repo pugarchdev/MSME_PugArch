@@ -16,10 +16,10 @@ import { Button } from '../components/ui/button';
 
 interface Permission {
   id: number;
-  code: string;
-  name: string;
-  module: string;
-  description: string;
+  code?: string | null;
+  name?: string | null;
+  module?: string | null;
+  description?: string | null;
 }
 
 interface RbacRole {
@@ -61,8 +61,8 @@ export default function RbacPanel() {
         const rawRolesData = await rolesRes.json();
         const rawPermsData = await permsRes.json();
         
-        const rolesData = Array.isArray(rawRolesData) ? rawRolesData : [];
-        const permsData = Array.isArray(rawPermsData) ? rawPermsData : [];
+        const rolesData = Array.isArray(rawRolesData) ? rawRolesData : (rawRolesData?.data || []);
+        const permsData = Array.isArray(rawPermsData) ? rawPermsData : (rawPermsData?.data || []);
 
         setRoles(rolesData);
         setPermissions(permsData);
@@ -81,8 +81,7 @@ export default function RbacPanel() {
       } else {
         toast.error('Failed to retrieve security configuration profiles.');
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('An error occurred while loading security profiles.');
     } finally {
       setLoading(false);
@@ -99,16 +98,23 @@ export default function RbacPanel() {
 
   const modules = useMemo(() => {
     const mods = new Set<string>();
-    permissions.forEach(p => mods.add(p.module));
+    permissions.forEach(p => {
+      if (p.module) mods.add(p.module);
+    });
     return ['all', ...Array.from(mods)];
   }, [permissions]);
 
   const filteredPermissions = useMemo(() => {
+    const query = searchQuery.toLowerCase();
     return permissions.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            p.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesModule = selectedModule === 'all' || p.module === selectedModule;
+      const name = String(p.name || '');
+      const code = String(p.code || '');
+      const description = String(p.description || '');
+      const module = String(p.module || '');
+      const matchesSearch = name.toLowerCase().includes(query) ||
+                            code.toLowerCase().includes(query) ||
+                            description.toLowerCase().includes(query);
+      const matchesModule = selectedModule === 'all' || module === selectedModule;
       return matchesSearch && matchesModule;
     });
   }, [permissions, searchQuery, selectedModule]);
@@ -138,14 +144,14 @@ export default function RbacPanel() {
         setOriginalMappings(prev => ({ ...prev, [roleId]: [...permissionIds] }));
         
         // Refresh roles in place
-        const updatedRole = await res.json();
+        const rawRes = await res.json();
+        const updatedRole = rawRes?.data || rawRes;
         setRoles(prev => prev.map(r => r.id === roleId ? updatedRole : r));
       } else {
         const errData = await res.json().catch(() => ({}));
         toast.error(errData.message || 'Failure writing RBAC configuration.');
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Unable to establish connection with security authorization service.');
     } finally {
       setSavingRoleId(null);

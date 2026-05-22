@@ -281,8 +281,8 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
           const data = await res.json();
           setNotifications(Array.isArray(data) ? data : []);
         }
-      } catch (err) {
-        console.error('Failed to fetch notifications:', err);
+      } catch {
+        setNotifications([]);
       }
     };
     fetchNotifications();
@@ -447,8 +447,8 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                                   headers: { Authorization: `Bearer ${authToken}` }
                                 });
                                 setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, isRead: true } : n));
-                              } catch (err) {
-                                console.error('Failed to mark notification as read:', err);
+                              } catch {
+                                // Keep the menu usable even if the read receipt fails.
                               }
                             }
                             const targetRoute = item.route || item.redirectUrl;

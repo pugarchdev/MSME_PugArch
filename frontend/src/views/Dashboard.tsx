@@ -98,8 +98,8 @@ export default function Dashboard() {
           const notifData = await notifRes.json();
           setNotifications(Array.isArray(notifData) ? notifData : []);
         }
-      } catch (err) {
-        console.error(err);
+      } catch {
+        setProfile(null);
       } finally {
         setIsLoading(false);
       }
@@ -119,8 +119,8 @@ export default function Dashboard() {
           const data = await res.json();
           setNotifications(Array.isArray(data) ? data : []);
         }
-      } catch (err) {
-        console.error('[Notifications] Dashboard refresh failed:', err);
+      } catch {
+        setNotifications([]);
       }
     };
     window.addEventListener('notifications:updated', refreshNotifications);

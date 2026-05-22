@@ -141,8 +141,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         localStorage.setItem('msme_user_cache', JSON.stringify(data.user));
       }
-    } catch (err) {
-      if (process.env.NODE_ENV === 'development') console.error(err);
+    } catch {
+      logout();
     } finally {
       setLoading(false);
     }

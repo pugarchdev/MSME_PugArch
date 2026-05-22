@@ -69,6 +69,10 @@ export default function AdminOnboarding() {
     useState("");
   const [rejectionReason, setRejectionReason] = useState("");
 
+  // Override Modal State
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+
   const fetchData = async () => {
     if (!cachedData) setIsLoading(true);
     try {
@@ -88,12 +92,30 @@ export default function AdminOnboarding() {
     fetchData();
   }, []);
 
-  const handleUpdateStatus = async (userId: string, status: string) => {
+  const handleUpdateStatus = async (
+    userId: string,
+    status: string,
+    customOverrideReason?: string,
+  ) => {
     try {
-      const selectedFlags = selectedItem?._id === userId ? (selectedItem.complianceViolations || []) : [];
+      const selectedFlags =
+        selectedItem?._id === userId
+          ? selectedItem.complianceViolations || []
+          : [];
       let reason = "";
-      if (status === "approved_for_procurement" && selectedFlags.some((flag: any) => ["medium", "high", "critical"].includes(flag.severity))) {
-        reason = window.prompt("Compliance flags are open. Enter an admin override reason to approve this profile:") || "";
+      if (
+        status === "approved_for_procurement" &&
+        selectedFlags.some((flag: any) =>
+          ["medium", "high", "critical"].includes(flag.severity),
+        )
+      ) {
+        if (customOverrideReason === undefined) {
+          // Open override modal and stop execution to await user input
+          setIsOverrideModalOpen(true);
+          setOverrideReason("");
+          return;
+        }
+        reason = customOverrideReason;
         if (!reason.trim()) {
           toast.error("Admin override reason is required for flagged approvals");
           return;
@@ -110,6 +132,8 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`Complete application ${status}`);
+        setIsOverrideModalOpen(false);
+        setOverrideReason("");
         if (selectedItem && selectedItem._id === userId) {
           const sectionStatus =
             status === "approved"
@@ -2289,6 +2313,116 @@ export default function AdminOnboarding() {
                   onClick={() => {
                     setIsRejectModalOpen(false);
                     setRejectionReason("");
+                  }}
+                  className="h-11 w-full rounded-md border-slate-300 font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* COMPLIANCE OVERRIDE MODAL */}
+      {isOverrideModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-blue-800/60 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => {
+              setIsOverrideModalOpen(false);
+              setOverrideReason("");
+            }}
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-[#1d4ed8] px-6 py-4 text-white">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-300 animate-pulse" />
+                <div className="space-y-0.5">
+                  <h3 className="text-base font-extrabold uppercase tracking-tight">
+                    Compliance Override Required
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-100">
+                    Admin Approval Authorization
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsOverrideModalOpen(false);
+                  setOverrideReason("");
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-[#f9a825]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="space-y-5 p-6 max-h-[75vh] overflow-y-auto">
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-700" />
+                  <p className="text-xs font-bold text-amber-900">
+                    Open Compliance Warnings Detected
+                  </p>
+                </div>
+                <p className="text-xs font-medium leading-relaxed text-slate-600">
+                  This profile has active compliance violations. Approving this organization requires providing a justification to log the override.
+                </p>
+
+                {/* List of violations */}
+                {selectedItem?.complianceViolations && selectedItem.complianceViolations.length > 0 && (
+                  <div className="mt-2 space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {selectedItem.complianceViolations.map((flag: any) => (
+                      <div key={flag.id || flag._id} className="rounded-md border border-amber-200 bg-white p-2.5 shadow-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-[#1d4ed8]">
+                            {flag.type?.replace(/_/g, " ")}
+                          </p>
+                          <span className={cn(
+                            "rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                            flag.severity === "critical" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                          )}>
+                            {flag.severity}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                          {flag.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Admin Override Reason
+                </label>
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Explain why this profile is being approved despite compliance flags (e.g., Verified physical documents, verified alternate business representation...)"
+                  className="h-28 w-full resize-none rounded-lg border border-slate-300 bg-white p-3 text-xs font-medium transition-all focus:border-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20"
+                  autoFocus
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col space-y-3 pt-2">
+                <Button
+                  onClick={() => handleUpdateStatus(selectedItem._id, "approved_for_procurement", overrideReason)}
+                  disabled={!overrideReason.trim()}
+                  className="h-11 w-full rounded-md bg-[#1d4ed8] font-bold uppercase tracking-wide text-white hover:bg-[#1e3a8a] transition-all"
+                >
+                  Confirm Override Approval
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsOverrideModalOpen(false);
+                    setOverrideReason("");
                   }}
                   className="h-11 w-full rounded-md border-slate-300 font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
                 >

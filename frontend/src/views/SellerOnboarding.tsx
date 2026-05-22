@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input, Select } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { Save, Plus, Trash2, ShieldCheck, ArrowRight, Loader2, Info, CheckCircle2 } from 'lucide-react';
+import { Save, Plus, Trash2, ShieldCheck, ArrowRight, Loader2, Info, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { GeMSellerSidebar } from '../components/GeMSellerSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
 import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
@@ -67,6 +67,9 @@ export default function SellerOnboarding() {
     isPrimary: false
   });
   const [bankErrors, setBankErrors] = useState<Record<string, string>>({});
+  const [ownershipOtp, setOwnershipOtp] = useState('');
+  const [ownershipOtpSent, setOwnershipOtpSent] = useState(false);
+  const [isSendingOwnershipOtp, setIsSendingOwnershipOtp] = useState(false);
   
   const [aadhaarData, setAadhaarData] = useState({ number: '', mobile: '', consent: false });
   const [emailData, setEmailData] = useState({ newEmail: '', verifyEmail: '' });
@@ -191,9 +194,14 @@ export default function SellerOnboarding() {
         setSavedSections(prev => Array.from(new Set([...prev, currentSection])));
         if (typeof nextSection === 'string') {
           setCurrentSection(nextSection);
+          // Update URL to reflect the new section
+          const params = new URLSearchParams(window.location.search);
+          params.set('section', nextSection);
+          window.history.pushState(null, '', `?${params.toString()}`);
         }
       } else {
-        toast.error('Failed to save section');
+        const data = await res.json().catch(() => null);
+        toast.error(data?.message || 'Failed to save section');
       }
     } catch (err) {
       toast.error('Network error');
@@ -202,25 +210,68 @@ export default function SellerOnboarding() {
     }
   };
 
-  const handleFinalSubmit = async () => {
+  const handleSendOwnershipOtp = async () => {
     if (isProfileLocked) return;
-    setIsLoading(true);
+    if (!formData.ownershipDeclarationAccepted) {
+      toast.error('Accept the beneficial ownership declaration before requesting OTP.');
+      return;
+    }
+
+    setIsSendingOwnershipOtp(true);
     try {
-      await api.post('/api/seller/register', formData, {
+      const res = await api.post('/api/seller/ownership/send-otp', {}, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      const res = await api.post('/api/seller/submit', {}, {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Failed to send OTP');
+        return;
+      }
+      setOwnershipOtpSent(true);
+      setOwnershipOtp('');
+      toast.success(`OTP sent to ${data.email || user?.email || 'your login email'}`);
+    } catch {
+      toast.error('Unable to send OTP right now');
+    } finally {
+      setIsSendingOwnershipOtp(false);
+    }
+  };
+
+  const handleFinalSubmit = async () => {
+    if (isProfileLocked) return;
+    if (!formData.ownershipDeclarationAccepted) {
+      toast.error('Accept the beneficial ownership declaration before final submission.');
+      return;
+    }
+    if (!/^\d{6}$/.test(ownershipOtp.trim())) {
+      toast.error('Enter the 6-digit OTP sent to your login email.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const saveRes = await api.post('/api/seller/register', formData, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!saveRes.ok) {
+        const data = await saveRes.json().catch(() => ({}));
+        toast.error(data.message || 'Failed to save section');
+        return;
+      }
+
+      const res = await api.post('/api/seller/submit', { otp: ownershipOtp.trim() }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
         toast.success('Application submitted successfully');
+        setFormData((prev: any) => ({ ...prev, ownershipVerified: true }));
         setIsProfileLocked(true);
         setShowSuccessOverlay(true);
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         toast.error(data.message || 'Failed to submit application');
       }
-    } catch (err) {
+    } catch {
       toast.error('Network error');
     } finally {
       setIsLoading(false);
@@ -692,9 +743,9 @@ export default function SellerOnboarding() {
                               <thead className="bg-gray-50 border-b border-gray-200">
                                  <tr>
                                     <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/4"><button type="button" onClick={() => setOfficeSortKey('name')}>Office SORT</button></th>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/2"><button type="button" onClick={() => setOfficeSortKey('address')}>Address SORT</button></th>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setOfficeSortKey('gst')}>GSTIN SORT</button></th>
+                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/4"><button type="button" onClick={() => setOfficeSortKey('name')} className="inline-flex items-center">Office <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/2"><button type="button" onClick={() => setOfficeSortKey('address')} className="inline-flex items-center">Address <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setOfficeSortKey('gst')} className="inline-flex items-center">GSTIN <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
                                     <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
                                  </tr>
                               </thead>
@@ -883,12 +934,12 @@ export default function SellerOnboarding() {
                               <thead className="bg-gray-50 border-b border-gray-200">
                                  <tr>
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('ifsc')}>IFSC SORT</button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('bankName')}>Bank Name SORT</button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('accountNumber')}>Bank Account Number SORT</button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('holderName')}>Account Holder SORT</button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')}>PFMS SORT</button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('primary')}>Primary SORT</button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('ifsc')} className="inline-flex items-center">IFSC <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('bankName')} className="inline-flex items-center">Bank Name <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('accountNumber')} className="inline-flex items-center">Bank Account Number <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('holderName')} className="inline-flex items-center">Account Holder <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')} className="inline-flex items-center">PFMS <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('primary')} className="inline-flex items-center">Primary <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
                                  </tr>
                               </thead>
@@ -1105,11 +1156,30 @@ export default function SellerOnboarding() {
                    
                    <div className="flex flex-col items-center gap-6 py-6 ">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Verification Required via OTP</p>
-                      <div className="flex gap-4">
-                         <Button onClick={() => setFormData((prev: any) => ({ ...prev, ownershipVerified: true }))} className="bg-blue-600 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                            Send OTP
+                      <p className="text-xs font-semibold text-slate-500">
+                         OTP will be sent to your login email: <span className="text-slate-800">{user?.email || 'registered email'}</span>
+                      </p>
+                      <div className="flex w-full max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                         <Button
+                           onClick={handleSendOwnershipOtp}
+                           disabled={isSendingOwnershipOtp || !formData.ownershipDeclarationAccepted}
+                           className="bg-blue-600 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
+                         >
+                            {isSendingOwnershipOtp ? <Loader2 className="animate-spin h-4 w-4" /> : ownershipOtpSent ? 'Resend OTP' : 'Send OTP'}
                          </Button>
-                         <Button onClick={() => handleFinalSubmit()} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                         <input
+                           value={ownershipOtp}
+                           onChange={(e) => setOwnershipOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                           inputMode="numeric"
+                           maxLength={6}
+                           placeholder="Enter 6-digit OTP"
+                           className="h-9 w-44 rounded border border-slate-300 px-3 text-center text-xs font-bold tracking-widest text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                         />
+                         <Button
+                           onClick={() => handleFinalSubmit()}
+                           disabled={isLoading || !formData.ownershipDeclarationAccepted || !/^\d{6}$/.test(ownershipOtp)}
+                           className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
+                         >
                             {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Final Submission'}
                          </Button>
                       </div>

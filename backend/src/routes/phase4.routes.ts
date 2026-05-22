@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import https from 'https';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { authenticate, authorize, authorizeAdmin, type AuthRequest } from '../middleware/auth.js';
@@ -199,6 +200,71 @@ const actorFrom = (req: AuthRequest) => ({
   ipAddress: req.ip,
   userAgent: req.headers['user-agent']
 });
+
+const cleanEnv = (value: unknown) => String(value || '').trim().replace(/^['"]|['"]$/g, '');
+
+const apiSetuAllowInsecureTls = () =>
+  cleanEnv(process.env.APISETU_ALLOW_INSECURE_TLS).toLowerCase() === 'true' ||
+  process.env.NODE_ENV !== 'production';
+
+const fetchApiSetuJson = async (apiUrl: string, headers: Record<string, string>) => {
+  const parseBody = (text: string) => {
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+      const text = await response.text();
+      return { ok: response.ok, status: response.status, body: parseBody(text), text };
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err: any) {
+    if (!apiSetuAllowInsecureTls()) {
+      throw new ApiError(424, 'GST verification provider is unreachable. Please try again later.', 'GST_PROVIDER_UNREACHABLE', {
+        cause: err?.cause?.code || err?.name || err?.message
+      });
+    }
+
+    return new Promise<{ ok: boolean; status: number; body: any; text: string }>((resolve, reject) => {
+      const request = https.request(apiUrl, {
+        method: 'GET',
+        headers,
+        rejectUnauthorized: false
+      }, response => {
+        let text = '';
+        response.setEncoding('utf8');
+        response.on('data', chunk => { text += chunk; });
+        response.on('end', () => {
+          resolve({
+            ok: Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 300),
+            status: response.statusCode || 0,
+            body: parseBody(text),
+            text
+          });
+        });
+      });
+      request.on('error', error => {
+        reject(new ApiError(424, 'GST verification provider is unreachable. Please try again later.', 'GST_PROVIDER_UNREACHABLE', {
+          cause: (error as any)?.code || error.message
+        }));
+      });
+      request.setTimeout(20000, () => request.destroy(new Error('API Setu request timed out')));
+      request.end();
+    });
+  }
+};
 
 // Onboarding
 router.get('/onboarding/me', authenticate, asyncRoute(async (req, res) => {
@@ -424,8 +490,48 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
 
   const sellers: any[] = [];
   const buyers: any[] = [];
+  const getDocumentEntries = (documents: any) =>
+    documents && typeof documents === 'object' && !Array.isArray(documents)
+      ? Object.entries(documents as Record<string, any>)
+      : [];
+  const documentOwners = users
+    .filter((u: any) => getDocumentEntries((u.role === 'seller' ? u.sellerProfile : u.buyerProfile)?.documents).length > 0)
+    .map((u: any) => u.id);
+  const documentAssets = documentOwners.length > 0
+    ? await db.fileAsset.findMany({
+        where: { ownerId: { in: [...new Set(documentOwners)] }, status: 'active' },
+        select: { id: true, ownerId: true, key: true, url: true, originalName: true, mimeType: true }
+      })
+    : [];
+  const findDocumentAsset = (ownerId: number, url: string) => {
+    const decodedUrl = (() => {
+      try {
+        return decodeURIComponent(url);
+      } catch {
+        return url;
+      }
+    })();
+    return documentAssets.find(asset =>
+      asset.ownerId === ownerId &&
+      (asset.url === url || decodedUrl.includes(asset.key))
+    );
+  };
+  const enrichDocuments = (ownerId: number, documents: any) => {
+    if (!documents || typeof documents !== 'object' || Array.isArray(documents)) return documents;
+    return Object.fromEntries(getDocumentEntries(documents).map(([key, value]) => {
+      const url = typeof value === 'string' ? value : value?.url;
+      const asset = typeof url === 'string' ? findDocumentAsset(ownerId, url) : null;
+      return [
+        key,
+        asset
+          ? { url, fileId: asset.id, originalName: asset.originalName, mimeType: asset.mimeType }
+          : value
+      ];
+    }));
+  };
 
   for (const u of users) {
+    const profile = u.role === 'seller' ? u.sellerProfile : u.buyerProfile;
     const item = {
       _id: String(u.id),
       id: u.id,
@@ -437,7 +543,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
       sectionStatus: u.sectionStatus,
       adminFeedback: u.adminFeedback,
       complianceViolations: u.complianceViolations,
-      profile: u.role === 'seller' ? u.sellerProfile : u.buyerProfile
+      profile: profile ? { ...profile, documents: enrichDocuments(u.id, profile.documents) } : profile
     };
     if (u.role === 'seller') sellers.push(item);
     else buyers.push(item);
@@ -509,9 +615,9 @@ async function verifyGstinInternal(gstin: string) {
   const stateName = gstStateMap[gstin.substring(0, 2)] || 'Maharashtra';
   const gstinPart = gstin.substring(2, 12);
 
-  const apiKey = process.env.APISETU_API_KEY ? String(process.env.APISETU_API_KEY).trim().replace(/^['"]|['"]$/g, '') : '';
-  const clientId = process.env.APISETU_CLIENT_ID ? String(process.env.APISETU_CLIENT_ID).trim().replace(/^['"]|['"]$/g, '') : '';
-  const urlTemplate = process.env.APISETU_GST_URL ? String(process.env.APISETU_GST_URL).trim().replace(/^['"]|['"]$/g, '') : 'https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}';
+  const apiKey = cleanEnv(process.env.APISETU_API_KEY);
+  const clientId = cleanEnv(process.env.APISETU_CLIENT_ID);
+  const urlTemplate = cleanEnv(process.env.APISETU_GST_URL || 'https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}');
 
   if (!apiKey || apiKey.includes('YOUR_') || apiKey.includes('placeholder') || !clientId || clientId.includes('YOUR_') || clientId.includes('placeholder')) {
     throw new ApiError(400, 'GST verification service is not configured (API credentials missing).');
@@ -524,20 +630,23 @@ async function verifyGstinInternal(gstin: string) {
         ? urlTemplate.replace(/gstin=[^&]*/i, `gstin=${encodeURIComponent(gstin)}`)
         : `${urlTemplate.replace(/\/$/, '')}/${encodeURIComponent(gstin)}`;
 
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'X-APISETU-APIKEY': apiKey,
-        'X-APISETU-CLIENTID': clientId,
-        'Accept': 'application/json'
-      }
+    const response = await fetchApiSetuJson(apiUrl, {
+      'X-APISETU-APIKEY': apiKey,
+      'X-APISETU-CLIENTID': clientId,
+      'Accept': 'application/json',
+      'User-Agent': 'MSME-Portal/1.0'
     });
 
     if (!response.ok) {
-      throw new ApiError(400, `GST verification failed: API Setu returned status ${response.status}`);
+      throw new ApiError(
+        response.status >= 500 || response.status === 0 ? 424 : 400,
+        `GST verification failed: API Setu returned status ${response.status}`,
+        'GST_PROVIDER_ERROR',
+        { providerStatus: response.status, providerBody: response.text?.slice(0, 500) }
+      );
     }
 
-    const raw = await response.json();
+    const raw = response.body;
     const payload = raw?.data?.result || raw?.data?.gstinData || raw?.data?.gstDetails || raw?.data?.data || raw?.result || raw?.gstinData || raw?.gstDetails || raw?.taxpayerDetails || raw?.taxPayerDetails || raw?.certificateData || raw;
     const principal = payload?.principalPlaceOfBusinessFields?.principalPlaceOfBusinessAddress || payload?.principalPlaceOfBusinessFields || payload?.pradr || payload?.principalPlaceOfBusiness || payload?.principalAddress || payload?.principal_place_of_business || {};
     const addressSource = principal?.addr || principal?.address || principal;
@@ -578,7 +687,7 @@ async function verifyGstinInternal(gstin: string) {
     if (e instanceof ApiError) {
       throw e;
     }
-    throw new ApiError(500, `GST verification failed: ${e.message || e}`);
+    throw new ApiError(424, e?.message?.startsWith('GST verification failed') ? e.message : 'GST verification provider is unreachable. Please try again later.', e?.code || 'GST_PROVIDER_UNREACHABLE');
   }
 }
 

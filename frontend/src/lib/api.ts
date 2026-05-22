@@ -78,6 +78,29 @@ const responseFromCache = (entry: CachedResponse) => new Response(JSON.stringify
 
 const isCacheFresh = (entry?: CachedResponse) => Boolean(entry && Date.now() - entry.timestamp < GET_CACHE_TTL);
 const refreshingKeys = new Set<string>();
+const shouldDispatchUnauthorized = (endpoint: string) =>
+  ![
+    '/api/auth/me',
+    '/api/auth/refresh',
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/notifications',
+  ].some((path) => endpoint.startsWith(path));
+
+const networkErrorResponse = (error: unknown) =>
+  new Response(
+    JSON.stringify({
+      success: false,
+      message: 'Unable to reach the backend API. Please check that the backend server is running.',
+      code: 'NETWORK_ERROR',
+      detail: error instanceof Error ? error.message : String(error || ''),
+    }),
+    {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
 
 const clearApiCache = (matcher?: string) => {
   if (!matcher) {
@@ -112,7 +135,7 @@ export const api = {
             headers,
           })
             .then(async (response) => {
-              if (response.status === 401 || response.status === 403) {
+              if ((response.status === 401 || response.status === 403) && shouldDispatchUnauthorized(endpoint)) {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('auth:unauthorized'));
                 }
@@ -146,7 +169,7 @@ export const api = {
       ...fetchOptions,
       headers,
     }).then(async (response) => {
-      if (response.status === 401 || response.status === 403) {
+      if ((response.status === 401 || response.status === 403) && shouldDispatchUnauthorized(endpoint)) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         }
@@ -171,7 +194,7 @@ export const api = {
         }
       }
       return response;
-    });
+    }).catch(networkErrorResponse);
   },
   
   get: (endpoint: string, options: RequestInit = {}) => 

@@ -635,11 +635,22 @@ export default function BuyerOnboarding() {
             ...formData,
             [fieldPath[0]]: {
               ...formData[fieldPath[0]],
-              [fieldPath[1]]: data.url
+              [fieldPath[1]]: {
+                url: data.url,
+                fileId: data.fileId,
+                originalName: data.file?.originalName
+              }
             }
           });
         } else {
-          setFormData({ ...formData, [fieldName]: data.url });
+          setFormData({
+            ...formData,
+            [fieldName]: {
+              url: data.url,
+              fileId: data.fileId,
+              originalName: data.file?.originalName
+            }
+          });
         }
         toast.success('Document uploaded successfully');
       } else {
@@ -782,7 +793,15 @@ export default function BuyerOnboarding() {
   const completedSectionCount = SIDEBAR_SECTIONS.filter(section => getSectionCompletion(section.id)).length;
   const complianceProgress = Math.round((completedSectionCount / SIDEBAR_SECTIONS.length) * 100);
 
-  const openDocumentPreview = (label: string, url: string) => {
+  const getUploadedDocumentUrl = (document: any) =>
+    typeof document === 'string' ? document : document?.url || document?.signedUrl || '';
+
+  const openDocumentPreview = (label: string, document: any) => {
+    const url = getUploadedDocumentUrl(document);
+    if (!url) {
+      toast.error('Document link is missing');
+      return;
+    }
     setPreviewDocument({
       label,
       url,

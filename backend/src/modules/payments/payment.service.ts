@@ -7,7 +7,7 @@ import { randomToken, sha256 } from '../../utils/crypto.js';
 import { withDistributedLock } from '../../utils/redisLock.js';
 import { redisKeys } from '../../constants/redis-keys.js';
 import { getCache, setCache } from '../../services/cache.service.js';
-import { publishNotificationEvent } from '../../services/realtime.service.js';
+import { notificationService } from '../../services/notification.service.js';
 import { bankTransferProvider } from './bank-transfer.provider.js';
 import { cashfreeProvider } from './cashfree.provider.js';
 import { razorpayProvider } from './razorpay.provider.js';
@@ -49,8 +49,13 @@ const auditPayment = (actor: Actor | null, action: string, entityType: string, e
   });
 
 const notifySafe = async (userId: number, title: string, message: string, type: string) => {
-  const notification = await prisma.notification.create({ data: { userId, title, message, type } }).catch(() => undefined);
-  if (notification) await publishNotificationEvent(userId, notification);
+  await notificationService.notifyWithEmail(userId, {
+    title,
+    message,
+    type,
+    priority: type.includes('failed') || type.includes('frozen') ? 'high' : 'medium',
+    redirectUrl: '/dashboard'
+  });
 };
 
 const paymentLookup = (referenceId?: string, gatewayOrderId?: string) => {

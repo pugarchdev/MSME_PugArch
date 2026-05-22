@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CreditCard, Landmark, Loader2, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, CreditCard, Landmark, Loader2, LockKeyhole, RefreshCw, ShieldCheck, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
@@ -60,6 +60,74 @@ export default function PaymentsEscrow() {
   const [invoiceId, setInvoiceId] = useState('');
   const [gateway, setGateway] = useState('bank_transfer');
   const [method, setMethod] = useState('bank_transfer');
+
+  const [sortField, setSortField] = useState<'referenceId' | 'invoiceId' | 'gateway' | 'amount' | 'status'>('referenceId');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (field: 'referenceId' | 'invoiceId' | 'gateway' | 'amount' | 'status') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortHeader = ({ label, field, className = '' }: { label: string; field: 'referenceId' | 'invoiceId' | 'gateway' | 'amount' | 'status'; className?: string }) => {
+    const isActive = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(field)}
+        className={cn(
+          "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[#1d4ed8] transition-colors",
+          isActive && "text-[#1d4ed8]",
+          className
+        )}
+      >
+        {label}
+        {isActive ? (
+          sortOrder === 'asc' ? (
+            <ArrowUp className="h-3 w-3 text-[#1d4ed8]" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-[#1d4ed8]" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-45" />
+        )}
+      </button>
+    );
+  };
+
+  const sortedPayments = useMemo(() => {
+    return [...payments].sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      if (sortField === 'referenceId') {
+        aVal = a.referenceId || '';
+        bVal = b.referenceId || '';
+      } else if (sortField === 'invoiceId') {
+        aVal = Number(a.invoiceId || 0);
+        bVal = Number(b.invoiceId || 0);
+      } else if (sortField === 'gateway') {
+        aVal = a.gateway || '';
+        bVal = b.gateway || '';
+      } else if (sortField === 'amount') {
+        aVal = Number(a.amount || 0);
+        bVal = Number(b.amount || 0);
+      } else if (sortField === 'status') {
+        aVal = a.status || '';
+        bVal = b.status || '';
+      }
+
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+    });
+  }, [payments, sortField, sortOrder]);
 
   const headers = useMemo<Record<string, string>>(() => {
     if (!token) {
@@ -213,15 +281,15 @@ export default function PaymentsEscrow() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Reference</th>
-                  <th className="px-4 py-3">Invoice</th>
-                  <th className="px-4 py-3">Gateway</th>
-                  <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3"><SortHeader label="Reference" field="referenceId" /></th>
+                  <th className="px-4 py-3"><SortHeader label="Invoice" field="invoiceId" /></th>
+                  <th className="px-4 py-3"><SortHeader label="Gateway" field="gateway" /></th>
+                  <th className="px-4 py-3"><SortHeader label="Amount" field="amount" /></th>
+                  <th className="px-4 py-3"><SortHeader label="Status" field="status" /></th>
                 </tr>
               </thead>
               <tbody>
-                {payments.map(payment => (
+                {sortedPayments.map(payment => (
                   <tr key={payment.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-bold text-blue-900">{payment.referenceId}</td>
                     <td className="px-4 py-3 text-slate-600">{payment.invoiceId || '-'}</td>
@@ -230,7 +298,7 @@ export default function PaymentsEscrow() {
                     <td className="px-4 py-3"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(payment.status))}>{payment.status}</span></td>
                   </tr>
                 ))}
-                {payments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
+                {sortedPayments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
               </tbody>
             </table>
           </div>

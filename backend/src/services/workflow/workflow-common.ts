@@ -1,6 +1,6 @@
 import prisma from '../../config/prisma.js';
 import { auditLog } from '../../modules/audit/audit.service.js';
-import { publishNotificationEvent } from '../realtime.service.js';
+import { notificationService } from '../notification.service.js';
 import { randomToken } from '../../utils/crypto.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 
@@ -31,8 +31,13 @@ export const auditWorkflow = (actor: WorkflowActor, action: string, entityType: 
   });
 
 export const notifyWorkflow = async (userId: number, title: string, message: string, type: string) => {
-  const notification = await db.notification.create({ data: { userId, title, message, type } }).catch(() => null);
-  if (notification) await publishNotificationEvent(userId, notification);
+  await notificationService.notifyWithEmail(userId, {
+    title,
+    message,
+    type,
+    priority: 'medium',
+    redirectUrl: '/dashboard'
+  });
 };
 
 export const assertRole = (actor: WorkflowActor, roles: string[]) => {

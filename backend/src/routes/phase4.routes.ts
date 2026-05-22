@@ -365,12 +365,8 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
     if (STRICT_VERIFICATION.UDYAM === false) finalSectionStatus.additional = 'approved';
   }
 
-  const statuses = sections.map(s => finalSectionStatus[s] || 'pending');
-  let onboardingStatus = 'pending_validation';
+  let onboardingStatus = 'under_compliance_review';
   let registrationStatus = 'completed';
-  if (statuses.every(s => s === 'approved')) {
-    onboardingStatus = 'approved_for_procurement';
-  }
 
   const updated = await db.user.update({
     where: { id: userId(req) },
@@ -383,40 +379,26 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
 
   await auditWrite(req, 'onboarding.submitted', 'user', updated.id);
 
-  if (onboardingStatus === 'approved_for_procurement') {
-    try {
-      await notificationService.notify(userId(req), {
-        title: 'Onboarding Approved',
-        message: 'Congratulations! Your onboarding application has been automatically approved for procurement.',
-        type: 'onboarding_approved',
-        priority: 'high',
-        redirectUrl: '/dashboard'
-      });
-      await notificationService.notifyAdmins({
-        title: 'Application Auto-Approved',
-        message: `User ${updated.name} has been automatically approved for procurement.`,
-        type: 'onboarding_approved',
-        priority: 'medium'
-      });
-    } catch (e) {
-      console.warn('[Onboarding Submit] Failed to send real-time notification:', e);
-    }
-  } else {
-    // Notify all admins about new application submission
-    try {
-      const applicant = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true, role: true, email: true } });
-      await notificationService.notifyAdminsWithEmail({
-        title: 'New Application Submitted',
-        message: `${applicant?.name || 'A user'} (${applicant?.role}) has submitted their onboarding application for review.`,
-        type: 'onboarding_submitted',
-        priority: 'high',
-        redirectUrl: '/admin/onboarding',
-        emailSubject: 'New Application Pending Review — MSME Procurement Portal',
-        emailHtml: `<p>A new onboarding application has been submitted and requires your review.</p><p><strong>Applicant:</strong> ${applicant?.name || 'Unknown'} (${applicant?.role})</p><p><strong>Email:</strong> ${applicant?.email || 'N/A'}</p>`
-      });
-    } catch (error) {
-      // Suppress notification errors to not block user flow
-    }
+  try {
+    const applicant = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true, role: true, email: true } });
+    await notificationService.notifyWithEmail(userId(req), {
+      title: 'Application Submitted for Review',
+      message: 'Your onboarding application has been submitted for admin compliance review. You will be notified when an admin updates the status.',
+      type: 'onboarding_submitted_for_review',
+      priority: 'high',
+      redirectUrl: user.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding'
+    });
+    await notificationService.notifyAdminsWithEmail({
+      title: 'New Application Submitted',
+      message: `${applicant?.name || 'A user'} (${applicant?.role}) has submitted their onboarding application for review.`,
+      type: 'onboarding_submitted',
+      priority: 'high',
+      redirectUrl: '/admin/onboarding',
+      emailSubject: 'New Application Pending Review - MSME Procurement Portal',
+      emailHtml: `<p>A new onboarding application has been submitted and requires your review.</p><p><strong>Applicant:</strong> ${applicant?.name || 'Unknown'} (${applicant?.role})</p><p><strong>Email:</strong> ${applicant?.email || 'N/A'}</p>`
+    });
+  } catch (error) {
+    // Suppress notification errors to not block user flow
   }
 
   ok(res, updated);
@@ -554,9 +536,121 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
 
 router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
-  const body = parse(z.object({ sectionStatus: z.record(z.string(), z.unknown()), sectionRejectionReasons: z.record(z.string(), z.unknown()).optional() }), req.body);
-  const user = await db.user.update({ where: { id }, data: body });
+  const body = parse(z.object({
+    sectionStatus: z.record(z.string(), z.unknown()),
+    sectionRejectionReasons: z.record(z.string(), z.unknown()).optional()
+  }), req.body);
+
+  const existing = await db.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      sectionStatus: true,
+      sectionRejectionReasons: true,
+      onboardingStatus: true
+    }
+  });
+  if (!existing) throw new ApiError(404, 'User not found');
+
+  const previousStatus = (existing.sectionStatus as Record<string, unknown>) || {};
+  const nextStatus = body.sectionStatus || {};
+  const reasons = body.sectionRejectionReasons || {};
+
+  const sections = existing.role === 'buyer'
+    ? ['org', 'rep', 'address', 'procurement', 'docs']
+    : ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership'];
+
+  const sectionLabels: Record<string, string> = {
+    pan: 'Business PAN Validation',
+    details: 'Business Details',
+    additional: 'Additional Details',
+    offices: 'Office Locations',
+    bank: 'Bank Accounts',
+    einvoicing: 'e-Invoicing',
+    ownership: 'Beneficial Ownership',
+    org: 'Organization Details',
+    rep: 'Representative Details',
+    address: 'Address Details',
+    procurement: 'Procurement Details',
+    docs: 'Verification Documents'
+  };
+
+  const statuses = sections.map(s => String(nextStatus[s] || 'pending'));
+  let newOnboardingStatus = existing.onboardingStatus;
+
+  if (statuses.every(s => s === 'approved')) {
+    newOnboardingStatus = 'approved_for_procurement';
+  } else if (statuses.some(s => s === 'rejected')) {
+    newOnboardingStatus = 'rejected';
+  } else if (statuses.some(s => s === 'resubmission_required')) {
+    newOnboardingStatus = 'resubmission_required';
+  } else {
+    newOnboardingStatus = 'under_compliance_review';
+  }
+
+  const user = await db.user.update({
+    where: { id },
+    data: {
+      sectionStatus: body.sectionStatus,
+      sectionRejectionReasons: body.sectionRejectionReasons || {},
+      onboardingStatus: newOnboardingStatus
+    }
+  });
+
   await auditWrite(req, 'admin.onboarding.section_status_updated', 'user', id);
+
+  const changes: string[] = [];
+  const rejectedDetails: string[] = [];
+
+  for (const s of sections) {
+    const prev = String(previousStatus[s] || 'pending');
+    const next = String(nextStatus[s] || 'pending');
+    const reason = clean(String(reasons[s] || ''));
+
+    if (prev !== next) {
+      const label = sectionLabels[s] || s;
+      changes.push(`- **${label}**: status updated to '${next.replace(/_/g, ' ')}'${reason ? ` (Remarks: ${reason})` : ''}`);
+    }
+
+    if (next === 'rejected' || next === 'resubmission_required') {
+      const label = sectionLabels[s] || s;
+      rejectedDetails.push(`- **${label}**: Requires attention.${reason ? ` Remarks: ${reason}` : ''}`);
+    }
+  }
+
+  if (changes.length > 0) {
+    const isApproved = newOnboardingStatus === 'approved_for_procurement';
+    const title = isApproved ? 'Application Onboarding Approved' : 'Application Update: Section Remarks';
+
+    let message = `Updates to your profile sections:\n` + changes.join('\n');
+    if (rejectedDetails.length > 0) {
+      message += `\n\nSections requiring attention:\n` + rejectedDetails.join('\n');
+    }
+
+    let emailHtml = `<p>There have been updates to your onboarding application sections.</p>`;
+    emailHtml += `<h3>Status Changes:</h3><ul>` + changes.map(c => `<li>${c}</li>`).join('') + `</ul>`;
+    if (rejectedDetails.length > 0) {
+      emailHtml += `<h3>Sections requiring attention:</h3><ul>` + rejectedDetails.map(r => `<li>${r}</li>`).join('') + `</ul>`;
+    }
+    emailHtml += `<p>Please log in to the portal to view details and make any necessary corrections.</p>`;
+
+    try {
+      await notificationService.notifyWithEmail(id, {
+        title,
+        message: message.replace(/\*\*/g, '').replace(/<[^>]*>/g, ''), // Strip md/html
+        type: isApproved ? 'onboarding_approved_for_procurement' : 'section_status_updated',
+        priority: isApproved ? 'high' : 'medium',
+        redirectUrl: existing.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding',
+        emailSubject: `${title} — MSME Procurement Portal`,
+        emailHtml
+      });
+    } catch (error) {
+      // Suppress notification errors to not block flow
+    }
+  }
+
   ok(res, user);
 }));
 
@@ -903,12 +997,11 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     if (STRICT_VERIFICATION.UDYAM === false) finalSectionStatus.additional = 'approved';
   }
 
-  const statuses = sections.map(s => finalSectionStatus[s] || 'pending');
   let onboardingStatus = user.onboardingStatus;
   let registrationStatus = user.registrationStatus;
 
-  if (statuses.every(s => s === 'approved')) {
-    onboardingStatus = 'approved_for_procurement';
+  if (onboardingStatus !== 'approved_for_procurement') {
+    onboardingStatus = 'under_compliance_review';
     registrationStatus = 'completed';
   }
 
@@ -925,7 +1018,7 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
   await auditWrite(req, 'onboarding.gst_verified_dashboard', 'user', user.id, { gstin: normalizedGstin });
 
   try {
-    await notificationService.notify(user.id, {
+    await notificationService.notifyWithEmail(user.id, {
       title: 'GST Verified Successfully',
       message: `Your business GSTIN ${normalizedGstin} has been successfully verified. ${
         onboardingStatus === 'approved_for_procurement'

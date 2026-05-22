@@ -163,12 +163,7 @@ export default function SellerSettings() {
                 <AlertTriangle className="h-4 w-4 mt-0.5" />
                 <p className="text-sm font-bold uppercase tracking-tight ">Please complete your profile to start transacting on MSME Portal</p>
              </div>
-             <div className="flex items-start gap-2 text-amber-800">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <p className="text-sm font-bold uppercase tracking-tight ">
-                  Please complete 'Beneficial Ownership Compliance'. <span className="text-blue-600 hover:underline cursor-pointer">Click here</span>
-                </p>
-             </div>
+          
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

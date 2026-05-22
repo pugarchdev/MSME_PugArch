@@ -22,21 +22,18 @@ import { handleSecureRouteError, handleFinancialRouteError, toSafeUser } from '.
 import { validatePersonalVerification } from '../../utils/validationHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import type { AuthRequest } from '../../middleware/auth.js';
-import { publishNotificationEvent } from '../../services/realtime.service.js';
 import { notificationService } from '../../services/notification.service.js';
 
 // CreateNotificationSafe mock for backward compatibility if not globally service-ified yet
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
   try {
-    const notification = await prisma.notification.create({
-      data: {
-        userId: payload.userId,
-        title: payload.title.slice(0, 120),
-        message: maskSensitive(payload.message).slice(0, 500),
-        type: payload.type.slice(0, 80)
-      }
+    await notificationService.notifyWithEmail(payload.userId, {
+      title: payload.title.slice(0, 120),
+      message: payload.message.slice(0, 500),
+      type: payload.type.slice(0, 80),
+      priority: 'high',
+      redirectUrl: '/dashboard'
     });
-    await publishNotificationEvent(payload.userId, notification);
   } catch (err) {
     console.error('[Notification] Failed to create notification:', err);
   }

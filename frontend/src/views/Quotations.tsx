@@ -86,6 +86,44 @@ export default function Quotations() {
   const [selectedTenderId, setSelectedTenderId] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  const [sortField, setSortField] = useState<'id' | 'title' | 'seller' | 'rate' | 'qty' | 'netValue' | 'status'>('id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (field: 'id' | 'title' | 'seller' | 'rate' | 'qty' | 'netValue' | 'status') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortHeader = ({ label, field, className = '' }: { label: string; field: 'id' | 'title' | 'seller' | 'rate' | 'qty' | 'netValue' | 'status'; className?: string }) => {
+    const isActive = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(field)}
+        className={cn(
+          "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[#1d4ed8] transition-colors",
+          isActive && "text-[#1d4ed8]",
+          className
+        )}
+      >
+        {label}
+        {isActive ? (
+          sortOrder === 'asc' ? (
+            <ArrowUp className="h-3 w-3 text-[#1d4ed8]" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-[#1d4ed8]" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-45" />
+        )}
+      </button>
+    );
+  };
+
   useEffect(() => {
     if (user?.role === 'seller') fetchMyBids();
     if (user?.role === 'buyer') fetchMyTenders();
@@ -172,14 +210,48 @@ export default function Quotations() {
 
   const filteredQuotes = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    return quotes.filter((quote) => {
+    const list = quotes.filter((quote) => {
       const tenderText = `${quote.tender?.tenderId || ''} ${quote.tender?.title || ''} ${quote.tender?.category || ''}`.toLowerCase();
       const sellerText = `${quote.seller?.name || ''} ${quote.seller?.sellerProfile?.businessName || ''}`.toLowerCase();
       const matchesSearch = !query || tenderText.includes(query) || sellerText.includes(query);
       const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [quotes, searchTerm, statusFilter]);
+
+    return list.sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      if (sortField === 'id') {
+        aVal = a.id;
+        bVal = b.id;
+      } else if (sortField === 'title') {
+        aVal = a.tender?.title || '';
+        bVal = b.tender?.title || '';
+      } else if (sortField === 'seller') {
+        aVal = a.seller?.sellerProfile?.businessName || a.seller?.name || '';
+        bVal = b.seller?.sellerProfile?.businessName || b.seller?.name || '';
+      } else if (sortField === 'rate') {
+        aVal = Number(a.unitPrice || 0);
+        bVal = Number(b.unitPrice || 0);
+      } else if (sortField === 'qty') {
+        aVal = Number(a.quantity || 0);
+        bVal = Number(b.quantity || 0);
+      } else if (sortField === 'netValue') {
+        aVal = Number(a.unitPrice || 0) * Number(a.quantity || 0);
+        bVal = Number(b.unitPrice || 0) * Number(b.quantity || 0);
+      } else if (sortField === 'status') {
+        aVal = a.status || '';
+        bVal = b.status || '';
+      }
+
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+    });
+  }, [quotes, searchTerm, statusFilter, sortField, sortOrder]);
 
   const stats = useMemo(() => {
     const total = quotes.length;
@@ -311,13 +383,13 @@ export default function Quotations() {
                 <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 w-12">Sr.No</th>
-                    <th className="px-4 py-3 w-24">Bid ID</th>
-                    <th className="px-4 py-3">Tender</th>
-                    <th className="px-4 py-3">Supplier</th>
-                    <th className="px-4 py-3 text-right">Rate</th>
-                    <th className="px-4 py-3 text-center">Qty</th>
-                    <th className="px-4 py-3 text-right">Net Value</th>
-                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 w-24"><SortHeader label="Bid ID" field="id" /></th>
+                    <th className="px-4 py-3"><SortHeader label="Tender" field="title" /></th>
+                    <th className="px-4 py-3"><SortHeader label="Supplier" field="seller" /></th>
+                    <th className="px-4 py-3 text-right"><SortHeader label="Rate" field="rate" className="justify-end w-full" /></th>
+                    <th className="px-4 py-3 text-center"><SortHeader label="Qty" field="qty" className="justify-center w-full" /></th>
+                    <th className="px-4 py-3 text-right"><SortHeader label="Net Value" field="netValue" className="justify-end w-full" /></th>
+                    <th className="px-4 py-3 text-center"><SortHeader label="Status" field="status" className="justify-center w-full" /></th>
                     {user?.role === 'buyer' && <th className="px-4 py-3 text-right">Manage</th>}
                   </tr>
                 </thead>

@@ -60,17 +60,8 @@ export const GeMSettingsSidebar: React.FC<GeMSettingsSidebarProps> = ({ currentS
 
   return (
     <div className="w-72 flex-shrink-0 bg-white border-r border-gray-200 min-h-screen shadow-sm overflow-y-auto">
-      <SidebarCategory 
-        label="Business Profile" 
-        isOpen={openCategories.includes('business')} 
-        onToggle={() => toggleCategory('business')}
-      >
-        {/* Business items could go here */}
-      </SidebarCategory>
-
-      <div className="px-6 py-4 border-b border-gray-100 text-sm font-bold text-gray-300 uppercase cursor-not-allowed">
-        Vendor Assessment
-      </div>
+    
+    
 
       <SidebarCategory 
         label="Account Settings" 
@@ -103,10 +94,6 @@ export const GeMSettingsSidebar: React.FC<GeMSettingsSidebarProps> = ({ currentS
           onClick={() => onSectionChange('close')} 
         />
       </SidebarCategory>
-
-      <div className="px-6 py-4 border-b border-gray-100 text-sm font-bold text-gray-300 uppercase cursor-not-allowed">
-        User Management
-      </div>
     </div>
   );
 };

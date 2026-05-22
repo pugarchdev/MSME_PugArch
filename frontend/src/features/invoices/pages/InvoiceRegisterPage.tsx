@@ -17,7 +17,10 @@ import {
   AlertCircle,
   X,
   ChevronRight,
-  Check
+  Check,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -67,6 +70,43 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
 
+  // Sorting state variables
+  const [sortField, setSortField] = useState<'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status'>('invoiceNumber');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (field: 'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortHeader = ({ label, field, className = '' }: { label: string; field: 'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status'; className?: string }) => {
+    const isActive = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(field)}
+        className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider transition-colors hover:text-[#1d4ed8] ${
+          isActive ? "text-[#1d4ed8]" : "text-slate-500"
+        } ${className}`}
+      >
+        {label}
+        {isActive ? (
+          sortOrder === 'asc' ? (
+            <ArrowUp className="h-3 w-3 text-[#1d4ed8]" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-[#1d4ed8]" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-45" />
+        )}
+      </button>
+    );
+  };
+
   const statuses = useMemo(() => Array.from(new Set(invoices.map(statusOf))).sort(), [invoices]);
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -83,6 +123,48 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       return (!term || haystack.includes(term)) && (!statusFilter || statusOf(invoice) === statusFilter);
     });
   }, [invoices, searchTerm, statusFilter]);
+
+  const sortedInvoices = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      if (sortField === 'invoiceNumber') {
+        aVal = a.invoiceNumber || `INV-${a.id}`;
+        bVal = b.invoiceNumber || `INV-${b.id}`;
+      } else if (sortField === 'poNumber') {
+        aVal = a.purchaseOrder?.poNumber || `PO #${a.purchaseOrderId || ''}`;
+        bVal = b.purchaseOrder?.poNumber || `PO #${b.purchaseOrderId || ''}`;
+      } else if (sortField === 'party') {
+        aVal = role === 'seller' ? a.buyer?.name || '' : a.seller?.name || '';
+        bVal = role === 'seller' ? b.buyer?.name || '' : b.seller?.name || '';
+      } else if (sortField === 'taxableAmount') {
+        aVal = Number(a.taxableAmount || 0);
+        bVal = Number(b.taxableAmount || 0);
+      } else if (sortField === 'totalTaxAmount') {
+        aVal = Number(a.totalTaxAmount || 0);
+        bVal = Number(b.totalTaxAmount || 0);
+      } else if (sortField === 'tdsAmount') {
+        aVal = Number(a.tdsAmount || 0);
+        bVal = Number(b.tdsAmount || 0);
+      } else if (sortField === 'totalAmount') {
+        aVal = Number(a.amount || a.totalAmount || 0);
+        bVal = Number(b.amount || b.totalAmount || 0);
+      } else if (sortField === 'dueDate') {
+        aVal = a.dueDate || '';
+        bVal = b.dueDate || '';
+      } else if (sortField === 'status') {
+        aVal = statusOf(a);
+        bVal = statusOf(b);
+      }
+
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+    });
+  }, [filtered, sortField, sortOrder, role]);
 
   const totalValue = filtered.reduce((sum, invoice) => sum + Number(invoice.amount || invoice.totalAmount || 0), 0);
   const pendingCount = filtered.filter(invoice => ['draft', 'submitted', 'pending'].includes(statusOf(invoice))).length;
@@ -231,20 +313,20 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
             <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="p-3">Invoice</th>
-                  <th className="p-3">PO</th>
-                  <th className="p-3">Party</th>
-                  <th className="p-3">Taxable</th>
-                  <th className="p-3">GST</th>
-                  <th className="p-3">TDS</th>
-                  <th className="p-3">Total</th>
-                  <th className="p-3">Due</th>
-                  <th className="p-3">Status</th>
+                  <th className="p-3"><SortHeader label="Invoice" field="invoiceNumber" /></th>
+                  <th className="p-3"><SortHeader label="PO" field="poNumber" /></th>
+                  <th className="p-3"><SortHeader label="Party" field="party" /></th>
+                  <th className="p-3"><SortHeader label="Taxable" field="taxableAmount" /></th>
+                  <th className="p-3"><SortHeader label="GST" field="totalTaxAmount" /></th>
+                  <th className="p-3"><SortHeader label="TDS" field="tdsAmount" /></th>
+                  <th className="p-3"><SortHeader label="Total" field="totalAmount" /></th>
+                  <th className="p-3"><SortHeader label="Due" field="dueDate" /></th>
+                  <th className="p-3"><SortHeader label="Status" field="status" /></th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map(invoice => {
+                {sortedInvoices.map(invoice => {
                   const state = statusOf(invoice);
                   const isSubmitted = state === 'submitted';
                   const isPayable = state === 'approved' || state === 'payment_initiated';

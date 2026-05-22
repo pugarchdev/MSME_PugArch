@@ -19,6 +19,44 @@ interface EmailOpts {
   html: string;
 }
 
+const escapeHtml = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+export const buildNotificationEmailHtml = (opts: {
+  title: string;
+  message: string;
+  type?: string;
+  priority?: string;
+  redirectUrl?: string;
+}) => {
+  const title = escapeHtml(opts.title);
+  const message = escapeHtml(opts.message);
+  const priority = escapeHtml(opts.priority || 'medium');
+  const type = escapeHtml((opts.type || 'notification').replace(/_/g, ' '));
+  const portalUrl = (env.FRONTEND_URL || env.CORS_ALLOWED_ORIGINS?.split(',')[0] || '').replace(/\/$/, '');
+  const actionUrl = portalUrl && opts.redirectUrl ? `${portalUrl}${opts.redirectUrl.startsWith('/') ? opts.redirectUrl : `/${opts.redirectUrl}`}` : portalUrl;
+
+  return `
+    <div style="margin: 0 0 20px; padding: 18px 20px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+      <p style="margin: 0 0 6px; color: #1d4ed8; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">${type}</p>
+      <h2 style="margin: 0; color: #0f172a; font-size: 20px; line-height: 1.3;">${title}</h2>
+    </div>
+    <p style="margin: 0 0 18px; color: #334155; font-size: 15px; line-height: 1.7;">${message}</p>
+    <table role="presentation" style="width: 100%; margin: 0 0 22px; border-collapse: collapse;">
+      <tr>
+        <td style="padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase;">Priority</td>
+        <td style="padding: 10px 12px; border: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; text-transform: capitalize;">${priority}</td>
+      </tr>
+    </table>
+    ${actionUrl ? `<p style="margin: 0;"><a href="${escapeHtml(actionUrl)}" style="display: inline-block; background: #1d4ed8; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 6px; font-weight: 700;">Open Portal</a></p>` : ''}
+  `;
+};
+
 export const notificationService = {
   /** Create in-app notification + publish via Redis */
   async notify(userId: number, opts: NotifyOpts) {
@@ -128,12 +166,10 @@ export const notificationService = {
   /** Combo: in-app notification + email */
   async notifyWithEmail(userId: number, opts: NotifyOpts & { emailSubject?: string; emailHtml?: string }) {
     const notification = await this.notify(userId, opts);
-    if (opts.emailSubject || opts.emailHtml) {
-      await this.sendEmail(userId, {
-        subject: opts.emailSubject || opts.title,
-        html: opts.emailHtml || `<p style="margin: 0; color: #334155;">${opts.message}</p>`
-      });
-    }
+    await this.sendEmail(userId, {
+      subject: opts.emailSubject || `${opts.title} - MSME Procurement Portal`,
+      html: opts.emailHtml || buildNotificationEmailHtml(opts)
+    });
     return notification;
   },
 

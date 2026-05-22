@@ -32,6 +32,7 @@ import { createComplianceFlag, flagDuplicateBankAccount, flagDuplicateSellerIden
 import { recordLoginEvent } from './src/modules/auth/login-event.service.js';
 import { assertEmailOtpVerified, consumeEmailOtp, consumeOtp, generateOtp, storeEmailOtp, storeOtp, verifyEmailOtp, verifyOtp } from './src/services/otp.service.js';
 import { sendOtpEmail } from './src/services/mail.service.js';
+import { notificationService } from './src/services/notification.service.js';
 import { hashPassword, validatePasswordStrength, verifyPassword } from './src/services/password.service.js';
 import { issueAuthResponse, signAccessToken, verifyAccessToken, verifyRefreshToken } from './src/services/token.service.js';
 import {
@@ -62,7 +63,6 @@ import { ApiError } from './src/utils/ApiError.js';
 import { STRICT_VERIFICATION } from './src/config/verification.js';
 import { maskAadhaar, maskBankAccount, maskGST, maskPAN, maskSensitive, maskValue } from './src/utils/maskSensitive.js';
 import { redisKeys } from './src/constants/redis-keys.js';
-import { publishNotificationEvent } from './src/services/realtime.service.js';
 
 // Cloudinary Configuration
 if (configureCloudinary()) {
@@ -169,18 +169,23 @@ const app = serverlessApp;
       .replace(/[<>]/g, '')
       .slice(0, maxLength);
 
-  const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
+  const createNotificationSafe = async (payload: {
+    userId: number;
+    title: string;
+    message: string;
+    type: string;
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    redirectUrl?: string;
+  }) => {
     try {
-      const notification = await prisma.notification.create({
-        data: {
-          userId: payload.userId,
-          title: sanitizePortalText(payload.title, 120),
-          message: sanitizePortalText(maskSensitive(payload.message), 500),
-          type: sanitizePortalText(payload.type, 80)
-        }
+      const notification = await notificationService.notifyWithEmail(payload.userId, {
+        title: sanitizePortalText(payload.title, 120),
+        message: sanitizePortalText(maskSensitive(payload.message), 500),
+        type: sanitizePortalText(payload.type, 80),
+        priority: payload.priority || 'medium',
+        redirectUrl: payload.redirectUrl || '/dashboard'
       });
-      emitNotification(payload.userId, notification);
-      await publishNotificationEvent(payload.userId, notification);
+      if (notification) emitNotification(payload.userId, notification);
       return notification;
     } catch (err) {
       console.error('[Notification] Failed to create notification:', err);
@@ -423,14 +428,14 @@ const app = serverlessApp;
 
   const notifyAdminsOfApplication = async (applicant: any, organizationName: string, applicationType: 'buyer' | 'seller') => {
     try {
-      const admins = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } });
       const timestamp = new Date().toLocaleString('en-IN');
-      await Promise.all(admins.map(admin => createNotificationSafe({
-        userId: admin.id,
+      await notificationService.notifyAdminsWithEmail({
         title: `${applicationType === 'buyer' ? 'Buyer' : 'Seller'} application submitted`,
         message: `${applicant.name} (${organizationName || 'Organization not provided'}) submitted a ${applicationType} application for review on ${timestamp}. Status: Under compliance review.`,
-        type: `${applicationType}_application_submitted`
-      })));
+        type: `${applicationType}_application_submitted`,
+        priority: 'high',
+        redirectUrl: `/admin/onboarding`
+      });
     } catch (err) {
       console.error('[Notification] Failed to notify admins:', err);
     }
@@ -2449,12 +2454,8 @@ const app = serverlessApp;
       if (STRICT_VERIFICATION.BANK === false) finalSectionStatus.bank = 'approved';
       if (STRICT_VERIFICATION.UDYAM === false) finalSectionStatus.additional = 'approved';
 
-      const statuses = sections.map(s => finalSectionStatus[s] || 'pending');
       let onboardingStatus = 'under_compliance_review';
       let registrationStatus = 'completed';
-      if (statuses.every(s => s === 'approved')) {
-        onboardingStatus = 'approved_for_procurement';
-      }
 
       const user = await prisma.user.update({
         where: { id: userId },
@@ -2485,21 +2486,21 @@ const app = serverlessApp;
         metadata: { emailHash: sha256(existingUser.email) }
       });
 
-      if (existingUser.onboardingStatus !== 'under_compliance_review' && onboardingStatus !== 'approved_for_procurement') {
+      if (existingUser.onboardingStatus !== 'under_compliance_review') {
         await notifyAdminsOfApplication(existingUser, profileOrganizationName(existingUser), 'seller');
       }
 
-      if (onboardingStatus === 'approved_for_procurement') {
-        try {
-          await createNotificationSafe({
-            userId,
-            title: 'Onboarding Approved',
-            message: 'Congratulations! Your onboarding application has been automatically approved for procurement.',
-            type: 'onboarding_approved_for_procurement'
-          });
-        } catch (e) {
-          console.warn('[Seller Submit] Failed to send real-time notification:', e);
-        }
+      try {
+        await createNotificationSafe({
+          userId,
+          title: 'Application Submitted for Review',
+          message: 'Your seller onboarding application has been submitted for admin compliance review. You will be notified when an admin updates the status.',
+          type: 'seller_application_submitted_for_review',
+          priority: 'high',
+          redirectUrl: '/seller/onboarding'
+        });
+      } catch (e) {
+        console.warn('[Seller Submit] Failed to send notification:', e);
       }
 
       res.json({ success: true, user: toSafeUser(user) });
@@ -2673,6 +2674,15 @@ const app = serverlessApp;
           'buyer'
         );
       }
+
+      await createNotificationSafe({
+        userId,
+        title: 'Application Submitted for Review',
+        message: 'Your buyer onboarding application has been submitted for admin compliance review. You will be notified when an admin updates the status.',
+        type: 'buyer_application_submitted_for_review',
+        priority: 'high',
+        redirectUrl: '/buyer/onboarding'
+      });
 
       await auditLog({
         actorUserId: userId,
@@ -3372,11 +3382,12 @@ const app = serverlessApp;
       });
 
       if (normalizedFeedback && normalizeSpaces(user.adminFeedback) !== normalizedFeedback) {
-        await createNotificationSafe({
-          userId: numericId,
+        await notificationService.notifyWithEmail(numericId, {
           title: 'Admin feedback received',
-          message: `${profileOrganizationName(user)}: ${normalizedFeedback}`,
-          type: 'admin_feedback'
+          message: `Feedback/Remarks for ${profileOrganizationName(user)}: ${normalizedFeedback}`,
+          type: 'admin_feedback',
+          priority: 'high',
+          redirectUrl: user.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding'
         });
       }
 

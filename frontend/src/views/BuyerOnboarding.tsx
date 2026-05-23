@@ -9,7 +9,7 @@ import { Stepper, Step } from '../components/ui/stepper';
 import { toast } from 'sonner';
 import { ArrowLeft, ArrowRight, Save, Upload, CheckCircle2, AlertTriangle, Clock, ShieldCheck, X, ExternalLink, Plus, MapPin } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { validateField, FieldType } from '../lib/validation';
+import { validateField, validateOptionalField, FieldType } from '../lib/validation';
 import { compressImage } from '../lib/compress';
 
 
@@ -372,9 +372,13 @@ export default function BuyerOnboarding() {
       organizationName: 'Organization name is required',
       businessType: 'Business type is required',
       industry: 'Industry / Sector is required',
+      country: 'Country is required',
       state: 'State is required',
       city: 'City is required',
-      registeredAddress: 'Registered office address is required'
+      registeredAddress: 'Registered office address is required',
+      designation: 'Designation is required',
+      department: 'Department is required',
+      customDepartment: 'Please specify your department'
     };
 
     if (requiredFields[name] && !String(value || '').trim()) {
@@ -623,6 +627,14 @@ export default function BuyerOnboarding() {
       e.target.value = '';
       return;
     }
+    const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowedExtensions.includes(extension) || !allowedMimeTypes.includes(file.type)) {
+      toast.error('Only PDF, JPG, JPEG, and PNG documents are allowed.');
+      e.target.value = '';
+      return;
+    }
 
     setIsUploading(fieldName);
     
@@ -716,17 +728,24 @@ export default function BuyerOnboarding() {
     }
 
     let fields: string[] = [];
-    if (sectionId === 'org') fields = ['organizationName', 'businessType', 'industry', 'cin', 'pan', 'gst', 'website', 'state', 'city', 'pincode', 'registeredAddress'];
-    if (sectionId === 'rep') fields = ['representativeName', 'email', 'mobile'];
+    if (sectionId === 'org') fields = ['organizationName', 'businessType', 'industry', 'cin', 'pan', 'gst', 'website', 'country', 'state', 'city', 'pincode', 'registeredAddress'];
+    if (sectionId === 'rep') fields = ['representativeName', 'designation', 'department', 'email', 'mobile', 'alternateMobile'];
 
     if (sectionId === 'account') fields = [];
 
     let isValid = true;
     setTouched(prev => fields.reduce((acc, field) => ({ ...acc, [field]: true }), { ...prev }));
     fields.forEach(field => {
-      if (['cin', 'gst'].includes(field) && !String(formData[field] || '').trim()) {
+      if (['cin', 'gst', 'alternateMobile'].includes(field) && !String(formData[field] || '').trim()) {
         setErrors(prev => ({ ...prev, [field]: '' }));
         return;
+      }
+      if (field === 'department' && formData.department !== 'Others') {
+        setErrors(prev => ({ ...prev, customDepartment: '' }));
+      }
+      if (field === 'department' && formData.department === 'Others') {
+        const isCustomDepartmentValid = validate('customDepartment', formData.customDepartment || '');
+        if (!isCustomDepartmentValid) isValid = false;
       }
       const isFieldValid = field === 'website'
         ? validateWebsite(formData[field] || '')
@@ -734,9 +753,16 @@ export default function BuyerOnboarding() {
       if (!isFieldValid) isValid = false;
     });
 
+    if (sectionId === 'rep') {
+      const alternateMobileError = validateOptionalField('mobile', formData.alternateMobile || '');
+      if (alternateMobileError) {
+        setErrors(prev => ({ ...prev, alternateMobile: alternateMobileError }));
+        isValid = false;
+      }
+    }
+
     return isValid;
   };
-
   const hasValue = (value: unknown) => typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
 
   const getSectionCompletion = (sectionId: string) => {
@@ -791,6 +817,7 @@ export default function BuyerOnboarding() {
     }
 
     if (sectionId === 'docs') {
+      if (selectedDocs.length === 0) return false;
       return selectedDocs.every((docId: string) => hasValue(formData.documents?.[docId]));
     }
 
@@ -911,7 +938,13 @@ export default function BuyerOnboarding() {
 
     // Final Submission Logic
     if (activeSection === 'account') {
-      if (!validateSection('account')) return;
+      const requiredSections = SIDEBAR_SECTIONS.map(section => section.id);
+      const invalidSection = requiredSections.find(sectionId => !validateSection(sectionId));
+      if (invalidSection) {
+        setActiveSection(invalidSection);
+        toast.error('Please complete all mandatory onboarding validations before final submission');
+        return;
+      }
       if (!formData.declaration || !formData.agreeTerms) {
         toast.error('Please accept both declarations');
         return;
@@ -975,7 +1008,7 @@ export default function BuyerOnboarding() {
     }
   };
 
-  if (isFetching) return <div className="buyer-font flex min-h-dvh items-center justify-center px-4 text-center font-bold  text-indigo-600">Loading form...</div>;
+  if (isFetching) return <div className="buyer-font flex min-h-dvh items-center justify-center px-4 text-center font-bold text-indigo-600">Loading JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem form...</div>;
 
   if (showSuccessOverlay) {
     return (

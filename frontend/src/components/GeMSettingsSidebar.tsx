@@ -63,11 +63,11 @@ export const GeMSettingsSidebar: React.FC<GeMSettingsSidebarProps> = ({ currentS
     
     
 
-      <SidebarCategory 
+      {/* <SidebarCategory 
         label="Account Settings" 
         isOpen={openCategories.includes('settings')} 
         onToggle={() => toggleCategory('settings')}
-      >
+      > */}
         <SidebarItem 
           label="Seller Profile" 
           isActive={currentSection === 'profile'} 
@@ -93,7 +93,7 @@ export const GeMSettingsSidebar: React.FC<GeMSettingsSidebarProps> = ({ currentS
           isActive={currentSection === 'close'} 
           onClick={() => onSectionChange('close')} 
         />
-      </SidebarCategory>
+    
     </div>
   );
 };

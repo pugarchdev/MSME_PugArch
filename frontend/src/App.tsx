@@ -88,13 +88,13 @@ export default function App() {
   if (!mounted) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">
-        JsgSmile MSME Marketplace...
+        JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...
       </div>
     );
   }
 
   const renderRoute = () => {
-    if (loading) return <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">JsgSmile MSME Marketplace...</div>;
+    if (loading) return <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...</div>;
     if (pathname === '/') return user ? <Redirect to="/dashboard"/> : <Home/>;
     if (pathname === '/login') return user ? <Redirect to="/dashboard"/> : <Login/>;
     if (pathname === '/forgot-password') return user ? <Redirect to="/dashboard"/> : <ForgotPassword/>;

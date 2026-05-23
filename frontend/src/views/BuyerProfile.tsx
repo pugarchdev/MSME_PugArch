@@ -849,10 +849,10 @@ export default function BuyerProfile() {
                        />
                        <div className="space-y-3">
                          <p className="text-[11px] font-medium text-slate-600 leading-relaxed  group-hover:text-slate-900 transition-colors">
-                           I, the holder of Aadhaar, hereby give my consent to MSME Marketplace, for using my Aadhaar number as allotted by UIDAI for registration. MSME Marketplace has informed me that my Aadhaar data will not be stored/shared.
+                           I, the holder of Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
                          </p>
                          <p className="text-[11px] font-medium text-slate-400 leading-relaxed ">
-                           मैं, आधार का धारक, एतदद्वारा अपनी पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को पंजीकरण हेतु प्रयोग में लाने हेतु MSME Marketplace को अपनी सहमति प्रदान करता हूँ। MSME Marketplace ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
+                           मैं, आधार का धारक, एतदद्वारा अपनी पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को पंजीकरण हेतु प्रयोग में लाने हेतु JsgSmile Portal को अपनी सहमति प्रदान करता हूँ। JsgSmile Portal ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
                          </p>
                        </div>
                     </div>

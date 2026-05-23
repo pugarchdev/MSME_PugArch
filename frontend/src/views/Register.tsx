@@ -149,7 +149,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
             {type === 'seller' ? <Store className="h-8 w-8 text-indigo-600" /> : <Building2 className="h-8 w-8 text-indigo-600" />}
           </div>
           <CardTitle className="text-2xl md:text-3xl font-black  tracking-tight text-slate-900 uppercase">Create {getTitle()}</CardTitle>
-          <p className="text-sm font-medium text-slate-500 mt-2 ">Start your journey with JsgSmile MSME Marketplace</p>
+          <p className="text-sm font-medium text-slate-500 mt-2 ">Start your journey with JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</p>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">

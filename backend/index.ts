@@ -144,6 +144,65 @@ const app = serverlessApp;
     Array.isArray(value)
       ? value.map(item => normalizeSpaces(item)).filter(Boolean)
       : [];
+  const onboardingPatterns = {
+    pan: /^[A-Z]{3}[ABCFGHLJPT][A-Z]\d{4}[A-Z]$/,
+    gst: /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/,
+    mobile: /^[6-9]\d{9}$/,
+    pincode: /^[1-9]\d{5}$/,
+    ifsc: /^[A-Z]{4}0[A-Z0-9]{6}$/,
+    bankAccount: /^\d{9,18}$/,
+    name: /^[A-Za-z][A-Za-z .'-]{1,99}$/,
+    orgName: /^[A-Za-z0-9 .,&()/-]{2,160}$/
+  };
+  const isPastOrToday = (value: unknown) => {
+    const parsed = value ? new Date(String(value)) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) return false;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return parsed <= today;
+  };
+  const validateSellerOnboardingPayload = (rawData: any) => {
+    const errors: Record<string, string> = {};
+    const pan = normalizeSpaces(rawData.pan).toUpperCase();
+    if (!onboardingPatterns.pan.test(pan)) errors.pan = 'Business PAN must follow valid government PAN format, e.g. ABCDE1234F.';
+    if (!onboardingPatterns.name.test(normalizeSpaces(rawData.nameAsInPan))) errors.nameAsInPan = 'Name as per PAN is required and must contain valid name characters.';
+    if (rawData.dateAsInPan && !isPastOrToday(rawData.dateAsInPan)) errors.dateAsInPan = 'PAN date cannot be invalid or future dated.';
+    if (!onboardingPatterns.orgName.test(normalizeSpaces(rawData.businessName))) errors.businessName = 'Business / organisation name is required and contains invalid characters.';
+    if (rawData.dateOfIncorporation && !isPastOrToday(rawData.dateOfIncorporation)) errors.dateOfIncorporation = 'Date of incorporation cannot be invalid or future dated.';
+    if (rawData.turnoverMax3Yrs && !/^[A-Za-z0-9 .,/()-]{1,80}$/.test(normalizeSpaces(rawData.turnoverMax3Yrs))) {
+      errors.turnoverMax3Yrs = 'Turnover declaration contains invalid characters.';
+    }
+    return errors;
+  };
+  const validateBuyerOnboardingPayload = (rawData: any, mobile: unknown) => {
+    const errors: Record<string, string> = {};
+    if (!onboardingPatterns.orgName.test(normalizeSpaces(rawData.organizationName))) errors.organizationName = 'Organization name is required and contains invalid characters.';
+    if (!normalizeSpaces(rawData.businessType)) errors.businessType = 'Business type is required.';
+    if (!normalizeSpaces(rawData.industry)) errors.industry = 'Industry / sector is required.';
+    if (rawData.pan && !onboardingPatterns.pan.test(normalizeSpaces(rawData.pan).toUpperCase())) errors.pan = 'PAN must follow valid government PAN format.';
+    if (rawData.gst && !onboardingPatterns.gst.test(normalizeSpaces(rawData.gst).toUpperCase())) errors.gst = 'GSTIN must follow valid 15 character format.';
+    if (!normalizeSpaces(rawData.country)) errors.country = 'Country is required.';
+    if (!normalizeSpaces(rawData.state)) errors.state = 'State is required.';
+    if (!normalizeSpaces(rawData.city)) errors.city = 'City is required.';
+    if (!onboardingPatterns.pincode.test(normalizeSpaces(rawData.pincode))) errors.pincode = 'PIN code must be a valid 6 digit Indian PIN.';
+    if (normalizeSpaces(rawData.registeredAddress).length < 10) errors.registeredAddress = 'Registered office address must be complete.';
+    if (!onboardingPatterns.name.test(normalizeSpaces(rawData.representativeName))) errors.representativeName = 'Authorized representative name is required and must be valid.';
+    if (!normalizeSpaces(rawData.designation)) errors.designation = 'Designation is required.';
+    if (!normalizeSpaces(rawData.department)) errors.department = 'Department is required.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeSpaces(rawData.email || ''))) errors.email = 'Representative email must be valid.';
+    if (!onboardingPatterns.mobile.test(normalizeSpaces(mobile))) errors.mobile = 'Mobile number must be a valid 10 digit Indian mobile number.';
+    if (rawData.alternateMobile && !onboardingPatterns.mobile.test(normalizeSpaces(rawData.alternateMobile))) errors.alternateMobile = 'Alternate mobile number must be valid.';
+    if (!Array.isArray(rawData.procurementCategories) || rawData.procurementCategories.length === 0) errors.procurementCategories = 'Select at least one procurement category.';
+    if (!normalizeSpaces(rawData.annualBudget)) errors.annualBudget = 'Annual budget range is required.';
+    if (!Array.isArray(rawData.preferredMethods) || rawData.preferredMethods.length === 0) errors.preferredMethods = 'Select at least one procurement method.';
+    const documents = rawData.documents && typeof rawData.documents === 'object' ? rawData.documents : {};
+    ['panCard', 'regCert', 'addressProof'].forEach((docKey) => {
+      if (!documents[docKey]) errors[`documents.${docKey}`] = 'Mandatory buyer document is required.';
+    });
+    if (rawData.gst && !documents.gstCert) errors['documents.gstCert'] = 'GST certificate is required when GSTIN is provided.';
+    if (!rawData.declaration || !rawData.agreeTerms) errors.declaration = 'Declarations and terms must be accepted.';
+    return errors;
+  };
   const notificationClients = new Map<number, Set<Response>>();
   const localActionBudget = new Map<string, { count: number; resetAt: number }>();
 
@@ -1070,7 +1129,7 @@ const app = serverlessApp;
 
   app.get("/", (req, res) => {
     res.json({
-      message: "JsgSmile MSME Marketplace API (Prisma/PostgreSQL) is running",
+      message: "JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem API (Prisma/PostgreSQL) is running",
       health: "/api/test"
     });
   });
@@ -2328,7 +2387,6 @@ const app = serverlessApp;
       if (!requestedPan) {
         return res.status(400).json({ message: 'Business PAN is required before saving seller details.' });
       }
-
       const existingProfile = await prisma.sellerProfile.findUnique({
         where: { userId }
       });
@@ -2343,6 +2401,14 @@ const app = serverlessApp;
       const isAadhaarMasked = rawData.aadhaarNumber && String(rawData.aadhaarNumber).includes('*');
       if (isAadhaarMasked && existingProfile) {
         aadhaarNumberToUse = existingProfile.aadhaarNumber;
+      }
+
+      const sellerValidationErrors = validateSellerOnboardingPayload({ ...rawData, pan: panToUse });
+      if (Object.keys(sellerValidationErrors).length > 0) {
+        return res.status(400).json({
+          message: Object.values(sellerValidationErrors)[0],
+          errors: sellerValidationErrors
+        });
       }
 
       const sensitiveFields = sensitiveProfileFields({ pan: panToUse, aadhaarNumber: aadhaarNumberToUse });
@@ -2425,6 +2491,23 @@ const app = serverlessApp;
         update: profileData,
         create: { ...profileData, userId }
       });
+      const completedSection = normalizeSpaces(rawData._completedSection);
+      const sellerSections = ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership', 'documents'];
+      if (sellerSections.includes(completedSection)) {
+        const existingUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { sectionStatus: true }
+        });
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            sectionStatus: {
+              ...((existingUser?.sectionStatus as Record<string, any>) || {}),
+              [completedSection]: 'completed'
+            }
+          }
+        });
+      }
       await auditLog({
         actorUserId: userId,
         actorRole: req.user?.role,
@@ -2451,6 +2534,17 @@ const app = serverlessApp;
       if (!profile) return res.status(404).json({ message: 'Profile not found' });
 
       const gstNumber = normalizeSpaces(req.body?.gstNumber).toUpperCase();
+      const officeErrors: Record<string, string> = {};
+      if (!normalizeSpaces(req.body?.name)) officeErrors.name = 'Office name is required.';
+      if (!normalizeSpaces(req.body?.type)) officeErrors.type = 'Office type is required.';
+      if (!onboardingPatterns.pincode.test(normalizeSpaces(req.body?.pincode))) officeErrors.pincode = 'PIN code must be a valid 6 digit Indian PIN.';
+      if (!normalizeSpaces(req.body?.state)) officeErrors.state = 'State is required.';
+      if (!normalizeSpaces(req.body?.city)) officeErrors.city = 'City is required.';
+      if (normalizeSpaces(req.body?.address).length < 10) officeErrors.address = 'Complete office address is required.';
+      if (gstNumber && !onboardingPatterns.gst.test(gstNumber)) officeErrors.gstNumber = 'GSTIN must follow valid 15 character format.';
+      if (Object.keys(officeErrors).length > 0) {
+        return res.status(400).json({ message: Object.values(officeErrors)[0], errors: officeErrors });
+      }
       if (gstNumber) {
         const duplicateGst = await prisma.sellerOffice.findFirst({
           where: {
@@ -2594,7 +2688,7 @@ const app = serverlessApp;
 
       const otp = generateOtp();
       const otpState = await storeOtp('ownership_submission', user.email, otp, { userId: user.id, action: 'seller_final_submission' });
-      const deliveryConfigured = await sendOtpEmail(user.email, otp, '[MSME Portal] Final submission OTP');
+      const deliveryConfigured = await sendOtpEmail(user.email, otp, '[JsgSmile Portal] Final submission OTP');
 
       await auditLog({
         actorUserId: user.id,
@@ -2632,6 +2726,7 @@ const app = serverlessApp;
           sellerProfile: {
             include: {
               offices: true,
+              bankAccounts: true,
               sellerDocuments: true
             }
           }
@@ -2672,6 +2767,20 @@ const app = serverlessApp;
       // Verify dynamic mandatory documents
       const profile = existingUser.sellerProfile;
       if (!profile) return res.status(400).json({ message: 'Seller profile not found' });
+      const finalSellerErrors: Record<string, string> = {};
+      if (!profile.panVerified) finalSellerErrors.pan = 'Business PAN must be verified before final submission.';
+      if (!onboardingPatterns.pan.test(normalizeSpaces(profile.pan).toUpperCase())) finalSellerErrors.pan = 'Business PAN must follow valid government PAN format.';
+      if (!onboardingPatterns.name.test(normalizeSpaces(profile.nameAsInPan))) finalSellerErrors.nameAsInPan = 'Name as per PAN is required and must be valid.';
+      if (!profile.dateAsInPan || !isPastOrToday(profile.dateAsInPan)) finalSellerErrors.dateAsInPan = 'PAN date is required and cannot be future dated.';
+      if (!onboardingPatterns.orgName.test(normalizeSpaces(profile.businessName))) finalSellerErrors.businessName = 'Business / organisation name is required and must be valid.';
+      if (!profile.dateOfIncorporation || !isPastOrToday(profile.dateOfIncorporation)) finalSellerErrors.dateOfIncorporation = 'Date of incorporation is required and cannot be future dated.';
+      if (!profile.offices?.length) finalSellerErrors.offices = 'At least one registered office is required.';
+      if (!profile.bankAccounts?.length) finalSellerErrors.bankAccounts = 'At least one bank account is required.';
+      if (!profile.eInvoicingExcluded && !normalizeSpaces(profile.turnoverMax3Yrs)) finalSellerErrors.turnoverMax3Yrs = 'Turnover declaration is required unless excluded from e-invoicing.';
+      if (!profile.ownershipDeclarationAccepted) finalSellerErrors.ownershipDeclarationAccepted = 'Beneficial ownership declaration must be accepted.';
+      if (Object.keys(finalSellerErrors).length > 0) {
+        return res.status(400).json({ message: Object.values(finalSellerErrors)[0], errors: finalSellerErrors });
+      }
 
       const requiredDocs: string[] = ['pan_copy', 'bank_passbook', 'address_proof'];
       const regDetails = (existingUser.registrationDetails as Record<string, any>) || {};
@@ -2734,7 +2843,10 @@ const app = serverlessApp;
         data: { 
           onboardingStatus: onboardingStatus as any,
           registrationStatus: registrationStatus as any,
-          sectionStatus: finalSectionStatus,
+          sectionStatus: {
+            ...finalSectionStatus,
+            submitted: true
+          },
           sellerProfile: existingUser.sellerProfile
             ? {
                 update: {
@@ -2836,7 +2948,7 @@ const app = serverlessApp;
 
       const otp = generateOtp();
       const otpState = await storeOtp('ownership_submission', user.email, otp, { userId: user.id, action: 'buyer_final_submission' });
-      const deliveryConfigured = await sendOtpEmail(user.email, otp, '[MSME Portal] Buyer final submission OTP');
+      const deliveryConfigured = await sendOtpEmail(user.email, otp, '[JsgSmile Portal] Buyer final submission OTP');
 
       await auditLog({
         actorUserId: user.id,
@@ -2909,6 +3021,13 @@ const app = serverlessApp;
       const mobile = rawData.mobile || existingUser.mobile;
       if (!mobile) {
         return res.status(400).json({ message: 'Mobile number is required to complete buyer onboarding' });
+      }
+      const buyerValidationErrors = validateBuyerOnboardingPayload(rawData, mobile);
+      if (Object.keys(buyerValidationErrors).length > 0) {
+        return res.status(400).json({
+          message: Object.values(buyerValidationErrors)[0],
+          errors: buyerValidationErrors
+        });
       }
 
       if (password || rawData.email || rawData.mobile) {

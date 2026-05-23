@@ -115,7 +115,7 @@ export default function Login() {
             <span className="block text-[#f9a825] text-[10px] tracking-[0.3em] mb-1 text-center">Secure Portal</span>
             Stakeholder Access
           </CardTitle>
-          <p className="text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-[0.2em]  opacity-80 text-center">JsgSmile Procurement Network</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-[0.2em]  opacity-80 text-center">Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</p>
         </CardHeader>
 
         <CardContent className="p-5 sm:p-8">

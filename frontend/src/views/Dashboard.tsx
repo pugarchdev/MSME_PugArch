@@ -129,7 +129,7 @@ export default function Dashboard() {
     return () => window.removeEventListener('notifications:updated', refreshNotifications);
   }, [token]);
 
-  if (isLoading) return <div className="flex h-screen items-center justify-center font-black  text-[#12335f] animate-pulse text-xl">Loading MSME Portal...</div>;
+  if (isLoading) return <div className="flex h-screen items-center justify-center px-4 text-center font-black text-[#12335f] animate-pulse text-xl">Loading JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...</div>;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -311,7 +311,6 @@ export default function Dashboard() {
         </div>
         <button
           type="button"
-          onClick={() => router.push('/profile')}
           className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-left hover:border-[#12335f]/40 focus:outline-none focus:ring-2 focus:ring-[#12335f]"
         >
            <div className="h-10 w-10 rounded-md bg-[#12335f] flex items-center justify-center text-white font-black text-base">

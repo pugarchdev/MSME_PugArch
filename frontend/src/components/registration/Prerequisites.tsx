@@ -32,13 +32,11 @@ const getBuyerRequiredDocs = (selectedType: string) => [
     id: 'active-email',
     content: selectedType === 'Primary User (Co-operative)' ? (
       <>
-        Active Email Id:- Use E-mail ID, Company/ organisation E-mail ID and ID from whitelisted domains to verify the OTP. To view list of whitelisted domains (Accepted by MSME Portal),{' '}
-        <button type="button" className="font-bold text-indigo-600 hover:underline">Click Here</button>
+        Active Email Id:- Use E-mail ID, Company/ organisation E-mail ID to verify the OTP.
       </>
     ) : (
       <>
-        Government email id - preferably designation based. To view list of whitelisted domains (accepted at MSME Portal),{' '}
-        <button type="button" className="font-bold text-indigo-600 hover:underline">Click Here</button>
+        Government email id - preferably designation based. 
       </>
     ),
   },
@@ -52,10 +50,10 @@ const prerequisiteDocs: Record<string, { personal: string[], business: string[],
     ],
     business: [
       'Business PAN details (4th character of your PAN number should be P or H)',
-      'Bank account number and IFSC (Not mandatory for Vivad se Vishwas)',
-      'Income tax returns of last 3 years (It is required for BID participation if your business is older than 24 months) (Not mandatory for Vivad se Vishwas)',
-      'Registered Address (Not mandatory for Vivad se Vishwas)',
-      'Udyam number for MSME (EMD exemption in BID) (Required for Vivad se Vishwas)'
+      'Bank account number and IFSC ',
+      'Income tax returns of last 3 years (It is required for BID participation if your business is older than 24 months) ',
+      'Registered Address ',
+      'Udyam number for MSME (EMD exemption in BID) ',
     ],
     optional: [
       'DIPP number for startup (EMD exemption for eligible start ups)',
@@ -146,9 +144,7 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
                     onCheck={handleCheck} 
                     checkedItems={checkedItems} 
                   />
-                  <button className="min-h-10 text-left text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline">
-                    {selectedType} User Manual
-                  </button>
+                  
                   <div className="space-y-2">
                     <p className="text-xs font-bold leading-relaxed text-slate-800">
                       If you want to register as the buyers/ users involved in procurement process please contact Primary user (HOD) of your organisation

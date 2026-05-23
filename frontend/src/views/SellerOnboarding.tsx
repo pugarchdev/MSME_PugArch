@@ -119,6 +119,7 @@ export default function SellerOnboarding() {
     isPrimary: false
   });
   const [bankErrors, setBankErrors] = useState<Record<string, string>>({});
+  const [additionalErrors, setAdditionalErrors] = useState<Record<string, string>>({});
   const [ownershipOtp, setOwnershipOtp] = useState('');
   const [ownershipOtpSent, setOwnershipOtpSent] = useState(false);
   const [isSendingOwnershipOtp, setIsSendingOwnershipOtp] = useState(false);
@@ -129,6 +130,20 @@ export default function SellerOnboarding() {
   const [sellerDocuments, setSellerDocuments] = useState<any[]>(cachedProfile.sellerDocuments || []);
   const [isUploadingMap, setIsUploadingMap] = useState<Record<string, boolean>>({});
   const savedSectionsStorageKey = `${SELLER_SAVED_SECTIONS_KEY_PREFIX}:${user?.id || user?.email || 'current'}`;
+
+  const validateAdditionalForm = (candidate = formData) => {
+    const errors: Record<string, string> = {};
+    if (candidate.isStartup !== true && candidate.isStartup !== false) {
+      errors.isStartup = 'Are you registered with DPIIT as Startup? (Please select Yes or No)';
+    }
+    if (candidate.isUdyamCertified !== true && candidate.isUdyamCertified !== false) {
+      errors.isUdyamCertified = 'Do you have Udyam Registration certified by MSME? (Please select Yes or No)';
+    }
+    if (candidate.participateInBid !== true && candidate.participateInBid !== false) {
+      errors.participateInBid = 'Do you want to participate in Bid? (Please select Yes or No)';
+    }
+    return { errors, isValid: Object.keys(errors).length === 0 };
+  };
 
   const sellerFormDefaults = {
     organizationType: 'Proprietorship',
@@ -141,9 +156,9 @@ export default function SellerOnboarding() {
     dateOfIncorporation: '',
     detailsUpdated: false,
     
-    isStartup: false,
-    isUdyamCertified: false,
-    participateInBid: false,
+    isStartup: null,
+    isUdyamCertified: null,
+    participateInBid: null,
     
     turnoverMax3Yrs: '',
     eInvoicingExcluded: false,
@@ -160,6 +175,8 @@ export default function SellerOnboarding() {
 
   const normalizeList = (value: unknown) => Array.isArray(value) ? value : [];
   
+  const initialAdditionalSaved = cachedMe?.user?.sectionStatus?.additional === 'completed' || cachedMe?.user?.sectionStatus?.additional === 'approved';
+
   const [formData, setFormData] = useState<any>({
     ...sellerFormDefaults,
     ...cachedProfile,
@@ -173,7 +190,10 @@ export default function SellerOnboarding() {
     roleInOrg: cachedProfile.roleInOrg || cachedRegDetails.roleInOrg || '',
     pan: cachedProfile.pan || cachedRegDetails.pan || '',
     offices: normalizeList(cachedProfile.offices),
-    bankAccounts: normalizeList(cachedProfile.bankAccounts)
+    bankAccounts: normalizeList(cachedProfile.bankAccounts),
+    isStartup: initialAdditionalSaved ? (cachedProfile.isStartup ?? null) : null,
+    isUdyamCertified: initialAdditionalSaved ? (cachedProfile.isUdyamCertified ?? null) : null,
+    participateInBid: initialAdditionalSaved ? (cachedProfile.participateInBid ?? null) : null
   });
 
   const getRequiredDocuments = useCallback(() => {
@@ -247,13 +267,20 @@ export default function SellerOnboarding() {
       const profile = data.profile || {};
       setRegDetails(regDetails);
       setSellerDocuments(profile.sellerDocuments || []);
+      
+      const serverSectionStatus = data.user?.sectionStatus || {};
+      const serverCompletedSections = Object.entries(serverSectionStatus)
+        .filter(([_, status]) => status === 'completed' || status === 'approved')
+        .map(([section]) => section);
+      
       const inferredSections = inferCompletedSellerSections(profile);
-      setSavedSections(inferredSections);
+      setSavedSections(Array.from(new Set([...inferredSections, ...serverCompletedSections])));
       const currentStatus = data.user?.onboardingStatus;
       setOnboardingStatus(currentStatus || 'pending');
       setIsProfileLocked(lockedStatuses.includes(currentStatus));
       setShowSuccessOverlay(currentStatus === 'under_compliance_review' || currentStatus === 'approved_for_procurement');
       
+      const hasAdditionalCompleted = data.user?.sectionStatus?.additional === 'completed' || data.user?.sectionStatus?.additional === 'approved';
       setFormData((prev: any) => ({
         ...prev,
         ...profile,
@@ -267,7 +294,10 @@ export default function SellerOnboarding() {
         roleInOrg: profile.roleInOrg || regDetails.roleInOrg || prev.roleInOrg,
         pan: profile.pan || regDetails.pan || prev.pan,
         offices: normalizeList(profile.offices),
-        bankAccounts: normalizeList(profile.bankAccounts).length > 0 ? normalizeList(profile.bankAccounts) : normalizeList(prev.bankAccounts)
+        bankAccounts: normalizeList(profile.bankAccounts).length > 0 ? normalizeList(profile.bankAccounts) : normalizeList(prev.bankAccounts),
+        isStartup: hasAdditionalCompleted ? (profile.isStartup ?? null) : null,
+        isUdyamCertified: hasAdditionalCompleted ? (profile.isUdyamCertified ?? null) : null,
+        participateInBid: hasAdditionalCompleted ? (profile.participateInBid ?? null) : null
       }));
     } catch (err) {
       console.error(err);
@@ -305,9 +335,17 @@ export default function SellerOnboarding() {
       toast.info(lockToastText);
       return;
     }
+    if (currentSection === 'additional') {
+      const { errors, isValid } = validateAdditionalForm(formData);
+      if (!isValid) {
+        setAdditionalErrors(errors);
+        toast.error('Please answer all mandatory questions in this section.');
+        return;
+      }
+    }
     setIsLoading(true);
     try {
-      let dataToSave = { ...formData };
+      let dataToSave = { ...formData, _completedSection: currentSection };
       if (currentSection === 'details') {
         dataToSave.detailsUpdated = true;
       }
@@ -787,7 +825,7 @@ export default function SellerOnboarding() {
     const status: any = {};
     status.pan = formData.panVerified || savedSections.includes('pan') ? 'completed' : 'pending';
     status.details = (formData.businessName && formData.dateOfIncorporation && (formData.detailsUpdated || savedSections.includes('details'))) ? 'completed' : 'pending';
-    status.additional = savedSections.includes('additional') || formData.isStartup || formData.isUdyamCertified || formData.participateInBid ? 'completed' : 'pending';
+    status.additional = savedSections.includes('additional') ? 'completed' : 'pending';
     status.offices = (savedSections.includes('offices') && normalizeList(formData.offices).length > 0) ? 'completed' : 'pending';
     status.bank = (savedSections.includes('bank') && normalizeList(formData.bankAccounts).length > 0) ? 'completed' : 'pending';
     status.einvoicing = formData.turnoverMax3Yrs || formData.eInvoicingExcluded === true || savedSections.includes('einvoicing') ? 'completed' : 'pending';
@@ -917,18 +955,49 @@ export default function SellerOnboarding() {
                      { label: 'Do you have Udyam Registration certified by MSME?', name: 'isUdyamCertified' },
                      { label: 'Do you want to participate in Bid?', name: 'participateInBid' },
                    ].map(item => (
-                     <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 font-medium text-gray-700">
-                        <span className="text-sm">{item.label}</span>
-                        <div className="flex gap-4">
-                           <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="radio" checked={formData[item.name]} onChange={() => setFormData((prev: any) => ({ ...prev, [item.name]: true }))} className="accent-[#12335f] h-4 w-4" />
-                              <span className="text-xs uppercase">Yes</span>
-                           </label>
-                           <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="radio" checked={!formData[item.name]} onChange={() => setFormData((prev: any) => ({ ...prev, [item.name]: false }))} className="accent-[#12335f] h-4 w-4" />
-                              <span className="text-xs uppercase">No</span>
-                           </label>
-                        </div>
+                     <div key={item.name} className="space-y-2">
+                       <div className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border font-medium text-gray-700 transition-colors ${additionalErrors[item.name] ? 'border-red-400 bg-red-50/20' : 'border-gray-100'}`}>
+                          <span className="text-sm">{item.label}</span>
+                          <div className="flex gap-4">
+                             <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="radio" 
+                                  name={item.name} 
+                                  checked={formData[item.name] === true} 
+                                  onChange={() => {
+                                    setFormData((prev: any) => ({ ...prev, [item.name]: true }));
+                                    setAdditionalErrors(prev => {
+                                      const next = { ...prev };
+                                      delete next[item.name];
+                                      return next;
+                                    });
+                                  }} 
+                                  className="accent-[#12335f] h-4 w-4" 
+                                />
+                                <span className="text-xs uppercase">Yes</span>
+                             </label>
+                             <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="radio" 
+                                  name={item.name} 
+                                  checked={formData[item.name] === false} 
+                                  onChange={() => {
+                                    setFormData((prev: any) => ({ ...prev, [item.name]: false }));
+                                    setAdditionalErrors(prev => {
+                                      const next = { ...prev };
+                                      delete next[item.name];
+                                      return next;
+                                    });
+                                  }} 
+                                  className="accent-[#12335f] h-4 w-4" 
+                                />
+                                <span className="text-xs uppercase">No</span>
+                             </label>
+                          </div>
+                       </div>
+                       {additionalErrors[item.name] && (
+                         <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors[item.name]}</p>
+                       )}
                      </div>
                    ))}
                    <div className="flex justify-end pt-2">

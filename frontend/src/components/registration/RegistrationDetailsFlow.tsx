@@ -978,7 +978,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                               className="mt-1 h-5 w-5 rounded border-slate-300 accent-indigo-600"
                             />
                             <span>
-                              I, the holder of the above Aadhaar, hereby give my consent to MSME Portal, for using my Aadhaar number as allotted by UIDAI for MSME Portal Registration. MSME Portal,have informed me that my aadhaar data will not be stored/shared.
+                              I, the holder of the above Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for JsgSmile Portal registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
                             </span>
                           </label>
 
@@ -1193,7 +1193,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                                 className="mt-1 h-5 w-5 rounded border-slate-300 accent-[#12335f]"
                               />
                               <span>
-                                I, the holder of the above Aadhaar, hereby give my consent to MSME Portal,for using my Aadhaar number as allotted by UIDAI for MSME Portal Registration. MSME Portal,has informed me that my Aadhaar data will not be stored/shared.
+                                I, the holder of the above Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for JsgSmile Portal registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
                               </span>
                             </label>
                             {aadhaarErrors.consent && <p className="pl-8 text-xs font-medium text-red-600">{aadhaarErrors.consent}</p>}
@@ -1359,10 +1359,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                 {role === 'buyer' ? (
                   <>
                     <h2 className="text-base md:text-base font-bold text-slate-800">Email Verification</h2>
-                    <div className="rounded-md bg-sky-100 px-5 py-4 text-xs font-medium text-slate-700">
-                      To view list of whitelisted domains (accepted at MSME Portal),{' '}
+                    {/* <div className="rounded-md bg-sky-100 px-5 py-4 text-xs font-medium text-slate-700">
+                      To view list of whitelisted domains (accepted at JsgSmile Portal),{' '}
                       <button type="button" className="font-bold text-[#12335f] hover:underline">Click here</button>
-                    </div>
+                    </div> */}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <Input
@@ -1678,7 +1678,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                   Back
                 </Button>
               
-              {currentSubStep === 2 && role === 'buyer' && isAadhaarVerified ? null : currentSubStep === 4 && role === 'buyer' ? null : currentSubStep < 4 ? (
+              {currentSubStep === 2 && role === 'buyer' && isAadhaarVerified ? null : currentSubStep < 4 ? (
                 <Button 
                   onClick={handleNext}
                   disabled={currentSubStep === 1 && isPrimaryBuyer && !isPrimaryBuyerOrganisationComplete}

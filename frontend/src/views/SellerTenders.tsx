@@ -75,6 +75,16 @@ export default function SellerTenders() {
   
   const router = useRouter();
   const [selectedTenderForDetails, setSelectedTenderForDetails] = useState<PublicTender | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('seller-tenders-view-mode') as 'list' | 'grid') || 'list';
+    }
+    return 'list';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('seller-tenders-view-mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     fetchPublicTenders();
@@ -213,188 +223,327 @@ export default function SellerTenders() {
           </div>
         </div>
 
-        {/* Tenders Grid */}
-        <div className="grid grid-cols-1 gap-3">
-          {filteredTenders.length === 0 ? (
-            <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
-              <FileText className="h-10 w-10 text-slate-200 mx-auto mb-2" />
-              <p className="text-base font-bold text-slate-900">No active tenders found</p>
-            </div>
-          ) : (
-            pagedTenders.map((tender, index) => {
+        {/* Tenders List/Grid Container */}
+        {filteredTenders.length === 0 ? (
+          <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
+            <FileText className="h-10 w-10 text-slate-200 mx-auto mb-2" />
+            <p className="text-base font-bold text-slate-900">No active tenders found</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pagedTenders.map((tender, index) => {
               const participated = Boolean(tender.hasParticipated);
               const participationLabel = tender.participationStatus
                 ? tender.participationStatus.replace(/_/g, ' ')
                 : 'submitted';
 
               return (
-              <Card
-                key={tender.id}
-                onClick={() => setSelectedTenderForDetails(tender)}
-                className={cn(
-                  "shadow-sm hover:shadow transition-all duration-200 overflow-hidden group cursor-pointer",
-                  participated ? "border-emerald-200 bg-emerald-50/25" : "border-slate-200"
-                )}
-              >
-                <CardContent className="p-0">
-                  <div className="flex flex-col md:flex-row items-stretch">
-                    <div className="flex-1 p-4 px-6 relative">
-                      {/* Sr.No Indicator */}
-                      <div className={cn(
-                        "absolute left-0 top-0 bottom-0 w-1 transition-colors",
-                        participated ? "bg-emerald-500" : "bg-indigo-500/20 group-hover:bg-indigo-500"
-                      )} />
-                      
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="text-[11px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded min-w-[24px] text-center">
-                          {(page - 1) * pageSize + index + 1}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-400 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                          {tender.tenderId}
-                        </span>
-                        <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 uppercase">
-                          {tender.category}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedTenderForDetails(tender);
-                          }}
-                          className="flex items-center gap-1 text-[9px] font-black bg-indigo-50/50 hover:bg-indigo-100 hover:text-indigo-700 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100/50 uppercase transition-colors cursor-pointer"
-                          title="View Full Tender Details & Specs"
-                        >
-                          <Eye className="h-2.5 w-2.5 text-indigo-500" /> View Details & Specs
-                        </button>
-                        {tender.documentUrl && (
-                          <a
-                            href={tender.documentUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[9px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 uppercase transition-colors cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open Specifications Document"
-                          >
-                            <Eye className="h-2.5 w-2.5 text-emerald-500" /> Specs
-                          </a>
-                        )}
-                        {(tender.bidsCount ?? 0) > 0 && (
-                          <span className="flex items-center gap-1 text-[9px] font-black bg-slate-50 text-[#12335f] px-2 py-0.5 rounded border border-slate-100 uppercase">
-                            <Users className="h-2.5 w-2.5" /> {tender.bidsCount} {tender.bidsCount === 1 ? 'Bid' : 'Bids'}
+                <Card
+                  key={tender.id}
+                  onClick={() => setSelectedTenderForDetails(tender)}
+                  className={cn(
+                    "shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden group cursor-pointer flex flex-col border h-full bg-white",
+                    participated ? "border-emerald-200 bg-emerald-50/10" : "border-slate-200"
+                  )}
+                >
+                  <CardContent className="p-5 flex flex-col h-full justify-between relative">
+                    {/* Indicator Line */}
+                    <div className={cn(
+                      "absolute left-0 right-0 top-0 h-1 transition-colors",
+                      participated ? "bg-emerald-500" : "bg-indigo-500/20 group-hover:bg-indigo-500"
+                    )} />
+
+                    <div className="space-y-4">
+                      {/* Header: Category, Index, Closes */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {(page - 1) * pageSize + index + 1}
                           </span>
-                        )}
-                        {participated && (
-                          <span className="flex items-center gap-1 text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 uppercase">
-                            <CheckCircle2 className="h-2.5 w-2.5" /> Participated
+                          <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 uppercase">
+                            {tender.category}
                           </span>
-                        )}
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 ml-auto md:ml-0">
+                        </div>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
                           <Clock className="h-3 w-3" />
                           {getDaysLeft(tender.closesAt)}
                         </span>
                       </div>
 
-                      <h3 className="text-[15px] font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
-                        {tender.title}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 line-clamp-1 mb-3 font-medium max-w-2xl">
-                        {tender.description}
-                      </p>
+                      {/* Tender ID */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                          {tender.tenderId}
+                        </span>
+                        {participated && (
+                          <span className="flex items-center gap-1 text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                            <CheckCircle2 className="h-2.5 w-2.5" /> Participated
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title & Desc */}
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[40px] leading-snug">
+                          {tender.title}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 line-clamp-3 font-medium leading-relaxed">
+                          {tender.description}
+                        </p>
+                      </div>
+
+                      {/* Specs Doc if available */}
                       {tender.documentUrl && (
                         <div 
                           onClick={(e) => {
                             e.stopPropagation();
                             window.open(tender.documentUrl, '_blank', 'noopener,noreferrer');
                           }}
-                          className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 rounded-md transition-all cursor-pointer shadow-sm group/spec active:scale-98"
+                          className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 rounded-md transition-all cursor-pointer shadow-sm group/spec active:scale-98"
                           title="View Specifications Document"
                         >
                           <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0 transition-transform group-hover/spec:scale-110" />
-                          <span className="text-[10px] font-extrabold text-emerald-800 tracking-wide">Specifications Doc.pdf</span>
-                          <div className="h-3 w-px bg-emerald-200 mx-0.5" />
-                          <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
-                            <Eye className="h-3 w-3" /> View Spec
-                          </span>
+                          <span className="text-[10px] font-extrabold text-emerald-800 tracking-wide">Spec Doc</span>
                         </div>
                       )}
-                      {participated && (
-                        <p className="mb-3 inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Your bid is {participationLabel}
-                        </p>
-                      )}
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                    {/* Divider */}
+                    <div className="h-px bg-slate-100 my-4" />
+
+                    {/* Footer details */}
+                    <div className="space-y-4">
+                      {/* Buyer & Location */}
+                      <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                            <Building2 className="h-3.5 w-3.5 text-slate-500" />
-                          </div>
+                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                           <p className="text-[11px] font-semibold text-slate-700 line-clamp-1">
                             {tender.buyer?.buyerProfile?.organizationName || tender.buyer?.name || 'Unknown Buyer'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                            <MapPin className="h-3.5 w-3.5 text-slate-500" />
-                          </div>
-                          <p className="text-[11px] font-semibold text-slate-600">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <p className="text-[11px] font-semibold text-slate-500 line-clamp-1">
                             {tender.buyer?.buyerProfile?.city || 'City N/A'}, {tender.buyer?.buyerProfile?.state || 'State N/A'}
                           </p>
                         </div>
-                        {parseDate(tender.createdAt) && (
-                          <div className="flex items-center gap-2 border-l border-slate-200 pl-6 hidden sm:flex">
-                            <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                              <Calendar className="h-3.5 w-3.5 text-slate-500" />
-                            </div>
-                            <div>
-                              <p className="text-[9px] font-black text-slate-400 uppercase">Posted On</p>
-                              <p className="text-[10px] font-bold text-slate-600">
-                                {formatShortDate(tender.createdAt)}
-                              </p>
-                            </div>
+                      </div>
+
+                      {/* Budget & Actions */}
+                      <div className="pt-2 flex items-center justify-between gap-4 border-t border-slate-50">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Budget</p>
+                          <p className="text-sm font-black text-slate-800">₹{tender.budget?.toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTenderForDetails(tender);
+                            }}
+                            variant="outline"
+                            className="h-8 w-8 p-0 border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 transition-all rounded-lg shrink-0 flex items-center justify-center shadow-sm"
+                            title="View Full Tender Details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/seller/tenders/${tender.id}/bid`);
+                            }}
+                            className={cn(
+                              "h-8 px-3 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm transition-colors",
+                              participated ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"
+                            )}
+                          >
+                            {participated ? 'View Bid' : 'Apply'}
+                            {participated ? <CheckCircle2 className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {pagedTenders.map((tender, index) => {
+              const participated = Boolean(tender.hasParticipated);
+              const participationLabel = tender.participationStatus
+                ? tender.participationStatus.replace(/_/g, ' ')
+                : 'submitted';
+
+              return (
+                <Card
+                  key={tender.id}
+                  onClick={() => setSelectedTenderForDetails(tender)}
+                  className={cn(
+                    "shadow-sm hover:shadow transition-all duration-200 overflow-hidden group cursor-pointer bg-white",
+                    participated ? "border-emerald-200 bg-emerald-50/25" : "border-slate-200"
+                  )}
+                >
+                  <CardContent className="p-0">
+                    <div className="flex flex-col md:flex-row items-stretch">
+                      <div className="flex-1 p-4 px-6 relative">
+                        {/* Sr.No Indicator */}
+                        <div className={cn(
+                          "absolute left-0 top-0 bottom-0 w-1 transition-colors",
+                          participated ? "bg-emerald-500" : "bg-indigo-500/20 group-hover:bg-indigo-500"
+                        )} />
+                        
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="text-[11px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded min-w-[24px] text-center">
+                            {(page - 1) * pageSize + index + 1}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                            {tender.tenderId}
+                          </span>
+                          <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 uppercase">
+                            {tender.category}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTenderForDetails(tender);
+                            }}
+                            className="flex items-center gap-1 text-[9px] font-black bg-indigo-50/50 hover:bg-indigo-100 hover:text-indigo-700 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100/50 uppercase transition-colors cursor-pointer"
+                            title="View Full Tender Details & Specs"
+                          >
+                            <Eye className="h-2.5 w-2.5 text-indigo-500" /> View Details & Specs
+                          </button>
+                          {tender.documentUrl && (
+                            <a
+                              href={tender.documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[9px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 uppercase transition-colors cursor-pointer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open Specifications Document"
+                            >
+                              <Eye className="h-2.5 w-2.5 text-emerald-500" /> Specs
+                            </a>
+                          )}
+                          {(tender.bidsCount ?? 0) > 0 && (
+                            <span className="flex items-center gap-1 text-[9px] font-black bg-slate-50 text-[#12335f] px-2 py-0.5 rounded border border-slate-100 uppercase">
+                              <Users className="h-2.5 w-2.5" /> {tender.bidsCount} {tender.bidsCount === 1 ? 'Bid' : 'Bids'}
+                            </span>
+                          )}
+                          {participated && (
+                            <span className="flex items-center gap-1 text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                              <CheckCircle2 className="h-2.5 w-2.5" /> Participated
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 ml-auto md:ml-0">
+                            <Clock className="h-3 w-3" />
+                            {getDaysLeft(tender.closesAt)}
+                          </span>
+                        </div>
+
+                        <h3 className="text-[15px] font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
+                          {tender.title}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 line-clamp-1 mb-3 font-medium max-w-2xl">
+                          {tender.description}
+                        </p>
+                        {tender.documentUrl && (
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(tender.documentUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                            className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 rounded-md transition-all cursor-pointer shadow-sm group/spec active:scale-98"
+                            title="View Specifications Document"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0 transition-transform group-hover/spec:scale-110" />
+                            <span className="text-[10px] font-extrabold text-emerald-800 tracking-wide">Specifications Doc.pdf</span>
+                            <div className="h-3 w-px bg-emerald-200 mx-0.5" />
+                            <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
+                              <Eye className="h-3 w-3" /> View Spec
+                            </span>
                           </div>
                         )}
-                      </div>
-                    </div>
+                        {participated && (
+                          <p className="mb-3 inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Your bid is {participationLabel}
+                          </p>
+                        )}
 
-                    <div className="w-full md:w-60 bg-slate-50/30 border-t md:border-t-0 md:border-l border-slate-100 p-4 flex md:flex-col items-center justify-between md:justify-center gap-3">
-                      <div className="text-left md:text-center w-full">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Budget</p>
-                        <p className="text-lg font-black text-slate-800">₹{tender.budget?.toLocaleString()}</p>
-                      </div>
-                      <div className="flex items-center gap-2 w-full justify-end md:justify-center">
-                        <Button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedTenderForDetails(tender);
-                          }}
-                          variant="outline"
-                          className="h-8 w-8 p-0 border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 transition-all rounded-lg shrink-0 flex items-center justify-center shadow-sm"
-                          title="View Full Tender Details & Specs"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/seller/tenders/${tender.id}/bid`);
-                          }}
-                          className={cn(
-                            "h-8 px-4 text-white rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-colors shrink-0 flex-1 justify-center",
-                            participated ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
+                              <Building2 className="h-3.5 w-3.5 text-slate-500" />
+                            </div>
+                            <p className="text-[11px] font-semibold text-slate-700 line-clamp-1">
+                              {tender.buyer?.buyerProfile?.organizationName || tender.buyer?.name || 'Unknown Buyer'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
+                              <MapPin className="h-3.5 w-3.5 text-slate-500" />
+                            </div>
+                            <p className="text-[11px] font-semibold text-slate-600">
+                              {tender.buyer?.buyerProfile?.city || 'City N/A'}, {tender.buyer?.buyerProfile?.state || 'State N/A'}
+                            </p>
+                          </div>
+                          {parseDate(tender.createdAt) && (
+                            <div className="flex items-center gap-2 border-l border-slate-200 pl-6 hidden sm:flex">
+                              <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
+                                <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase">Posted On</p>
+                                <p className="text-[10px] font-bold text-slate-600">
+                                  {formatShortDate(tender.createdAt)}
+                                </p>
+                              </div>
+                            </div>
                           )}
-                        >
-                          {participated ? 'View Bid' : 'Participate'}
-                          {participated ? <CheckCircle2 className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        </Button>
+                        </div>
+                      </div>
+
+                      <div className="w-full md:w-60 bg-slate-50/30 border-t md:border-t-0 md:border-l border-slate-100 p-4 flex md:flex-col items-center justify-between md:justify-center gap-3">
+                        <div className="text-left md:text-center w-full">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Budget</p>
+                          <p className="text-lg font-black text-slate-800 font-bold">₹{tender.budget?.toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2 w-full justify-end md:justify-center">
+                          <Button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTenderForDetails(tender);
+                            }}
+                            variant="outline"
+                            className="h-8 w-8 p-0 border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 transition-all rounded-lg shrink-0 flex items-center justify-center shadow-sm"
+                            title="View Full Tender Details & Specs"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/seller/tenders/${tender.id}/bid`);
+                            }}
+                            className={cn(
+                              "h-8 px-4 text-white rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-colors shrink-0 flex-1 justify-center",
+                              participated ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"
+                            )}
+                          >
+                            {participated ? 'View Bid' : 'Participate'}
+                            {participated ? <CheckCircle2 className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
         {filteredTenders.length > 0 && (
           <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="tenders" />

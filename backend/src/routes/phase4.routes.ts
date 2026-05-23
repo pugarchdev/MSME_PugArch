@@ -1230,8 +1230,6 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
 
   if (user.role === 'seller') {
     if (STRICT_VERIFICATION.PAN === false) finalSectionStatus.pan = 'approved';
-    if (STRICT_VERIFICATION.BANK === false) finalSectionStatus.bank = 'approved';
-    if (STRICT_VERIFICATION.UDYAM === false) finalSectionStatus.additional = 'approved';
   }
 
   let onboardingStatus = user.onboardingStatus;

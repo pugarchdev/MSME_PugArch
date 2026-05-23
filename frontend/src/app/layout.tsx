@@ -6,7 +6,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <head>
         <link rel="icon" href="/favicon.png" />
-        <title>MSME Portal | JsgSmile Procurement Network</title>
+        <title>JsgSmile Portal | Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</title>
       </head>
       <body>
         <Providers>{children}</Providers>

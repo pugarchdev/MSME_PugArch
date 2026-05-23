@@ -36,6 +36,13 @@ export default function SellerSettings() {
   // Close account custom modal state
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
+  // Profile edit states
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', mobile: '' });
+  const [profileOtpSent, setProfileOtpSent] = useState(false);
+  const [profileOtp, setProfileOtp] = useState('');
+
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -183,6 +190,77 @@ export default function SellerSettings() {
     }
   };
 
+  const handleStartEditing = () => {
+    const firstName = user?.name?.split(' ')[0] || '';
+    const lastName = user?.name?.split(' ').slice(1).join(' ') || '';
+    const mobile = user?.mobile || '';
+    setProfileForm({ firstName, lastName, mobile });
+    setIsEditingProfile(true);
+    setProfileOtpSent(false);
+    setProfileOtp('');
+  };
+
+  const handleGetProfileOtp = async () => {
+    if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.mobile.trim()) {
+      return toast.error("Please fill in First Name, Last Name, and Mobile number");
+    }
+    
+    setIsLoading(true);
+    try {
+      const res = await api.fetch('/api/seller/settings/profile/send-otp', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success("OTP sent to your registered email");
+        setProfileOtpSent(true);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to send OTP");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!profileOtp) return toast.error("Please enter the OTP");
+
+    setIsLoading(true);
+    try {
+      const res = await api.fetch('/api/seller/settings/profile', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: profileForm.firstName,
+          lastName: profileForm.lastName,
+          mobile: profileForm.mobile,
+          otp: profileOtp
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (res.ok) {
+        toast.success("Profile updated successfully!");
+        setIsEditingProfile(false);
+        setProfileOtp('');
+        setProfileOtpSent(false);
+        await refreshUser();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to update profile");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (sectionParam && sectionParam !== currentSection) {
       setCurrentSection(sectionParam);
@@ -200,7 +278,7 @@ export default function SellerSettings() {
     return 60;
   };
 
-  if (isFetching) return <div className="flex h-screen items-center justify-center font-black text-[#12335f] animate-pulse">Loading Account Settings...</div>;
+  if (isFetching) return <div className="flex h-screen items-center justify-center px-4 text-center font-black text-[#12335f] animate-pulse">Loading JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem account settings...</div>;
 
   return (
     <div className="flex flex-col lg:flex-row bg-gray-50 min-h-screen">
@@ -210,63 +288,155 @@ export default function SellerSettings() {
       />
       
       <div className="flex-1 flex flex-col min-w-0">
-        <GeMProfileHeader 
+        {/* <GeMProfileHeader 
           companyName={profileData?.businessName || user?.name || "Seller Company"} 
           completionPercentage={calculateCompletion()} 
           warnings={[
             "Please complete your profile to start transacting on MSME",
             "Please complete 'Beneficial Ownership Compliance'. Click here"
           ]} 
-        />
+        /> */}
         
         <main className="p-4 sm:p-8 max-w-5xl mx-auto w-full">
-          <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg mb-8 space-y-2">
-             <div className="flex items-start gap-2 text-amber-800">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <p className="text-sm font-bold uppercase tracking-tight ">Please complete your profile to start transacting on MSME Portal</p>
-             </div>
-          </div>
+          
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             {currentSection === 'profile' && (
               <div className="p-8 space-y-8 animate-in fade-in duration-300">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-800">Seller Profile</h2>
-                  <p className="text-gray-500 mt-1">Summary of your Personal Profile with GeM</p>
+                  <p className="text-gray-500 mt-1">Summary of your Personal Profile with JsgSmile</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">First Name</label>
-                    <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
-                      {user?.name?.split(' ')[0] || 'N/A'}
+                {!isEditingProfile ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">First Name</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          {user?.name?.split(' ')[0] || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Last Name</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          {user?.name?.split(' ').slice(1).join(' ') || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Mobile</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          {user?.mobile || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Email Id</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          {user?.email || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Roles</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          Primary Seller
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                      <Button
+                        onClick={handleStartEditing}
+                        className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-10 h-12 uppercase tracking-widest text-xs shadow-lg shadow-blue-100 rounded"
+                      >
+                        EDIT PROFILE
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <Input
+                        label="First Name*"
+                        placeholder="Enter first name"
+                        value={profileForm.firstName}
+                        onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                      />
+                      <Input
+                        label="Last Name*"
+                        placeholder="Enter last name"
+                        value={profileForm.lastName}
+                        onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                      />
+                      <Input
+                        label="Mobile*"
+                        placeholder="Enter mobile number"
+                        value={profileForm.mobile}
+                        onChange={(e) => setProfileForm({ ...profileForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      />
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Email Id</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          {user?.email || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Roles</label>
+                        <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
+                          Primary Seller
+                        </div>
+                      </div>
+                    </div>
+
+                    {profileOtpSent && (
+                      <div className="max-w-md pt-4">
+                        <Input
+                          label="Enter OTP*"
+                          placeholder="Enter 6-digit OTP sent to registered email"
+                          value={profileOtp}
+                          onChange={(e) => setProfileOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-4 pt-4">
+                      <Button
+                        type="button"
+                        onClick={() => setIsEditingProfile(false)}
+                        variant="outline"
+                        className="border border-gray-300 text-gray-600 hover:bg-gray-50 font-bold px-8 h-12 uppercase tracking-widest text-xs rounded"
+                      >
+                        Cancel
+                      </Button>
+                      {!profileOtpSent ? (
+                        <Button
+                          onClick={handleGetProfileOtp}
+                          disabled={isLoading}
+                          className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-10 h-12 uppercase tracking-widest text-xs shadow-lg shadow-blue-100 rounded"
+                        >
+                          {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : "GET OTP"}
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={handleGetProfileOtp}
+                            disabled={isLoading}
+                            variant="outline"
+                            className="border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold px-8 h-12 uppercase tracking-widest text-xs rounded"
+                          >
+                            Resend OTP
+                          </Button>
+                          <Button
+                            onClick={handleUpdateProfile}
+                            disabled={isLoading || !profileOtp}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-10 h-12 uppercase tracking-widest text-xs shadow-lg shadow-emerald-100 rounded"
+                          >
+                            {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : "UPDATE PROFILE"}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Last Name</label>
-                    <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
-                      {user?.name?.split(' ').slice(1).join(' ') || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Mobile</label>
-                    <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
-                      {user?.mobile || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Email Id</label>
-                    <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
-                      {user?.email || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Roles</label>
-                    <div className="w-full h-12 px-4 rounded bg-gray-100 border border-gray-200 flex items-center text-gray-600">
-                      Primary Seller
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -288,7 +458,7 @@ export default function SellerSettings() {
                     <input type="checkbox" checked={aadhaarForm.consent} onChange={e => setAadhaarForm({...aadhaarForm, consent: e.target.checked})} className="mt-1 h-5 w-5 rounded border-gray-300 text-[#12335f]" />
                     <div className="space-y-4 text-[13px] leading-relaxed text-gray-600">
                       <p>
-                        I, the holder of the above Aadhaar, hereby give my consent to GeM (Government e Marketplace), for using my Aadhaar number as allotted by UIDAI for GeM Registration. GeM (Government e Marketplace) have informed me that my aadhaar data will not be stored/shared.
+                        I, the holder of the above Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for JsgSmile Portal registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
                       </p>
                       <p className="font-medium">
                         मैं, उपर्युक्त आधार का धारक, भारतीय विशिष्ट पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को जेम पंजीकरण हेतु प्रयोग में लाने हेतु जेम (गवर्नमेंट ई-मार्केटप्लेस) को एतद्द्वारा अपनी सहमति प्रदान करता हूँ। जेम (गवर्नमेंट ई-मार्केटप्लेस) ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
@@ -298,10 +468,10 @@ export default function SellerSettings() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 text-sm font-medium text-gray-600">
+                  {/* <div className="flex items-center gap-4 text-sm font-medium text-gray-600">
                     Click on the play button to listen consent / सहमति सुनने के लिए प्ले बटन पर क्लिक करें।
                     <PlayCircle className="h-6 w-6 text-gray-400 cursor-pointer hover:text-gray-600" />
-                  </div>
+                  </div> */}
                   <Button onClick={handleUpdateAadhaar} disabled={isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-10 h-12 uppercase tracking-widest text-xs shadow-lg shadow-blue-100">
                     {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'UPDATE AADHAAR'}
                   </Button>

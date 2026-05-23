@@ -12,7 +12,7 @@ export default function Home() {
         {/* Hero Section */}
         <div className="mx-auto max-w-4xl space-y-6 text-center sm:space-y-8">
           <h1 className="text-3xl sm:text-5xl lg:text-7xl font-extrabold leading-[1.1] tracking-tight text-brand-navy">
-            Streamline Your Procurement Onboarding with <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-amber to-amber-700">JsgSmile MSME</span>
+            Streamline Your Procurement Onboarding with <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-amber to-amber-700">JsgSmile</span>
           </h1>
           <p className="mx-auto max-w-2xl text-base leading-relaxed text-slate-600 sm:text-xl">
             The unified portal for buyers and sellers to connect, register, and manage procurement lifecycle with simplicity and transparency.

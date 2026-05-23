@@ -12,7 +12,7 @@ async function testMail() {
     const info = await transporter.sendMail({
       from: `"MSME Procurement Test" <${env.SMTP_USER}>`,
       to: env.SMTP_USER, // send to self
-      subject: 'Test Email from MSME Portal',
+      subject: 'Test Email from JsgSmile Portal',
       html: '<p>This is a test email to verify SMTP configuration.</p>'
     });
     console.log('Email sent successfully!');

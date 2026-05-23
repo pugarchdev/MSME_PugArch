@@ -3,7 +3,7 @@ import { cn } from "../../lib/utils";
 import { Eye, EyeOff } from "lucide-react";
 
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { label?: string, error?: string, isValid?: boolean }>(
-  ({ className, type, label, error, isValid, ...props }, ref) => {
+  ({ className, type, label, error, isValid, value, ...props }, ref) => {
     const id = React.useId();
     const [showPassword, setShowPassword] = React.useState(false);
     const isPassword = type === "password";
@@ -27,6 +27,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
               className
             )}
             ref={ref}
+            value={value === null ? "" : value}
             {...props}
           />
           {isPassword && (
@@ -47,7 +48,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
 Input.displayName = "Input";
 
 const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string, error?: string }>(
-  ({ className, label, error, children, ...props }, ref) => {
+  ({ className, label, error, children, value, ...props }, ref) => {
     const id = React.useId();
     return (
       <div className="w-full min-w-0 space-y-1.5">
@@ -64,6 +65,7 @@ const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HT
             className
           )}
           ref={ref}
+          value={value === null ? "" : value}
           {...props}
         >
           {children}

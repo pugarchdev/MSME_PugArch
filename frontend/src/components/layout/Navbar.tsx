@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  ChevronDown,
   Bell,
   Search,
   Users,
@@ -254,12 +255,19 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: HeaderProps) {
-  const { user, token: authToken } = useAuth();
+  const { user, token: authToken, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [notifications, setNotifications] = useState<PortalNotification[]>([]);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/');
+  };
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -365,6 +373,20 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    }
+    if (isProfileDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileDropdownOpen]);
 
   const unreadCount = Array.isArray(notifications) ? notifications.filter(n => !n.isRead).length : 0;
 
@@ -552,21 +574,49 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 
           <div className="h-8 w-px bg-slate-200 hidden sm:block" />
 
-          <Link 
-            
-            href={pathname === '/profile' ? '/dashboard' : '/profile'}
-            
-            className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors group"
-            
-          >
-            <div className="h-8 w-8 rounded-full bg-[#1d4ed8] flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-white ring-offset-1 group-hover:ring-offset-2 transition-all">
-              {user?.name?.charAt(0) || 'U'}
-            </div>
-            <div className="hidden sm:flex flex-col text-left">
-              <span className="text-xs font-bold text-blue-900 truncate max-w-[100px]">{user?.name}</span>
-              <span className="text-[9px] font-black text-[#1d4ed8] uppercase tracking-widest opacity-60">{user?.role}</span>
-            </div>
-          </Link>
+          <div className="relative" ref={profileDropdownRef}>
+            <button 
+              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+              className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors group text-left"
+            >
+              <div className="h-8 w-8 rounded-full bg-[#394566] flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-white ring-offset-1 group-hover:ring-offset-2 transition-all">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
+              <div className="hidden sm:flex flex-col text-left">
+                <span className="text-xs font-bold text-blue-900 truncate max-w-[100px]">{user?.name}</span>
+                <span className="text-[9px] font-black text-[#1d4ed8] uppercase tracking-widest opacity-60 flex items-center gap-1">
+                  {user?.role}
+                  <ChevronDown className="h-2.5 w-2.5 transition-transform duration-200" style={{ transform: isProfileDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                </span>
+              </div>
+            </button>
+
+            {isProfileDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-50">
+                <button
+                  onClick={() => {
+                    setIsProfileDropdownOpen(false);
+                    router.push('/profile');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#1d4ed8] transition-colors flex items-center gap-2"
+                >
+                  <UserIcon className="h-4 w-4 text-slate-400" />
+                  My Profile
+                </button>
+                <div className="h-px bg-slate-100 my-1" />
+                <button
+                  onClick={() => {
+                    setIsProfileDropdownOpen(false);
+                    handleLogout();
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4 text-red-500" />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

@@ -108,8 +108,8 @@ export default function TermsConditions({ onAccept, onBack, role }: TermsConditi
             <main className="overflow-y-auto bg-slate-100/50 px-2 py-6 sm:px-4 md:px-8 lg:px-12 scroll-smooth">
               <article className="mx-auto min-h-full max-w-[850px] bg-white px-6 py-8 shadow-xl shadow-slate-300/50 font-serif text-[13px] leading-relaxed text-slate-900 sm:text-[14px] md:py-10 md:text-[15px] border border-slate-100">
                 <div className="mb-12 border-b-2 border-slate-900 pb-8 text-center">
-                   <h1 className="text-base font-black uppercase tracking-tight sm:text-2xl">MSME-JsgSmile</h1>
-                   <p className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500 ">JsgSmile MSME Marketplace</p>
+                   <h1 className="text-base font-black uppercase tracking-tight sm:text-2xl">JsgSmile</h1>
+                   <p className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500 ">Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</p>
                 </div>
 
                 <p className="text-center font-bold leading-snug underline underline-offset-4">
@@ -121,13 +121,13 @@ export default function TermsConditions({ onAccept, onBack, role }: TermsConditi
                 </p>
 
                 <p className="mt-8 text-justify first-letter:text-3xl first-letter:font-black first-letter:mr-3 first-letter:float-left first-letter:text-[#12335f]">
-                  MSME JsgSmile is the National Public Procurement Portal; an end-to-end online
+                  JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem is the public procurement portal; an end-to-end online
                   Marketplace for Central and State Government Ministries / Departments, Central & State Public Sector
                   Undertakings and autonomous institutions for procurement of common use goods & services.
                 </p>
 
                 <p className="mt-6 text-justify">
-                  This portal is adapted for JsgSmile MSME Marketplace registration and onboarding. The terms below
+                  This portal is adapted for JsgSmile registration and onboarding. The terms below
                   govern participation for {role === 'seller' ? 'sellers, service providers' : 'buyers, procurement users'} and
                   authorized representatives using the platform.
                 </p>
@@ -160,7 +160,7 @@ export default function TermsConditions({ onAccept, onBack, role }: TermsConditi
                 <section className="mt-10 space-y-6">
                   <h3 className="text-base font-black uppercase tracking-tight  border-l-4 border-blue-600 pl-4">4. Procurement Guidelines:</h3>
                   <p className="ml-4 text-justify">
-                    The platform ensures that all procurement activities conducted through the MSME Marketplace 
+                    The platform ensures that all procurement activities conducted through JsgSmile Portal
                     comply with the General Financial Rules (GFR), 2017 and any specific guidelines issued by 
                     competent authorities. The platform provides tools for comparative 
                     analysis and selection, but the final responsibility for procurement decisions rests with 
@@ -217,7 +217,7 @@ export default function TermsConditions({ onAccept, onBack, role }: TermsConditi
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-black uppercase tracking-tight  group-hover:text-[#12335f] transition-colors">* Acceptance of Terms</span>
-              <span className="text-xs font-bold text-slate-500 ">I have read and agree to the Terms & Conditions of MSME-JsgSmile</span>
+              <span className="text-xs font-bold text-slate-500 ">I have read and agree to the Terms & Conditions of JsgSmile</span>
             </div>
           </label>
 
@@ -293,7 +293,7 @@ function PdfToolbar({ role }: { role: 'buyer' | 'seller' }) {
           <RotateCcw className="hidden h-4 w-4 sm:block hover:text-white cursor-pointer" />
           <a 
             href="/terms_and_conditions.pdf" 
-            download="MSME_Marketplace_Terms_Conditions.pdf"
+            download="JsgSmile_Portal_Terms_Conditions.pdf"
             className="transition-colors hover:text-white"
             title="Download PDF"
           >

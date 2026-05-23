@@ -41,7 +41,7 @@ export default function SellerRegistrationFlow() {
         </div>
 
         <div className="mt-4 shrink-0 px-2 text-center text-[9px] font-black uppercase  tracking-[0.18em] text-slate-300 sm:text-[10px] sm:tracking-[0.3em]">
-          Professional Procurement Portal | Secure & Verified
+          Jharsuguda | Synergy for MSME and Industry Linkage Ecosystem
         </div>
       </div>
     </div>

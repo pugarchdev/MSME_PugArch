@@ -6,6 +6,8 @@ import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { cn } from '../lib/utils';
+import { Pagination } from '../features/shared/Pagination';
+import { usePagination } from '../features/shared/hooks';
 
 type Payment = {
   id: number;
@@ -128,6 +130,8 @@ export default function PaymentsEscrow() {
       }
     });
   }, [payments, sortField, sortOrder]);
+  const { page: paymentsPage, pageSize: paymentsPageSize, pageItems: pagedPayments, total: paymentsTotal, setPage: setPaymentsPage, setPageSize: setPaymentsPageSize } = usePagination(sortedPayments, 20);
+  const { page: escrowPage, pageSize: escrowPageSize, pageItems: pagedEscrowAccounts, total: escrowTotal, setPage: setEscrowPage, setPageSize: setEscrowPageSize } = usePagination(escrowAccounts, 10);
 
   const headers = useMemo<Record<string, string>>(() => {
     if (!token) {
@@ -142,8 +146,8 @@ export default function PaymentsEscrow() {
     setLoading(true);
     try {
       const [paymentRes, escrowRes] = await Promise.all([
-        api.fetch('/api/payments', { method: 'GET', headers, skipCache: true }),
-        api.fetch('/api/escrow', { method: 'GET', headers, skipCache: true })
+        api.fetch('/api/payments?skip=0&take=100', { method: 'GET', headers }),
+        api.fetch('/api/escrow?skip=0&take=100', { method: 'GET', headers })
       ]);
       if (paymentRes.ok) {
         const data = await paymentRes.json();
@@ -289,7 +293,7 @@ export default function PaymentsEscrow() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPayments.map(payment => (
+                {pagedPayments.map(payment => (
                   <tr key={payment.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-bold text-slate-900">{payment.referenceId}</td>
                     <td className="px-4 py-3 text-slate-600">{payment.invoiceId || '-'}</td>
@@ -301,13 +305,14 @@ export default function PaymentsEscrow() {
                 {sortedPayments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
               </tbody>
             </table>
+            <Pagination page={paymentsPage} pageSize={paymentsPageSize} total={paymentsTotal} onPageChange={setPaymentsPage} onPageSizeChange={setPaymentsPageSize} label="payments" />
           </div>
         </div>
       )}
 
       {activeTab === 'escrow' && (
         <div className="space-y-3">
-          {escrowAccounts.map(escrow => (
+          {pagedEscrowAccounts.map(escrow => (
             <Card key={escrow.id} className="rounded-lg border-slate-200 shadow-none">
               <CardContent className="space-y-4 p-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -336,6 +341,11 @@ export default function PaymentsEscrow() {
             </Card>
           ))}
           {escrowAccounts.length === 0 && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">No escrow accounts yet.</div>}
+          {escrowAccounts.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <Pagination page={escrowPage} pageSize={escrowPageSize} total={escrowTotal} onPageChange={setEscrowPage} onPageSizeChange={setEscrowPageSize} label="escrow accounts" />
+            </div>
+          )}
         </div>
       )}
     </div>

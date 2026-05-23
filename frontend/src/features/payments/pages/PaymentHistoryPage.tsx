@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   CreditCard,
   Eye,
+  Filter,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { getApi } from '../../shared/apiClient';
+import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
@@ -66,6 +68,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(20);
   const [total, setTotal] = useState(0);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const reload = async () => {
     setLoading(true);
@@ -79,7 +82,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
       if (searchTerm.trim()) params.set('q', searchTerm.trim());
       if (statusFilter) params.set('status', statusFilter);
       if (gatewayFilter) params.set('gateway', gatewayFilter);
-      const body = await getApi<any>(`/api/payments?${params.toString()}`, true);
+      const body = await getApi<any>(`/api/payments?${params.toString()}`);
       setPayments(Array.isArray(body) ? body : body.payments || body.data || []);
       setTotal(Number(body?.total ?? body?.data?.total ?? 0));
       setWarning(body?.warning || null);
@@ -122,7 +125,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Metric label="Payments" value={total || payments.length} icon={CreditCard} />
         <Metric
           label="Successful"
@@ -143,41 +146,59 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         </div>
       )}
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchTerm}
-              onChange={event => setSearchTerm(event.target.value)}
-              placeholder="Search reference, invoice, PO, payer, payee..."
-              className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-            />
+      <Card className="border-slate-200/80 shadow-sm bg-white">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Search reference, invoice, PO, payer, payee..."
+                className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+              />
+            </div>
+            
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="lg:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            >
+              <Filter className="h-4 w-4 text-slate-500" />
+              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
+            </Button>
           </div>
-          <select
-            value={statusFilter}
-            onChange={event => setStatusFilter(event.target.value)}
-            className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none"
-          >
-            <option value="">All statuses</option>
-            <option value="initiated">Initiated</option>
-            <option value="gateway_order_created">Gateway order</option>
-            <option value="success">Success</option>
-            <option value="escrow_released">Escrow released</option>
-            <option value="failed">Failed</option>
-            <option value="refunded">Refunded</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <select
-            value={gatewayFilter}
-            onChange={event => setGatewayFilter(event.target.value)}
-            className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none"
-          >
-            <option value="">All gateways</option>
-            <option value="bank_transfer">Bank transfer</option>
-            <option value="razorpay">Razorpay</option>
-            <option value="cashfree">Cashfree</option>
-          </select>
+
+          <div className={cn(
+            "grid gap-3 items-center",
+            showMobileFilters ? "grid grid-cols-2 sm:grid-cols-2" : "hidden lg:grid lg:grid-cols-[180px_180px] lg:justify-end"
+          )}>
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value)}
+              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
+            >
+              <option value="">All statuses</option>
+              <option value="initiated">Initiated</option>
+              <option value="gateway_order_created">Gateway order</option>
+              <option value="success">Success</option>
+              <option value="escrow_released">Escrow released</option>
+              <option value="failed">Failed</option>
+              <option value="refunded">Refunded</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select
+              value={gatewayFilter}
+              onChange={event => setGatewayFilter(event.target.value)}
+              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
+            >
+              <option value="">All gateways</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="razorpay">Razorpay</option>
+              <option value="cashfree">Cashfree</option>
+            </select>
+          </div>
         </CardContent>
       </Card>
 

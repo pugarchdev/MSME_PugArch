@@ -53,8 +53,8 @@ export default function RbacPanel() {
     setLoading(true);
     try {
       const [rolesRes, permsRes] = await Promise.all([
-        api.fetch('/api/admin/rbac/roles', { ...authHeaders, skipCache: true }),
-        api.fetch('/api/admin/rbac/permissions', { ...authHeaders, skipCache: true })
+        api.fetch('/api/admin/rbac/roles', authHeaders),
+        api.fetch('/api/admin/rbac/permissions', authHeaders)
       ]);
 
       if (rolesRes.ok && permsRes.ok) {

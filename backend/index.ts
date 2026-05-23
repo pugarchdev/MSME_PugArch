@@ -3191,8 +3191,13 @@ const app = serverlessApp;
 
   app.get('/api/escrow', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
     try {
-      const escrowAccounts = await listEscrowAccounts(financialActor(req));
-      res.json({ success: true, escrowAccounts: maskSensitive(escrowAccounts) });
+      const result = await listEscrowAccounts(financialActor(req), {
+        skip: Math.max(0, Number(req.query.skip || 0)),
+        take: Math.min(100, Math.max(1, Number(req.query.take || req.query.pageSize || 50))),
+        q: String(req.query.q || '').trim() || undefined,
+        status: String(req.query.status || '').trim() || undefined
+      });
+      res.json({ success: true, escrowAccounts: maskSensitive(result.escrowAccounts), records: maskSensitive(result.escrowAccounts), total: result.total, skip: result.skip, take: result.take });
     } catch (err: any) {
       return handleFinancialRouteError(res, err);
     }
@@ -3276,14 +3281,31 @@ const app = serverlessApp;
         : role === 'buyer'
           ? { payerId: userId }
           : { payeeId: userId };
+      const skip = Math.max(0, Number(req.query.skip || 0));
+      const take = Math.min(100, Math.max(1, Number(req.query.take || req.query.pageSize || 50)));
+      if (req.query.status) (where as any).status = String(req.query.status);
+      if (req.query.gateway) (where as any).gateway = String(req.query.gateway);
+      if (req.query.q) {
+        (where as any).OR = [
+          { referenceId: { contains: String(req.query.q), mode: 'insensitive' } },
+          { invoice: { invoiceNumber: { contains: String(req.query.q), mode: 'insensitive' } } },
+          { purchaseOrder: { poNumber: { contains: String(req.query.q), mode: 'insensitive' } } },
+          { payer: { email: { contains: String(req.query.q), mode: 'insensitive' } } },
+          { payee: { email: { contains: String(req.query.q), mode: 'insensitive' } } }
+        ];
+      }
 
-      const payments = await prisma.paymentTransaction.findMany({
-        where,
-        include: { ledgerEntries: { orderBy: { createdAt: 'asc' } } },
-        orderBy: { createdAt: 'desc' },
-        take: 100
-      });
-      res.json({ success: true, payments: maskSensitive(payments) });
+      const [payments, total] = await Promise.all([
+        prisma.paymentTransaction.findMany({
+          where,
+          include: { ledgerEntries: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
+        }),
+        prisma.paymentTransaction.count({ where })
+      ]);
+      res.json({ success: true, payments: maskSensitive(payments), records: maskSensitive(payments), total, skip, take });
     } catch (err: any) {
       return handleFinancialRouteError(res, err);
     }
@@ -3343,27 +3365,64 @@ const app = serverlessApp;
   // --- Admin APIs ---
   app.get('/api/admin/onboarding', authenticate, authorizeAdmin, async (req, res) => {
     try {
-      const sellers = await prisma.user.findMany({
-        where: { role: 'seller' },
-        include: {
-          sellerProfile: {
-            include: {
-              sellerDocuments: {
-                include: {
-                  fileAsset: true
+      const skip = Math.max(0, Number(req.query.skip || 0));
+      const take = Math.min(100, Math.max(1, Number(req.query.take || req.query.pageSize || 50)));
+      const role = String(req.query.role || '').trim();
+      const status = String(req.query.status || '').trim();
+      const q = String(req.query.q || '').trim();
+      const pendingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
+      const where: any = { role: { in: role && ['seller', 'buyer'].includes(role) ? [role] : ['seller', 'buyer'] } };
+      if (status) {
+        where.onboardingStatus = status === 'review_queue' ? { in: pendingStatuses } : status;
+      }
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { sellerProfile: { businessName: { contains: q, mode: 'insensitive' } } },
+          { sellerProfile: { pan: { contains: q, mode: 'insensitive' } } },
+          { buyerProfile: { organizationName: { contains: q, mode: 'insensitive' } } },
+          { buyerProfile: { gst: { contains: q, mode: 'insensitive' } } },
+          { buyerProfile: { pan: { contains: q, mode: 'insensitive' } } }
+        ];
+      }
+      const [users, total, statusGroups, approvedRoleGroups, flagged] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          include: {
+            sellerProfile: {
+              include: {
+                sellerDocuments: {
+                  include: {
+                    fileAsset: true
+                  }
                 }
               }
-            }
+            },
+            buyerProfile: true,
+            complianceViolations: { where: { status: 'open' }, orderBy: { createdAt: 'desc' } }
           },
-          complianceViolations: { where: { status: 'open' }, orderBy: { createdAt: 'desc' } }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-      const buyers = await prisma.user.findMany({
-        where: { role: 'buyer' },
-        include: { buyerProfile: true, complianceViolations: { where: { status: 'open' }, orderBy: { createdAt: 'desc' } } },
-        orderBy: { createdAt: 'desc' }
-      });
+          skip,
+          take,
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.user.count({ where }),
+        prisma.user.groupBy({
+          by: ['onboardingStatus'],
+          where: { role: { in: ['seller', 'buyer'] } },
+          _count: { _all: true }
+        }),
+        prisma.user.groupBy({
+          by: ['role'],
+          where: { role: { in: ['seller', 'buyer'] }, onboardingStatus: 'approved_for_procurement' },
+          _count: { _all: true }
+        }),
+        prisma.complianceViolation.count({
+          where: { status: 'open', user: { role: { in: ['seller', 'buyer'] } } }
+        })
+      ]);
+      const sellers = users.filter((u: any) => u.role === 'seller');
+      const buyers = users.filter((u: any) => u.role === 'buyer');
 
       const getDocumentEntries = (documents: any) =>
         documents && typeof documents === 'object' && !Array.isArray(documents)
@@ -3420,7 +3479,17 @@ const app = serverlessApp;
 
       res.json({
         sellers: sellers.map(formatUser),
-        buyers: buyers.map(formatUser)
+        buyers: buyers.map(formatUser),
+        total,
+        skip,
+        take,
+        filters: { q, role, status, skip, take },
+        summary: {
+          total,
+          statuses: Object.fromEntries(statusGroups.map((row: any) => [row.onboardingStatus || 'pending', row._count._all])),
+          approvedRoles: Object.fromEntries(approvedRoleGroups.map((row: any) => [row.role, row._count._all])),
+          flagged
+        }
       });
     } catch (err: any) {
       handleSecureRouteError(res, err);

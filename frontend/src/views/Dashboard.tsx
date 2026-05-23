@@ -115,7 +115,6 @@ export default function Dashboard() {
       try {
         const res = await api.fetch('/api/notifications', {
           headers: { Authorization: `Bearer ${token}` },
-          skipCache: true
         });
         if (res.ok) {
           const data = await res.json();

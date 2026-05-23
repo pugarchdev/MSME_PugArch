@@ -90,6 +90,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
   const [pageSize, setPageSizeState] = useState(20);
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const config = sectionConfig[section];
   const SectionIcon = config.icon;
 
@@ -389,8 +390,9 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               )}
             </div>
 
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_190px] xl:grid-cols-[minmax(260px,1fr)_150px_190px]">
-              <div className="relative min-w-0">
+            <div className="space-y-3">
+              <div className="flex flex-col md:flex-row gap-2 items-center">
+                <div className="relative min-w-0 flex-1 w-full">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={searchTerm}
@@ -398,18 +400,36 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                     placeholder="Search name, GST, PAN, state..."
                     className="h-10 w-full rounded-md border-slate-200 pl-9 text-xs"
                   />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                  className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                >
+                  <Filter className="h-4 w-4 text-slate-500" />
+                  <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
+                </Button>
               </div>
-              <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
-                  <option value="all">All Roles</option>
-                  <option value="seller">Sellers</option>
-                  <option value="buyer">Buyers</option>
-              </select>
-              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
-                  {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
-                  {statusOptions.map(status => (
-                    <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
-                  ))}
-              </select>
+
+              <div className={cn(
+                "grid gap-3 items-center",
+                showMobileFilters 
+                  ? "grid grid-cols-2" 
+                  : "hidden md:grid md:grid-cols-[150px_190px] md:justify-end"
+              )}>
+                <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                    <option value="all">All Roles</option>
+                    <option value="seller">Sellers</option>
+                    <option value="buyer">Buyers</option>
+                </select>
+                <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                    {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
+                    {statusOptions.map(status => (
+                      <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
+                    ))}
+                </select>
+              </div>
             </div>
           </div>
 

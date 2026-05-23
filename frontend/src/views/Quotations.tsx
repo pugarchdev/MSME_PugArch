@@ -255,7 +255,7 @@ export default function Quotations() {
     try {
       const [bidsRes, rfqRes] = await Promise.all([
         api.get('/api/bids/my', authOptions).catch(() => null),
-        api.get('/api/quote-requests', { ...authOptions, skipCache: true } as RequestInit & { skipCache?: boolean }).catch(() => null)
+        api.get('/api/quote-requests', authOptions).catch(() => null)
       ]);
       const bidsData = bidsRes?.ok ? await bidsRes.json() : [];
       const rfqData = rfqRes?.ok ? await rfqRes.json() : [];

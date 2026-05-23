@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import { formatDate } from "../features/shared/format";
 import { Button } from "../components/ui/button";
+import { Pagination } from "../features/shared/Pagination";
 import {
   Card,
   CardHeader,
@@ -97,6 +98,8 @@ export default function AdminOnboarding() {
   const [adminView, setAdminView] = useState("applications");
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [feedback, setFeedback] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSizeState] = useState(10);
 
   // Rejection Modal State
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -604,6 +607,22 @@ export default function AdminOnboarding() {
 
   const currentData =
     activeTab === "sellers" ? filterData(sellers) : filterData(buyers);
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(currentData.length / pageSize)),
+  );
+  const pagedCurrentData = currentData.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+  const setPageSize = (nextPageSize: number) => {
+    setPageSizeState(nextPageSize);
+    setPage(1);
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchTerm, statusFilter, progressFilter, sortBy]);
 
   const pendingTotal =
     sellers.filter((s) =>
@@ -1021,14 +1040,14 @@ export default function AdminOnboarding() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {currentData.map((item, index) => (
+                          {pagedCurrentData.map((item, index) => (
                             <TableRow
                               key={item._id}
                               className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50"
                             >
                               <TableCell className="px-6 py-8">
                                 <div className="font-mono text-xs font-black text-slate-400">
-                                  {String(index + 1).padStart(2, "0")}
+                                  {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
@@ -1128,12 +1147,12 @@ export default function AdminOnboarding() {
 
                     {/* Responsive Card Grid for Mobile */}
                     <div className="md:hidden divide-y divide-slate-100">
-                      {currentData.map((item, index) => (
+                      {pagedCurrentData.map((item, index) => (
                         <div key={item._id} className="p-4 space-y-4">
                           <div className="flex justify-between items-start">
                             <div className="flex gap-3">
                               <div className="font-mono text-[10px] font-black text-slate-400">
-                                {String(index + 1).padStart(2, "0")}
+                                {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                               </div>
                               <div className="space-y-1">
                                 <div className="font-bold text-slate-800 text-xs tracking-tight">
@@ -1193,6 +1212,14 @@ export default function AdminOnboarding() {
                         </div>
                       ))}
                     </div>
+                    <Pagination
+                      page={currentPage}
+                      pageSize={pageSize}
+                      total={currentData.length}
+                      onPageChange={setPage}
+                      onPageSizeChange={setPageSize}
+                      label="applications"
+                    />
                   </>
                 )}
               </CardContent>

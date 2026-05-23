@@ -144,8 +144,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [priceFilter, setPriceFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<FilterKind>('all');
   const [formKind, setFormKind] = useState<ItemKind>('product');
-  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(blankForm);
+  const [showForm, setShowForm] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Layout and modal states
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -405,7 +406,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         <InlineError message="Marketplace item creation is locked until admin approves your seller onboarding. You can view your marketplace, but adding or changing products and services is disabled." />
       )}
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Metric label="Total Items" value={filtered.length} icon={Boxes} />
         <Metric label="Products" value={products.length} icon={PackageSearch} />
         <Metric label="Services" value={services.length} icon={Wrench} />
@@ -431,59 +432,77 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       {error && <InlineError message={error} onRetry={loadCatalogue} />}
 
       <Card className="border-slate-200/80 shadow-sm bg-white">
-        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_150px_170px_170px_160px_auto] items-center">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search name, seller, category..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search name, seller, category..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
+            </div>
+            
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="xl:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            >
+              <Settings2 className="h-4 w-4 text-slate-500" />
+              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
+            </Button>
           </div>
-          <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
-            <option value="all">All types</option>
-            <option value="product">Products</option>
-            <option value="service">Services</option>
-          </select>
-          <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
-            <option value="">All categories</option>
-            {categories.map(category => <option key={category} value={category}>{category}</option>)}
-          </select>
-          <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
-            <option value="">All statuses</option>
-            {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-          </select>
-          <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
-            <option value="">All prices</option>
-            <option value="high">Above Rs. 10k</option>
-            <option value="mid">Rs. 1k to 10k</option>
-            <option value="low">Below Rs. 1k</option>
-          </select>
-          
-          {/* Grid/List View switcher Toggle */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-1 bg-slate-50 w-fit">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={cn(
-                "p-1.5 rounded-md transition-all",
-                viewMode === 'grid'
-                  ? "bg-white text-emerald-700 shadow-sm font-bold"
-                  : "text-slate-400 hover:text-slate-650"
-              )}
-              title="Grid View"
-            >
-              <Grid className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={cn(
-                "p-1.5 rounded-md transition-all",
-                viewMode === 'list'
-                  ? "bg-white text-emerald-700 shadow-sm font-bold"
-                  : "text-slate-400 hover:text-slate-650"
-              )}
-              title="List View"
-            >
-              <List className="h-4 w-4" />
-            </button>
+
+          <div className={cn(
+            "grid gap-3 items-center",
+            showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
+          )}>
+            <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <option value="all">All types</option>
+              <option value="product">Products</option>
+              <option value="service">Services</option>
+            </select>
+            <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <option value="">All categories</option>
+              {categories.map(category => <option key={category} value={category}>{category}</option>)}
+            </select>
+            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <option value="">All statuses</option>
+              {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+            </select>
+            <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <option value="">All prices</option>
+              <option value="high">Above Rs. 10k</option>
+              <option value="mid">Rs. 1k to 10k</option>
+              <option value="low">Below Rs. 1k</option>
+            </select>
+            
+            {/* Grid/List View switcher Toggle */}
+            <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-1 bg-slate-50 w-fit xl:ml-auto">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={cn(
+                  "p-1.5 rounded-md transition-all",
+                  viewMode === 'grid'
+                    ? "bg-white text-emerald-700 shadow-sm font-bold"
+                    : "text-slate-400 hover:text-slate-650"
+                )}
+                title="Grid View"
+              >
+                <Grid className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={cn(
+                  "p-1.5 rounded-md transition-all",
+                  viewMode === 'list'
+                    ? "bg-white text-emerald-700 shadow-sm font-bold"
+                    : "text-slate-400 hover:text-slate-650"
+                )}
+                title="List View"
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -820,48 +839,47 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, onEdit, onD
             )}
           </div>
 
-          {/* Action buttons for Admin and Buyer */}
           {mode === 'admin' && (
-            <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-1.5 border-t border-slate-100 pt-3 grid-cols-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onViewDetails?.(item)}
-                className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50"
+                className="h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50"
               >
-                <Eye className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
-                View Details
+                <Eye className="mr-1 h-3 w-3 text-slate-400" />
+                <span>Details</span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 disabled={!item.seller}
                 onClick={() => item.seller && onSellerClick?.(item.seller)}
-                className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Store className="mr-1.5 h-3.5 w-3.5" />
-                Seller Profile
+                <Store className="mr-1 h-3 w-3" />
+                <span>Seller</span>
               </Button>
             </div>
           )}
           {mode === 'buyer' && (
-            <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+            <div className="mt-3 flex gap-1.5 border-t border-slate-100 pt-3">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onViewDetails?.(item)}
-                className="flex-1 h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50"
+                className="flex-1 h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50"
               >
-                <Eye className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
-                Details
+                <Eye className="mr-1 h-3 w-3 text-slate-400" />
+                <span>Details</span>
               </Button>
               <Button
                 type="button"
                 onClick={() => onPurchaseBid?.(item)}
-                className="flex-1 h-9 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="flex-1 h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
-                Purchase / Bid
+                <ShoppingCart className="mr-1 h-3 w-3" />
+                <span>Buy/Bid</span>
               </Button>
             </div>
           )}

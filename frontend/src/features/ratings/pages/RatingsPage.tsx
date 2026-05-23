@@ -65,7 +65,7 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: { endpoint:
         <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Metric label="Average Rating" value={average.toFixed(1)} icon={Star} />
         <Metric label="4+ Star Records" value={highScoreCount} icon={TrendingUp} />
         <Metric label="Written Reviews" value={reviewCount} icon={MessageSquareText} />

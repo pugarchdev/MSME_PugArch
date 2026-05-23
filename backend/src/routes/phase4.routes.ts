@@ -47,6 +47,7 @@ const buyerIdParams = z.object({ buyerId: z.coerce.number().int().positive() });
 const gstParams = z.object({ gstin: z.string().trim().min(15).max(15) });
 const paginationQuery = z.object({
   q: z.string().trim().max(120).optional(),
+  role: z.enum(['buyer', 'seller']).optional(),
   status: z.string().trim().max(80).optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().min(1).optional(),
@@ -642,9 +643,30 @@ router.get('/files/:id/view', authenticate, asyncRoute(async (req: AuthRequest, 
   return res.end(file.buffer);
 }));
 
-router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
-  const users = await db.user.findMany({
-    where: { role: { in: ['buyer', 'seller'] } },
+router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const query = parse(paginationQuery, req.query);
+  const pendingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
+  const where: any = { role: { in: query.role ? [query.role] : ['buyer', 'seller'] } };
+  if (query.status) {
+    where.onboardingStatus = query.status === 'review_queue'
+      ? { in: pendingStatuses }
+      : query.status;
+  }
+  if (query.q) {
+    where.OR = [
+      { name: { contains: query.q, mode: 'insensitive' } },
+      { email: { contains: query.q, mode: 'insensitive' } },
+      { buyerProfile: { organizationName: { contains: query.q, mode: 'insensitive' } } },
+      { buyerProfile: { gst: { contains: query.q, mode: 'insensitive' } } },
+      { buyerProfile: { pan: { contains: query.q, mode: 'insensitive' } } },
+      { sellerProfile: { businessName: { contains: query.q, mode: 'insensitive' } } },
+      { sellerProfile: { pan: { contains: query.q, mode: 'insensitive' } } }
+    ];
+  }
+  const window = listWindow(query);
+  const [users, total, statusGroups, approvedRoleGroups, flagged] = await Promise.all([
+    db.user.findMany({
+      where,
     select: {
       id: true,
       name: true,
@@ -674,8 +696,26 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
       }
     },
     orderBy: { updatedAt: 'desc' },
-    take: 200
-  });
+      ...window
+    }),
+    db.user.count({ where }),
+    db.user.groupBy({
+      by: ['onboardingStatus'],
+      where: { role: { in: ['buyer', 'seller'] } },
+      _count: { _all: true }
+    }),
+    db.user.groupBy({
+      by: ['role'],
+      where: { role: { in: ['buyer', 'seller'] }, onboardingStatus: 'approved_for_procurement' },
+      _count: { _all: true }
+    }),
+    db.complianceViolation.count({
+      where: {
+        status: 'open',
+        user: { role: { in: ['buyer', 'seller'] } }
+      }
+    })
+  ]);
 
   const sellers: any[] = [];
   const buyers: any[] = [];
@@ -738,7 +778,14 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
     else buyers.push(item);
   }
 
-  res.json(maskSensitive({ sellers, buyers }));
+  const summary = {
+    total,
+    statuses: Object.fromEntries(statusGroups.map((row: any) => [row.onboardingStatus || 'pending', row._count._all])),
+    approvedRoles: Object.fromEntries(approvedRoleGroups.map((row: any) => [row.role, row._count._all])),
+    flagged
+  };
+
+  res.json(maskSensitive({ sellers, buyers, total, ...window, filters: query, summary }));
 }));
 
 router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {

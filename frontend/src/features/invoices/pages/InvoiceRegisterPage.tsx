@@ -20,10 +20,12 @@ import {
   Check,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Filter
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
+import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { useFeatureQuery, usePagination } from '../../shared/hooks';
@@ -56,6 +58,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const { data: invoices, loading, error, reload } = useFeatureQuery<InvoiceRow[]>('/api/invoices', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Checkout modal state variables
   const [checkoutInvoice, setCheckoutInvoice] = useState<InvoiceRow | null>(null);
@@ -269,7 +272,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Metric label="Invoices" value={filtered.length} icon={FileText} />
         <Metric label="Pending" value={pendingCount} icon={Clock} />
         <Metric label="Approved/Paid" value={approvedCount} icon={CheckCircle2} />
@@ -278,29 +281,47 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
 
       {error && <InlineError message={error} onRetry={reload} />}
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_190px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchTerm}
-              onChange={event => setSearchTerm(event.target.value)}
-              placeholder="Search invoice, PO, buyer, seller..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-            />
+      <Card className="border-slate-200/80 shadow-sm bg-white">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Search invoice, PO, buyer, seller..."
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+              />
+            </div>
+            
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            >
+              <Filter className="h-4 w-4 text-slate-500" />
+              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
+            </Button>
           </div>
-          <select
-            value={statusFilter}
-            onChange={event => setStatusFilter(event.target.value)}
-            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-          >
-            <option value="">All statuses</option>
-            {statuses.map(status => (
-              <option key={status} value={status}>
-                {status.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
+
+          <div className={cn(
+            "grid gap-3 items-center",
+            showMobileFilters ? "grid grid-cols-2" : "hidden md:grid md:grid-cols-[190px] md:justify-end"
+          )}>
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value)}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
+            >
+              <option value="">All statuses</option>
+              {statuses.map(status => (
+                <option key={status} value={status}>
+                  {status.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
         </CardContent>
       </Card>
 

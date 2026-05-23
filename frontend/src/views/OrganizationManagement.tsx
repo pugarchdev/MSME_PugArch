@@ -352,6 +352,7 @@ export default function OrganizationManagement() {
               <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <th className="px-6 py-4 text-center w-16">Sr. No.</th>
                   <th className="px-6 py-4"><SortHeader label="Company Details" columnKey="name" /></th>
                   <th className="px-6 py-4"><SortHeader label="Tax Identifications" columnKey="gst" /></th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Operational Features</th>
@@ -361,8 +362,12 @@ export default function OrganizationManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sortedOrgs.map((org) => (
+                {sortedOrgs.map((org, index) => (
                   <tr key={org.id} className="hover:bg-slate-50/50 transition-colors">
+                    {/* Sr. No. */}
+                    <td className="px-6 py-4.5 text-center text-xs font-black text-slate-400">
+                      {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
+                    </td>
                     {/* Details */}
                     <td className="px-6 py-4.5">
                       <div className="flex items-start gap-3">

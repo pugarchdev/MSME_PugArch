@@ -23,7 +23,7 @@ export default function MISReports() {
     const loadData = async () => {
       try {
         const queryParams = new URLSearchParams({ timeframe, role: roleFilter }).toString();
-        const res = await api.fetch(`/api/admin/reports/summary?${queryParams}`, { ...authOptions, skipCache: true });
+        const res = await api.fetch(`/api/admin/reports/summary?${queryParams}`, authOptions);
         if (res.ok) {
           const body = await res.json();
           setStats(body?.data ?? body);

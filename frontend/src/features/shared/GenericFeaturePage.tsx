@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
-import { CalendarDays, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, Save, FileText } from 'lucide-react';
+import { CalendarDays, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, Save, FileText, Filter } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
+import { cn } from '../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from './FeatureStates';
 import { Pagination } from './Pagination';
 import { formatCurrency, formatDate } from './format';
@@ -32,6 +33,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [valueFilter, setValueFilter] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [selectedRecord, setSelectedRecord] = useState<GenericRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<GenericRecord | null>(null);
@@ -112,7 +114,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
         <Metric label="Records" value={filtered.length} icon={ClipboardList} />
         <Metric label="Pending Action" value={pendingCount} icon={CalendarDays} />
         <Metric label="Tracked Value" value={formatCurrency(totalValue)} icon={IndianRupee} />
@@ -120,25 +122,43 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
 
       {error && <InlineError message={error} onRetry={reload} />}
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_190px_190px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+      <Card className="border-slate-200/80 shadow-sm bg-white">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+            </div>
+            
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="lg:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            >
+              <Filter className="h-4 w-4 text-slate-500" />
+              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
+            </Button>
           </div>
-          <div className="relative">
-            <SlidersHorizontal className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
-              <option value="">All statuses</option>
-              {statusOptions.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+
+          <div className={cn(
+            "grid gap-3 items-center",
+            showMobileFilters ? "grid grid-cols-1 sm:grid-cols-2" : "hidden lg:grid lg:grid-cols-[190px_190px] lg:justify-end"
+          )}>
+            <div className="relative w-full">
+              <SlidersHorizontal className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
+                <option value="">All statuses</option>
+                {statusOptions.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+              </select>
+            </div>
+            <select value={valueFilter} onChange={event => setValueFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+              <option value="">All values</option>
+              <option value="high">Above Rs. 1 lakh</option>
+              <option value="medium">Rs. 25k to 1 lakh</option>
+              <option value="low">Below Rs. 25k</option>
             </select>
           </div>
-          <select value={valueFilter} onChange={event => setValueFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
-            <option value="">All values</option>
-            <option value="high">Above Rs. 1 lakh</option>
-            <option value="medium">Rs. 25k to 1 lakh</option>
-            <option value="low">Below Rs. 25k</option>
-          </select>
         </CardContent>
       </Card>
 

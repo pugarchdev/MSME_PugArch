@@ -58,7 +58,7 @@ export default function ParcelTracking() {
         <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <MetricCard label="In Movement" value={inTransitCount} hint="Active consignments" icon={Truck} />
         <MetricCard label="Delivered" value={deliveredCount} hint="Receipt completed" icon={PackageCheck} />
         <MetricCard label="SLA Attention" value={riskCount} hint="Delayed / returned / cancelled" icon={AlertTriangle} />

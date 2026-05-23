@@ -22,7 +22,39 @@ const SIDEBAR_SECTIONS = [
 ];
 
 const DEPARTMENT_OPTIONS = ['Procurement', 'Finance', 'Admin', 'Operations', 'Management', 'Others'];
-const PROCUREMENT_CATEGORY_OPTIONS = ['IT Equipment', 'Office Supplies', 'Machinery', 'Services', 'Construction', 'Consulting', 'Others'];
+const PROCUREMENT_CATEGORY_OPTIONS = [
+  'Cement Industry',
+  'Steel & Metal Industry',
+  'Mining & Coal Industry',
+  'Oil & Gas Industry',
+  'Power & Energy Sector',
+  'Construction & Infrastructure',
+  'Manufacturing Industry',
+  'Industrial Equipment & Machinery',
+  'Automobile & Transport',
+  'Electrical & Electronics',
+  'Chemicals & Refractories',
+  'IT & Technology Services',
+  'Medical & Healthcare Supplies',
+  'Agriculture & Agro Products',
+  'Trading & Distribution',
+  'Industrial Consumables',
+  'Hydraulics & Engineering Services',
+  'Safety Equipment & Industrial Safety',
+  'Building Materials & Hardware',
+  'Fuel & Lubricants',
+  'Fabrication & Mechanical Works',
+  'Logistics & Supply Chain',
+  'Packaging & Printing',
+  'Polymer & Plastic Industry',
+  'Tyres & Rubber Products',
+  'Tools & Industrial Hardware',
+  'Nursery & Environmental Services',
+  'Office Equipment & Stationery',
+  'Telecom & Automation',
+  'General Industrial Supplier',
+  'Others'
+];
 const ANNUAL_BUDGET_OPTIONS = ['< ₹10 Lakh', '₹10 Lakh – ₹1 Crore', '₹1 Crore – ₹10 Crore', '₹10 Crore+'];
 const PROCUREMENT_METHOD_OPTIONS = ['Direct Purchase', 'Quotation Based', 'Tender / Bidding', 'Reverse Auction', 'Others'];
 const BUYER_ONBOARDING_DRAFT_KEY = 'buyer-onboarding-draft';

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
-import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown, Eye, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { cn } from '../lib/utils';
@@ -22,6 +22,22 @@ export default function PurchaseOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+
+  const formatTimestamp = (value?: string | Date | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
 
   const toggleSort = (key: string) => {
     if (key === 'po') {
@@ -180,7 +196,7 @@ export default function PurchaseOrders() {
     toast.success('PO PDF generated');
   };
 
-  if (loading) return <LoadingState label="Loading purchase orders..." />;
+  if (loading && orders.length === 0) return <LoadingState label="Loading purchase orders..." />;
 
   return (
     <div className="space-y-4">
@@ -264,6 +280,7 @@ export default function PurchaseOrders() {
                     <td className="p-3"><StatusPill status={order.status} /></td>
                     <td className="p-3">
                       <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
                         {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
                         <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
                         {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
@@ -286,6 +303,169 @@ export default function PurchaseOrders() {
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirming(null)}>No</Button>
               <Button onClick={completeAction} className="bg-[#12335f] text-white">Yes, continue</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 shrink-0">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Purchase Order Details</p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">{viewingOrder.poNumber}</h2>
+              </div>
+              <button onClick={() => setViewingOrder(null)} className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-white transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5 space-y-6 flex-1">
+              <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                <p className="text-[10px] font-black uppercase text-slate-400">Order Title</p>
+                <p className="text-base font-black text-slate-900 mt-0.5">{viewingOrder.title}</p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <span className="rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-[#12335f]">
+                    {readableStatus(viewingOrder.status)}
+                  </span>
+                  {viewingOrder.paymentTerms && (
+                    <span className="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-teal-700">
+                      Payment: {viewingOrder.paymentTerms.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  {viewingOrder.deliveryType && (
+                    <span className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-purple-700">
+                      Delivery: {viewingOrder.deliveryType.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-3">
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Fulfillment Parties</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-slate-400">Buyer (Requester)</p>
+                      <p className="text-xs font-bold text-slate-800">{viewingOrder.buyer?.name || 'MSME Portal Buyer'}</p>
+                      {viewingOrder.buyer?.email && <p className="text-[10px] font-semibold text-slate-500">{maskEmail(viewingOrder.buyer.email)}</p>}
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-slate-400">Seller (Provider)</p>
+                      <p className="text-xs font-bold text-slate-800">{viewingOrder.seller?.name || maskEmail(viewingOrder.seller?.email) || 'MSME Portal Seller'}</p>
+                      {viewingOrder.seller?.email && <p className="text-[10px] font-semibold text-slate-500">{maskEmail(viewingOrder.seller.email)}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Fulfillment Settings</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-slate-400">Expected Delivery Date</p>
+                      <p className="text-xs font-black text-slate-800">{formatDate(viewingOrder.expectedDelivery)}</p>
+                    </div>
+                    {viewingOrder.deliveryAddress && (
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-slate-400">Delivery Address</p>
+                        <p className="text-xs font-bold text-slate-600 line-clamp-2">{viewingOrder.deliveryAddress}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Workflow Tracking & Timestamps</h4>
+                <div className="relative border-l border-slate-200 pl-5 ml-2.5 space-y-4 py-1">
+                  <div className="relative">
+                    <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <span className="text-xs font-black text-slate-900">Purchase Order Generated</span>
+                      <span className="text-[10px] font-mono font-bold text-slate-500">{formatTimestamp(viewingOrder.createdAt)}</span>
+                    </div>
+                    <p className="text-[10px] font-semibold text-slate-500 mt-0.5">PO record successfully created from procurement bidding workflow.</p>
+                  </div>
+
+                  {viewingOrder.status !== 'generated' && viewingOrder.status !== 'cancelled' && (
+                    <div className="relative">
+                      <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <span className="text-xs font-black text-slate-900">PO Acknowledged by Seller</span>
+                        <span className="text-[10px] font-mono font-bold text-slate-500">
+                          {viewingOrder.acceptedAt ? formatTimestamp(viewingOrder.acceptedAt) : 'Pending timestamp'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Seller acknowledged and committed to fulfilling this order.</p>
+                    </div>
+                  )}
+
+                  {viewingOrder.status === 'delivered' && (
+                    <div className="relative">
+                      <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <span className="text-xs font-black text-slate-900">Delivered & Completed</span>
+                        <span className="text-[10px] font-mono font-bold text-slate-500">Completed</span>
+                      </div>
+                      <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Consignment has been safely delivered and confirmed by buyer.</p>
+                    </div>
+                  )}
+
+                  {viewingOrder.status === 'cancelled' && (
+                    <div className="relative">
+                      <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 ring-4 ring-red-50" />
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <span className="text-xs font-black text-red-700">Order Cancelled</span>
+                        <span className="text-[10px] font-mono font-bold text-red-500">Cancelled</span>
+                      </div>
+                      <p className="text-[10px] font-semibold text-red-500 mt-0.5">Fulfillment terminated by one of the parties.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Line Items</h4>
+                <div className="overflow-hidden rounded-lg border border-slate-100 bg-slate-50/50">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="p-2.5">Item Name</th>
+                        <th className="p-2.5 w-16 text-center">Qty</th>
+                        <th className="p-2.5 text-right w-28">Unit Price</th>
+                        <th className="p-2.5 text-right w-28">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(viewingOrder.items?.length ? viewingOrder.items : [{ itemName: viewingOrder.title, quantity: 1, unitPrice: viewingOrder.amount || viewingOrder.totalValue, totalAmount: viewingOrder.amount || viewingOrder.totalValue }]).map((item, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/80">
+                          <td className="p-2.5 font-bold text-slate-800">{item.itemName || viewingOrder.title}</td>
+                          <td className="p-2.5 text-center font-bold text-slate-600">{Number(item.quantity || 1)}</td>
+                          <td className="p-2.5 text-right font-semibold text-slate-600">{formatCurrency(item.unitPrice)}</td>
+                          <td className="p-2.5 text-right font-black text-slate-900">{formatCurrency(item.totalAmount || (Number(item.quantity || 1) * Number(item.unitPrice || 0)))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <div className="bg-[#12335f]/5 border border-[#12335f]/10 rounded-xl px-5 py-3 text-right">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#12335f] block">Grand Total Value</span>
+                  <span className="text-xl font-black text-[#12335f] mt-0.5 block">{formatCurrency(viewingOrder.amount || viewingOrder.totalValue)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 shrink-0">
+              <Button variant="outline" onClick={() => downloadPdf(viewingOrder)} className="h-10 text-xs font-black uppercase">
+                <Download className="mr-2 h-4 w-4" /> Download PDF
+              </Button>
+              <Button onClick={() => setViewingOrder(null)} className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]">
+                Close
+              </Button>
             </div>
           </div>
         </div>

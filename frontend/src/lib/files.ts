@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrapApiData } from './api';
 
 export type DocumentPreviewMode = 'image' | 'pdf' | 'office' | 'google';
 
@@ -66,7 +66,8 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
     });
 
     if (res.ok) {
-      const data = await res.json().catch(() => null);
+      const body = await res.json().catch(() => null);
+      const data = unwrapApiData<any>(body);
       if (data?.signedUrl) {
         return {
           label,
@@ -139,7 +140,8 @@ export const openFileAsset = async (fileAsset: any, label = 'Document') => {
       });
 
       if (res.ok) {
-        const data = await res.json().catch(() => null);
+        const body = await res.json().catch(() => null);
+        const data = unwrapApiData<any>(body);
         if (data?.signedUrl) {
           if (previewWindow) {
             previewWindow.location.href = data.signedUrl;

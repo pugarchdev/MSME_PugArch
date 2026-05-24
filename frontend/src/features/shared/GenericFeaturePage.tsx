@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
-import { CalendarDays, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, Save, FileText, Filter } from 'lucide-react';
+import { CalendarDays, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, Save, FileText, Filter, Paperclip } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { cn } from '../../lib/utils';
@@ -12,6 +12,9 @@ import { deleteApi, putApi } from './apiClient';
 import { toast } from 'sonner';
 import { DocumentPreviewModal } from '../../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../../lib/files';
+import { api } from '../../lib/api';
+import { compressImage } from '../../lib/compress';
+
 
 type GenericRecord = Record<string, any>;
 
@@ -112,7 +115,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
     }
   };
 
-  if (loading) return <LoadingState label={`Loading ${title.toLowerCase()}...`} />;
+  if (loading && records.length === 0) return <LoadingState label={`Loading ${title.toLowerCase()}...`} />;
 
   return (
     <div className="space-y-4">
@@ -315,6 +318,40 @@ function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDele
 
 function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }: { title: string; endpoint: string; record: GenericRecord; saving: boolean; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {
   const isRfq = endpoint === '/api/quote-requests';
+  const [uploadedDocUrl, setUploadedDocUrl] = useState(record.documentUrl || '');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const optimizedFile = await compressImage(file);
+      const formData = new FormData();
+      formData.append('file', optimizedFile);
+
+      const res = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const fileUrl = data?.data?.url || data?.url || '';
+        setUploadedDocUrl(fileUrl);
+        toast.success('Document uploaded and attached successfully');
+      } else {
+        toast.error('Upload failed');
+      }
+    } catch (err) {
+      toast.error('Upload error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white shadow-2xl">
@@ -325,7 +362,39 @@ function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }
             <>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Subject<input name="subject" defaultValue={record.subject || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Message<textarea name="message" rows={4} defaultValue={record.message || ''} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Document URL<input name="documentUrl" defaultValue={record.documentUrl || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
+              <div className="space-y-1.5">
+                <span className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Document File</span>
+                <div className={`relative flex items-center justify-between w-full bg-slate-50 border border-slate-200 border-dashed rounded-lg p-3 transition-all ${uploadedDocUrl ? 'bg-emerald-50/40 border-emerald-200' : ''}`}>
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-1.5 rounded-md ${uploadedDocUrl ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
+                      <Paperclip className="h-3.5 w-3.5" />
+                    </div>
+                    <span className={`text-xs font-semibold truncate max-w-[240px] ${uploadedDocUrl ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {uploadedDocUrl ? (uploadedDocUrl.split('/').pop() || "Document attached") : "Attach document file (PDF, Doc, Excel)"}
+                    </span>
+                  </div>
+                  
+                  <input 
+                    type="file" 
+                    id="edit-rfq-doc" 
+                    accept=".pdf,.doc,.docx,.xls,.xlsx" 
+                    className="hidden" 
+                    onChange={handleUploadDoc}
+                    disabled={isUploading}
+                  />
+                  <label 
+                    htmlFor="edit-rfq-doc"
+                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${
+                      uploadedDocUrl 
+                        ? "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        : "bg-[#12335f] text-white hover:bg-[#0b2445]"
+                    }`}
+                  >
+                    {isUploading ? "Wait..." : uploadedDocUrl ? "Change" : "Upload"}
+                  </label>
+                </div>
+                <input type="hidden" name="documentUrl" value={uploadedDocUrl} />
+              </div>
             </>
           ) : (
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Total Amount<input name="totalAmount" type="number" min="0" defaultValue={amountOf(record) || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
@@ -336,6 +405,7 @@ function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }
     </div>
   );
 }
+
 
 function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: ComponentType<{ className?: string }> }) {
   return (

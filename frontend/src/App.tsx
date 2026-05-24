@@ -39,7 +39,6 @@ import MISReports from './views/MISReports';
 import Sidebar, { Header } from './components/layout/Navbar';
 
 const roleOk = (role?: string, allowed?: string[]) => !allowed || (role && allowed.includes(role));
-
 function Redirect({ to }: { to: string }) {
   const router = useRouter();
 

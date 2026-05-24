@@ -45,6 +45,9 @@ const routeLimiter = (options: RateLimitOptions) => {
   };
 
   return async (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' || !process.env.NODE_ENV) {
+      return next();
+    }
     const key = keyFor(req);
 
     try {

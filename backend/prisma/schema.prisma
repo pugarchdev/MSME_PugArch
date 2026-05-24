@@ -33,7 +33,7 @@ model User {
   passwordResetVersion    Int                         @default(0)
   sessionVersion          Int                         @default(0)
   organizationId          Int?
-  accountStatus           UserStatus                  @default(PENDING)
+  accountStatus           UserStatus                  @default(ACTIVE)
   createdAt               DateTime                    @default(now())
   updatedAt               DateTime                    @updatedAt
   Approval                Approval[]

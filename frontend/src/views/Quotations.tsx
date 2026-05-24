@@ -31,6 +31,8 @@ import { cn } from '../lib/utils';
 import { Pagination } from '../features/shared/Pagination';
 import { usePagination } from '../features/shared/hooks';
 import { normalizeList } from '../features/shared/apiClient';
+import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
+import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 
 type BidStatus = 'pending' | 'submitted' | 'technical_qualified' | 'technical_rejected' | 'financial_evaluated' | 'accepted' | 'rejected' | 'withdrawn' | 'draft' | 'modified';
 
@@ -50,6 +52,18 @@ interface Quotation {
   isLowest?: boolean;
   bidNumber?: string;
   documentUrl?: string;
+  documentName?: string;
+  fileAssetId?: number | null;
+  fileAsset?: {
+    id?: number;
+    fileAssetId?: number;
+    fileId?: number;
+    originalName?: string;
+    mimeType?: string;
+    url?: string;
+    signedUrl?: string;
+    documentUrl?: string;
+  } | null;
   tender?: {
     id?: number;
     tenderId?: string;
@@ -76,6 +90,10 @@ interface Quotation {
     deliveryDays?: number;
     validityDate?: string;
     notes?: string;
+    documentUrl?: string;
+    documentName?: string;
+    fileAssetId?: number | null;
+    fileAsset?: Quotation['fileAsset'];
   }>;
 }
 
@@ -107,6 +125,10 @@ const quoteRequestToRecord = (rfq: any): Quotation => {
     validTill: response?.validityDate,
     status: response ? normalizeBidStatus(response.status) : normalizeBidStatus(rfq.statusEnum || rfq.status),
     note: response?.notes || rfq.message,
+    documentUrl: response?.documentUrl || rfq.documentUrl,
+    documentName: response?.documentName || rfq.documentName,
+    fileAssetId: response?.fileAssetId || rfq.fileAssetId || null,
+    fileAsset: response?.fileAsset || rfq.fileAsset || null,
     tender: {
       id: Number(rfq.id),
       tenderId: `RFQ-${String(rfq.id).padStart(4, '0')}`,
@@ -178,6 +200,37 @@ const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
 const getQuoteUpdatedAt = (q: Quotation) => (q as any).updatedAt || (q as any).lastModified;
+const getFileNameFromUrl = (url?: string) => {
+  if (!url) return '';
+  const cleanUrl = String(url).split('?')[0];
+  const name = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+  try {
+    return decodeURIComponent(name || 'Quotation document');
+  } catch {
+    return name || 'Quotation document';
+  }
+};
+
+const getQuoteDocument = (quote: Quotation) => {
+  const responseDocument = quote.quoteResponses?.find(response => response.fileAssetId || response.documentUrl || response.fileAsset);
+  const fileAsset = quote.fileAsset || responseDocument?.fileAsset || undefined;
+  const fileAssetId = Number(quote.fileAssetId || responseDocument?.fileAssetId || fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId || 0) || undefined;
+  const documentUrl = quote.documentUrl || responseDocument?.documentUrl || fileAsset?.documentUrl || fileAsset?.signedUrl || fileAsset?.url;
+  const label = quote.documentName || responseDocument?.documentName || fileAsset?.originalName || getFileNameFromUrl(documentUrl) || 'Quotation document';
+
+  if (!fileAssetId && !documentUrl) return null;
+  return {
+    label,
+    fileAsset: {
+      ...fileAsset,
+      id: fileAssetId,
+      fileAssetId,
+      fileId: fileAssetId,
+      url: documentUrl,
+      documentUrl
+    }
+  };
+};
 
 const canSellerManageBid = (quote: Quotation, role?: string) =>
   role === 'seller' && quote.source !== 'rfq' && !['accepted', 'rejected'].includes(quote.status);
@@ -198,16 +251,19 @@ function InfoBox({ label, value, strong = false }: { label: string; value: strin
 function QuotationDetailsModal({
   quote,
   role,
-  onClose
+  onClose,
+  onOpenDocument
 }: {
   quote: Quotation;
   role?: string;
   onClose: () => void;
+  onOpenDocument: (quote: Quotation) => void;
 }) {
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
   const buyerName = quote.buyer?.name || '-';
   const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+  const quoteDocument = getQuoteDocument(quote);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
@@ -251,7 +307,23 @@ function QuotationDetailsModal({
             <InfoBox label="Submitted Date & Time" value={formatDateTime(getQuoteSubmittedAt(quote))} />
             <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
             <InfoBox label="Tender Closing" value={formatDateTime(quote.tender?.closesAt)} />
-            <InfoBox label="Document" value={quote.documentUrl ? 'Attached' : 'Not Attached'} />
+            {quoteDocument ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/40 px-3 py-2 lg:col-span-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Document</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-800">{quoteDocument.label}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Attached by seller</p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => onOpenDocument(quote)} className="h-8 shrink-0 rounded-md border-emerald-200 bg-white px-3 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50">
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    View Document
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <InfoBox label="Document" value="Not Attached" />
+            )}
           </div>
 
           {quote.note && (
@@ -358,6 +430,7 @@ export default function Quotations() {
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<Quotation | null>(null);
   const [editTarget, setEditTarget] = useState<Quotation | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [responding, setResponding] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -525,11 +598,26 @@ export default function Quotations() {
     try {
       const res = await api.get(`/api/bids/${quote.id}`, authOptions);
       if (res.ok) {
-        const data = await res.json();
+        const body = await res.json();
+        const data = body?.data || body;
         setDetailsTarget({ ...quote, ...data, source: 'bid' });
       }
     } catch {
       // Keep row-level details visible if the full detail endpoint is unavailable.
+    }
+  };
+
+  const handleOpenQuoteDocument = async (quote: Quotation) => {
+    const document = getQuoteDocument(quote);
+    if (!document) {
+      toast.error('No quotation document is attached');
+      return;
+    }
+
+    try {
+      setPreviewDocument(await getFileAssetPreview(document.fileAsset, document.label));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Unable to open quotation document');
     }
   };
 
@@ -873,6 +961,7 @@ export default function Quotations() {
                   quote={quote}
                   role={user?.role}
                   index={(page - 1) * pageSize + index}
+                  onView={() => handleViewQuote(quote)}
                   onAccept={() => handleStatusUpdate(quote.id, 'accepted')}
                   onReject={() => handleStatusUpdate(quote.id, 'rejected')}
                   onRespond={() => setResponseTarget(quote)}
@@ -898,6 +987,7 @@ export default function Quotations() {
             quote={detailsTarget}
             role={user?.role}
             onClose={() => setDetailsTarget(null)}
+            onOpenDocument={handleOpenQuoteDocument}
           />
         )}
         {editTarget && (
@@ -908,6 +998,7 @@ export default function Quotations() {
             onSubmit={handleEditBid}
           />
         )}
+        <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
       </div>
     </div>
   );
@@ -949,6 +1040,7 @@ function QuotationCard({
   quote,
   role,
   index,
+  onView,
   onAccept,
   onReject,
   onRespond
@@ -956,6 +1048,7 @@ function QuotationCard({
   quote: Quotation;
   role?: string;
   index: number;
+  onView: () => void;
   onAccept: () => void;
   onReject: () => void;
   onRespond?: () => void;
@@ -1022,6 +1115,11 @@ function QuotationCard({
               <p className="mt-1 text-sm font-medium leading-relaxed text-slate-700">{quote.note}</p>
             </div>
           )}
+
+          <Button variant="outline" onClick={onView} className="h-10 w-full rounded-md border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-50">
+            <Eye className="mr-2 h-4 w-4" />
+            View Details
+          </Button>
 
           {role === 'buyer' ? (
             ['pending', 'submitted', 'technical_qualified', 'financial_evaluated', 'modified'].includes(quote.status) ? (

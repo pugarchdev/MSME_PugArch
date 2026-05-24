@@ -235,6 +235,9 @@ const getItemImageId = (item: CatalogueRecord): number | null =>
 const catalogueDocuments = (item: CatalogueRecord) =>
   catalogueMedia(item).filter(file => file.kind === 'document');
 
+const isProcurementApproved = (status?: string) =>
+  ['approved_for_procurement', 'approved'].includes(String(status || ''));
+
 export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode }) {
   const { user } = useAuth();
   const [products, setProducts] = useState<CatalogueRecord[]>([]);
@@ -315,7 +318,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     }
   };
 
-  const sellerApproved = mode !== 'seller' || ['approved_for_procurement', 'approved'].includes(String(user?.onboardingStatus));
+  const sellerApproved = mode !== 'seller' || isProcurementApproved(user?.onboardingStatus);
+  const buyerApproved = mode !== 'buyer' || isProcurementApproved(user?.onboardingStatus);
+  const buyerProcurementLocked = mode === 'buyer' && !buyerApproved;
 
   const loadBuyerActions = useCallback(async () => {
     if (mode !== 'buyer') return;
@@ -460,6 +465,14 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     setBuyerActions(current => ({ ...current, [key]: { ...current[key], ...action } }));
   };
 
+  const openPurchaseBid = (item: CatalogueRecord) => {
+    if (buyerProcurementLocked) {
+      toast.error('Your buyer account must be approved by admin before purchase or RFQ actions are allowed.');
+      return;
+    }
+    setSelectedPurchaseItem(item);
+  };
+
   const deleteItem = async (item: CatalogueRecord) => {
     if (!window.confirm(`Are you sure you want to delete this ${item.itemKind}?`)) {
       return;
@@ -582,6 +595,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
       {mode === 'seller' && !sellerApproved && (
         <InlineError message="Marketplace item creation is locked until admin approves your seller onboarding. You can view your marketplace, but adding or changing products and services is disabled." />
+      )}
+      {buyerProcurementLocked && (
+        <InlineError message="Buyer procurement is locked until admin approval. You can browse the marketplace and view seller/item details, but purchase and RFQ actions are disabled." />
       )}
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
@@ -711,7 +727,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                 onEdit={openEditForm}
                 onDelete={deleteItem}
                 onViewDetails={setSelectedDetailsItem}
-                onPurchaseBid={setSelectedPurchaseItem}
+                onPurchaseBid={openPurchaseBid}
+                canPurchase={buyerApproved}
                 onSellerClick={openSellerProfile}
                 actionState={buyerActions[actionKey(item.sellerId || item.seller?.id)]}
                 srNo={(page - 1) * pageSize + index + 1}
@@ -731,7 +748,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           mode={mode}
           actionState={buyerActions[actionKey(selectedDetailsItem.sellerId || selectedDetailsItem.seller?.id)]}
           onSellerClick={openSellerProfile}
-          onPurchaseBid={setSelectedPurchaseItem}
+          onPurchaseBid={openPurchaseBid}
+          canPurchase={buyerApproved}
           onPreviewDocument={setPreviewDocument}
           onClose={() => setSelectedDetailsItem(null)}
         />
@@ -986,11 +1004,12 @@ function CatalogueForm({
   );
 }
 
-function CatalogueCard({ item, mode, viewMode = 'grid', actionState, onEdit, onDelete, onViewDetails, onPurchaseBid, onSellerClick, srNo }: {
+function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase = true, onEdit, onDelete, onViewDetails, onPurchaseBid, onSellerClick, srNo }: {
   item: CatalogueRecord;
   mode: CatalogueMode;
   viewMode?: 'grid' | 'list';
   actionState?: BuyerActionState;
+  canPurchase?: boolean;
   onEdit?: (item: CatalogueRecord) => void;
   onDelete?: (item: CatalogueRecord) => void;
   onViewDetails?: (item: CatalogueRecord) => void;
@@ -1147,10 +1166,12 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, onEdit, onD
                     <Button
                       type="button"
                       onClick={() => onPurchaseBid?.(item)}
-                      className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={!canPurchase}
+                      title={canPurchase ? 'Purchase or request bid' : 'Admin approval required before procurement actions'}
+                      className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                     >
                       <ShoppingCart className="mr-1 h-3 w-3" />
-                      Purchase / Bid
+                      {canPurchase ? 'Purchase / Bid' : 'Approval Required'}
                     </Button>
                   </>
                 )}
@@ -1291,10 +1312,12 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, onEdit, onD
               <Button
                 type="button"
                 onClick={() => onPurchaseBid?.(item)}
-                className="flex-1 h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={!canPurchase}
+                title={canPurchase ? 'Purchase or request bid' : 'Admin approval required before procurement actions'}
+                className="flex-1 h-8 rounded-lg text-[9px] sm:text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
               >
                 <ShoppingCart className="mr-1 h-3 w-3" />
-                <span>Buy/Bid</span>
+                <span>{canPurchase ? 'Buy/Bid' : 'Locked'}</span>
               </Button>
             </div>
           )}
@@ -1320,10 +1343,11 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
   );
 }
 
-function ItemDetailsModal({ item, mode, actionState, onSellerClick, onPurchaseBid, onPreviewDocument, onClose }: {
+function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSellerClick, onPurchaseBid, onPreviewDocument, onClose }: {
   item: CatalogueRecord;
   mode: CatalogueMode;
   actionState?: BuyerActionState;
+  canPurchase?: boolean;
   onSellerClick: (seller: CatalogueRecord['seller']) => void;
   onPurchaseBid: (item: CatalogueRecord) => void;
   onPreviewDocument: (preview: DocumentPreview) => void;
@@ -1551,9 +1575,14 @@ function ItemDetailsModal({ item, mode, actionState, onSellerClick, onPurchaseBi
               </Button>
             )}
             {mode === 'buyer' && (
-              <Button onClick={() => onPurchaseBid(item)} className="h-10 rounded-xl bg-emerald-600 px-5 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700">
+              <Button
+                onClick={() => onPurchaseBid(item)}
+                disabled={!canPurchase}
+                title={canPurchase ? 'Purchase or request bid' : 'Admin approval required before procurement actions'}
+                className="h-10 rounded-xl bg-emerald-600 px-5 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+              >
                 <ShoppingCart className="mr-2 h-4 w-4" />
-                {buyerStatusLabel ? 'Create Another Request' : 'Purchase / Bid'}
+                {canPurchase ? (buyerStatusLabel ? 'Create Another Request' : 'Purchase / Bid') : 'Approval Required'}
               </Button>
             )}
           </div>

@@ -188,9 +188,11 @@ export const authController = {
           emailVerified: true,
           lastPasswordChangeAt: new Date(),
           registrationStatus: RegistrationStatus.completed,
+          accountStatus: 'ACTIVE',
           registrationDetails: registrationDetails || {}
         }
       });
+
 
       await consumeEmailOtp(email);
 
@@ -269,6 +271,22 @@ export const authController = {
         });
         return res.status(423).json({ message: 'Account is temporarily locked. Please try again later.' });
       }
+
+      if (user.accountStatus === 'BLOCKED' || user.accountStatus === 'SUSPENDED') {
+        await recordLoginEvent({ req, userId: user.id, success: false, reason: 'account_disabled' });
+        await auditLog({
+          actorUserId: user.id,
+          actorRole: user.role,
+          action: 'auth.login.disabled',
+          entityType: 'user',
+          entityId: user.id,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: { accountStatus: user.accountStatus }
+        });
+        return res.status(403).json({ message: 'Your account is inactive or blocked. Please contact the platform administrator.' });
+      }
+
 
       const isMatch = await verifyPassword(String(password || ''), user.password);
       if (!isMatch) {

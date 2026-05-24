@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { api } from '../lib/api';
+import { api, unwrapApiData } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { compressImage } from '../lib/compress';
@@ -41,6 +41,18 @@ interface Tender {
   }
 }
 
+const getUploadedFileName = (file: { documentUrl?: string; originalName?: string; url?: string }) => {
+  if (file.originalName) return file.originalName;
+  const url = file.documentUrl || file.url || '';
+  const cleanUrl = url.split('?')[0];
+  const name = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+  try {
+    return decodeURIComponent(name || 'Document attached');
+  } catch {
+    return name || 'Document attached';
+  }
+};
+
 export default function CreateQuotation() {
   const pathname = usePathname() || '';
   const match = pathname.match(/\/seller\/tenders\/([^/]+)\/bid/);
@@ -61,7 +73,8 @@ export default function CreateQuotation() {
     validTill: '',
     note: '',
     documentUrl: '',
-    fileAssetId: null as number | null
+    fileAssetId: null as number | null,
+    documentName: ''
   });
 
   useEffect(() => {
@@ -122,8 +135,15 @@ export default function CreateQuotation() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setFormData(prev => ({ ...prev, documentUrl: data.url || data.signedUrl || data.file?.url || '', fileAssetId: data.fileId || data.file?.id || null }));
+        const data = unwrapApiData<any>(await res.json());
+        const fileAssetId = Number(data.fileId || data.file?.id || data.fileAssetId || 0) || null;
+        const documentUrl = data.url || data.documentUrl || data.file?.documentUrl || data.file?.url || (fileAssetId ? `/api/files/${fileAssetId}/view` : '');
+        setFormData(prev => ({
+          ...prev,
+          documentUrl,
+          fileAssetId,
+          documentName: data.file?.originalName || data.originalName || file.name
+        }));
         toast.success('Document uploaded successfully');
       } else {
         toast.error('Failed to upload document');
@@ -136,7 +156,7 @@ export default function CreateQuotation() {
   };
 
   const handleRemoveFile = () => {
-    setFormData(prev => ({ ...prev, documentUrl: '', fileAssetId: null }));
+    setFormData(prev => ({ ...prev, documentUrl: '', fileAssetId: null, documentName: '' }));
     toast.info('Document removed');
   };
 
@@ -411,7 +431,10 @@ export default function CreateQuotation() {
                           <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                           {formData.documentUrl ? (
                             <span className="text-xs font-bold text-slate-700 truncate">
-                              {formData.documentUrl.substring(formData.documentUrl.lastIndexOf('/') + 1)}
+                              {getUploadedFileName({
+                                documentUrl: formData.documentUrl,
+                                originalName: formData.documentName
+                              })}
                             </span>
                           ) : (
                             <span className="text-xs font-medium text-slate-400 truncate">
@@ -432,7 +455,7 @@ export default function CreateQuotation() {
                           <>
                             <input
                               type="file"
-                              accept=".pdf,.jpg,.jpeg,.png"
+                              accept=".pdf,.doc,.docx,.csv,.jpg,.jpeg,.png"
                               onChange={handleFileUpload}
                               id="quote-doc-upload"
                               className="hidden"

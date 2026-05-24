@@ -112,6 +112,12 @@ export const tenderWorkflow = {
       update: { status: 'BID_SUBMITTED', respondedAt: new Date() },
       create: { tenderId, sellerId: actor.id, status: 'BID_SUBMITTED', respondedAt: new Date() }
     }).catch(() => undefined);
+    if (input.fileAssetId) {
+      await db.fileAsset.updateMany({
+        where: { id: Number(input.fileAssetId), ownerId: actor.id, status: 'active' },
+        data: { entityType: 'bid', entityId: bid.id }
+      }).catch(() => undefined);
+    }
     await auditWorkflow(actor, 'workflow.bid.submitted', 'bid', bid.id, { tenderId });
     return bid;
   },
@@ -124,6 +130,12 @@ export const tenderWorkflow = {
       where: { id: bidId },
       data: { ...input, status: 'modified', statusEnum: bidStatusEnumFor('modified'), modifiedAt: new Date() }
     });
+    if (input.fileAssetId) {
+      await db.fileAsset.updateMany({
+        where: { id: Number(input.fileAssetId), ownerId: actor.id, status: 'active' },
+        data: { entityType: 'bid', entityId: bidId }
+      }).catch(() => undefined);
+    }
     await auditWorkflow(actor, 'workflow.bid.modified', 'bid', bidId);
     return updated;
   },

@@ -3,7 +3,7 @@ import https from 'https';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { env } from '../config/env.js';
-import { getFileContent, uploadFile } from '../services/storage/storage.service.js';
+import { getFileContent, getSignedUrl, uploadFile } from '../services/storage/storage.service.js';
 import { authenticate, authorize, authorizeAdmin, type AuthRequest } from '../middleware/auth.js';
 import { verifyAccessToken } from '../services/token.service.js';
 import { upload } from '../config/storage.js';
@@ -60,8 +60,28 @@ const clean = (value: unknown) => String(value ?? '').trim();
 const toDecimalNumber = (value: unknown, fallback = 0) => Number(value ?? fallback);
 const isAdmin = (req: AuthRequest) => req.user?.role === 'admin';
 const userId = (req: AuthRequest) => Number(req.user?.id);
+const approvedProcurementStatuses = new Set(['approved_for_procurement', 'approved']);
 
 const ok = (res: Response, data: unknown, status = 200) => res.status(status).json(maskSensitive({ success: true, data }));
+const attachBidFileAssets = async (rows: any[]) => {
+  const fileIds = [...new Set(rows.map(row => Number(row?.fileAssetId)).filter(Boolean))];
+  const assets = fileIds.length
+    ? await db.fileAsset.findMany({
+        where: { id: { in: fileIds }, status: 'active' },
+        select: { id: true, originalName: true, mimeType: true, url: true, key: true }
+      })
+    : [];
+  const assetsById = new Map<number, any>(assets.map((asset: any) => [Number(asset.id), asset]));
+
+  return rows.map(row => {
+    const fileAsset = row?.fileAssetId ? assetsById.get(Number(row.fileAssetId)) || null : null;
+    return {
+      ...row,
+      fileAsset,
+      documentUrl: row?.documentUrl || (fileAsset ? `/api/files/${(fileAsset as any).id}/view` : row?.documentUrl)
+    };
+  });
+};
 const listWindow = (query: { page?: number; pageSize?: number; skip?: number; take?: number }) => {
   const take = Math.min(100, Math.max(1, Number(query.pageSize ?? query.take ?? 50)));
   const skip = query.page ? (Math.max(1, Number(query.page)) - 1) * take : Math.max(0, Number(query.skip ?? 0));
@@ -77,7 +97,22 @@ const paged = (records: unknown[], total: number, query: Record<string, unknown>
 
 const profileStatus = (user?: any, profile?: any) =>
   profile?.verificationStatusEnum ||
-  (['approved_for_procurement', 'approved'].includes(String(user?.onboardingStatus)) ? 'VERIFIED' : 'PENDING');
+  (approvedProcurementStatuses.has(String(user?.onboardingStatus)) ? 'VERIFIED' : 'PENDING');
+
+const assertBuyerProcurementApproved = async (req: AuthRequest) => {
+  if (isAdmin(req) || req.user?.role !== 'buyer') return;
+  const user = await db.user.findUnique({
+    where: { id: userId(req) },
+    select: { onboardingStatus: true, accountStatus: true }
+  });
+  if (!user || !approvedProcurementStatuses.has(String(user.onboardingStatus))) {
+    throw new ApiError(
+      403,
+      'Buyer account must be approved by admin before procurement actions are allowed.',
+      'BUYER_PROCUREMENT_APPROVAL_REQUIRED'
+    );
+  }
+};
 
 const listProfileBackedOrganizations = async (query: { q?: string; status?: string; skip?: number; take?: number; page?: number; pageSize?: number }) => {
   const window = listWindow(query);
@@ -338,10 +373,11 @@ const bidBody = z.object({
   unitPrice: z.coerce.number().positive(),
   quantity: z.coerce.number().int().positive(),
   deliveryDays: z.coerce.number().int().positive(),
-  warranty: z.string().trim().max(500).optional(),
-  validTill: z.coerce.date().optional(),
-  note: z.string().trim().max(2000).optional(),
-  documentUrl: z.string().url().optional()
+  warranty: z.string().trim().max(500).nullable().optional(),
+  validTill: z.coerce.date().nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+  documentUrl: z.string().trim().max(1000).nullable().optional(),
+  fileAssetId: z.coerce.number().int().positive().nullable().optional()
 });
 
 const directPurchaseBody = z.object({
@@ -697,6 +733,27 @@ router.get('/files/:id/view', authenticate, asyncRoute(async (req: AuthRequest, 
   res.setHeader('Content-Disposition', `inline; filename="${filename}"; filename*=UTF-8''${filename}`);
   res.setHeader('Cache-Control', 'private, no-store');
   return res.end(file.buffer);
+}));
+
+router.get('/files/:id/signed-url', authenticate, asyncRoute(async (req: AuthRequest, res) => {
+  const { id } = parse(idParams, req.params);
+  if (!req.user) throw new ApiError(401, 'Authentication required', 'AUTH_REQUIRED');
+
+  const file = await getSignedUrl(id, req.user, {
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
+
+  ok(res, {
+    signedUrl: file.signedUrl,
+    expiresInSeconds: file.expiresInSeconds,
+    file: {
+      id: file.asset.id,
+      originalName: file.asset.originalName,
+      mimeType: file.asset.mimeType,
+      size: file.asset.size
+    }
+  });
 }));
 
 router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
@@ -1400,7 +1457,14 @@ router.post('/upload', authenticate, upload.single('file'), asyncRoute(async (re
     url: viewUrl,
     signedUrl: viewUrl,
     fileId: asset.id,
-    file: { id: asset.id, url: viewUrl }
+    file: {
+      id: asset.id,
+      url: viewUrl,
+      documentUrl: viewUrl,
+      originalName: asset.originalName,
+      mimeType: asset.mimeType,
+      size: asset.size
+    }
   }, 201);
 }));
 
@@ -1602,6 +1666,7 @@ router.get('/admin/catalogue/services', authenticate, authorizeAdmin, asyncRoute
 
 // Requirements
 router.post('/buyer/requirements', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(requirementBody, req.body);
   const requirement = await procurementWorkflow.createRequirement(actorFrom(req), body);
   ok(res, requirement, 201);
@@ -1629,6 +1694,7 @@ router.get('/requirements/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.put('/buyer/requirements/:id', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const existing = await db.requirement.findFirst({ where: { id, buyerId: userId(req) } });
   if (!existing) throw new ApiError(404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
   const body = parse(requirementBody.partial(), req.body);
@@ -1639,6 +1705,7 @@ router.put('/buyer/requirements/:id', authenticate, authorize('buyer'), asyncRou
 
 router.post('/buyer/requirements/:id/submit', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const existing = await db.requirement.findFirst({ where: { id, buyerId: userId(req) } });
   if (!existing) throw new ApiError(404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
   const requirement = await procurementWorkflow.submitRequirement(actorFrom(req), id);
@@ -1647,6 +1714,7 @@ router.post('/buyer/requirements/:id/submit', authenticate, authorize('buyer'), 
 
 // Direct purchase and RFQ
 router.post('/direct-purchases', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(directPurchaseBody, req.body);
   const directPurchase = await procurementWorkflow.createDirectPurchase(actorFrom(req), body);
   ok(res, directPurchase, 201);
@@ -1674,6 +1742,7 @@ router.get('/direct-purchases/:id', authenticate, asyncRoute(async (req, res) =>
 
 router.put('/direct-purchases/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const body = parse(directPurchaseBody.partial().refine(value => Object.keys(value).length > 0, { message: 'At least one field is required' }), req.body);
   const existing = await db.directPurchase.findUnique({ where: { id } });
   if (!existing || (!isAdmin(req) && existing.buyerId !== userId(req))) throw new ApiError(404, 'Direct purchase not found', 'DIRECT_PURCHASE_NOT_FOUND');
@@ -1699,6 +1768,7 @@ router.put('/direct-purchases/:id', authenticate, authorize('buyer', 'admin'), a
 
 router.delete('/direct-purchases/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const existing = await db.directPurchase.findUnique({ where: { id } });
   if (!existing || (!isAdmin(req) && existing.buyerId !== userId(req))) throw new ApiError(404, 'Direct purchase not found', 'DIRECT_PURCHASE_NOT_FOUND');
   if (!['DRAFT', 'REQUESTED', 'REJECTED'].includes(String(existing.status))) throw new ApiError(409, 'Direct purchase can no longer be deleted', 'DIRECT_PURCHASE_LOCKED');
@@ -1729,12 +1799,14 @@ for (const [path, status, action] of [
 
 router.post('/direct-purchases/:id/generate-po', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ tenderId: z.coerce.number().int().positive().optional(), bidId: z.coerce.number().int().positive().optional(), title: z.string().trim().min(3).max(200).optional() }), req.body);
   const result = await procurementWorkflow.generateDirectPurchasePO(actorFrom(req), id, body);
   ok(res, result.purchaseOrder, 201);
 }));
 
 router.post('/quote-requests', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(quoteRequestBody, req.body);
   const quote = await procurementWorkflow.createQuoteRequest(actorFrom(req), body);
   ok(res, quote, 201);
@@ -1762,6 +1834,7 @@ router.get('/quote-requests/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.put('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const body = parse(quoteRequestBody.partial().refine(value => Object.keys(value).length > 0, { message: 'At least one field is required' }), req.body);
   const quote = await db.quoteRequest.findUnique({ where: { id }, include: { quoteResponses: true } });
   if (!quote || (!isAdmin(req) && quote.buyerId !== userId(req))) throw new ApiError(404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
@@ -1788,6 +1861,7 @@ router.put('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asy
 
 router.delete('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const quote = await db.quoteRequest.findUnique({ where: { id }, include: { quoteResponses: true } });
   if (!quote || (!isAdmin(req) && quote.buyerId !== userId(req))) throw new ApiError(404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
   if (quote.quoteResponses.length > 0) throw new ApiError(409, 'RFQ with seller responses cannot be deleted', 'QUOTE_REQUEST_LOCKED');
@@ -1818,6 +1892,7 @@ for (const [path, status, action] of [
 ] as const) {
   router.post(path, authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
     const { id } = parse(idParams, req.params);
+    await assertBuyerProcurementApproved(req);
     const response = await db.quoteResponse.findUnique({ where: { id }, include: { quoteRequest: true } });
     if (!response || (!isAdmin(req) && response.quoteRequest.buyerId !== userId(req))) throw new ApiError(404, 'Quote response not found', 'QUOTE_RESPONSE_NOT_FOUND');
     if (status === 'ACCEPTED') {
@@ -1840,6 +1915,7 @@ for (const [path, status, action] of [
 
 // Tenders, bids, auctions
 router.post('/tenders', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(tenderBody, req.body);
   const tender = await tenderWorkflow.createTender(actorFrom(req), body);
   ok(res, tender, 201);
@@ -1947,6 +2023,7 @@ router.get('/tenders/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.put('/tenders/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const body = parse(tenderBody.partial(), req.body);
@@ -1961,6 +2038,7 @@ for (const [path, data, action] of [
 ] as const) {
   router.post(path, authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
     const { id } = parse(idParams, req.params);
+    await assertBuyerProcurementApproved(req);
     const tender = await assertTenderAccess(req, id);
     if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
     const updated = await tenderWorkflow.transitionTender(actorFrom(req), id, data);
@@ -1971,6 +2049,7 @@ for (const [path, data, action] of [
 
 router.post('/tenders/:id/items', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const body = parse(z.object({ itemName: z.string().trim().min(2), quantity: z.coerce.number().positive(), unitOfMeasure: z.string().trim().min(1), description: z.string().optional(), productId: z.coerce.number().int().positive().optional(), estimatedUnitPrice: z.coerce.number().optional(), specifications: z.record(z.string(), z.unknown()).optional() }), req.body);
@@ -1981,6 +2060,7 @@ router.post('/tenders/:id/items', authenticate, authorize('buyer', 'admin'), asy
 
 router.post('/tenders/:id/documents', authenticate, authorize('buyer', 'admin'), upload.single('file'), asyncRoute(async (req: AuthRequest & { file?: Express.Multer.File }, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   if (!req.file) throw new ApiError(400, 'Document file is required', 'DOCUMENT_REQUIRED');
@@ -2008,7 +2088,33 @@ router.post('/tenders/:id/bids', authenticate, authorize('seller'), asyncRoute(a
 
 router.get('/bids/my', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const bids = await db.bid.findMany({ where: { sellerId: userId(req) }, include: { tender: true }, orderBy: { createdAt: 'desc' } });
-  res.json(maskSensitive(bids));
+  res.json(maskSensitive(await attachBidFileAssets(bids)));
+}));
+
+router.get('/bids/:id', authenticate, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  await assertBidAccess(req, id);
+  const bid = await db.bid.findUnique({
+    where: { id },
+    include: {
+      tender: true,
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          sellerProfile: {
+            select: {
+              businessName: true,
+              offices: { select: { city: true, state: true }, take: 1 }
+            }
+          }
+        }
+      }
+    }
+  });
+  if (!bid) throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
+  const [enriched] = await attachBidFileAssets([bid]);
+  ok(res, enriched);
 }));
 
 router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
@@ -2016,7 +2122,7 @@ router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), async
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const bids = await db.bid.findMany({ where: { tenderId: id }, include: { seller: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } });
-  res.json(maskSensitive(bids));
+  res.json(maskSensitive(await attachBidFileAssets(bids)));
 }));
 
 router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
@@ -2039,6 +2145,7 @@ router.post('/bids/:id/withdraw', authenticate, authorize('seller'), asyncRoute(
 
 router.post('/bids/:id/status', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const bid = await assertBidAccess(req, id);
   const body = parse(z.object({ status: z.string().trim().min(2), statusEnum: z.string().trim().optional(), title: z.string().trim().min(3).max(200).optional() }), req.body);
   if (!isAdmin(req) && bid.tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
@@ -2053,6 +2160,7 @@ router.post('/bids/:id/status', authenticate, authorize('buyer', 'admin'), async
 
 router.post('/tenders/:id/auction', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const body = parse(z.object({ startPrice: z.coerce.number().positive(), minDecrement: z.coerce.number().positive().default(1), startTime: z.coerce.date(), endTime: z.coerce.date() }), req.body);
@@ -2083,6 +2191,7 @@ router.get('/auctions/:id/history', authenticate, asyncRoute(async (req, res) =>
 
 router.post('/auctions/:id/finalize', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const auction = await db.auction.findUnique({ where: { id }, include: { Tender: true } });
   if (!auction || (!isAdmin(req) && auction.Tender.buyerId !== userId(req))) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
   const result = await tenderWorkflow.finalizeAuction(actorFrom(req), id);
@@ -2093,6 +2202,7 @@ router.post('/auctions/:id/finalize', authenticate, authorize('buyer', 'admin'),
 // Evaluation and contracts
 router.post('/tenders/:id/technical-criteria', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   await assertTenderAccess(req, id);
   const body = parse(z.object({ name: z.string().min(2), description: z.string().optional(), maxScore: z.coerce.number().positive(), weightage: z.coerce.number().optional(), isMandatory: z.boolean().optional() }), req.body);
   const criteria = await db.technicalEvaluationCriteria.create({ data: { ...body, tenderId: id } });
@@ -2102,6 +2212,7 @@ router.post('/tenders/:id/technical-criteria', authenticate, authorize('buyer', 
 
 router.post('/bids/:id/technical-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   await assertBidAccess(req, id);
   const body = parse(z.object({ criteriaId: z.coerce.number().int().positive(), score: z.coerce.number().nonnegative(), status: z.enum(['PENDING', 'IN_PROGRESS', 'QUALIFIED', 'DISQUALIFIED', 'APPROVED', 'REJECTED']).default('PENDING'), remarks: z.string().optional() }), req.body);
   const result = await tenderWorkflow.evaluateBid(actorFrom(req), id, 'technical', body);
@@ -2111,6 +2222,7 @@ router.post('/bids/:id/technical-evaluation', authenticate, authorize('buyer', '
 
 router.post('/bids/:id/financial-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   await assertBidAccess(req, id);
   const body = parse(z.object({ quotedAmount: z.coerce.number().nonnegative(), evaluatedAmount: z.coerce.number().nonnegative().optional(), rank: z.coerce.number().int().positive().optional(), status: z.enum(['PENDING', 'IN_PROGRESS', 'QUALIFIED', 'DISQUALIFIED', 'APPROVED', 'REJECTED']).default('PENDING'), remarks: z.string().optional() }), req.body);
   const result = await tenderWorkflow.evaluateBid(actorFrom(req), id, 'financial', body);
@@ -2131,6 +2243,7 @@ router.get('/tenders/:id/evaluation-summary', authenticate, authorize('buyer', '
 
 router.post('/tenders/:id/comparative-statement', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   await assertTenderAccess(req, id);
   const statement = await tenderWorkflow.createComparativeStatement(actorFrom(req), id);
   await auditWrite(req, 'evaluation.comparative_statement_created', 'comparativeStatement', statement.id);
@@ -2138,6 +2251,7 @@ router.post('/tenders/:id/comparative-statement', authenticate, authorize('buyer
 }));
 
 router.post('/contracts', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ tenderId: z.coerce.number().int().positive().optional(), bidId: z.coerce.number().int().positive().optional(), title: z.string().min(3), value: z.coerce.number().nonnegative(), contractType: z.enum(['PURCHASE', 'RATE_CONTRACT', 'SERVICE_AGREEMENT', 'FRAMEWORK_AGREEMENT']).default('PURCHASE'), startDate: z.coerce.date().optional(), endDate: z.coerce.date().optional(), metadata: z.record(z.string(), z.unknown()).optional() }), req.body);
   const contract = await contractWorkflow.createAfterAward(actorFrom(req), body);
   await auditWrite(req, 'contract.created', 'contract', contract.id);
@@ -2166,6 +2280,7 @@ router.get('/contracts/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.put('/contracts/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const existing = await db.contract.findUnique({ where: { id }, include: { tender: true } });
   if (!existing || (!isAdmin(req) && existing.tender?.buyerId !== userId(req))) throw new ApiError(404, 'Contract not found', 'CONTRACT_NOT_FOUND');
   const contract = await db.contract.update({ where: { id }, data: req.body || {} });
@@ -2175,6 +2290,7 @@ router.put('/contracts/:id', authenticate, authorize('buyer', 'admin'), asyncRou
 
 router.post('/contracts/:id/upload-document', authenticate, authorize('buyer', 'admin'), upload.single('file'), asyncRoute(async (req: AuthRequest & { file?: Express.Multer.File }, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const existing = await db.contract.findUnique({ where: { id }, include: { tender: true } });
   if (!existing || (!isAdmin(req) && existing.tender?.buyerId !== userId(req))) throw new ApiError(404, 'Contract not found', 'CONTRACT_NOT_FOUND');
   if (!req.file) throw new ApiError(400, 'Document file is required', 'DOCUMENT_REQUIRED');
@@ -2185,6 +2301,7 @@ router.post('/contracts/:id/upload-document', authenticate, authorize('buyer', '
 
 // PO, delivery, inspection, invoices, payments and escrow
 router.post('/purchase-orders/generate', authenticate, authorize('buyer', 'admin'), paymentRateLimit, asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ bidId: z.coerce.number().int().positive(), title: z.string().trim().min(3).max(200).optional() }), req.body);
   const result = await tenderWorkflow.awardBidAndGeneratePO(actorFrom(req), body.bidId, body.title);
   await auditWrite(req, 'purchase_order.generated', 'purchaseOrder', result.purchaseOrder.id);
@@ -2232,6 +2349,7 @@ for (const [path, action, roles] of [
 ] as const) {
   router.post(path, authenticate, authorize(...roles), asyncRoute(async (req, res) => {
     const { id } = parse(idParams, req.params);
+    await assertBuyerProcurementApproved(req);
     const po = await db.purchaseOrder.findUnique({ where: { id } });
     if (!po || (!isAdmin(req) && po.buyerId !== userId(req) && po.sellerId !== userId(req))) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
     const updated = action === 'purchase_order.acknowledged'
@@ -2277,6 +2395,7 @@ router.get('/delivery/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.post('/purchase-orders/:id/inspection', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const po = await assertPurchaseOrderAccess(req, id);
   if (!isAdmin(req) && po.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const report = await fulfillmentWorkflow.createInspection(actorFrom(req), id, { remarks: clean(req.body?.remarks), metadata: req.body?.metadata });
@@ -2296,6 +2415,7 @@ for (const [path, status, action] of [
 ] as const) {
   router.post(path, authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
     const { id } = parse(idParams, req.params);
+    await assertBuyerProcurementApproved(req);
     const existing = await db.inspectionReport.findUnique({ where: { id }, include: { purchaseOrder: true } });
     if (!existing || (!isAdmin(req) && existing.purchaseOrder.buyerId !== userId(req))) throw new ApiError(404, 'Inspection not found', 'INSPECTION_NOT_FOUND');
     const report = await fulfillmentWorkflow.decideInspection(actorFrom(req), id, status === 'ACCEPTED', clean(req.body?.remarks));
@@ -2371,6 +2491,7 @@ for (const [path, data, action] of [
 ] as const) {
   router.post(path, authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
     const { id } = parse(idParams, req.params);
+    await assertBuyerProcurementApproved(req);
     const existing = await db.invoice.findUnique({ where: { id } });
     if (!existing || (!isAdmin(req) && existing.buyerId !== userId(req))) throw new ApiError(404, 'Invoice not found', 'INVOICE_NOT_FOUND');
     const invoice = await fulfillmentWorkflow.decideInvoice(actorFrom(req), id, data.invoiceStatus === 'APPROVED');
@@ -2416,6 +2537,7 @@ router.get('/escrow/:id', authenticate, asyncRoute(async (req, res) => {
 
 router.post('/escrow/:id/milestones', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ title: z.string().min(3), description: z.string().optional(), amount: z.coerce.number().positive(), dueDate: z.string().datetime().optional(), metadata: z.record(z.string(), z.unknown()).optional() }), req.body);
   const key = idempotencyKeyFromRequest(req, `milestone-create:${id}:${body.title}:${userId(req)}`);
   ok(res, await withIdempotency({ req, userId: userId(req), route: 'POST /api/escrow/:id/milestones', key, handler: async () => createMilestone(actorFrom(req), id, body) as Promise<Record<string, unknown>> }), 201);
@@ -2428,27 +2550,32 @@ router.post('/milestones/:id/complete', authenticate, authorize('seller', 'admin
 }));
 router.post('/milestones/:id/approve', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const id = parse(idParams, req.params).id;
+  await assertBuyerProcurementApproved(req);
   const key = idempotencyKeyFromRequest(req, `milestone-approve:${id}:${userId(req)}`);
   ok(res, await withIdempotency({ req, userId: userId(req), route: 'POST /api/milestones/:id/approve', key, handler: async () => approveMilestone(actorFrom(req), id, clean(req.body?.reason)) as Promise<Record<string, unknown>> }));
 }));
 router.post('/milestones/:id/release', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const id = parse(idParams, req.params).id;
+  await assertBuyerProcurementApproved(req);
   const key = idempotencyKeyFromRequest(req, `milestone-release:${id}:${userId(req)}`);
   ok(res, await withIdempotency({ req, userId: userId(req), route: 'POST /api/milestones/:id/release', key, handler: async () => approveMilestone(actorFrom(req), id, clean(req.body?.reason)) as Promise<Record<string, unknown>> }));
 }));
 router.post('/escrow/:id/freeze', authenticate, authorize('buyer', 'seller', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const key = idempotencyKeyFromRequest(req, `escrow-freeze:${id}:${userId(req)}`);
   ok(res, await withIdempotency({ req, userId: userId(req), route: 'POST /api/escrow/:id/freeze', key, handler: async () => fulfillmentWorkflow.freezeEscrowForDispute(actorFrom(req), id, clean(req.body?.reason)) as Promise<Record<string, unknown>> }));
 }));
 router.post('/escrow/:id/unfreeze', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
   const key = idempotencyKeyFromRequest(req, `escrow-unfreeze:${id}:${userId(req)}`);
   ok(res, await withIdempotency({ req, userId: userId(req), route: 'POST /api/escrow/:id/unfreeze', key, handler: async () => unfreezeEscrow(actorFrom(req), id, clean(req.body?.reason)) as Promise<Record<string, unknown>> }));
 }));
 
 // Ratings
 router.post('/ratings/supplier', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ sellerId: z.coerce.number().int().positive(), purchaseOrderId: z.coerce.number().int().positive().optional(), rating: z.coerce.number().int().min(1).max(5), review: z.string().max(2000).optional(), qualityScore: z.coerce.number().int().min(1).max(5).optional(), deliveryScore: z.coerce.number().int().min(1).max(5).optional(), communicationScore: z.coerce.number().int().min(1).max(5).optional() }), req.body);
   const rating = await ratingWorkflow.rateSupplier(actorFrom(req), body);
   await auditWrite(req, 'rating.supplier_created', 'supplierRating', rating.id);
@@ -2511,6 +2638,62 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
     db.user.count({ where })
   ]);
   ok(res, { records, total, filters: query });
+}));
+
+router.put('/admin/users/:id/status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const body = parse(z.object({ accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']) }), req.body);
+  
+  if (id === userId(req) && body.accountStatus !== 'ACTIVE') {
+    throw new ApiError(400, 'You cannot deactivate your own account', 'ADMIN_SELF_DEACTIVATION_BLOCKED');
+  }
+
+  const updatedUser = await db.user.update({
+    where: { id },
+    data: { accountStatus: body.accountStatus }
+  });
+  await auditWrite(req, 'admin.user.status_updated', 'user', id, { accountStatus: body.accountStatus });
+  ok(res, updatedUser);
+}));
+
+router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const body = parse(z.object({
+    name: z.string().trim().min(2).max(100).optional(),
+    email: z.string().trim().email().optional(),
+    mobile: z.string().trim().optional(),
+    role: z.string().trim().optional(),
+    accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']).optional()
+  }), req.body);
+  
+  if (id === userId(req) && body.accountStatus && body.accountStatus !== 'ACTIVE') {
+    throw new ApiError(400, 'You cannot deactivate your own account', 'ADMIN_SELF_DEACTIVATION_BLOCKED');
+  }
+  
+  const updated = await db.user.update({
+    where: { id },
+    data: {
+      ...(body.name ? { name: body.name } : {}),
+      ...(body.email ? { email: body.email } : {}),
+      ...(body.mobile ? { mobile: body.mobile } : {}),
+      ...(body.role ? { role: body.role } : {}),
+      ...(body.accountStatus ? { accountStatus: body.accountStatus } : {})
+    }
+  });
+  await auditWrite(req, 'admin.user.updated', 'user', id, body);
+  ok(res, updated);
+}));
+
+router.delete('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  if (id === userId(req)) throw new ApiError(400, 'You cannot delete your own account', 'ADMIN_SELF_DELETE_BLOCKED');
+  
+  await db.userSession.deleteMany({ where: { userId: id } });
+  await db.complianceViolation.deleteMany({ where: { userId: id } });
+  await db.fraudAlert.deleteMany({ where: { userId: id } });
+  await db.user.delete({ where: { id } });
+  await auditWrite(req, 'admin.user.deleted', 'user', id);
+  ok(res, { success: true });
 }));
 
 router.get('/admin/audit-logs', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {

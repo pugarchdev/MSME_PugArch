@@ -326,6 +326,58 @@ export default function PurchaseOrders() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="p-3"><SortHeader label="PO" columnKey="po" /></th>
+                  <th className="p-3"><SortHeader label="Title" columnKey="title" /></th>
+                  <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
+                  <th className="p-3"><SortHeader label="Value" columnKey="value" /></th>
+                  <th className="p-3"><SortHeader label="Expected" columnKey="expected" /></th>
+                  <th className="p-3"><SortHeader label="Status" columnKey="status" /></th>
+                  <th className="p-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {pagedOrders.map(order => (
+                  <tr key={order.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-mono text-xs font-black text-[#12335f]">{order.poNumber}</td>
+                    <td className="p-3">
+                      <p className="font-black text-slate-900">{order.title}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
+                        {order.paymentTerms && (
+                          <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded uppercase">
+                            {order.paymentTerms.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                        {order.deliveryType && (
+                          <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
+                            {order.deliveryType.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
+                    <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
+                    <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
+                    <td className="p-3"><StatusPill status={order.status} /></td>
+                    <td className="p-3">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
+                        {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
+                        <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
+                        {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
+        </div>
       )}
 
       {confirming && (

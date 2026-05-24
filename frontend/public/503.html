@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>System Maintenance | JsgSmile MSME Procurement Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --gov-blue: #0c2340;
+      --gov-gold: #c5a556;
+      --bg-gray: #f8fafc;
+      --border-gray: #e2e8f0;
+      --text-dark: #1e293b;
+      --text-muted: #64748b;
+      --warning-amber: #d97706;
+      --success-green: #15803d;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-gray);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: var(--text-dark);
+    }
+
+    /* Official Government Top Header Bar */
+    .gov-header {
+      background-color: var(--gov-blue);
+      border-bottom: 4px solid var(--gov-gold);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .gov-header-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .gov-logo {
+      height: 48px;
+      width: auto;
+      object-fit: contain;
+      filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15));
+    }
+
+    .gov-title-block {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .gov-portal-name {
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .gov-sub-dept {
+      color: var(--gov-gold);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Main Center Area */
+    .main-content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    /* Compact Official Looking Card */
+    .maintenance-card {
+      background-color: #ffffff;
+      border: 1px solid var(--border-gray);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      padding: 36px 32px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+      text-align: center;
+    }
+
+    /* Official Looking Emblem/Seal */
+    .emblem-wrapper {
+      width: 64px;
+      height: 64px;
+      background-color: #fef3c7;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      border: 2px solid #fde68a;
+      color: var(--warning-amber);
+      font-size: 28px;
+    }
+
+    .emblem-wrapper.success {
+      background-color: #dcfce7;
+      border-color: #bbf7d0;
+      color: var(--success-green);
+    }
+
+    /* Standardized Maintenance Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background-color: #fffbeb;
+      color: var(--warning-amber);
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+      border: 1px solid #fef3c7;
+    }
+
+    .status-badge.success {
+      background-color: #f0fdf4;
+      color: var(--success-green);
+      border-color: #dcfce7;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--warning-amber);
+      border-radius: 50%;
+      display: inline-block;
+      animation: blink 1.2s infinite alternate;
+    }
+
+    .status-badge.success .status-dot {
+      background-color: var(--success-green);
+      animation: none;
+    }
+
+    @keyframes blink {
+      0%   { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+
+    /* Headings & Paras */
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--gov-blue);
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    /* Live Monitoring Segment */
+    .status-monitor {
+      background-color: #f8fafc;
+      border: 1px solid var(--border-gray);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .monitor-label {
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .monitor-value {
+      color: var(--gov-blue);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Clean Buttons */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      width: 100%;
+      height: 44px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      text-decoration: none;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background-color: var(--gov-blue);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: #08172c;
+    }
+
+    .btn-secondary {
+      background-color: #ffffff;
+      color: var(--text-dark);
+      border: 1px solid var(--border-gray);
+    }
+
+    .btn-secondary:hover {
+      background-color: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    /* Official Government Footer bar */
+    .gov-footer {
+      background-color: #ffffff;
+      border-top: 1px solid var(--border-gray);
+      padding: 16px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Official Header Bar -->
+  <header class="gov-header">
+    <div class="gov-header-content">
+      <img src="/msme-logo.png" alt="Portal Logo" class="gov-logo" onerror="this.src='/logo.png'; this.onerror=null;" />
+      <div class="gov-title-block">
+        <span class="gov-portal-name">JsgSmile MSME Portal</span>
+        <span class="gov-sub-dept">Government Procurement System</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Area -->
+  <main class="main-content">
+    <div class="maintenance-card">
+      
+      <div class="status-badge" id="status-badge">
+        <span class="status-dot"></span>
+        <span id="badge-text">System Maintenance</span>
+      </div>
+
+      <div class="emblem-wrapper" id="status-icon">⚙️</div>
+
+      <h1 id="status-heading">Scheduled System Maintenance</h1>
+
+      <p id="status-paragraph">
+        The JsgSmile MSME Procurement Portal is currently undergoing scheduled system maintenance to serve you better. All features will automatically resume shortly. We apologize for the temporary inconvenience.
+      </p>
+
+      <!-- Connection status check -->
+      <!-- <div class="status-monitor">
+        <div class="monitor-label">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          System Check
+        </div>
+        <div class="monitor-value" id="ping-text">
+          Reconnecting in 5s...
+        </div>
+      </div> -->
+
+      <div class="btn-group">
+        <button onclick="manualCheck()" class="btn btn-primary">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 6H16"/>
+          </svg>
+          Check Now
+        </button>
+        <a href="/" class="btn btn-secondary">Return to Portal</a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer bar -->
+  <footer class="gov-footer">
+    © 2026 JsgSmile MSME Procurement Portal. All rights reserved. System Monitor Desk.
+  </footer>
+
+  <script>
+    let countdown = 5;
+    let timerId = null;
+    let isChecking = false;
+
+    function getHealthUrl() {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      return isLocal ? 'http://localhost:5000/api/health' : '/api/health';
+    }
+
+    async function checkHealth() {
+      if (isChecking) return;
+      isChecking = true;
+      document.getElementById('ping-text').innerText = 'Checking...';
+
+      try {
+        const res = await fetch(getHealthUrl());
+        if (res.ok) {
+          const body = await res.json();
+          if (body && (body.database === 'ok' || body.checks?.database === 'ok' || body.success === true)) {
+            handleRestored();
+            return;
+          }
+        }
+        schedulePing();
+      } catch (err) {
+        schedulePing();
+      } finally {
+        isChecking = false;
+      }
+    }
+
+    function schedulePing() {
+      countdown = 5;
+      updateText();
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(() => {
+        countdown--;
+        updateText();
+        if (countdown <= 0) {
+          clearInterval(timerId);
+          checkHealth();
+        }
+      }, 1000);
+    }
+
+    function updateText() {
+      document.getElementById('ping-text').innerText = `Reconnecting in ${countdown}s...`;
+    }
+
+    function handleRestored() {
+      if (timerId) clearInterval(timerId);
+
+      const badge = document.getElementById('status-badge');
+      const badgeText = document.getElementById('badge-text');
+      const icon = document.getElementById('status-icon');
+      const heading = document.getElementById('status-heading');
+      const para = document.getElementById('status-paragraph');
+      const pingText = document.getElementById('ping-text');
+
+      badge.classList.add('success');
+      badgeText.innerText = 'System Active';
+      icon.classList.add('success');
+      icon.innerText = '✔';
+      heading.innerText = 'Maintenance Complete';
+      para.innerText = 'Connection to the JsgSmile MSME Procurement Portal has been successfully restored. You will be automatically redirected to the portal right now...';
+      pingText.innerHTML = '<span style="color: var(--success-green); font-weight: bold;">Online</span>';
+
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    }
+
+    function manualCheck() {
+      if (timerId) clearInterval(timerId);
+      checkHealth();
+    }
+
+    // Start health checks immediately
+    window.addEventListener('DOMContentLoaded', () => {
+      checkHealth();
+    });
+  </script>
+</body>
+</html>

@@ -413,12 +413,20 @@ const app = serverlessApp;
     });
   };
 
+  const isDatabaseUnavailableError = (err: any) => {
+    const message = String(err?.message || '');
+    return err?.code === 'P1001' || message.includes("Can't reach database server");
+  };
+
+  const routeStatusCode = (err: any) => isDatabaseUnavailableError(err) ? 503 : err?.statusCode || 500;
+  const routeErrorCode = (err: any, fallbackCode: string) => isDatabaseUnavailableError(err) ? 'DATABASE_UNAVAILABLE' : err?.code || fallbackCode;
+
   const handleFinancialRouteError = (res: any, err: any) => {
-    const statusCode = err?.statusCode || 500;
+    const statusCode = routeStatusCode(err);
     return res.status(statusCode).json({
       success: false,
       message: statusCode >= 500 ? safeRouteMessage(err, 'Unable to complete financial operation') : err.message,
-      code: err?.code || 'FINANCIAL_OPERATION_FAILED'
+      code: routeErrorCode(err, 'FINANCIAL_OPERATION_FAILED')
     });
   };
 
@@ -427,7 +435,7 @@ const app = serverlessApp;
     if (statusCode < 500) return err?.message || fallback;
 
     const message = String(err?.message || '');
-    if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+    if (isDatabaseUnavailableError(err)) {
       return 'Database is temporarily unavailable. Please try again in a few minutes.';
     }
     if (
@@ -460,11 +468,11 @@ const app = serverlessApp;
 
   const handleSecureRouteError = (res: any, err: any, fallback = 'Unable to complete request') => {
     const uniqueMessage = prismaUniqueMessage(err);
-    const statusCode = uniqueMessage ? 409 : err?.statusCode || 500;
+    const statusCode = uniqueMessage ? 409 : routeStatusCode(err);
     return res.status(statusCode).json({
       success: false,
       message: uniqueMessage || safeRouteMessage(err, fallback),
-      code: err?.code || 'REQUEST_FAILED'
+      code: uniqueMessage ? err?.code || 'REQUEST_FAILED' : routeErrorCode(err, 'REQUEST_FAILED')
     });
   };
 

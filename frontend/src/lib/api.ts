@@ -100,8 +100,11 @@ const shouldDispatchUnauthorized = (endpoint: string) =>
     '/api/notifications',
   ].some((path) => endpoint.startsWith(path));
 
-const networkErrorResponse = (error: unknown) =>
-  new Response(
+const networkErrorResponse = (error: unknown) => {
+  if (typeof window !== 'undefined' && !window.location.pathname.includes('503')) {
+    window.location.href = '/503.html';
+  }
+  return new Response(
     JSON.stringify({
       success: false,
       message: 'Unable to reach the backend API. Please check that the backend server is running.',
@@ -114,6 +117,7 @@ const networkErrorResponse = (error: unknown) =>
       headers: { 'Content-Type': 'application/json' },
     },
   );
+};
 
 const clearApiCache = (matcher?: string) => {
   if (!matcher) {
@@ -185,6 +189,11 @@ export const api = {
       if ((response.status === 401 || response.status === 403) && shouldDispatchUnauthorized(endpoint)) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+      }
+      if (response.status >= 500 && !endpoint.includes('/health')) {
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('503')) {
+          window.location.href = '/503.html';
         }
       }
       if (shouldCache && response.ok) {

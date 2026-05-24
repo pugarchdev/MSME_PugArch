@@ -231,6 +231,42 @@ const app = serverlessApp;
       .replace(/[<>]/g, '')
       .slice(0, maxLength);
 
+  const NOTIFICATION_READ_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+  const archiveExpiredReadNotifications = async (targetUserId: number) => {
+    const cutoff = new Date(Date.now() - NOTIFICATION_READ_RETENTION_MS);
+    await prisma.notification.updateMany({
+      where: {
+        userId: targetUserId,
+        isRead: true,
+        isArchived: false,
+        logs: {
+          some: {
+            action: 'notification.read',
+            createdAt: { lte: cutoff }
+          }
+        }
+      },
+      data: { isArchived: true }
+    }).catch(() => undefined);
+  };
+
+  const recordNotificationRead = async (targetUserId: number, notificationIds: number[]) => {
+    const ids = Array.from(new Set(notificationIds.filter(id => Number.isInteger(id) && id > 0)));
+    if (ids.length === 0) return;
+    await prisma.notificationLog.createMany({
+      data: ids.map(notificationId => ({
+        notificationId,
+        userId: targetUserId,
+        action: 'notification.read',
+        channel: 'SYSTEM',
+        recipient: String(targetUserId),
+        status: 'READ',
+        sentAt: new Date()
+      }))
+    }).catch(() => undefined);
+  };
+
   const createNotificationSafe = async (payload: {
     userId: number;
     title: string;
@@ -4539,8 +4575,10 @@ const app = serverlessApp;
 
   app.get('/api/notifications', authenticate, async (req: AuthRequest, res) => {
     try {
+      const currentUserId = Number(req.user?.id);
+      await archiveExpiredReadNotifications(currentUserId);
       const notifications = await prisma.notification.findMany({
-        where: { userId: Number(req.user?.id) },
+        where: { userId: currentUserId, isArchived: false },
         orderBy: { createdAt: 'desc' },
         take: 50
       });
@@ -4552,11 +4590,17 @@ const app = serverlessApp;
 
   app.post('/api/notifications/read-all', authenticate, async (req: AuthRequest, res) => {
     try {
+      const currentUserId = Number(req.user?.id);
+      const unread = await prisma.notification.findMany({
+        where: { userId: currentUserId, isRead: false, isArchived: false },
+        select: { id: true }
+      });
       await prisma.notification.updateMany({
-        where: { userId: Number(req.user?.id), isRead: false },
+        where: { userId: currentUserId, isRead: false, isArchived: false },
         data: { isRead: true }
       });
-      res.json({ success: true });
+      await recordNotificationRead(currentUserId, unread.map(item => item.id));
+      res.json({ success: true, expiresAfterReadHours: 24 });
     } catch (err: any) {
       handleSecureRouteError(res, err, 'Unable to update notifications');
     }
@@ -4564,11 +4608,13 @@ const app = serverlessApp;
 
   app.post('/api/notifications/:id/read', authenticate, async (req: AuthRequest, res) => {
     try {
+      const currentUserId = Number(req.user?.id);
       const notification = await prisma.notification.findFirst({
-        where: { id: Number(req.params.id), userId: Number(req.user?.id) }
+        where: { id: Number(req.params.id), userId: currentUserId, isArchived: false }
       });
       if (!notification) return res.status(404).json({ message: 'Notification not found' });
       const updated = await prisma.notification.update({ where: { id: notification.id }, data: { isRead: true } });
+      if (!notification.isRead) await recordNotificationRead(currentUserId, [notification.id]);
       res.json(maskSensitive(updated));
     } catch (err: any) {
       handleSecureRouteError(res, err, 'Unable to update notification');

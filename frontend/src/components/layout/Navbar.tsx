@@ -278,7 +278,8 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
         });
         if (res.ok) {
           const data = await res.json();
-          const items = unwrapApiData<PortalNotification[]>(data);
+          const body = unwrapApiData<any>(data);
+          const items = Array.isArray(body) ? body : body?.notifications || body?.records || body?.items || [];
           setNotifications(Array.isArray(items) ? items : []);
         }
       } catch {

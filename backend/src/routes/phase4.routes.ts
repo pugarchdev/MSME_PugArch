@@ -5,6 +5,7 @@ import prisma from '../config/prisma.js';
 import { env } from '../config/env.js';
 import { getFileContent, uploadFile } from '../services/storage/storage.service.js';
 import { authenticate, authorize, authorizeAdmin, type AuthRequest } from '../middleware/auth.js';
+import { verifyAccessToken } from '../services/token.service.js';
 import { upload } from '../config/storage.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
@@ -212,6 +213,42 @@ const notifySafe = async (
     priority,
     redirectUrl
   }).catch(() => null);
+};
+
+const NOTIFICATION_READ_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+const archiveExpiredReadNotifications = async (targetUserId: number) => {
+  const cutoff = new Date(Date.now() - NOTIFICATION_READ_RETENTION_MS);
+  await db.notification.updateMany({
+    where: {
+      userId: targetUserId,
+      isRead: true,
+      isArchived: false,
+      logs: {
+        some: {
+          action: 'notification.read',
+          createdAt: { lte: cutoff }
+        }
+      }
+    },
+    data: { isArchived: true }
+  }).catch(() => undefined);
+};
+
+const recordNotificationRead = async (targetUserId: number, notificationIds: number[]) => {
+  const ids = Array.from(new Set(notificationIds.filter(id => Number.isInteger(id) && id > 0)));
+  if (ids.length === 0) return;
+  await db.notificationLog.createMany({
+    data: ids.map(notificationId => ({
+      notificationId,
+      userId: targetUserId,
+      action: 'notification.read',
+      channel: 'SYSTEM',
+      recipient: String(targetUserId),
+      status: 'READ',
+      sentAt: new Date()
+    }))
+  }).catch(() => undefined);
 };
 
 const slugFor = (name: string) =>
@@ -1824,13 +1861,83 @@ router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
 router.get('/tenders/public', asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
   const key = redisKeys.cacheTenderPublic(sha256(JSON.stringify(query)));
-  const tenders = await getOrSetCache(key, () => db.tender.findMany({
+  const tenders = await getOrSetCache<any[]>(key, () => db.tender.findMany({
     where: { status: { in: ['published', 'bid_submission'] } },
+    include: {
+      buyer: {
+        select: {
+          id: true,
+          name: true,
+          buyerProfile: {
+            select: {
+              organizationName: true,
+              businessType: true,
+              state: true,
+              district: true
+            }
+          }
+        }
+      },
+      tenderDocuments: {
+        include: {
+          fileAsset: true
+        }
+      }
+    },
     skip: query.skip,
     take: query.take,
     orderBy: { createdAt: 'desc' }
   }), 120);
-  res.json(maskSensitive(tenders));
+
+  // Parse authorization optionally to check if the user is a seller and has participated
+  let currentUserId: number | undefined;
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme === 'Bearer' && token) {
+    try {
+      const decoded = verifyAccessToken(token);
+      currentUserId = Number(decoded.id);
+    } catch {
+      // ignore
+    }
+  }
+
+  let myBids: any[] = [];
+  if (currentUserId) {
+    myBids = await db.bid.findMany({
+      where: {
+        sellerId: currentUserId,
+        tenderId: { in: tenders.map((t: any) => t.id) }
+      },
+      select: {
+        id: true,
+        tenderId: true,
+        status: true,
+        bidNumber: true
+      }
+    });
+  }
+
+  const enrichedTenders = tenders.map((tender: any) => {
+    const myBid = myBids.find((b: any) => b.tenderId === tender.id);
+    const docs = (tender.tenderDocuments || []).map((doc: any) => ({
+      id: doc.id,
+      title: doc.title || doc.fileAsset?.originalName || 'Document',
+      documentType: doc.documentType,
+      url: `/api/files/${doc.fileAssetId}/view`,
+      originalName: doc.fileAsset?.originalName
+    }));
+    return {
+      ...tender,
+      hasParticipated: !!myBid,
+      participationStatus: myBid ? myBid.status : null,
+      myBidId: myBid ? myBid.id : null,
+      myBidNumber: myBid ? myBid.bidNumber : null,
+      tenderDocuments: docs
+    };
+  });
+
+  res.json(maskSensitive(enrichedTenders));
 }));
 
 router.get('/tenders/:id', authenticate, asyncRoute(async (req, res) => {
@@ -2874,7 +2981,9 @@ router.put('/notifications/preferences', authenticate, asyncRoute(async (req, re
 
 router.get('/notifications', authenticate, asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  const where: any = { userId: userId(req) };
+  const currentUserId = userId(req);
+  await archiveExpiredReadNotifications(currentUserId);
+  const where: any = { userId: currentUserId, isArchived: false };
   if (query.status === 'unread') where.isRead = false;
   if (query.status === 'read') where.isRead = true;
   if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { message: { contains: query.q, mode: 'insensitive' } }, { type: { contains: query.q, mode: 'insensitive' } }];
@@ -2892,19 +3001,32 @@ router.get('/notifications', authenticate, asyncRoute(async (req, res) => {
 
 router.post('/notifications/:id/read', authenticate, asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
+  const currentUserId = userId(req);
+  const notification = await db.notification.findFirst({
+    where: { id, userId: currentUserId, isArchived: false },
+    select: { id: true, isRead: true }
+  });
+  if (!notification) throw new ApiError(404, 'Notification not found', 'NOTIFICATION_NOT_FOUND');
   await db.notification.updateMany({
-    where: { id, userId: userId(req) },
+    where: { id, userId: currentUserId },
     data: { isRead: true }
   });
-  ok(res, { success: true });
+  if (!notification.isRead) await recordNotificationRead(currentUserId, [id]);
+  ok(res, { success: true, expiresAfterReadHours: 24 });
 }));
 
 router.post('/notifications/read-all', authenticate, asyncRoute(async (req, res) => {
+  const currentUserId = userId(req);
+  const unread = await db.notification.findMany({
+    where: { userId: currentUserId, isRead: false, isArchived: false },
+    select: { id: true }
+  });
   await db.notification.updateMany({
-    where: { userId: userId(req), isRead: false },
+    where: { userId: currentUserId, isRead: false, isArchived: false },
     data: { isRead: true }
   });
-  ok(res, { success: true });
+  await recordNotificationRead(currentUserId, unread.map(item => item.id));
+  ok(res, { success: true, expiresAfterReadHours: 24 });
 }));
 
 // Seller settings endpoints

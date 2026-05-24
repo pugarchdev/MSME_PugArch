@@ -123,7 +123,7 @@ export default function Tenders() {
 
       if (res.ok) {
         const data = await res.json();
-        setNewTender(prev => ({ ...prev, documentUrl: data.url }));
+        setNewTender(prev => ({ ...prev, documentUrl: data?.data?.url || data?.url || '' }));
         toast.success('Specifications document uploaded successfully');
       } else {
         toast.error('Failed to upload document');

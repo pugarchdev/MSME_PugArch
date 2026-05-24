@@ -303,7 +303,7 @@
       </p>
 
       <!-- Connection status check -->
-      <!-- <div class="status-monitor">
+      <div class="status-monitor">
         <div class="monitor-label">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -313,7 +313,7 @@
         <div class="monitor-value" id="ping-text">
           Reconnecting in 5s...
         </div>
-      </div> -->
+      </div>
 
       <div class="btn-group">
         <button onclick="manualCheck()" class="btn btn-primary">
@@ -346,7 +346,8 @@
     async function checkHealth() {
       if (isChecking) return;
       isChecking = true;
-      document.getElementById('ping-text').innerText = 'Checking...';
+      const pingText = document.getElementById('ping-text');
+      if (pingText) pingText.innerText = 'Checking...';
 
       try {
         const res = await fetch(getHealthUrl());
@@ -380,7 +381,8 @@
     }
 
     function updateText() {
-      document.getElementById('ping-text').innerText = `Reconnecting in ${countdown}s...`;
+      const pingText = document.getElementById('ping-text');
+      if (pingText) pingText.innerText = `Reconnecting in ${countdown}s...`;
     }
 
     function handleRestored() {
@@ -393,13 +395,15 @@
       const para = document.getElementById('status-paragraph');
       const pingText = document.getElementById('ping-text');
 
-      badge.classList.add('success');
-      badgeText.innerText = 'System Active';
-      icon.classList.add('success');
-      icon.innerText = '✔';
-      heading.innerText = 'Maintenance Complete';
-      para.innerText = 'Connection to the JsgSmile MSME Procurement Portal has been successfully restored. You will be automatically redirected to the portal right now...';
-      pingText.innerHTML = '<span style="color: var(--success-green); font-weight: bold;">Online</span>';
+      if (badge) badge.classList.add('success');
+      if (badgeText) badgeText.innerText = 'System Active';
+      if (icon) {
+        icon.classList.add('success');
+        icon.innerText = '✔';
+      }
+      if (heading) heading.innerText = 'Maintenance Complete';
+      if (para) para.innerText = 'Connection to the JsgSmile MSME Procurement Portal has been successfully restored. You will be automatically redirected to the portal right now...';
+      if (pingText) pingText.innerHTML = '<span style="color: var(--success-green); font-weight: bold;">Online</span>';
 
       setTimeout(() => {
         window.location.href = '/';

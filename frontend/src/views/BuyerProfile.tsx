@@ -880,13 +880,7 @@ export default function BuyerProfile() {
                        </div>
                     </div>
 
-                    <div className="flex items-center gap-4 bg-slate-100/50 p-4 rounded-2xl w-fit">
-                       <p className="text-[10px] font-black uppercase text-slate-400  px-2">Audio Guide</p>
-                       <div className="h-10 px-4 bg-white rounded-xl border border-slate-200 flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-[#12335f] animate-pulse" />
-                          <span className="text-[10px] font-bold text-slate-600">Consent playback available</span>
-                       </div>
-                    </div>
+                    
                   </div>
                 </div>
 

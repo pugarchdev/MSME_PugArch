@@ -527,15 +527,30 @@ router.post('/buyer/onboarding/send-otp', authenticate, authorize('buyer'), asyn
 
   await auditWrite(req, 'buyer.profile_update_otp.sent', 'user', user.id);
 
-  if (!deliveryConfigured) {
-    throw new ApiError(503, 'Email delivery is not configured. Please configure SMTP to send OTP.');
-  }
-
-  ok(res, { success: true, sendsRemaining: otpState.sendsRemaining });
+  ok(res, { success: true, sendsRemaining: otpState.sendsRemaining, deliveryConfigured });
 }));
 
 router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const data = req.body || {};
+
+  // Bank details validations
+  if (data.bankAccountNo || data.bankIfsc || data.bankName || data.bankAddress || data.accountHolderName) {
+    if (data.bankIfsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(data.bankIfsc).toUpperCase())) {
+      throw new ApiError(400, 'Invalid IFSC code format');
+    }
+    if (data.bankAccountNo && !/^\d{9,18}$/.test(String(data.bankAccountNo))) {
+      throw new ApiError(400, 'Bank account number must be between 9 and 18 digits');
+    }
+    if (data.bankName && (String(data.bankName).trim().length < 3 || String(data.bankName).trim().length > 100 || !/[a-zA-Z]/.test(String(data.bankName)))) {
+      throw new ApiError(400, 'Bank name must be between 3 and 100 characters and contain letters');
+    }
+    if (data.accountHolderName && (String(data.accountHolderName).trim().length < 3 || String(data.accountHolderName).trim().length > 100 || !/[a-zA-Z]/.test(String(data.accountHolderName)))) {
+      throw new ApiError(400, 'Account holder name must be between 3 and 100 characters and contain letters');
+    }
+    if (data.bankAddress && (String(data.bankAddress).trim().length < 10 || String(data.bankAddress).trim().length > 250)) {
+      throw new ApiError(400, 'Bank address must be between 10 and 250 characters');
+    }
+  }
   
   // Guard personal fields with OTP check if profile already exists
   const personalFields = [

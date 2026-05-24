@@ -37,6 +37,22 @@ export const safeRouteMessage = (err: any, fallback = 'Unable to complete reques
   return fallback;
 };
 
+const routeStatusCode = (err: any) => {
+  const message = String(err?.message || '');
+  if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+    return 503;
+  }
+  return err?.statusCode || 500;
+};
+
+const routeErrorCode = (err: any, fallbackCode: string) => {
+  const message = String(err?.message || '');
+  if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+    return 'DATABASE_UNAVAILABLE';
+  }
+  return err?.code || fallbackCode;
+};
+
 export const handleSecureRouteError = (res: Response, err: any, fallback = 'Unable to complete request') => {
   if (err?.name === 'ZodError' || Array.isArray(err?.issues)) {
     const fieldErrors = err.issues.map((issue: any) => {
@@ -53,21 +69,21 @@ export const handleSecureRouteError = (res: Response, err: any, fallback = 'Unab
   }
 
   logServerRouteError(err, fallback);
-  const statusCode = err?.statusCode || 500;
+  const statusCode = routeStatusCode(err);
   return res.status(statusCode).json({
     success: false,
     message: safeRouteMessage(err, fallback),
-    code: err?.code || 'REQUEST_FAILED'
+    code: routeErrorCode(err, 'REQUEST_FAILED')
   });
 };
 
 export const handleFinancialRouteError = (res: Response, err: any) => {
   logServerRouteError(err, 'Unable to complete financial operation');
-  const statusCode = err?.statusCode || 500;
+  const statusCode = routeStatusCode(err);
   return res.status(statusCode).json({
     success: false,
     message: statusCode >= 500 ? safeRouteMessage(err, 'Unable to complete financial operation') : err.message,
-    code: err?.code || 'FINANCIAL_OPERATION_FAILED'
+    code: routeErrorCode(err, 'FINANCIAL_OPERATION_FAILED')
   });
 };
 

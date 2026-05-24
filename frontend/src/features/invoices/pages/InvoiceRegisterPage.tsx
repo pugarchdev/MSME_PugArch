@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -21,15 +21,19 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
-  Filter
+  Filter,
+  LayoutGrid,
+  List
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { useFeatureQuery, usePagination } from '../../shared/hooks';
-import { postApi } from '../../shared/apiClient';
+import { usePurchaseOrders } from '../../purchaseOrders/hooks';
+import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
 
 type InvoiceRow = {
@@ -47,9 +51,12 @@ type InvoiceRow = {
   invoiceStatus?: string;
   dueDate?: string;
   createdAt?: string;
+  updatedAt?: string;
+  approvedAt?: string;
+  interstate?: boolean;
   buyer?: { name?: string };
   seller?: { name?: string };
-  purchaseOrder?: { poNumber?: string; title?: string };
+  purchaseOrder?: { poNumber?: string; title?: string; poStatus?: string };
 };
 
 const statusOf = (invoice: InvoiceRow) => String(invoice.invoiceStatus || invoice.status || 'draft').toLowerCase();
@@ -58,12 +65,39 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const { data: invoices, loading, error, reload } = useFeatureQuery<InvoiceRow[]>('/api/invoices', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [acceptedPoOnly, setAcceptedPoOnly] = useState(false);
+  const [invoiceScope, setInvoiceScope] = useState<'all' | 'interstate' | 'domestic'>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceRow | null>(null);
+  const [invoiceModalMode, setInvoiceModalMode] = useState<'view' | 'track'>('view');
+  const [detailedInvoice, setDetailedInvoice] = useState<any>(null);
+  const [detailedLoading, setDetailedLoading] = useState(false);
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      setDetailedInvoice(null);
+      return;
+    }
+    const fetchDetailedInvoice = async () => {
+      setDetailedLoading(true);
+      try {
+        const data = await getApi<any>(`/api/invoices/${selectedInvoice.id}`, true);
+        setDetailedInvoice(data);
+      } catch (err) {
+        console.error('Failed to fetch detailed invoice', err);
+      } finally {
+        setDetailedLoading(false);
+      }
+    };
+    void fetchDetailedInvoice();
+  }, [selectedInvoice]);
 
   // Checkout modal state variables
   const [checkoutInvoice, setCheckoutInvoice] = useState<InvoiceRow | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<'tabs' | 'processing' | 'success'>('tabs');
-  const [activeTab, setActiveTab] = useState<'razorpay' | 'bank' | 'bypass'>('razorpay');
+  const [activeTab, setActiveTab] = useState<'razorpay' | 'bank'>('razorpay');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [paymentDetails, setPaymentDetails] = useState<any>(null);
@@ -73,6 +107,17 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [cardName, setCardName] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+
+  // Seller invoice creation modal state
+  const [createInvoiceModalOpen, setCreateInvoiceModalOpen] = useState(false);
+  const [createInvoiceSubmitting, setCreateInvoiceSubmitting] = useState(false);
+  const [createInvoiceError, setCreateInvoiceError] = useState<string | null>(null);
+  const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState<number | null>(null);
+  const [purchaseOrderSearch, setPurchaseOrderSearch] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceGstRate, setInvoiceGstRate] = useState('18');
+  const [invoiceTdsRate, setInvoiceTdsRate] = useState('0');
+  const [invoiceInterstate, setInvoiceInterstate] = useState(false);
 
   // Sorting state variables
   const [sortField, setSortField] = useState<'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status'>('invoiceNumber');
@@ -111,6 +156,22 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     );
   };
 
+  const { data: purchaseOrders, loading: purchaseOrdersLoading, reload: reloadPurchaseOrders } = usePurchaseOrders();
+  const selectedPurchaseOrder = purchaseOrders.find(po => po.id === selectedPurchaseOrderId) ?? null;
+  const acceptedPurchaseOrders = useMemo(
+    () => purchaseOrders.filter(po => ['accepted'].includes((po.status || po.poStatus || '').toLowerCase())),
+    [purchaseOrders]
+  );
+  const filteredPurchaseOrders = useMemo(() => {
+    const query = purchaseOrderSearch.trim().toLowerCase();
+    if (!query) return acceptedPurchaseOrders;
+    return acceptedPurchaseOrders.filter(po =>
+      po.poNumber?.toLowerCase().includes(query) ||
+      po.title?.toLowerCase().includes(query) ||
+      String(po.id).includes(query)
+    );
+  }, [acceptedPurchaseOrders, purchaseOrderSearch]);
+
   const statuses = useMemo(() => Array.from(new Set(invoices.map(statusOf))).sort(), [invoices]);
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -124,9 +185,22 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         invoice.buyer?.name,
         invoice.seller?.name
       ].filter(Boolean).join(' ').toLowerCase();
-      return (!term || haystack.includes(term)) && (!statusFilter || statusOf(invoice) === statusFilter);
+      const purchaseOrderStatus = (invoice.purchaseOrder?.poStatus || '').toLowerCase();
+      const isAcceptedPo = purchaseOrderStatus === 'accepted';
+      const matchesInvoiceScope =
+        invoiceScope === 'all'
+          ? true
+          : invoiceScope === 'interstate'
+          ? invoice.interstate === true
+          : invoice.interstate === false;
+      return (
+        (!term || haystack.includes(term)) &&
+        (!statusFilter || statusOf(invoice) === statusFilter) &&
+        (!acceptedPoOnly || isAcceptedPo) &&
+        matchesInvoiceScope
+      );
     });
-  }, [invoices, searchTerm, statusFilter]);
+  }, [invoices, searchTerm, statusFilter, acceptedPoOnly, invoiceScope]);
 
   const sortedInvoices = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -182,10 +256,80 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     try {
       await postApi(`/api/invoices/${invoiceId}/approve`, {});
       await reload();
+      toast.success('Invoice approved successfully.');
     } catch (err: any) {
-      alert(err.message || 'Invoice approval failed');
+      toast.error(err.message || 'Invoice approval failed');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const closeInvoiceDetails = () => {
+    setSelectedInvoice(null);
+    setExpandedStep(null);
+  };
+
+  const openCreateInvoiceModal = () => {
+    setCreateInvoiceError(null);
+    setSelectedPurchaseOrderId(null);
+    setPurchaseOrderSearch('');
+    setInvoiceAmount('');
+    setInvoiceGstRate('18');
+    setInvoiceTdsRate('0');
+    setInvoiceInterstate(false);
+    setCreateInvoiceModalOpen(true);
+  };
+
+  const closeCreateInvoiceModal = () => {
+    if (createInvoiceSubmitting) return;
+    setCreateInvoiceModalOpen(false);
+    setCreateInvoiceError(null);
+  };
+
+  const handleSubmitCreateInvoice = async () => {
+    if (createInvoiceSubmitting) return;
+
+    if (!selectedPurchaseOrderId) {
+      setCreateInvoiceError('Select a purchase order before submitting.');
+      return;
+    }
+
+    const amount = Number(invoiceAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      setCreateInvoiceError('Enter a valid invoice amount greater than zero.');
+      return;
+    }
+
+    const gstRate = Number(invoiceGstRate);
+    if (Number.isNaN(gstRate) || gstRate < 0 || gstRate > 100) {
+      setCreateInvoiceError('Enter a valid GST rate between 0 and 100.');
+      return;
+    }
+
+    const tdsRate = Number(invoiceTdsRate);
+    if (Number.isNaN(tdsRate) || tdsRate < 0 || tdsRate > 100) {
+      setCreateInvoiceError('Enter a valid TDS rate between 0 and 100.');
+      return;
+    }
+
+    setCreateInvoiceSubmitting(true);
+    setCreateInvoiceError(null);
+    try {
+      await postApi('/api/invoices', {
+        purchaseOrderId: selectedPurchaseOrderId,
+        amount,
+        gstRate,
+        tdsRate,
+        interstate: invoiceInterstate,
+      });
+      await reload();
+      await reloadPurchaseOrders();
+      closeCreateInvoiceModal();
+      toast.success('Invoice created successfully.');
+    } catch (err: any) {
+      setCreateInvoiceError(err.message || 'Invoice creation failed.');
+    } finally {
+      setCreateInvoiceSubmitting(false);
     }
   };
 
@@ -233,21 +377,32 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     setCheckoutStep('processing');
 
     try {
+      const paymentAttemptKey = `invoice-pay-${checkoutInvoice.id}-${gatewayType}-${Date.now()}-${
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+      }`;
+
       // Step 1: Initiate Payment
       const initRes = await postApi<any>('/api/payments/initiate', {
         invoiceId: checkoutInvoice.id,
         gateway: gatewayType,
-        method: gatewayType === 'razorpay' ? 'card' : 'bank_transfer'
+        method: gatewayType === 'razorpay' ? 'card' : 'bank_transfer',
+        idempotencyKey: paymentAttemptKey
       });
+      const paymentId = Number(initRes?.payment?.id || initRes?.id);
+      if (!Number.isInteger(paymentId) || paymentId <= 0) {
+        throw new Error('Payment initiation did not return a valid payment id.');
+      }
 
       // Step 2: Simulate Success
-      const successRes = await postApi<any>(`/api/payments/${initRes.id}/simulate-success`, {});
+      const successRes = await postApi<any>(`/api/payments/${paymentId}/simulate-success`, {});
 
       setPaymentDetails(successRes);
       setCheckoutStep('success');
+      toast.success('Payment completed successfully.');
     } catch (err: any) {
       setCheckoutStep('tabs');
       setErrorMsg(err.message || 'Payment simulation failed. Please try again.');
+      toast.error(err.message || 'Payment simulation failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -267,9 +422,21 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
             Invoice register with PO linkage, GST/TDS values, due dates, and payment workflows.
           </p>
         </div>
-        <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-          <RefreshCw className="mr-2 h-4 w-4" />Refresh
-        </Button>
+        <div className="flex gap-2">
+          {role === 'seller' && (
+            <Button
+              variant="outline"
+              onClick={openCreateInvoiceModal}
+              disabled={submitting}
+              className="h-10 rounded-lg text-xs font-black uppercase"
+            >
+              Create Invoice
+            </Button>
+          )}
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
+            <RefreshCw className="mr-2 h-4 w-4" />Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
@@ -283,8 +450,8 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
 
       <Card className="border-slate-200/80 shadow-sm bg-white">
         <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 items-center">
-            <div className="relative flex-1 w-full">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchTerm}
@@ -293,34 +460,64 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
               />
             </div>
-            
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
-            >
-              <Filter className="h-4 w-4 text-slate-500" />
-              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
-            </Button>
-          </div>
 
-          <div className={cn(
-            "grid gap-3 items-center",
-            showMobileFilters ? "grid grid-cols-2" : "hidden md:grid md:grid-cols-[190px] md:justify-end"
-          )}>
-            <select
-              value={statusFilter}
-              onChange={event => setStatusFilter(event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
-            >
-              <option value="">All statuses</option>
-              {statuses.map(status => (
-                <option key={status} value={status}>
-                  {status.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end md:gap-4 w-full md:w-auto">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 text-[10px] font-black uppercase transition ${
+                    viewMode === 'list' ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <List className="h-4 w-4" /> List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 text-[10px] font-black uppercase transition ${
+                    viewMode === 'grid' ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" /> Grid
+                </button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-[180px_160px_160px] md:items-center w-full md:w-auto">
+                <select
+                  value={statusFilter}
+                  onChange={event => setStatusFilter(event.target.value)}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
+                >
+                  <option value="">All statuses</option>
+                  {statuses.map(status => (
+                    <option key={status} value={status}>
+                      {status.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 w-full">
+                  <input
+                    type="checkbox"
+                    checked={acceptedPoOnly}
+                    onChange={event => setAcceptedPoOnly(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/50"
+                  />
+                  Accepted PO only
+                </label>
+
+                <select
+                  value={invoiceScope}
+                  onChange={event => setInvoiceScope(event.target.value as 'all' | 'interstate' | 'domestic')}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
+                >
+                  <option value="all">All invoices</option>
+                  <option value="interstate">Interstate only</option>
+                  <option value="domestic">Domestic only</option>
+                </select>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -328,14 +525,19 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       {filtered.length === 0 ? (
         <EmptyState
           title="No invoices found"
-          description="Invoices will appear once sellers submit bills against accepted purchase orders."
+          description={
+            role === 'seller'
+              ? 'Create invoices for accepted purchase orders using the button above. Once an invoice is added, buyers can approve and pay it.'
+              : 'Invoices appear once sellers submit bills against accepted purchase orders. Ask your seller to create an invoice first.'
+          }
         />
-      ) : (
+      ) : viewMode === 'list' ? (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
+            <table className="w-full min-w-[1140px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
+                  <th className="p-3">Sr. No</th>
                   <th className="p-3"><SortHeader label="Invoice" field="invoiceNumber" /></th>
                   <th className="p-3"><SortHeader label="PO" field="poNumber" /></th>
                   <th className="p-3"><SortHeader label="Party" field="party" /></th>
@@ -349,13 +551,15 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pagedInvoices.map(invoice => {
+                {pagedInvoices.map((invoice, index) => {
                   const state = statusOf(invoice);
                   const isSubmitted = state === 'submitted';
                   const isPayable = state === 'approved' || state === 'payment_initiated';
+                  const rowIndex = (page - 1) * pageSize + index + 1;
 
                   return (
                     <tr key={invoice.id} className="hover:bg-slate-50">
+                      <td className="p-3 text-xs font-black text-slate-600">{rowIndex}</td>
                       <td className="p-3">
                         <p className="font-mono text-xs font-black text-[#12335f]">{invoice.invoiceNumber || `INV-${invoice.id}`}</p>
                         <p className="text-[10px] font-semibold text-slate-500">{formatDate(invoice.createdAt)}</p>
@@ -386,35 +590,42 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        {role === 'buyer' && (
-                          <div className="flex justify-end gap-1.5">
-                            {isSubmitted && (
-                              <Button
-                                size="sm"
-                                disabled={submitting}
-                                onClick={() => handleApproveInvoice(invoice.id)}
-                                className="h-8 rounded-lg bg-[#12335f] text-[10px] font-black uppercase tracking-wider hover:bg-slate-800"
-                              >
-                                Approve
-                              </Button>
-                            )}
-                            {isPayable && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleOpenCheckout(invoice)}
-                                className="h-8 rounded-lg bg-emerald-600 text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700"
-                              >
-                                Pay Now
-                              </Button>
-                            )}
-                            {!isSubmitted && !isPayable && (
-                              <span className="text-[10px] font-bold text-slate-400 italic">No actions</span>
-                            )}
-                          </div>
-                        )}
-                        {role !== 'buyer' && (
-                          <span className="text-[10px] font-bold text-slate-400 italic">View Only</span>
-                        )}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }}
+                            className="h-8 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                          >
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('track'); }}
+                            className="h-8 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                          >
+                            Track Status
+                          </Button>
+                          {role === 'buyer' && isSubmitted && (
+                            <Button
+                              size="sm"
+                              disabled={submitting}
+                              onClick={() => handleApproveInvoice(invoice.id)}
+                              className="h-8 rounded-lg bg-[#12335f] text-[10px] font-black uppercase tracking-wider hover:bg-slate-800"
+                            >
+                              Approve
+                            </Button>
+                          )}
+                          {role === 'buyer' && isPayable && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenCheckout(invoice)}
+                              className="h-8 rounded-lg bg-emerald-600 text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700"
+                            >
+                              Pay Now
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -424,36 +635,793 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
           </div>
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="invoices" />
         </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {pagedInvoices.map((invoice, index) => {
+            const state = statusOf(invoice);
+            const isSubmitted = state === 'submitted';
+            const isPayable = state === 'approved' || state === 'payment_initiated';
+            const rowIndex = (page - 1) * pageSize + index + 1;
+            return (
+              <div key={invoice.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice #{rowIndex}</p>
+                    <p className="mt-2 text-sm font-black text-slate-950">{invoice.invoiceNumber || `INV-${invoice.id}`}</p>
+                    <p className="text-[11px] text-slate-500">{invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
+                    state === 'paid'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : state === 'approved'
+                      ? 'bg-blue-100 text-[#12335f]'
+                      : state === 'submitted'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {state.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 text-xs text-slate-600">
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="font-black text-slate-900">Party</p>
+                    <p>{role === 'seller' ? invoice.buyer?.name || `Buyer #${invoice.buyerId || '-'}` : invoice.seller?.name || `Seller #${invoice.sellerId || '-'}`}</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 p-3">
+                      <p className="font-black text-slate-900">Total</p>
+                      <p>{formatCurrency(invoice.amount || invoice.totalAmount)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-3">
+                      <p className="font-black text-slate-900">Due Date</p>
+                      <p>{formatDate(invoice.dueDate)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }}
+                    className="h-10 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                  >
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('track'); }}
+                    className="h-10 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                  >
+                    Track Status
+                  </Button>
+                  {role === 'buyer' && isSubmitted && (
+                    <Button
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => handleApproveInvoice(invoice.id)}
+                      className="h-10 rounded-lg bg-[#12335f] text-[10px] font-black uppercase tracking-wider hover:bg-slate-800"
+                    >
+                      Approve
+                    </Button>
+                  )}
+                  {role === 'buyer' && isPayable && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleOpenCheckout(invoice)}
+                      className="h-10 rounded-lg bg-emerald-600 text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700"
+                    >
+                      Pay Now
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* Glassmorphic Checkout Modal Overlay */}
-      {checkoutInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md transition-all duration-300">
-          <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-white/20 bg-white/95 p-6 shadow-2xl transition-all duration-300 transform scale-100 flex flex-col max-h-[90vh]">
-            
-            {/* Header */}
-            {checkoutStep !== 'success' && (
-              <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
+      {createInvoiceModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Create Invoice</p>
+                <h2 className="text-xl font-black text-slate-950">New invoice for accepted PO</h2>
+                <p className="mt-1 text-xs text-slate-500">Search and choose the purchase order, then provide the invoice amount and tax details.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCreateInvoiceModal}
+                className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Search Purchase Order</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={purchaseOrderSearch}
+                    onChange={event => setPurchaseOrderSearch(event.target.value)}
+                    placeholder="Search PO #, title, or ID"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  />
+                </div>
+
+                <div className="max-h-52 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2 text-xs">
+                  {purchaseOrdersLoading ? (
+                    <div className="flex items-center justify-center py-8 text-slate-500">Loading purchase orders…</div>
+                  ) : filteredPurchaseOrders.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-slate-500">
+                      No accepted purchase orders found. Confirm the buyer has accepted the PO before creating an invoice.
+                    </div>
+                  ) : (
+                    filteredPurchaseOrders.map(po => (
+                      <button
+                        key={po.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPurchaseOrderId(po.id);
+                          setPurchaseOrderSearch('');
+                        }}
+                        className={`w-full rounded-2xl px-3 py-3 text-left transition ${
+                          selectedPurchaseOrderId === po.id ? 'bg-[#12335f] text-white' : 'bg-white text-slate-800 hover:bg-slate-100'
+                        }`}
+                      >
+                        <p className="font-black text-sm">{po.poNumber}</p>
+                        <p className="text-[11px] text-slate-500">{po.title}</p>
+                        <p className="mt-1 text-[11px] text-slate-400">Amount: {formatCurrency(po.totalValue || po.amount || 0)}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {selectedPurchaseOrder && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <p className="font-black uppercase tracking-widest text-[10px] text-slate-500">Selected Purchase Order</p>
+                  <p className="mt-2 font-black text-slate-900">{selectedPurchaseOrder.poNumber} · {selectedPurchaseOrder.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">Total value: {formatCurrency(selectedPurchaseOrder.totalValue || selectedPurchaseOrder.amount || 0)}</p>
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <span className="flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest text-emerald-600">
-                    <Lock className="h-3 w-3" /> Secure Payment Escrow
-                  </span>
-                  <h2 className="text-lg font-black tracking-tight text-slate-900">
-                    Settle Invoice {checkoutInvoice.invoiceNumber || `INV-${checkoutInvoice.id}`}
-                  </h2>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice Amount</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={invoiceAmount}
+                    onChange={event => setInvoiceAmount(event.target.value)}
+                    placeholder="Enter invoice amount"
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">GST Rate (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={invoiceGstRate}
+                    onChange={event => setInvoiceGstRate(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">TDS Rate (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={invoiceTdsRate}
+                    onChange={event => setInvoiceTdsRate(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  />
+                </div>
+                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <input
+                    id="interstate-checkbox"
+                    type="checkbox"
+                    checked={invoiceInterstate}
+                    onChange={event => setInvoiceInterstate(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/50"
+                  />
+                  <label htmlFor="interstate-checkbox" className="text-xs font-bold text-slate-700">
+                    Interstate invoice
+                  </label>
+                </div>
+              </div>
+
+              {createInvoiceError && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-800">
+                  {createInvoiceError}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 sm:flex-row sm:justify-end">
+                <Button type="button" variant="secondary" onClick={closeCreateInvoiceModal} className="h-10 rounded-lg text-xs font-black uppercase">
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSubmitCreateInvoice}
+                  disabled={createInvoiceSubmitting || purchaseOrdersLoading || filteredPurchaseOrders.length === 0}
+                  className="h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase tracking-wider hover:bg-slate-800"
+                >
+                  {createInvoiceSubmitting ? 'Creating...' : 'Create Invoice'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedInvoice && (
+        <div id="printable-invoice-overlay" className="fixed inset-0 z-45 flex items-start sm:items-center justify-center overflow-y-auto py-6 px-4 bg-slate-950/70 backdrop-blur-sm">
+          <div 
+            id="printable-invoice-card"
+            className={cn(
+              "relative w-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl max-h-[calc(100vh-4rem)] overflow-y-auto transition-all duration-300",
+              invoiceModalMode === 'view' ? "max-w-4xl" : "max-w-3xl"
+            )}
+          >
+            {/* Modal Header (visible only on screen, hidden on print) */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4 mb-4 no-print">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+                  {invoiceModalMode === 'view' ? "Tax Invoice Registry" : "JsgSmile / PFMS Bill Status Tracker"}
+                </p>
+                <h2 className="text-lg font-black text-slate-950">
+                  {selectedInvoice.invoiceNumber || `INV-${selectedInvoice.id}`}
+                </h2>
+                <p className="text-xs text-slate-500">Created on {formatDate(selectedInvoice.createdAt)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInvoiceDetails}
+                className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {detailedLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                <RefreshCw className="h-8 w-8 animate-spin text-[#12335f]" />
+                <p className="text-xs font-bold text-slate-500">Retrieving digital bill ledger from MSME vaults...</p>
+              </div>
+            ) : (
+              <>
+                {/* Print Styling inside the View modal */}
+                {invoiceModalMode === 'view' && (
+                  <style dangerouslySetInnerHTML={{ __html: `
+                    @media print {
+                      /* Hide standard screen elements */
+                      body * {
+                        visibility: hidden !important;
+                      }
+                      /* Show only the printable card and its descendants */
+                      #printable-invoice-card, #printable-invoice-card * {
+                        visibility: visible !important;
+                      }
+                      /* Ensure html, body don't have constraints during print */
+                      html, body {
+                        height: auto !important;
+                        overflow: visible !important;
+                        min-height: 0 !important;
+                        background: white !important;
+                      }
+                      /* Clear constraints on overlay parent */
+                      #printable-invoice-overlay {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
+                        background: white !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        display: block !important;
+                      }
+                      /* Position and flow for the card itself */
+                      #printable-invoice-card {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        box-shadow: none !important;
+                        border: none !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                      }
+                      .no-print {
+                        display: none !important;
+                      }
+                    }
+                  `}} />
+                )}
+
+                {invoiceModalMode === 'view' && (
+                  <div className="space-y-6">
+                    {/* Official Government e-Invoice Header Banner */}
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50 border border-slate-150 p-4 rounded-2xl">
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-xl bg-[#12335f] text-white flex items-center justify-center shadow-sm">
+                          {/* Government Shield Representation */}
+                          <ShieldCheck className="h-7 w-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-black uppercase tracking-wider text-[#12335f]">GOVERNMENT OF INDIA · MINISTRY OF MSME</h3>
+                          <p className="text-[10px] font-bold text-slate-500">e-Invoice Registry Portal (JsgSmile Integrated Ledger)</p>
+                          <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> VERIFIED IRN ACTIVE
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Portal Logo */}
+                      <div className="shrink-0 bg-white p-2 rounded-xl border border-slate-150 shadow-sm flex items-center justify-center h-16 w-16">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/msme-logo.png" alt="JsgSmile Logo" className="h-full w-full object-contain" />
+                      </div>
+                    </div>
+
+                    {/* e-Invoice System IRN Data */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-[10px] space-y-2">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-150 pb-2">
+                        <div>
+                          <span className="text-slate-400 font-bold">INVOICE REFERENCE NUMBER (IRN):</span>
+                          <p className="font-mono font-black text-slate-800 text-xs break-all tracking-tight mt-0.5">
+                            2f8a5c3e7d9b1a0f9e8d7c6b5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] font-bold text-slate-600">
+                        <div>
+                          <span className="text-slate-400">ACK NO:</span>
+                          <p className="text-slate-800 font-mono">122268901234512</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">ACK DATE:</span>
+                          <p className="text-slate-800">{formatDate(selectedInvoice.createdAt)}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">GST REGISTRY MODE:</span>
+                          <p className="text-emerald-700 uppercase">DIRECT API INTEGRATED</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">TAX SCHEME:</span>
+                          <p className="text-slate-800">GST INDIA (CGST + SGST / IGST)</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parties Grid */}
+                    <div className="grid gap-4 md:grid-cols-2 text-xs font-semibold text-slate-600">
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2.5">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1">SUPPLIER (SELLER DETAILS)</p>
+                        <p className="font-black text-slate-900 text-sm">{selectedInvoice.seller?.name || `Seller #${selectedInvoice.sellerId || '-'}`}</p>
+                        <p className="text-[10px] text-slate-500 font-bold">GSTIN / UIN: <span className="text-slate-800 font-mono">27NIPPL3456D1ZW</span></p>
+                        <p className="text-[10px] text-slate-500 font-bold">PAN / TAX ID: <span className="text-slate-800 font-mono">NIPPL3456D</span></p>
+                        <p className="text-[10px] text-slate-500 font-bold">State Code: <span className="text-slate-800">Maharashtra (Code 27)</span></p>
+                        <p className="text-[10px] text-slate-500 font-medium leading-relaxed">Office: Industrial Estate, Phase 3, Pune, MH, 411018</p>
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2.5">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1">CONSIGNEE (BUYER DEPARTMENT DETAILS)</p>
+                        <p className="font-black text-slate-900 text-sm">{selectedInvoice.buyer?.name || `Buyer #${selectedInvoice.buyerId || '-'}`}</p>
+                        <p className="text-[10px] text-slate-500 font-bold">GSTIN / UIN: <span className="text-slate-800 font-mono">27JSGS3456D1ZW</span></p>
+                        <p className="text-[10px] text-slate-500 font-bold">Department: <span className="text-slate-800">Department of Higher Education</span></p>
+                        <p className="text-[10px] text-slate-500 font-bold">State Code: <span className="text-slate-800">Maharashtra (Code 27)</span></p>
+                        <p className="text-[10px] text-slate-500 font-medium leading-relaxed">Office: National Institute of Technology (NIT) Campus, Pune, MH, 411030</p>
+                      </div>
+                    </div>
+
+                    {/* Metadata & Contract References */}
+                    <div className="grid gap-4 md:grid-cols-3 text-xs rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">PURCHASE CONTRACT REFERENCE</p>
+                        <p className="mt-1 font-black text-[#12335f]">{selectedInvoice.purchaseOrder?.poNumber || `PO #${selectedInvoice.purchaseOrderId || '-'}`}</p>
+                        <p className="text-[10px] font-bold text-slate-500 mt-0.5">{selectedInvoice.purchaseOrder?.title || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">BILLING PERIOD & DUE DATE</p>
+                        <p className="mt-1 font-bold text-slate-900">Due Date: {formatDate(selectedInvoice.dueDate)}</p>
+                        <p className="text-[10px] text-slate-450 font-medium mt-0.5">Credit Window: Net 30 Days (MSME Mandated)</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">SUPPLY JURISDICTION</p>
+                        <p className="mt-1 font-bold text-slate-900">{selectedInvoice.interstate ? 'Interstate (IGST Tax Scheme)' : 'Intrastate (CGST + SGST Tax Scheme)'}</p>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Place of Supply: Maharashtra (27)</p>
+                      </div>
+                    </div>
+
+                    {/* Itemized Table */}
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                            <tr>
+                              <th className="p-3">Description</th>
+                              <th className="p-3 text-center">HSN/SAC</th>
+                              <th className="p-3 text-right">Qty</th>
+                              <th className="p-3 text-right">Rate</th>
+                              <th className="p-3 text-right">Taxable</th>
+                              {selectedInvoice.interstate ? (
+                                <th className="p-3 text-right">IGST (18%)</th>
+                              ) : (
+                                <>
+                                  <th className="p-3 text-right">CGST (9%)</th>
+                                  <th className="p-3 text-right">SGST (9%)</th>
+                                </>
+                              )}
+                              <th className="p-3 text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(detailedInvoice?.items || []).length === 0 ? (
+                              <tr className="hover:bg-slate-50">
+                                <td className="p-3">
+                                  <p className="font-black text-slate-900">{selectedInvoice.purchaseOrder?.title || 'MSME Goods / Services delivery'}</p>
+                                  <p className="text-[10px] text-slate-400">Contract Ref: {selectedInvoice.purchaseOrder?.poNumber || 'N/A'}</p>
+                                </td>
+                                <td className="p-3 text-center font-mono text-[10px] font-bold text-slate-500">998311</td>
+                                <td className="p-3 text-right font-bold">1.000 Unit</td>
+                                <td className="p-3 text-right font-bold">{formatCurrency(selectedInvoice.taxableAmount || selectedInvoice.amount || 0)}</td>
+                                <td className="p-3 text-right font-bold">{formatCurrency(selectedInvoice.taxableAmount || selectedInvoice.amount || 0)}</td>
+                                {selectedInvoice.interstate ? (
+                                  <td className="p-3 text-right font-bold">{formatCurrency(selectedInvoice.totalTaxAmount || 0)}</td>
+                                ) : (
+                                  <>
+                                    <td className="p-3 text-right font-bold">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</td>
+                                    <td className="p-3 text-right font-bold">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</td>
+                                  </>
+                                )}
+                                <td className="p-3 text-right font-black text-slate-950">{formatCurrency(selectedInvoice.amount || selectedInvoice.totalAmount || 0)}</td>
+                              </tr>
+                            ) : (
+                              detailedInvoice.items.map((item: any) => (
+                                <tr key={item.id} className="hover:bg-slate-50">
+                                  <td className="p-3">
+                                    <p className="font-black text-slate-900">{item.itemName}</p>
+                                    {item.description && <p className="text-[10px] text-slate-400">{item.description}</p>}
+                                  </td>
+                                  <td className="p-3 text-center font-mono text-[10px] font-bold text-slate-500">{item.hsnCode || '998311'}</td>
+                                  <td className="p-3 text-right font-bold">{Number(item.quantity).toFixed(3)} {item.unitOfMeasure || 'Unit'}</td>
+                                  <td className="p-3 text-right font-bold">{formatCurrency(item.unitPrice)}</td>
+                                  <td className="p-3 text-right font-bold">{formatCurrency(item.taxableAmount)}</td>
+                                  {selectedInvoice.interstate ? (
+                                    <td className="p-3 text-right font-bold">{formatCurrency(item.taxAmount || 0)}</td>
+                                  ) : (
+                                    <>
+                                      <td className="p-3 text-right font-bold">{formatCurrency(Number(item.taxAmount || 0) / 2)}</td>
+                                      <td className="p-3 text-right font-bold">{formatCurrency(Number(item.taxAmount || 0) / 2)}</td>
+                                    </>
+                                  )}
+                                  <td className="p-3 text-right font-black text-slate-950">{formatCurrency(item.totalAmount)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Financial Summary */}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {/* Administrative allocations & bank details */}
+                      <div className="space-y-4">
+                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs space-y-2">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Public Treasury DBT Settlement Bank Details</p>
+                          <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-600">
+                            <div>
+                              <span className="text-slate-400">BANK NAME:</span>
+                              <p className="text-slate-800">STATE BANK OF INDIA</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">IFSC CODE:</span>
+                              <p className="text-slate-800 font-mono">SBIN0001234</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-slate-400">ACCOUNT NUMBER:</span>
+                              <p className="text-slate-800 font-mono">••••••••1234 (Verified Settlements Vault)</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs space-y-2">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Administrative Sanction Allocation</p>
+                          <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-600">
+                            <div>
+                              <span className="text-slate-400">SANCTION ORDER:</span>
+                              <p className="text-slate-800">SAN-2026-980860-EC1094</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">TREASURY HEAD:</span>
+                              <p className="text-slate-800 font-mono">2203-00-112-01-00-50</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tax Summary Calculation */}
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs space-y-2 h-max">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1 font-extrabold text-slate-500">Taxation & Net Settlement Calculations</p>
+                        <div className="space-y-1.5 font-bold text-slate-650">
+                          <div className="flex justify-between">
+                            <span>Gross Taxable Amount:</span>
+                            <span className="text-slate-800">{formatCurrency(selectedInvoice.taxableAmount || selectedInvoice.amount || 0)}</span>
+                          </div>
+                          {selectedInvoice.interstate ? (
+                            <div className="flex justify-between">
+                              <span>IGST Amount (18%):</span>
+                              <span className="text-slate-800">{formatCurrency(selectedInvoice.totalTaxAmount || 0)}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between">
+                                <span>CGST Amount (9%):</span>
+                                <span className="text-slate-800">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>SGST Amount (9%):</span>
+                                <span className="text-slate-800">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</span>
+                              </div>
+                            </>
+                          )}
+                          <div className="flex justify-between text-red-650 border-b border-slate-200 pb-1.5">
+                            <span>Government TDS Deduction (GST Section 51):</span>
+                            <span>-{formatCurrency(selectedInvoice.tdsAmount || 0)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs font-black text-slate-900 pt-1">
+                            <span>NET SETTLEMENT VALUE (DBT):</span>
+                            <span className="text-emerald-700 text-sm">{formatCurrency(selectedInvoice.amount || selectedInvoice.totalAmount)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Government Declaration and Digitally Signed Certificate */}
+                    <div className="flex flex-col sm:flex-row items-center gap-3 p-4 bg-emerald-50/60 border border-emerald-100 rounded-2xl">
+                      <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 border border-emerald-200/50">
+                        <Check className="h-5 w-5 stroke-[2.5]" />
+                      </div>
+                      <div className="text-xs text-slate-600 font-semibold space-y-0.5">
+                        <p className="font-black text-emerald-800 uppercase tracking-wider text-[10px]">Digitally Signed & Certified OK</p>
+                        <p className="leading-relaxed">
+                          Certified that the particulars given above are true and correct. Authenticated via Class-3 Digital Signature Certificate (DSC) registered under the Indian Information Technology Act, 2000.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Print / Close Footer (Screen visible only) */}
+                    <div className="flex flex-col sm:flex-row justify-end gap-2.5 pt-4 border-t border-slate-200 no-print">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={closeInvoiceDetails}
+                        className="h-10 rounded-lg text-xs font-black uppercase"
+                      >
+                        Close
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase tracking-wider hover:bg-slate-800 flex items-center gap-1.5"
+                      >
+                        Print Invoice
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {invoiceModalMode === 'track' && (
+                  <div className="space-y-6">
+                    {/* Stepper Header Summary */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-150 text-xs flex items-center justify-between">
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">CURRENT JSGSMILE BILL DISPATCH STATUS</p>
+                        <p className="mt-1 text-sm font-black text-[#12335f] uppercase tracking-wider">
+                          {statusOf(selectedInvoice).replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                      <span className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[9px] font-black uppercase border",
+                        statusOf(selectedInvoice) === 'paid'
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                      )}>
+                        <span className={cn("h-2 w-2 rounded-full", statusOf(selectedInvoice) === 'paid' ? "bg-emerald-500" : "bg-amber-500 animate-ping")} />
+                        {statusOf(selectedInvoice) === 'paid' ? "Treasury Settlement Cleared" : "Treasury Pipeline Active"}
+                      </span>
+                    </div>
+
+                    {/* Stepper Vertical Timeline */}
+                    <div className="space-y-6 px-1.5 py-2">
+                      
+                      {/* Step 1: Invoice Submission */}
+                      <TimelineStep
+                        index={1}
+                        title="Invoice Digitally Signed & Uploaded"
+                        description="Invoice uploaded by Supplier to JsgSmile invoice gateway with verified Class-3 Digital Signature (DSC) security keys."
+                        timestamp={selectedInvoice.createdAt}
+                        completed={true}
+                        active={statusOf(selectedInvoice) === 'submitted'}
+                        details={
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] leading-relaxed">
+                            <div><span className="text-slate-400">SUBMISSION IP:</span> <span className="text-slate-700">10.240.89.112 (Verified)</span></div>
+                            <div><span className="text-slate-400">DIGITAL DSC:</span> <span className="text-emerald-700">e-Mudhra root CA</span></div>
+                            <div className="col-span-2"><span className="text-slate-400">CRYPTOGRAPHIC SIGNATURE HASH:</span> <span className="text-slate-700 font-mono break-all font-semibold">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span></div>
+                          </div>
+                        }
+                      />
+                      
+                      {/* Step 2: Technical Quality Inspection (CRAC) */}
+                      <TimelineStep
+                        index={2}
+                        title="Consignee Receipt & Acceptance Certificate (CRAC)"
+                        description="Consignee Receipt and Acceptance Certificate (CRAC) generated after physical inspection of consignments under JsgSmile guidelines."
+                        timestamp={['approved', 'payment_initiated', 'paid'].includes(statusOf(selectedInvoice)) ? selectedInvoice.approvedAt || selectedInvoice.createdAt : undefined}
+                        completed={['approved', 'payment_initiated', 'paid'].includes(statusOf(selectedInvoice))}
+                        active={statusOf(selectedInvoice) === 'approved'}
+                        details={
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] leading-relaxed">
+                            <div><span className="text-slate-400">CRAC REFERENCE:</span> <span className="text-slate-700 font-mono">CRAC/2026/JSG/489182</span></div>
+                            <div><span className="text-slate-400">INSPECTED STATUS:</span> <span className="text-emerald-750">100% SPEC COMPLIANT</span></div>
+                            <div><span className="text-slate-400">CONSIGNEE OFFICER:</span> <span className="text-slate-700">Shri Ramesh Kumar (Asst. Registrar)</span></div>
+                            <div><span className="text-slate-400">DELIVERY VERIFICATION:</span> <span className="text-slate-700">ACCEPTED & SIGNED</span></div>
+                          </div>
+                        }
+                      />
+
+                      {/* Step 3: DDO Sanction & Sanction Order */}
+                      <TimelineStep
+                        index={3}
+                        title="DDO Billing Sanction & Fund Allocation"
+                        description="Drawing and Disbursing Officer (DDO) verified the billing audit ledger. Financial sanction order approved against budget allocation."
+                        timestamp={['approved', 'payment_initiated', 'paid'].includes(statusOf(selectedInvoice)) ? selectedInvoice.approvedAt || selectedInvoice.createdAt : undefined}
+                        completed={['approved', 'payment_initiated', 'paid'].includes(statusOf(selectedInvoice))}
+                        active={statusOf(selectedInvoice) === 'approved'}
+                        details={
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] leading-relaxed">
+                            <div><span className="text-slate-400">SANCTION ORDER NO:</span> <span className="text-slate-700 font-mono">SAN-2026-980860-EC1094</span></div>
+                            <div><span className="text-slate-400">BUDGET SANCTION HEAD:</span> <span className="text-slate-700 font-mono">2203-00-112-01-00-50</span></div>
+                            <div><span className="text-slate-400">APPROVING DDO:</span> <span className="text-slate-700">Dr. S. K. Roy (Drawing & Disbursing Officer)</span></div>
+                            <div><span className="text-slate-400">FUNDS RESERVATION:</span> <span className="text-slate-700">COMMITTED ESCROW CAPTURE</span></div>
+                          </div>
+                        }
+                      />
+
+                      {/* Step 4: PFMS Treasury Processing */}
+                      <TimelineStep
+                        index={4}
+                        title="PFMS Treasury Scroll Queue"
+                        description="Bill transmitted to Government Treasury via Public Financial Management System (PFMS). Direct Benefit Transfer (DBT) clearing token created."
+                        timestamp={['payment_initiated', 'paid'].includes(statusOf(selectedInvoice)) ? selectedInvoice.updatedAt : undefined}
+                        completed={['payment_initiated', 'paid'].includes(statusOf(selectedInvoice))}
+                        active={statusOf(selectedInvoice) === 'payment_initiated'}
+                        details={
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] leading-relaxed">
+                            <div><span className="text-slate-400">PFMS TOKEN NUMBER:</span> <span className="text-slate-700 font-mono">2026PFMSTK8918234</span></div>
+                            <div><span className="text-slate-400">TREASURY SCROLL REF:</span> <span className="text-slate-700 font-mono">SCROLL-98218-MH</span></div>
+                            <div><span className="text-slate-400">TOKEN VALUATION:</span> <span className="text-emerald-700">VERIFIED OK</span></div>
+                            <div><span className="text-slate-400">DBT DISPATCH BATCH:</span> <span className="text-slate-700">RBI-TREASURY-01</span></div>
+                          </div>
+                        }
+                      />
+
+                      {/* Step 5: Direct Treasury Disbursement */}
+                      <TimelineStep
+                        index={5}
+                        title="Clearance & UTR Dispatch"
+                        description="Funds disbursed directly to supplier bank account via Public Treasury DBT. Unique Transaction Reference (UTR) generated and issued."
+                        timestamp={statusOf(selectedInvoice) === 'paid' ? selectedInvoice.updatedAt : undefined}
+                        completed={statusOf(selectedInvoice) === 'paid'}
+                        active={statusOf(selectedInvoice) === 'paid'}
+                        details={
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] leading-relaxed">
+                            <div><span className="text-slate-400">SETTLEMENT MODE:</span> <span className="text-slate-700">TREASURY DBT CREDITED</span></div>
+                            <div><span className="text-slate-400">RBI TRANSACTION REF:</span> <span className="text-slate-700 font-mono">RBI-NEFT-9812903</span></div>
+                            <div className="col-span-2"><span className="text-slate-400">UTR (UNIQUE TRANSACTION REFERENCE):</span> <span className="text-emerald-800 font-mono font-black break-all">SBIN20260524890192</span></div>
+                          </div>
+                        }
+                      />
+                    </div>
+
+                    {/* Screen Footer (Close button) */}
+                    <div className="flex justify-end pt-4 border-t border-slate-200">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={closeInvoiceDetails}
+                        className="h-10 rounded-lg text-xs font-black uppercase"
+                      >
+                        Close Tracker
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Official Payment Checkout Modal */}
+      {checkoutInvoice && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-6 backdrop-blur-sm sm:items-center">
+          <div className="flex max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+            <div className="hidden w-80 flex-col justify-between bg-[#12335f] p-6 text-white lg:flex">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-100">MSME Secure Checkout</p>
+                <h2 className="mt-2 text-2xl font-black leading-tight">Official Payment Gateway</h2>
+                <p className="mt-3 text-xs font-semibold leading-relaxed text-blue-100">
+                  Payment is processed through the portal finance workflow and linked to invoice, purchase order, escrow custody, and immutable ledger records.
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-white/15 bg-white/10 p-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Amount Payable</p>
+                  <p className="mt-1 text-2xl font-black">{formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)}</p>
+                </div>
+                <div className="grid gap-2 text-xs font-semibold text-blue-50">
+                  <div className="flex justify-between gap-3">
+                    <span>Invoice</span>
+                    <span className="font-mono">{checkoutInvoice.invoiceNumber || `INV-${checkoutInvoice.id}`}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span>PO</span>
+                    <span className="font-mono">{checkoutInvoice.purchaseOrder?.poNumber || `PO-${checkoutInvoice.purchaseOrderId || '-'}`}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span>Payee</span>
+                    <span className="text-right">{checkoutInvoice.seller?.name || `Seller #${checkoutInvoice.sellerId || '-'}`}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-2 text-[10px] font-black uppercase tracking-widest text-blue-100">
+                <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> PCI DSS aligned payment entry</span>
+                <span className="inline-flex items-center gap-2"><Lock className="h-4 w-4" /> Escrow custody after success</span>
+                <span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4" /> Ledger verified record</span>
+              </div>
+            </div>
+
+            <div className="flex max-h-[92vh] min-w-0 flex-1 flex-col">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Secure Payment</p>
+                  <h2 className="mt-1 text-xl font-black text-slate-950">Pay Invoice</h2>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    {checkoutInvoice.invoiceNumber || `INV-${checkoutInvoice.id}`} linked to {checkoutInvoice.purchaseOrder?.poNumber || `PO-${checkoutInvoice.purchaseOrderId || '-'}`}
+                  </p>
                 </div>
                 <button
                   onClick={() => setCheckoutInvoice(null)}
-                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 transition"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                  aria-label="Close payment dialog"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
-            )}
 
             {/* Error Message */}
             {errorMsg && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-800 animate-pulse">
+              <div className="mx-5 mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-800">
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
@@ -461,70 +1429,58 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
 
             {/* Step 1: Selection and Forms */}
             {checkoutStep === 'tabs' && (
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                {/* Invoice Summary Card */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500">PAYEE (SELLER)</p>
-                    <p className="text-xs font-extrabold text-slate-800">{checkoutInvoice.seller?.name || `Seller #${checkoutInvoice.sellerId}`}</p>
-                    <p className="mt-1 text-[10px] font-bold text-slate-500">LINKED PURCHASE ORDER</p>
-                    <p className="text-xs font-extrabold text-slate-900">{checkoutInvoice.purchaseOrder?.poNumber || `PO #${checkoutInvoice.purchaseOrderId}`}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-500">TOTAL PAYABLE AMOUNT</p>
-                    <p className="text-xl font-black text-slate-950">{formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)}</p>
-                    <p className="text-[9px] font-black text-[#12335f] uppercase tracking-wider mt-0.5">Includes GST & Less TDS</p>
-                  </div>
+              <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
+                  <CheckoutInfo label="Payee" value={checkoutInvoice.seller?.name || `Seller #${checkoutInvoice.sellerId || '-'}`} />
+                  <CheckoutInfo label="Invoice" value={checkoutInvoice.invoiceNumber || `INV-${checkoutInvoice.id}`} />
+                  <CheckoutInfo label="Net Payable" value={formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)} strong />
                 </div>
 
-                {/* Tabs selection */}
-                <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl">
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
                   <button
+                    type="button"
                     onClick={() => setActiveTab('razorpay')}
-                    className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-[10px] font-extrabold uppercase transition-all ${
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-3 text-xs font-black uppercase transition-all ${
                       activeTab === 'razorpay'
-                        ? 'bg-white text-slate-950 shadow-md shadow-slate-200/50'
+                        ? 'bg-white text-[#12335f] shadow-sm'
                         : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    <CreditCard className="h-4 w-4 mb-1" />
-                    Razorpay
+                    <CreditCard className="h-4 w-4" />
+                    Card / UPI
                   </button>
                   <button
+                    type="button"
                     onClick={() => setActiveTab('bank')}
-                    className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-[10px] font-extrabold uppercase transition-all ${
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-3 text-xs font-black uppercase transition-all ${
                       activeTab === 'bank'
-                        ? 'bg-white text-slate-950 shadow-md shadow-slate-200/50'
+                        ? 'bg-white text-[#12335f] shadow-sm'
                         : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    <Building2 className="h-4 w-4 mb-1" />
+                    <Building2 className="h-4 w-4" />
                     Bank Transfer
                   </button>
-                  <button
-                    onClick={() => setActiveTab('bypass')}
-                    className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-[10px] font-extrabold uppercase transition-all ${
-                      activeTab === 'bypass'
-                        ? 'bg-slate-900 text-emerald-400 shadow-md shadow-slate-900/20'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Terminal className="h-4 w-4 mb-1 text-emerald-500" />
-                    Dev Bypass
-                  </button>
                 </div>
 
-                {/* Tab content */}
-                <div className="pt-2">
+                <div>
                   {activeTab === 'razorpay' && (
-                    <div className="space-y-3">
-                      <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-3 text-xs text-blue-800 flex gap-2">
-                        <Sparkles className="h-4 w-4 text-[#12335f] flex-shrink-0" />
-                        <div>
-                          <p className="font-extrabold">Razorpay Premium Sandbox</p>
-                          <p className="mt-0.5 text-slate-500 font-semibold leading-relaxed">
-                            Simulate high-throughput card settlement. Enter any mock card details to process your transaction instantly.
-                          </p>
+                    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs text-slate-700">
+                        <div className="flex items-start gap-3">
+                          <ShieldCheck className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+                          <div>
+                            <p className="font-black text-slate-900">Encrypted payment page</p>
+                            <p className="mt-1 text-slate-500 font-semibold leading-relaxed">
+                              Enter payment details only on this secured checkout. Card data is validated for this payment attempt and is not stored by the portal.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase text-slate-500">
+                          <span className="rounded border border-slate-200 bg-white px-2 py-1">Visa</span>
+                          <span className="rounded border border-slate-200 bg-white px-2 py-1">Mastercard</span>
+                          <span className="rounded border border-slate-200 bg-white px-2 py-1">RuPay</span>
+                          <span className="rounded border border-slate-200 bg-white px-2 py-1">UPI</span>
                         </div>
                       </div>
 
@@ -533,7 +1489,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                           <label className="text-[10px] font-black uppercase text-slate-500">Card Number</label>
                           <input
                             type="text"
-                            placeholder="4111 2222 3333 4444"
+                            placeholder="0000 0000 0000 0000"
                             maxLength={19}
                             value={cardNumber}
                             onChange={e => {
@@ -541,7 +1497,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                               const formatted = v.match(/.{1,4}/g)?.join(' ') || v;
                               setCardNumber(formatted);
                             }}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                            className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 font-mono text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                           />
                         </div>
 
@@ -553,7 +1509,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                               placeholder="ANAND GADGE"
                               value={cardName}
                               onChange={e => setCardName(e.target.value.toUpperCase())}
-                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                              className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                             />
                           </div>
                           <div>
@@ -567,10 +1523,10 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                                 let v = e.target.value.replace(/\D/g, '');
                                 if (v.length > 2) {
                                   v = v.slice(0, 2) + '/' + v.slice(2, 4);
-                                }
-                                setCardExpiry(v);
-                              }}
-                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 text-center"
+                              }
+                              setCardExpiry(v);
+                            }}
+                              className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-center font-mono text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                             />
                           </div>
                         </div>
@@ -584,114 +1540,74 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                               maxLength={3}
                               value={cardCvv}
                               onChange={e => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 text-center"
+                              className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-center font-mono text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                             />
                           </div>
                           <div className="col-span-2 flex items-end">
                             <Button
                               onClick={() => handleConfirmCheckout('razorpay')}
-                              className="h-10 w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-wider"
+                              className="h-11 w-full rounded-md bg-[#12335f] text-xs font-black uppercase tracking-wider hover:bg-[#0b2445]"
                             >
-                              Pay {formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)}
+                              Pay Securely {formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)}
                             </Button>
                           </div>
                         </div>
                       </div>
+                      <p className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Protected by tokenized checkout and portal audit trail
+                      </p>
                     </div>
                   )}
 
                   {activeTab === 'bank' && (
-                    <div className="space-y-3">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2.5">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-200 pb-1">
+                    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+                      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="border-b border-slate-200 pb-2 text-[10px] font-black uppercase tracking-widest text-[#12335f]">
                           Escrow Virtual Bank Account Details
                         </p>
-                        <div className="grid grid-cols-2 gap-y-2 text-xs">
-                          <div>
-                            <p className="font-bold text-slate-400">BENEFICIARY</p>
-                            <p className="font-black text-slate-800">PugArch Escrow Services</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-400">BANK NAME</p>
-                            <p className="font-black text-slate-800">ICICI Bank Ltd</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-400">VIRTUAL ACCOUNT</p>
-                            <p className="font-mono font-black text-slate-900 text-sm">
-                              PUGARCH{checkoutInvoice.invoiceNumber?.replace(/[^a-zA-Z0-9]/g, '') || checkoutInvoice.id}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-400">IFSC CODE</p>
-                            <p className="font-mono font-black text-slate-800">ICIC0000104</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-400">ACCOUNT TYPE</p>
-                            <p className="font-black text-slate-800">Current Account</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-400">ROUTING ROUTE</p>
-                            <p className="font-black text-slate-800">NEFT / IMPS / RTGS</p>
-                          </div>
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <BankInfo label="Beneficiary" value="PugArch Escrow Services" />
+                          <BankInfo label="Bank Name" value="ICICI Bank Ltd" />
+                          <BankInfo label="Virtual Account" value={`PUGARCH${checkoutInvoice.invoiceNumber?.replace(/[^a-zA-Z0-9]/g, '') || checkoutInvoice.id}`} mono />
+                          <BankInfo label="IFSC Code" value="ICIC0000104" mono />
+                          <BankInfo label="Account Type" value="Current Account" />
+                          <BankInfo label="Accepted Routes" value="NEFT / IMPS / RTGS" />
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-xs text-amber-900 flex gap-2">
-                        <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                        <p className="font-semibold leading-relaxed text-slate-600">
-                          Transfer the funds via corporate banking net banking. You can use the button below to simulate immediate settlement verification from our bank webhook.
-                        </p>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                          <p className="font-bold leading-relaxed">
+                            Transfer exactly {formatCurrency(checkoutInvoice.amount || checkoutInvoice.totalAmount)} and use invoice number as payment remarks.
+                          </p>
+                        </div>
                       </div>
 
                       <Button
                         onClick={() => handleConfirmCheckout('bank_transfer')}
-                        className="h-10 w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-wider"
+                        className="h-11 w-full rounded-md bg-[#12335f] text-xs font-black uppercase tracking-wider hover:bg-[#0b2445]"
                       >
-                        Simulate Bank Transfer Receipt
+                        Confirm Bank Payment
                       </Button>
                     </div>
                   )}
 
-                  {activeTab === 'bypass' && (
-                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4 text-slate-200">
-                      <div className="flex items-center gap-2 text-emerald-400">
-                        <Terminal className="h-5 w-5" />
-                        <h4 className="font-mono text-sm font-black uppercase tracking-wider">Developer Sandbox Bypass</h4>
-                      </div>
-
-                      <p className="text-xs text-slate-400 leading-relaxed font-semibold">
-                        This environment option initiates a secure, verified offline transaction directly, generating standard financial ledger logs, and locking custody in Escrow within a single Prisma atomic step.
-                      </p>
-
-                      <div className="rounded-lg bg-slate-950 p-3 font-mono text-[10px] text-slate-400 border border-slate-800 space-y-1">
-                        <p className="text-emerald-500">$ curl -X POST "/api/payments/initiate"</p>
-                        <p className="text-emerald-500">$ curl -X POST "/api/payments/:id/simulate-success"</p>
-                        <p className="text-slate-500">// Atomically transitions invoice to PAID and purchase order to ESCROW_HELD</p>
-                      </div>
-
-                      <Button
-                        onClick={() => handleConfirmCheckout('bank_transfer')}
-                        className="w-full h-10 rounded-lg bg-emerald-500 text-slate-950 font-black uppercase tracking-wider hover:bg-emerald-400 transition-all duration-300"
-                      >
-                        Atomically Settle Payment Now
-                      </Button>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
 
             {/* Step 2: Processing state */}
             {checkoutStep === 'processing' && (
-              <div className="flex-1 py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="flex flex-1 flex-col items-center justify-center space-y-4 px-6 py-16 text-center">
                 <div className="relative">
-                  <div className="h-16 w-16 rounded-full border-4 border-slate-200 border-t-emerald-600 animate-spin"></div>
-                  <Lock className="absolute inset-0 m-auto h-6 w-6 text-slate-400" />
+                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-[#12335f]"></div>
+                  <Lock className="absolute inset-0 m-auto h-6 w-6 text-[#12335f]" />
                 </div>
                 <div className="space-y-1.5">
-                  <h3 className="text-base font-black text-slate-900">Securing Payment Channel...</h3>
+                  <h3 className="text-base font-black text-slate-900">Authorising secure payment</h3>
                   <p className="text-xs font-semibold text-slate-500 max-w-sm">
-                    Connecting to MSME-Gateway, initiating double-entry ledger audits, and preparing Escrow custody vault.
+                    Please do not close this window. The portal is preparing payment confirmation, escrow custody, and ledger records.
                   </p>
                 </div>
               </div>
@@ -699,21 +1615,19 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
 
             {/* Step 3: Success Screen */}
             {checkoutStep === 'success' && paymentDetails && (
-              <div className="flex-1 py-4 flex flex-col space-y-5 overflow-y-auto pr-1">
-                {/* Emerald Circle Checkmark */}
+              <div className="flex-1 space-y-5 overflow-y-auto p-6">
                 <div className="flex flex-col items-center justify-center text-center">
-                  <div className="h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-3 border-4 border-emerald-50 animate-bounce">
+                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full border-4 border-emerald-50 bg-emerald-100 text-emerald-600">
                     <Check className="h-7 w-7 stroke-[3]" />
                   </div>
-                  <h3 className="text-lg font-black text-slate-950">Payment Settled & Held in Escrow</h3>
+                  <h3 className="text-lg font-black text-slate-950">Payment Successful</h3>
                   <p className="text-xs font-semibold text-slate-500 mt-1">
-                    Your payment was secured successfully. Funds are held in escrow custody until PO delivery completion.
+                    Transaction has been recorded and linked to the invoice finance workflow.
                   </p>
                 </div>
 
-                {/* Receipt Details Card */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase">TRANSACTION REFERENCE</p>
                       <p className="font-mono text-xs font-black text-[#12335f]">
@@ -743,7 +1657,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                     </div>
                   </div>
 
-                  <div className="rounded-lg bg-white border border-slate-100 p-2.5 space-y-1">
+                  <div className="rounded-lg bg-white border border-slate-200 p-3 space-y-1">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Double-Entry Financial Receipt</p>
                     <div className="flex justify-between text-[11px] font-bold text-slate-600">
                       <span>Debit: Buyer Account</span>
@@ -762,13 +1676,14 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       setCheckoutInvoice(null);
                       void reload();
                     }}
-                    className="flex-1 h-11 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-black uppercase tracking-wider"
+                    className="flex-1 h-11 rounded-md bg-[#12335f] hover:bg-[#0b2445] text-xs font-black uppercase tracking-wider"
                   >
                     Done & Close
                   </Button>
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       )}
@@ -789,5 +1704,92 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CheckoutInfo({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+      <p className={cn('mt-1 break-words text-sm font-black text-slate-900', strong && 'text-base text-[#12335f]')}>{value}</p>
+    </div>
+  );
+}
+
+function BankInfo({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className={cn('mt-1 break-words text-xs font-black text-slate-800', mono && 'font-mono text-sm')}>{value}</p>
+    </div>
+  );
+}
+
+function TimelineStep({
+  index,
+  title,
+  description,
+  timestamp,
+  completed,
+  active,
+  details
+}: {
+  index: number;
+  title: string;
+  description: string;
+  timestamp?: string;
+  completed: boolean;
+  active: boolean;
+  details?: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-4 relative">
+      {/* Line connecting nodes */}
+      {index < 5 && (
+        <div className={cn(
+          "absolute left-4 top-8 bottom-[-16px] w-[2px] transition-colors duration-300",
+          completed ? "bg-emerald-500" : "bg-slate-200"
+        )} />
+      )}
+      
+      {/* Circle Icon node */}
+      <div className={cn(
+        "z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-300",
+        completed
+          ? "border-emerald-500 bg-emerald-50 text-emerald-600 shadow-sm shadow-emerald-100"
+          : active
+          ? "border-[#12335f] bg-[#12335f] text-white shadow-md shadow-[#12335f]/20 scale-105"
+          : "border-slate-200 bg-white text-slate-400"
+      )}>
+        {completed ? (
+          <Check className="h-4 w-4 stroke-[3]" />
+        ) : (
+          <span className="text-xs font-black">{index}</span>
+        )}
+      </div>
+
+      {/* Step Content */}
+      <div className="flex-1 pb-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h4 className={cn(
+            "text-xs font-black uppercase tracking-wider",
+            completed ? "text-slate-900" : active ? "text-[#12335f]" : "text-slate-400"
+          )}>
+            {title}
+          </h4>
+          {timestamp && (
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-150 px-2 py-0.5 rounded-md">{formatDate(timestamp)}</span>
+          )}
+        </div>
+        <p className="mt-1 text-xs font-semibold text-slate-500 leading-relaxed">{description}</p>
+        
+        {/* Collapsible details section */}
+        {details && (completed || active) && (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 text-[10px] font-bold text-slate-600 space-y-1.5 shadow-inner">
+            {details}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

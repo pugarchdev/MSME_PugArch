@@ -52,6 +52,18 @@ export default function BuyerProfile() {
   const [personalOtp, setPersonalOtp] = useState('');
   const [personalOtpSent, setPersonalOtpSent] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const handleFieldChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
+      });
+    }
+  };
 
   const [formData, setFormData] = useState({
     pincode: '',
@@ -176,19 +188,21 @@ export default function BuyerProfile() {
   }, []);
 
   const handleGetPersonalOtp = async () => {
-    if (
-      !formData.firstName.trim() ||
-      !formData.lastName.trim() ||
-      !formData.designation.trim() ||
-      !formData.dateOfRetirement.trim() ||
-      !formData.nameAsInPan.trim() ||
-      !formData.orgPan.trim() ||
-      !formData.dateAsInPan.trim()
-    ) {
-      toast.error('Please fill in all mandatory fields first');
+    const errors: Record<string, string> = {};
+    if (!formData.firstName.trim()) errors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) errors.lastName = 'Last name is required';
+    if (!formData.designation.trim()) errors.designation = 'Designation is required';
+    if (!formData.dateOfRetirement.trim()) errors.dateOfRetirement = 'Date of retirement is required';
+    if (!formData.nameAsInPan.trim()) errors.nameAsInPan = 'Name as in PAN is required';
+    if (!formData.orgPan.trim()) errors.orgPan = 'Organisation PAN is required';
+    if (!formData.dateAsInPan.trim()) errors.dateAsInPan = 'Date as in PAN is required';
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
       return;
     }
 
+    setFormErrors({});
     setIsSendingOtp(true);
     try {
       const res = await api.fetch('/api/buyer/onboarding/send-otp', {
@@ -224,16 +238,69 @@ export default function BuyerProfile() {
       };
 
       if (activeSection === 'bank') {
-        if (formData.bankAccountNo !== formData.confirmBankAccountNo) {
-          toast.error('Account numbers do not match');
+        const errors: Record<string, string> = {};
+        const cleanIfsc = formData.ifscCode.trim().toUpperCase();
+        const cleanAccountNo = formData.bankAccountNo.trim();
+        const cleanConfirmAccountNo = formData.confirmBankAccountNo.trim();
+        const cleanBankName = formData.bankName.trim();
+        const cleanBankAddress = formData.bankAddress.trim();
+        const cleanAccountHolder = formData.accountHolderName.trim();
+
+        if (!cleanIfsc) {
+          errors.ifscCode = 'IFSC code is required';
+        } else {
+          const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+          if (!ifscRegex.test(cleanIfsc)) {
+            errors.ifscCode = 'Invalid IFSC code format (e.g. SBIN0001234)';
+          }
+        }
+
+        if (!cleanAccountNo) {
+          errors.bankAccountNo = 'Bank account number is required';
+        } else {
+          const accRegex = /^\d{9,18}$/;
+          if (!accRegex.test(cleanAccountNo)) {
+            errors.bankAccountNo = 'Bank account number must be between 9 and 18 digits';
+          }
+        }
+
+        if (!cleanConfirmAccountNo) {
+          errors.confirmBankAccountNo = 'Please confirm bank account number';
+        } else if (cleanAccountNo !== cleanConfirmAccountNo) {
+          errors.confirmBankAccountNo = 'Account numbers do not match';
+        }
+
+        if (!cleanBankName) {
+          errors.bankName = 'Bank name is required';
+        } else if (cleanBankName.length < 3 || cleanBankName.length > 100 || !/[a-zA-Z]/.test(cleanBankName)) {
+          errors.bankName = 'Bank name must be between 3 and 100 characters and contain letters';
+        }
+
+        if (!cleanAccountHolder) {
+          errors.accountHolderName = 'Account holder name is required';
+        } else if (cleanAccountHolder.length < 3 || cleanAccountHolder.length > 100 || !/[a-zA-Z]/.test(cleanAccountHolder)) {
+          errors.accountHolderName = 'Account holder name must be between 3 and 100 characters and contain letters';
+        }
+
+        if (!cleanBankAddress) {
+          errors.bankAddress = 'Bank address is required';
+        } else if (cleanBankAddress.length < 10 || cleanBankAddress.length > 250) {
+          errors.bankAddress = 'Bank address must be between 10 and 250 characters';
+        }
+
+        if (Object.keys(errors).length > 0) {
+          setFormErrors(errors);
           setIsSaving(false);
           return;
         }
-        payload.bankIfsc = formData.ifscCode;
-        payload.bankName = formData.bankName;
-        payload.bankAddress = formData.bankAddress;
-        payload.bankAccountNo = formData.bankAccountNo;
-        payload.accountHolderName = formData.accountHolderName;
+
+        setFormErrors({});
+
+        payload.bankIfsc = cleanIfsc;
+        payload.bankName = cleanBankName;
+        payload.bankAddress = cleanBankAddress;
+        payload.bankAccountNo = cleanAccountNo;
+        payload.accountHolderName = cleanAccountHolder;
       }
 
       if (activeSection === 'personal') {
@@ -243,7 +310,7 @@ export default function BuyerProfile() {
           return;
         }
         if (!personalOtp.trim()) {
-          toast.error('Please enter the OTP');
+          setFormErrors({ personalOtp: 'Please enter the OTP' });
           setIsSaving(false);
           return;
         }
@@ -278,7 +345,7 @@ export default function BuyerProfile() {
 
       if (activeSection === 'email') {
         if (formData.newEmail !== formData.verifyEmail) {
-          toast.error('Email addresses do not match');
+          setFormErrors({ verifyEmail: 'Email addresses do not match' });
           setIsSaving(false);
           return;
         }
@@ -309,7 +376,25 @@ export default function BuyerProfile() {
         await refreshUser();
       } else {
         const body = await res.json().catch(() => null);
-        toast.error(body?.message || 'Failed to update details');
+        const errMsg = body?.message || 'Failed to update details';
+        
+        // Map backend validation errors to formErrors to highlight fields inline
+        const lowercaseMsg = errMsg.toLowerCase();
+        if (lowercaseMsg.includes('ifsc')) {
+          setFormErrors(prev => ({ ...prev, ifscCode: errMsg }));
+        } else if (lowercaseMsg.includes('account number') || lowercaseMsg.includes('bank account no')) {
+          setFormErrors(prev => ({ ...prev, bankAccountNo: errMsg }));
+        } else if (lowercaseMsg.includes('bank name')) {
+          setFormErrors(prev => ({ ...prev, bankName: errMsg }));
+        } else if (lowercaseMsg.includes('account holder')) {
+          setFormErrors(prev => ({ ...prev, accountHolderName: errMsg }));
+        } else if (lowercaseMsg.includes('bank address')) {
+          setFormErrors(prev => ({ ...prev, bankAddress: errMsg }));
+        } else if (lowercaseMsg.includes('otp')) {
+          setFormErrors(prev => ({ ...prev, personalOtp: errMsg }));
+        } else {
+          toast.error(errMsg);
+        }
       }
     } catch (err) {
       toast.error('Network error');
@@ -356,6 +441,7 @@ export default function BuyerProfile() {
                 setIsSidebarOpen(false);
                 setPersonalOtp('');
                 setPersonalOtpSent(false);
+                setFormErrors({});
               }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left group",
@@ -405,7 +491,8 @@ export default function BuyerProfile() {
                   <Select 
                     label="Type of Organisation *" 
                     value={formData.organizationType}
-                    onChange={(e) => setFormData({...formData, organizationType: e.target.value})}
+                    onChange={(e) => handleFieldChange('organizationType', e.target.value)}
+                    error={formErrors.organizationType}
                   >
                     <option value="central">Central Government</option>
                     <option value="state">State Government</option>
@@ -416,7 +503,8 @@ export default function BuyerProfile() {
                   <Select 
                     label="MSME Type *" 
                     value={formData.msmeType}
-                    onChange={(e) => setFormData({...formData, msmeType: e.target.value})}
+                    onChange={(e) => handleFieldChange('msmeType', e.target.value)}
+                    error={formErrors.msmeType}
                   >
                     <option value="">Select MSME Type</option>
                     {MSME_TYPES.map(t => (
@@ -426,21 +514,24 @@ export default function BuyerProfile() {
                   <Input 
                     label="Ministry/Department *" 
                     value={formData.ministry} 
-                    onChange={(e) => setFormData({...formData, ministry: e.target.value})}
+                    onChange={(e) => handleFieldChange('ministry', e.target.value)}
                     placeholder="Enter Ministry name"
+                    error={formErrors.ministry}
                   />
                   <Input 
                     label="Division *" 
                     value={formData.division} 
-                    onChange={(e) => setFormData({...formData, division: e.target.value})}
+                    onChange={(e) => handleFieldChange('division', e.target.value)}
                     placeholder="Enter Division name"
+                    error={formErrors.division}
                   />
                   <Input 
                     label="Number of Employees *" 
                     type="number"
                     value={formData.employeeCount} 
-                    onChange={(e) => setFormData({...formData, employeeCount: e.target.value})}
+                    onChange={(e) => handleFieldChange('employeeCount', e.target.value)}
                     placeholder="e.g. 150"
+                    error={formErrors.employeeCount}
                   />
                 </div>
 
@@ -530,22 +621,25 @@ export default function BuyerProfile() {
                     <Input 
                       label="Pincode *" 
                       value={formData.pincode} 
-                      onChange={(e) => setFormData({...formData, pincode: e.target.value})}
+                      onChange={(e) => handleFieldChange('pincode', e.target.value)}
                       placeholder="e.g. 411030"
+                      error={formErrors.pincode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="State *" 
                       value={formData.state} 
-                      onChange={(e) => setFormData({...formData, state: e.target.value})}
+                      onChange={(e) => handleFieldChange('state', e.target.value)}
                       placeholder="MAHARASHTRA"
+                      error={formErrors.state}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="District *" 
                       value={formData.district} 
-                      onChange={(e) => setFormData({...formData, district: e.target.value})}
+                      onChange={(e) => handleFieldChange('district', e.target.value)}
                       placeholder="Pune"
+                      error={formErrors.district}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>
@@ -555,11 +649,17 @@ export default function BuyerProfile() {
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Street Address *</label>
                       <textarea 
                         value={formData.streetAddress}
-                        onChange={(e) => setFormData({...formData, streetAddress: e.target.value})}
+                        onChange={(e) => handleFieldChange('streetAddress', e.target.value)}
                         placeholder="Enter full street address"
                         rows={5}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none"
+                        className={cn(
+                          "w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none",
+                          formErrors.streetAddress && "border-red-500 focus:ring-red-500 bg-red-50/30"
+                        )}
                       />
+                      {formErrors.streetAddress && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.streetAddress}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -570,19 +670,22 @@ export default function BuyerProfile() {
                     <Input 
                       placeholder="STD code" 
                       value={formData.stdCode}
-                      onChange={(e) => setFormData({...formData, stdCode: e.target.value})}
+                      onChange={(e) => handleFieldChange('stdCode', e.target.value)}
+                      error={formErrors.stdCode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       placeholder="Office Contact No." 
                       value={formData.officeContact}
-                      onChange={(e) => setFormData({...formData, officeContact: e.target.value})}
+                      onChange={(e) => handleFieldChange('officeContact', e.target.value)}
+                      error={formErrors.officeContact}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       placeholder="Extension No." 
                       value={formData.extensionNo}
-                      onChange={(e) => setFormData({...formData, extensionNo: e.target.value})}
+                      onChange={(e) => handleFieldChange('extensionNo', e.target.value)}
+                      error={formErrors.extensionNo}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>
@@ -592,8 +695,9 @@ export default function BuyerProfile() {
                   <Input 
                     label="Website URL *" 
                     value={formData.websiteUrl}
-                    onChange={(e) => setFormData({...formData, websiteUrl: e.target.value})}
+                    onChange={(e) => handleFieldChange('websiteUrl', e.target.value)}
                     placeholder="WWW.GEMEXPERT.COM"
+                    error={formErrors.websiteUrl}
                     className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                   />
                 </div>
@@ -622,26 +726,34 @@ export default function BuyerProfile() {
                     <Input 
                       label="IFSC Code *" 
                       value={formData.ifscCode} 
-                      onChange={(e) => setFormData({...formData, ifscCode: e.target.value})}
+                      onChange={(e) => handleFieldChange('ifscCode', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11))}
                       placeholder="e.g. SBIN0001234"
+                      error={formErrors.ifscCode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Bank Name *" 
                       value={formData.bankName} 
-                      onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                      onChange={(e) => handleFieldChange('bankName', e.target.value.slice(0, 100))}
                       placeholder="STATE BANK OF INDIA"
+                      error={formErrors.bankName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Bank Address *</label>
                       <textarea 
                         value={formData.bankAddress}
-                        onChange={(e) => setFormData({...formData, bankAddress: e.target.value})}
+                        onChange={(e) => handleFieldChange('bankAddress', e.target.value.slice(0, 250))}
                         placeholder="Enter full bank branch address"
                         rows={3}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all resize-none"
+                        className={cn(
+                          "w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all resize-none",
+                          formErrors.bankAddress && "border-red-500 focus:ring-red-500 bg-red-50/30"
+                        )}
                       />
+                      {formErrors.bankAddress && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.bankAddress}</p>
+                      )}
                     </div>
                   </div>
 
@@ -650,22 +762,25 @@ export default function BuyerProfile() {
                       label="Bank Account No *" 
                       type="password"
                       value={formData.bankAccountNo} 
-                      onChange={(e) => setFormData({...formData, bankAccountNo: e.target.value})}
+                      onChange={(e) => handleFieldChange('bankAccountNo', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       placeholder="••••••••••••"
+                      error={formErrors.bankAccountNo}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Confirm Bank Account No *" 
                       value={formData.confirmBankAccountNo} 
-                      onChange={(e) => setFormData({...formData, confirmBankAccountNo: e.target.value})}
+                      onChange={(e) => handleFieldChange('confirmBankAccountNo', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       placeholder="Enter account number again"
+                      error={formErrors.confirmBankAccountNo}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Account Holder Name *" 
                       value={formData.accountHolderName} 
-                      onChange={(e) => setFormData({...formData, accountHolderName: e.target.value})}
+                      onChange={(e) => handleFieldChange('accountHolderName', e.target.value.slice(0, 100))}
                       placeholder="AS PER BANK RECORDS"
+                      error={formErrors.accountHolderName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>
@@ -695,29 +810,33 @@ export default function BuyerProfile() {
                     <Input 
                       label="First Name" 
                       value={formData.firstName} 
-                      onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                      onChange={(e) => handleFieldChange('firstName', e.target.value)}
                       placeholder="e.g. Sampati"
+                      error={formErrors.firstName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Last Name *" 
                       value={formData.lastName} 
-                      onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                      onChange={(e) => handleFieldChange('lastName', e.target.value)}
                       placeholder="e.g. Ingale"
+                      error={formErrors.lastName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Designation *" 
                       value={formData.designation} 
-                      onChange={(e) => setFormData({...formData, designation: e.target.value})}
+                      onChange={(e) => handleFieldChange('designation', e.target.value)}
                       placeholder="e.g. Primary User"
+                      error={formErrors.designation}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Date of Retirement *" 
                       type="date"
                       value={formData.dateOfRetirement} 
-                      onChange={(e) => setFormData({...formData, dateOfRetirement: e.target.value})}
+                      onChange={(e) => handleFieldChange('dateOfRetirement', e.target.value)}
+                      error={formErrors.dateOfRetirement}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>
@@ -726,22 +845,25 @@ export default function BuyerProfile() {
                     <Input 
                       label="Name ( As in PAN ) *" 
                       value={formData.nameAsInPan} 
-                      onChange={(e) => setFormData({...formData, nameAsInPan: e.target.value})}
+                      onChange={(e) => handleFieldChange('nameAsInPan', e.target.value)}
                       placeholder="ENTER FULL NAME"
+                      error={formErrors.nameAsInPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Organisation PAN *" 
                       value={formData.orgPan} 
-                      onChange={(e) => setFormData({...formData, orgPan: e.target.value})}
+                      onChange={(e) => handleFieldChange('orgPan', e.target.value)}
                       placeholder="ABCDE1234F"
+                      error={formErrors.orgPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Date (As in Pan) *" 
                       type="date"
                       value={formData.dateAsInPan} 
-                      onChange={(e) => setFormData({...formData, dateAsInPan: e.target.value})}
+                      onChange={(e) => handleFieldChange('dateAsInPan', e.target.value)}
+                      error={formErrors.dateAsInPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
 
@@ -787,15 +909,40 @@ export default function BuyerProfile() {
                    </p>
                 </div>
 
+                <div className="bg-[#12335f]/5 border border-[#12335f]/10 p-6 rounded-3xl flex items-start gap-4">
+                   <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-[#12335f] shadow-sm shrink-0">
+                      <Shield className="h-5 w-5" />
+                   </div>
+                   <div className="space-y-1">
+                      <p className="text-[10px] font-black uppercase text-[#12335f] tracking-widest leading-none">Security Verification Protocol</p>
+                      <p className="text-xs font-semibold text-slate-600 leading-relaxed pt-1">
+                         To authorize modifications to your Personal Information, an OTP will be sent to your registered email. After you enter the OTP, click verify to automatically update and save the changes.
+                      </p>
+                   </div>
+                </div>
+
                 {personalOtpSent && (
                   <div className="max-w-md pt-4 animate-in fade-in duration-300">
                     <Input 
                       label="Enter Email OTP *" 
                       placeholder="Enter 6-digit OTP sent to email"
                       value={personalOtp}
-                      onChange={(e) => setPersonalOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(e) => {
+                        setPersonalOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        if (formErrors.personalOtp) {
+                          setFormErrors(prev => {
+                            const copy = { ...prev };
+                            delete copy.personalOtp;
+                            return copy;
+                          });
+                        }
+                      }}
+                      error={formErrors.personalOtp}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
+                    <p className="text-[11px] text-slate-400 font-medium mt-2 ml-1">
+                      Enter the 6-digit OTP sent to your registered email to automatically verify and save your changes.
+                    </p>
                   </div>
                 )}
 
@@ -833,8 +980,9 @@ export default function BuyerProfile() {
                     <Input 
                       label="Competent Authority Email *" 
                       value={formData.competentAuthorityEmail} 
-                      onChange={(e) => setFormData({...formData, competentAuthorityEmail: e.target.value})}
+                      onChange={(e) => handleFieldChange('competentAuthorityEmail', e.target.value)}
                       placeholder="e.g. secy.dhe@nic.in"
+                      error={formErrors.competentAuthorityEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>
@@ -850,23 +998,26 @@ export default function BuyerProfile() {
                     <Input 
                       label="First Name *" 
                       value={formData.verifyingFirstName} 
-                      onChange={(e) => setFormData({...formData, verifyingFirstName: e.target.value})}
+                      onChange={(e) => handleFieldChange('verifyingFirstName', e.target.value)}
                       placeholder="DATTATRAY"
+                      error={formErrors.verifyingFirstName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Last Name *" 
                       value={formData.verifyingLastName} 
-                      onChange={(e) => setFormData({...formData, verifyingLastName: e.target.value})}
+                      onChange={(e) => handleFieldChange('verifyingLastName', e.target.value)}
                       placeholder="INGALE"
+                      error={formErrors.verifyingLastName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="space-y-1">
                       <Input 
                         label="Email (Official) *" 
                         value={formData.verifyingEmail} 
-                        onChange={(e) => setFormData({...formData, verifyingEmail: e.target.value})}
+                        onChange={(e) => handleFieldChange('verifyingEmail', e.target.value)}
                         placeholder="buycon5.gpmp.mh@gembuyer.in"
+                        error={formErrors.verifyingEmail}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
                       <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with NIC/GeM.</p>
@@ -874,16 +1025,18 @@ export default function BuyerProfile() {
                     <Input 
                       label="Mobile (Official) *" 
                       value={formData.verifyingMobile} 
-                      onChange={(e) => setFormData({...formData, verifyingMobile: e.target.value})}
+                      onChange={(e) => handleFieldChange('verifyingMobile', e.target.value)}
                       placeholder="9763982676"
+                      error={formErrors.verifyingMobile}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="md:col-span-2 max-w-xl">
                       <Input 
                         label="Designation *" 
                         value={formData.verifyingDesignation} 
-                        onChange={(e) => setFormData({...formData, verifyingDesignation: e.target.value})}
+                        onChange={(e) => handleFieldChange('verifyingDesignation', e.target.value)}
                         placeholder="OWNER"
+                        error={formErrors.verifyingDesignation}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
                     </div>
@@ -933,8 +1086,9 @@ export default function BuyerProfile() {
                       <Input 
                         label="Mobile number linked with Aadhaar *" 
                         value={formData.aadhaarMobile} 
-                        onChange={(e) => setFormData({...formData, aadhaarMobile: e.target.value})}
+                        onChange={(e) => handleFieldChange('aadhaarMobile', e.target.value)}
                         placeholder="Enter mobile number linked with Aadhaar"
+                        error={formErrors.aadhaarMobile}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
                     </div>
@@ -1059,15 +1213,17 @@ export default function BuyerProfile() {
                     <Input 
                       label="Official Email Id *" 
                       value={formData.newEmail} 
-                      onChange={(e) => setFormData({...formData, newEmail: e.target.value})}
+                      onChange={(e) => handleFieldChange('newEmail', e.target.value)}
                       placeholder="Enter Official email id"
+                      error={formErrors.newEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <Input 
                       label="Verify Email Id *" 
                       value={formData.verifyEmail} 
-                      onChange={(e) => setFormData({...formData, verifyEmail: e.target.value})}
+                      onChange={(e) => handleFieldChange('verifyEmail', e.target.value)}
                       placeholder="Verify Official email id"
+                      error={formErrors.verifyEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                   </div>

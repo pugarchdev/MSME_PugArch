@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
-import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown, Eye, X } from 'lucide-react';
+import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown, Eye, X, Filter, List, LayoutGrid } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { cn } from '../lib/utils';
@@ -21,6 +21,8 @@ export default function PurchaseOrders() {
   const [activeTab, setActiveTab] = useState<'Open' | 'Delivered' | 'Cancelled' | 'All'>('Open');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('newest');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
 
@@ -163,6 +165,15 @@ export default function PurchaseOrders() {
     }
   };
 
+  const renderOrderActions = (order: PurchaseOrderDto) => (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
+      {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
+      <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
+      {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
+    </div>
+  );
+
   const downloadPdf = (order: PurchaseOrderDto) => {
     const doc = new jsPDF();
     doc.setFillColor(18, 51, 95);
@@ -219,80 +230,102 @@ export default function PurchaseOrders() {
 
       <Card>
         <CardContent className="space-y-3 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_auto]">
-            <div className="relative">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search PO, seller, buyer, status..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
             </div>
-            <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold">
-              <option value="newest">Newest</option>
-              <option value="value_high">Value high</option>
-              <option value="value_low">Value low</option>
-              <option value="status">Status</option>
-            </select>
-            <div className="flex flex-wrap gap-2">
-              {(['Open', 'Delivered', 'Cancelled', 'All'] as const).map(tab => (
-                <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={cn('rounded-lg px-3 py-2 text-[10px] font-black uppercase', activeTab === tab ? 'bg-[#12335f] text-white' : 'bg-slate-100 text-slate-600')}>{tab}</button>
-              ))}
+            
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full xl:w-auto">
+              <div className="flex flex-wrap items-center gap-3">
+                <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 min-w-[130px]">
+                  <option value="newest">Newest</option>
+                  <option value="value_high">Value High</option>
+                  <option value="value_low">Value Low</option>
+                  <option value="status">Status</option>
+                </select>
+
+                <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  {(['Open', 'Delivered', 'Cancelled', 'All'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setActiveTab(tab)}
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-[10px] font-black uppercase transition-all duration-200',
+                        activeTab === tab
+                          ? 'bg-[#12335f] text-white shadow-sm shadow-[#12335f]/15'
+                          : 'text-slate-600 hover:text-[#12335f] hover:bg-white'
+                      )}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 ml-auto sm:ml-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'list' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'grid' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
+                  title="Grid view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {filteredOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="p-3"><SortHeader label="PO" columnKey="po" /></th>
-                  <th className="p-3"><SortHeader label="Title" columnKey="title" /></th>
-                  <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
-                  <th className="p-3"><SortHeader label="Value" columnKey="value" /></th>
-                  <th className="p-3"><SortHeader label="Expected" columnKey="expected" /></th>
-                  <th className="p-3"><SortHeader label="Status" columnKey="status" /></th>
-                  <th className="p-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {pagedOrders.map(order => (
-                  <tr key={order.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono text-xs font-black text-[#12335f]">{order.poNumber}</td>
-                    <td className="p-3">
-                      <p className="font-black text-slate-900">{order.title}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
-                        {order.paymentTerms && (
-                          <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded uppercase">
-                            {order.paymentTerms.replace(/_/g, ' ')}
-                          </span>
-                        )}
-                        {order.deliveryType && (
-                          <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
-                            {order.deliveryType.replace(/_/g, ' ')}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
-                    <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
-                    <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
-                    <td className="p-3"><StatusPill status={order.status} /></td>
-                    <td className="p-3">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
-                        {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
-                        <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
-                        {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {filteredOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {pagedOrders.map(order => (
+              <Card key={order.id} className="border-slate-200 bg-white shadow-sm">
+                <CardContent className="space-y-4 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-black text-[#12335f]">{order.poNumber}</p>
+                      <h3 className="mt-1 line-clamp-2 text-base font-black leading-snug text-slate-950">{order.title}</h3>
+                    </div>
+                    <StatusPill status={order.status} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <InfoTile label="Party" value={order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`} />
+                    <InfoTile label="Value" value={formatCurrency(order.amount || order.totalValue)} />
+                    <InfoTile label="Expected" value={formatDate(order.expectedDelivery)} />
+                    <InfoTile label="Created" value={formatDate(order.createdAt)} />
+                  </div>
+
+                  {(order.paymentTerms || order.deliveryType) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {order.paymentTerms && <span className="rounded bg-teal-50 px-2 py-1 text-[9px] font-black uppercase text-teal-700">{order.paymentTerms.replace(/_/g, ' ')}</span>}
+                      {order.deliveryType && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">{order.deliveryType.replace(/_/g, ' ')}</span>}
+                    </div>
+                  )}
+
+                  <div className="border-t border-slate-100 pt-3">
+                    {renderOrderActions(order)}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
         </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       )}
 
       {confirming && (
@@ -484,6 +517,15 @@ function Metric({ label, value, icon: Icon, onClick, active }: { label: string; 
         </CardContent>
       </Card>
     </button>
+  );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-slate-800">{value || '-'}</p>
+    </div>
   );
 }
 

@@ -27,7 +27,9 @@ import {
   Eye,
   Edit3,
   Trash2,
-  Save
+  Save,
+  List,
+  LayoutGrid
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -66,6 +68,59 @@ const TENDER_STAGES = [
   { id: 'po_generated', label: 'PO Generation' }
 ];
 
+const TENDER_CATEGORY_OPTIONS = [
+  'Construction',
+  'Civil Work',
+  'Electrical',
+  'Mechanical',
+  'Hydraulics',
+  'Industrial Machinery',
+  'Automation',
+  'IT & Software',
+  'Cloud Services',
+  'Networking',
+  'Office Equipment',
+  'Furniture',
+  'Catering',
+  'Housekeeping',
+  'Security Services',
+  'Transportation',
+  'Logistics',
+  'Packaging',
+  'Printing',
+  'Medical Supplies',
+  'Laboratory Equipment',
+  'Chemicals',
+  'Refractories',
+  'Steel & Metals',
+  'Cement & Building Materials',
+  'Pipes & Hardware',
+  'Safety Equipment',
+  'Fire Safety',
+  'Mining Equipment',
+  'Power & Energy',
+  'Oil & Gas',
+  'Telecom',
+  'Fabrication',
+  'Welding Services',
+  'Repair & Maintenance',
+  'AMC Services',
+  'Consultancy Services',
+  'Agriculture Supplies',
+  'Tyres & Rubber',
+  'Pumps & Motors',
+  'Bearings & Spare Parts',
+  'Industrial Consumables',
+  'Cleaning Services',
+  'Water Treatment',
+  'HVAC',
+  'Interior & Furnishing',
+  'Event Management',
+  'General Services',
+  'OEM Supply',
+  'Manpower Supply'
+];
+
 const normalizeTenderList = (payload: any): Tender[] => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.tenders)) return payload.tenders;
@@ -86,6 +141,7 @@ export default function Tenders() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
   const [budgetFilter, setBudgetFilter] = useState('All');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'created', direction: 'desc' });
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTender, setNewTender] = useState({
     title: '',
@@ -309,6 +365,54 @@ export default function Tenders() {
     );
   };
 
+  const renderTenderActions = (tender: Tender) => (
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <button
+        type="button"
+        onClick={() => setSelectedTender(tender)}
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-[#dadce0] bg-white text-[#12335f] hover:bg-slate-50"
+        title="View tender details"
+      >
+        <Eye className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditingTender(tender)}
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-[#dadce0] bg-white text-slate-700 hover:bg-slate-50"
+        title="Edit tender"
+      >
+        <Edit3 className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => handleDeleteTender(tender)}
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50"
+        title="Delete tender"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+      {tender.status === 'draft' ? (
+        <Button
+          className="bg-[#12335f] hover:bg-[#0b2445] text-white text-xs font-bold h-9 px-3 rounded-md shadow-sm transition-all flex items-center gap-1.5"
+          onClick={() => handlePublish(tender.id)}
+          disabled={publishingId === tender.id}
+        >
+          {publishingId === tender.id ? 'Publishing...' : 'Publish'}
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          className="bg-white border border-[#dadce0] text-slate-900 text-xs font-bold h-9 px-3 rounded-md hover:bg-slate-50 flex items-center gap-1.5"
+          onClick={() => router.push('/quotations')}
+        >
+          Bids
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+
   const currentTenders = (activeTab === 'published' 
     ? tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin'))
     : activeTab === 'closed'
@@ -395,6 +499,30 @@ export default function Tenders() {
               </button>
             ))}
           </div>
+          <div className="flex items-center gap-1 rounded-lg border border-[#e8eaed] bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
+                viewMode === 'list' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
+              )}
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
+                viewMode === 'grid' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
+              )}
+              title="Grid view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Filters and Search Row */}
@@ -415,11 +543,9 @@ export default function Tenders() {
               onChange={(e) => setSelectedCategoryFilter(e.target.value)}
             >
               <option value="All">All Categories</option>
-              <option value="Furniture">Furniture</option>
-              <option value="Software & Cloud">Software & Cloud</option>
-              <option value="Catering">Catering</option>
-              <option value="Construction">Construction</option>
-              <option value="Services">Services</option>
+              {TENDER_CATEGORY_OPTIONS.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -449,7 +575,7 @@ export default function Tenders() {
         </div>
 
         {/* Tenders Table */}
-        <div className="overflow-x-auto border border-[#dadce0] rounded-lg bg-white shadow-sm">
+        <div className={cn('overflow-x-auto border border-[#dadce0] rounded-lg bg-white shadow-sm', viewMode === 'grid' && 'hidden')}>
           <table className="w-full text-left border-collapse min-w-[960px]">
             <thead className="bg-white border-b border-[#dadce0]">
               <tr>
@@ -568,6 +694,65 @@ export default function Tenders() {
             </tbody>
           </table>
         </div>
+        {viewMode === 'grid' && currentTenders.length === 0 && (
+          <div className="rounded-lg border border-[#dadce0] bg-white px-8 py-20 text-center shadow-sm">
+            <div className="flex flex-col items-center gap-4 opacity-30">
+              <FileText className="h-12 w-12" />
+              <p className="text-sm font-bold uppercase tracking-widest">No Tenders Found</p>
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'grid' && currentTenders.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {pagedTenders.map((tender, index) => (
+              <div key={tender.id} className="rounded-lg border border-[#dadce0] bg-white p-4 shadow-sm transition hover:shadow-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Sr. No. {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
+                    </p>
+                    <p className="mt-1 font-mono text-xs font-bold text-[#12335f]">
+                      {tender.tenderId || `T-2026-01${tender.id}`}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-bold',
+                    tender.status === 'draft' ? 'bg-slate-100 text-slate-600' : 'bg-[#e6f4ea] text-[#1e8e3e]'
+                  )}>
+                    {tender.status === 'draft' ? 'Draft' : 'Active'}
+                  </span>
+                </div>
+
+                <h3 className="mt-4 line-clamp-2 text-base font-black leading-snug text-slate-950">{tender.title}</h3>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="font-black uppercase tracking-widest text-slate-400">Category</p>
+                    <p className="mt-1 font-bold text-slate-900">{tender.category || '-'}</p>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="font-black uppercase tracking-widest text-slate-400">Budget</p>
+                    <p className="mt-1 font-bold text-slate-900">Rs. {tender.budget?.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="font-black uppercase tracking-widest text-slate-400">Bids</p>
+                    <p className="mt-1 font-bold text-slate-900">{tender.bidsCount || 0}</p>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="font-black uppercase tracking-widest text-slate-400">Closes</p>
+                    <p className="mt-1 font-bold text-slate-900">{getDaysLeft(tender.closesAt)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
+                  {renderTenderActions(tender)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {currentTenders.length > 0 && (
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="tenders" />
         )}
@@ -609,18 +794,16 @@ export default function Tenders() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Category</label>
-                    <select 
+                    <select
                       required
                       value={newTender.category}
                       onChange={(e) => setNewTender({...newTender, category: e.target.value})}
                       className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
                     >
                       <option value="">Select Category</option>
-                      <option value="Furniture">Furniture</option>
-                      <option value="Software & Cloud">Software & Cloud</option>
-                      <option value="Catering">Catering</option>
-                      <option value="Construction">Construction</option>
-                      <option value="Services">Services</option>
+                      {TENDER_CATEGORY_OPTIONS.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -907,12 +1090,15 @@ function TenderEditModal({
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
               Category
-              <select name="category" defaultValue={tender.category} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#12335f]/20">
-                <option value="Furniture">Furniture</option>
-                <option value="Software & Cloud">Software & Cloud</option>
-                <option value="Catering">Catering</option>
-                <option value="Construction">Construction</option>
-                <option value="Services">Services</option>
+              <select
+                name="category"
+                defaultValue={tender.category}
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#12335f]/20"
+              >
+                <option value="">Select Category</option>
+                {TENDER_CATEGORY_OPTIONS.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
               </select>
             </label>
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">

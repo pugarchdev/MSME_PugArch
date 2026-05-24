@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Eye, Landmark, Loader2, LockKeyhole, RefreshCw, Search, ShieldAlert, X, Filter } from 'lucide-react';
+import { CheckCircle2, Clock3, Eye, Landmark, Loader2, LockKeyhole, RefreshCw, Receipt, Search, ShieldAlert, X, Filter, LayoutGrid, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -52,7 +52,9 @@ export default function EscrowPage() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [fundingFilter, setFundingFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<EscrowAccount | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(10);
@@ -72,6 +74,7 @@ export default function EscrowPage() {
       const params = new URLSearchParams({ skip: String((page - 1) * pageSize), take: String(pageSize) });
       if (query.trim()) params.set('q', query.trim());
       if (status) params.set('status', status);
+      if (fundingFilter) params.set('funding', fundingFilter);
       const res = await api.fetch(`/api/escrow?${params.toString()}`, { method: 'GET', headers, skipCache: true });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message || 'Unable to load escrow accounts');
@@ -86,14 +89,21 @@ export default function EscrowPage() {
 
   useEffect(() => {
     void load();
-  }, [token, page, pageSize, query, status]);
+  }, [token, page, pageSize, query, status, fundingFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [query, status]);
+  }, [query, status, fundingFilter]);
 
-  const filtered = escrows;
-  const pagedEscrows = escrows;
+  const filtered = useMemo(() => {
+    return escrows.filter(item => {
+      if (fundingFilter === 'funded' && !item.fundedAt) return false;
+      if (fundingFilter === 'pending' && item.fundedAt) return false;
+      return true;
+    });
+  }, [escrows, fundingFilter]);
+
+  const pagedEscrows = filtered;
   const setPageSize = (nextPageSize: number) => {
     setPageSizeState(nextPageSize);
     setPage(1);
@@ -142,79 +152,109 @@ export default function EscrowPage() {
       {error && <InlineError message={error} onRetry={load} />}
 
       <Card className="border-slate-200/80 shadow-sm bg-white">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 items-center">
-            <div className="relative flex-1 w-full">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] lg:grid-cols-[1.8fr_1fr_1fr]">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+              </div>
+              <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+                <option value="">All statuses</option>
+                <option value="held">Held</option>
+                <option value="released">Released</option>
+                <option value="frozen">Frozen</option>
+                <option value="refunded">Refunded</option>
+              </select>
+              <select value={fundingFilter} onChange={event => setFundingFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+                <option value="">All fund states</option>
+                <option value="funded">Funded</option>
+                <option value="pending">Pending funding</option>
+              </select>
             </div>
-            
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
-            >
-              <Filter className="h-4 w-4 text-slate-500" />
-              <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
-            </Button>
-          </div>
-
-          <div className={cn(
-            "grid gap-3 items-center",
-            showMobileFilters ? "grid grid-cols-2" : "hidden md:grid md:grid-cols-[180px] md:justify-end"
-          )}>
-            <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
-              <option value="">All statuses</option>
-              <option value="held">Held</option>
-              <option value="released">Released</option>
-              <option value="frozen">Frozen</option>
-              <option value="refunded">Refunded</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">View</span>
+              <Button variant={viewMode === 'grid' ? 'secondary' : 'outline'} onClick={() => setViewMode('grid')} className="h-10 rounded-lg px-3 text-xs font-black"><LayoutGrid className="mr-2 h-4 w-4" />Grid</Button>
+              <Button variant={viewMode === 'list' ? 'secondary' : 'outline'} onClick={() => setViewMode('list')} className="h-10 rounded-lg px-3 text-xs font-black"><List className="mr-2 h-4 w-4" />List</Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {filtered.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm font-semibold text-slate-500">No escrow accounts match the current filters.</div> : (
-        <div className="grid gap-3">
-          {pagedEscrows.map(escrow => (
-            <Card key={escrow.id} className="rounded-lg border-slate-200 shadow-none">
-              <CardContent className="space-y-4 p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="text-sm font-black text-slate-950">Escrow #{escrow.id} | {formatCurrency(escrow.amount)}</p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">Payment {escrow.paymentTransaction?.referenceId || '-'} | PO {escrow.purchaseOrder?.poNumber || '-'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={cn('rounded-full border px-3 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
-                    <Button variant="outline" onClick={() => setSelected(escrow)} className="h-9 rounded-lg text-xs font-black"><Eye className="mr-2 h-4 w-4" />Details</Button>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  {(escrow.milestones || []).map(milestone => (
-                    <div key={milestone.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-3">
+          {viewMode === 'list' ? (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm text-slate-700">
+                <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Sr. No</th>
+                    <th className="px-4 py-3">Escrow</th>
+                    <th className="px-4 py-3">Buyer / Seller</th>
+                    <th className="px-4 py-3">Amount</th>
+                    <th className="px-4 py-3">PO / Reference</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {pagedEscrows.map((escrow, index) => (
+                    <tr key={escrow.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-xs font-black text-slate-700">{(page - 1) * pageSize + index + 1}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-black text-slate-950">#{escrow.id}</p>
+                        <p className="text-xs text-slate-500">{formatCurrency(escrow.amount)}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-600">Buyer #{escrow.buyerId}<br />Seller #{escrow.sellerId}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-700">{formatCurrency(escrow.amount)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">PO {escrow.purchaseOrder?.poNumber || '-'}<br />Ref {escrow.paymentTransaction?.referenceId || '-'}</td>
+                      <td className="px-4 py-3"><span className={cn('inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span></td>
+                      <td className="px-4 py-3 space-x-2">
+                        <Button size="sm" variant="outline" onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}>View</Button>
+                        <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { setDetailTab('timeline'); setSelected(escrow); }}>Track</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {pagedEscrows.map(escrow => (
+                <Card key={escrow.id} className="rounded-lg border-slate-200 shadow-none">
+                  <CardContent className="space-y-4 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
-                        <p className="text-sm font-black text-slate-900">{milestone.title}</p>
-                        <p className="text-xs font-semibold text-slate-500">{formatCurrency(milestone.amount)} | Due {formatDate(milestone.dueDate)} | {milestone.status}</p>
+                        <p className="text-sm font-black text-slate-950">Escrow #{escrow.id}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">{formatCurrency(escrow.amount)} | PO {escrow.purchaseOrder?.poNumber || '-'}</p>
+                        <p className="mt-2 text-xs text-slate-500">Ref {escrow.paymentTransaction?.referenceId || '-'} | Buyer #{escrow.buyerId} / Seller #{escrow.sellerId}</p>
                       </div>
-                      <div className="flex gap-2">
-                        {user?.role === 'seller' && milestone.status === 'pending' && <Button size="sm" onClick={() => completeMilestone(milestone.id)}>Complete</Button>}
-                        {user?.role !== 'seller' && milestone.status === 'completed' && <Button size="sm" onClick={() => approveMilestone(milestone.id)} className="bg-[#12335f] text-white">Approve Release</Button>}
+                      <div className="flex flex-col items-start gap-2 sm:items-end">
+                        <span className={cn('rounded-full border px-3 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}>Details</Button>
+                          <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { setDetailTab('timeline'); setSelected(escrow); }}>Track</Button>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                  {(escrow.milestones || []).length === 0 && <p className="rounded-md bg-slate-50 px-3 py-4 text-sm font-semibold text-slate-500">No milestones are configured for this escrow account.</p>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <DetailMetric label="Status" value={escrow.status} />
+                      <DetailMetric label="Funded" value={escrow.fundedAt ? formatDate(escrow.fundedAt) : 'Pending'} />
+                      <DetailMetric label="Milestones" value={String((escrow.milestones || []).length)} />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="escrow accounts" />
           </div>
         </div>
       )}
 
-      {selected && <EscrowDetail escrow={selected} onClose={() => setSelected(null)} />}
+      {selected && <EscrowDetail escrow={selected} detailTab={detailTab} onTabChange={setDetailTab} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -223,22 +263,107 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
   return <Card><CardContent className="flex items-center justify-between p-4"><div><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-slate-950">{value}</p></div><Icon className="h-5 w-5 text-[#12335f]" /></CardContent></Card>;
 }
 
-function EscrowDetail({ escrow, onClose }: { escrow: EscrowAccount; onClose: () => void }) {
+function EscrowDetail({ escrow, detailTab, onClose, onTabChange }: { escrow: EscrowAccount; detailTab: 'receipt' | 'timeline'; onClose: () => void; onTabChange: (tab: 'receipt' | 'timeline') => void }) {
+  const timelineItems = [
+    { label: 'Escrow created', date: escrow.createdAt, description: 'Escrow account initialized.' },
+    { label: 'Escrow funded', date: escrow.fundedAt, description: 'Funds were deposited to escrow.' },
+    { label: 'Escrow frozen', date: escrow.frozenAt, description: 'Escrow account was frozen.' },
+    { label: 'Escrow released', date: escrow.releasedAt, description: 'Escrow funds were released.' },
+    ...(escrow.milestones || []).map(milestone => ({
+      label: `Milestone: ${milestone.title}`,
+      date: milestone.completedAt || milestone.approvedAt || milestone.dueDate,
+      description: `${milestone.status} · ${formatCurrency(milestone.amount)}`,
+    })),
+    ...(escrow.transactions || []).map(transaction => ({
+      label: `${transaction.type} transaction`,
+      date: transaction.createdAt,
+      description: formatCurrency(transaction.amount),
+    })),
+  ].filter(item => item.date).sort((a, b) => Number(new Date(a.date!)) - Number(new Date(b.date!)));
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
       <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
-          <div><p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Escrow Detail</p><h2 className="mt-1 text-xl font-black text-slate-950">Escrow #{escrow.id}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{formatCurrency(escrow.amount)} | {escrow.status}</p></div>
-          <button onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Close detail"><X className="h-4 w-4" /></button>
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white">
+          <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Escrow detail</p>
+              <h2 className="mt-1 text-xl font-black text-slate-950">Escrow #{escrow.id}</h2>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{formatCurrency(escrow.amount)} | {escrow.status}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => onTabChange('receipt')} className={cn('rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.24em]', detailTab === 'receipt' ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-500')}>Receipt</button>
+              <button onClick={() => onTabChange('timeline')} className={cn('rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.24em]', detailTab === 'timeline' ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-500')}>Timeline</button>
+              <button onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Close detail"><X className="h-4 w-4" /></button>
+            </div>
+          </div>
         </div>
         <div className="space-y-4 p-5">
           <div className="grid gap-3 md:grid-cols-3">
             <DetailMetric label="Buyer" value={`#${escrow.buyerId}`} />
             <DetailMetric label="Seller" value={`#${escrow.sellerId}`} />
-            <DetailMetric label="Funded" value={formatDate(escrow.fundedAt || escrow.createdAt)} />
+            <DetailMetric label="Funded" value={escrow.fundedAt ? formatDate(escrow.fundedAt) : 'Pending'} />
           </div>
-          <Card><CardContent className="space-y-3 p-4"><p className="text-xs font-black uppercase tracking-widest text-slate-500">Release Transactions</p>{(escrow.transactions || []).length === 0 ? <p className="text-sm font-semibold text-slate-500">No escrow transaction entries yet.</p> : escrow.transactions?.map(item => <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm"><p className="font-black text-slate-900">{item.type} | {formatCurrency(item.amount)}</p><p className="text-xs font-semibold text-slate-500">{formatDate(item.createdAt)}</p></div>)}</CardContent></Card>
-          <pre className="max-h-[460px] overflow-auto rounded-lg bg-slate-950 p-4 text-xs font-semibold leading-relaxed text-slate-100">{JSON.stringify(escrow, null, 2)}</pre>
+
+          {detailTab === 'receipt' ? (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-500">Receipt summary</p>
+                      <p className="mt-1 text-sm text-slate-600">Escrow payment and order details.</p>
+                    </div>
+                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase text-slate-700">{escrow.status}</div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <DetailMetric label="Total amount" value={formatCurrency(escrow.amount)} />
+                    <DetailMetric label="PO number" value={escrow.purchaseOrder?.poNumber || '-'} />
+                    <DetailMetric label="Payment ref" value={escrow.paymentTransaction?.referenceId || '-'} />
+                    <DetailMetric label="Gateway" value={escrow.paymentTransaction?.gateway || 'N/A'} />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Milestones</p>
+                  {(escrow.milestones || []).length === 0 ? (
+                    <p className="text-sm font-semibold text-slate-500">No milestones available for this escrow account.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {escrow.milestones?.map(milestone => (
+                        <div key={milestone.id} className="rounded-lg border border-slate-200 p-3">
+                          <p className="font-black text-slate-900">{milestone.title}</p>
+                          <p className="text-xs text-slate-500">Amount {formatCurrency(milestone.amount)} · Due {formatDate(milestone.dueDate)} · Status {milestone.status}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Payment timeline</p>
+                  <div className="space-y-4">
+                    {timelineItems.length === 0 && <p className="text-sm font-semibold text-slate-500">No timeline events available.</p>}
+                    {timelineItems.map((item, index) => (
+                      <div key={`${item.label}-${index}`} className="flex gap-4 rounded-lg border border-slate-200 p-4">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700 text-xs font-black">{index + 1}</div>
+                        <div>
+                          <p className="text-sm font-black text-slate-950">{item.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-slate-400">{item.date ? formatDate(item.date) : 'Unknown date'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </aside>
     </div>

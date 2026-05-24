@@ -10,7 +10,6 @@ import { auditLog } from '../modules/audit/audit.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
 import { paymentRateLimit, verificationRateLimit } from '../middleware/rateLimit.js';
 import { getOrSetCache, deleteCache } from '../services/cache.service.js';
-import { publishNotificationEvent } from '../services/realtime.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -198,9 +197,21 @@ const auditWrite = (req: AuthRequest, action: string, entityType: string, entity
     metadata
   });
 
-const notifySafe = async (targetUserId: number, title: string, message: string, type: string) => {
-  const notification = await db.notification.create({ data: { userId: targetUserId, title, message, type } }).catch(() => null);
-  if (notification) await publishNotificationEvent(targetUserId, notification);
+const notifySafe = async (
+  targetUserId: number,
+  title: string,
+  message: string,
+  type: string,
+  redirectUrl = '/dashboard',
+  priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
+) => {
+  await notificationService.notifyWithEmail(targetUserId, {
+    title,
+    message,
+    type,
+    priority,
+    redirectUrl
+  }).catch(() => null);
 };
 
 const slugFor = (name: string) =>
@@ -1638,6 +1649,13 @@ router.put('/direct-purchases/:id', authenticate, authorize('buyer', 'admin'), a
       ...(body.totalAmount !== undefined ? { totalAmount: body.totalAmount } : {})
     }
   });
+  await notifySafe(
+    updated.sellerId,
+    'Direct purchase updated',
+    `A direct purchase request ${updated.purchaseNumber} was updated by the buyer.`,
+    'direct_purchase_updated',
+    '/seller/orders'
+  );
   await auditWrite(req, 'direct_purchase.updated', 'directPurchase', id);
   ok(res, updated);
 }));
@@ -1648,6 +1666,13 @@ router.delete('/direct-purchases/:id', authenticate, authorize('buyer', 'admin')
   if (!existing || (!isAdmin(req) && existing.buyerId !== userId(req))) throw new ApiError(404, 'Direct purchase not found', 'DIRECT_PURCHASE_NOT_FOUND');
   if (!['DRAFT', 'REQUESTED', 'REJECTED'].includes(String(existing.status))) throw new ApiError(409, 'Direct purchase can no longer be deleted', 'DIRECT_PURCHASE_LOCKED');
   await db.directPurchase.delete({ where: { id } });
+  await notifySafe(
+    existing.sellerId,
+    'Direct purchase cancelled',
+    `Direct purchase request ${existing.purchaseNumber} was cancelled by the buyer.`,
+    'direct_purchase_cancelled',
+    '/seller/orders'
+  );
   await auditWrite(req, 'direct_purchase.deleted', 'directPurchase', id);
   ok(res, { success: true });
 }));
@@ -1713,6 +1738,13 @@ router.put('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asy
       ...(body.documentUrl !== undefined ? { documentUrl: body.documentUrl } : {})
     }
   });
+  await notifySafe(
+    updated.sellerId,
+    'RFQ updated',
+    `RFQ "${updated.subject}" was updated by the buyer.`,
+    'quote_request_updated',
+    '/quotations'
+  );
   await auditWrite(req, 'quote_request.updated', 'quoteRequest', id);
   ok(res, updated);
 }));
@@ -1723,6 +1755,13 @@ router.delete('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), 
   if (!quote || (!isAdmin(req) && quote.buyerId !== userId(req))) throw new ApiError(404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
   if (quote.quoteResponses.length > 0) throw new ApiError(409, 'RFQ with seller responses cannot be deleted', 'QUOTE_REQUEST_LOCKED');
   await db.quoteRequest.delete({ where: { id } });
+  await notifySafe(
+    quote.sellerId,
+    'RFQ cancelled',
+    `RFQ "${quote.subject}" was cancelled by the buyer.`,
+    'quote_request_cancelled',
+    '/quotations'
+  );
   await auditWrite(req, 'quote_request.deleted', 'quoteRequest', id);
   ok(res, { success: true });
 }));
@@ -1750,6 +1789,13 @@ for (const [path, status, action] of [
       return;
     }
     const updated = await db.quoteResponse.update({ where: { id }, data: { status } });
+    await notifySafe(
+      response.sellerId,
+      'RFQ response rejected',
+      `Your response for "${response.quoteRequest.subject}" was rejected by the buyer.`,
+      'quote_response_rejected',
+      '/quotations'
+    );
     await auditWrite(req, action, 'quoteResponse', id);
     ok(res, updated);
   }));

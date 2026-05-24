@@ -4063,9 +4063,12 @@ const app = serverlessApp;
       const recipientId = Number(actor.id) === buyerId ? sellerId : buyerId;
       await createNotificationSafe({
         userId: recipientId,
-        title: 'New procurement message',
-        message: `A new secure message was sent for ${conversation.subject}.`,
-        type: 'message_received'
+        title: message ? 'New procurement question' : 'New procurement conversation',
+        message: message
+          ? `A new question or message was sent for ${conversation.subject}.`
+          : `A new procurement conversation was opened for ${conversation.subject}.`,
+        type: 'message_received',
+        redirectUrl: recipientId === sellerId ? '/seller/messages' : '/buyer/messages'
       });
       await auditLog({
         actorUserId: Number(actor.id),
@@ -4120,7 +4123,13 @@ const app = serverlessApp;
       });
       await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
       const recipientId = Number(req.user?.id) === conversation.buyerId ? conversation.sellerId : conversation.buyerId;
-      await createNotificationSafe({ userId: recipientId, title: 'New procurement message', message: `A new secure message was sent for ${conversation.subject}.`, type: 'message_received' });
+      await createNotificationSafe({
+        userId: recipientId,
+        title: 'New procurement question',
+        message: `A new question or message was sent for ${conversation.subject}.`,
+        type: 'message_received',
+        redirectUrl: recipientId === conversation.sellerId ? '/seller/messages' : '/buyer/messages'
+      });
       await auditLog({
         actorUserId: Number(req.user?.id),
         actorRole: req.user?.role,

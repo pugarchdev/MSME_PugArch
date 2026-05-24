@@ -84,7 +84,7 @@ export const procurementWorkflow = {
     const quoteRequest = await db.quoteRequest.create({
       data: { ...input, buyerId: actor.id, status: 'pending', statusEnum: 'SENT' }
     });
-    await notifyWorkflow(input.sellerId, 'New RFQ', input.subject, 'quote_request_created', '/quotations');
+    await notifyWorkflow(input.sellerId, 'New RFQ received', input.subject, 'quote_request_created', '/quotations');
     await auditWorkflow(actor, 'workflow.rfq.created', 'quoteRequest', quoteRequest.id);
     return quoteRequest;
   },
@@ -101,7 +101,7 @@ export const procurementWorkflow = {
       await tx.quoteRequest.update({ where: { id: quoteRequestId }, data: { status: 'responded', statusEnum: 'RESPONDED' } });
       return created;
     });
-    await notifyWorkflow(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/buyer/rfq');
+    await notifyWorkflow(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
     await auditWorkflow(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
     return response;
   },
@@ -135,6 +135,13 @@ export const procurementWorkflow = {
       });
       return { quoteResponse: accepted, purchaseOrder: po, reused: false };
     });
+    await notifyWorkflow(
+      result.quoteResponse.sellerId,
+      result.reused ? 'RFQ purchase order reopened' : 'RFQ response accepted',
+      `Your response for "${result.purchaseOrder.title}" was accepted${result.reused ? ' and the existing purchase order is available.' : ' and a purchase order was generated.'}`,
+      'quote_response_accepted',
+      '/quotations'
+    );
     await auditWorkflow(actor, 'workflow.rfq.accepted_po_generated', 'purchaseOrder', result.purchaseOrder.id, { quoteResponseId });
     return result;
   },
@@ -170,6 +177,13 @@ export const procurementWorkflow = {
       });
       return { directPurchase, purchaseOrder: po, reused: false };
     });
+    await notifyWorkflow(
+      result.purchaseOrder.sellerId,
+      result.reused ? 'Direct purchase PO reopened' : 'Purchase order generated',
+      `A purchase order was ${result.reused ? 'opened again' : 'generated'} for ${result.purchaseOrder.title}.`,
+      'direct_purchase_po_generated',
+      '/seller/orders'
+    );
     await auditWorkflow(actor, 'workflow.direct_purchase.po_generated', 'purchaseOrder', result.purchaseOrder.id, { directPurchaseId });
     return result;
   }

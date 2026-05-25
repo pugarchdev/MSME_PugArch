@@ -3751,7 +3751,7 @@ const app = serverlessApp;
             profileAny.state = profileAny.state || gstOffice.state;
           } else if (offices[0]) {
             profileAny.city = profileAny.city || offices[0].city;
-            profileAny.state = profileAny.state || offices[0].state;
+            profileAny.state = offices[0].state;
           }
         }
         return { ...safeVendor, _id: v.id };
@@ -3791,24 +3791,41 @@ const app = serverlessApp;
   // --- Quote Request APIs ---
   app.post('/api/quotes', authenticate, authorize('buyer'), async (req: AuthRequest, res) => {
     try {
-      const { sellerId, subject, message, documentUrl } = req.body;
+      const { sellerId, subject, message, documentUrl, estimatedValue } = req.body;
       const buyerId = Number(req.user?.id);
 
       if (req.user?.role !== 'buyer') {
         return res.status(403).json({ message: 'Only buyers can request quotes' });
       }
 
-      const quote = await prisma.quoteRequest.create({
+      const quote = await (prisma.quoteRequest as any).create({
         data: {
           buyerId,
           sellerId: Number(sellerId),
           subject,
           message,
           documentUrl,
+          estimatedValue: estimatedValue !== undefined && estimatedValue !== null && estimatedValue !== '' ? Number(estimatedValue) : null,
           status: 'pending'
         },
         include: { buyer: true }
       });
+
+      if (documentUrl) {
+        const match = documentUrl.match(/\/api\/files\/(\d+)/);
+        const fileId = match ? Number(match[1]) : null;
+        if (fileId) {
+          await (prisma.fileAsset as any).updateMany({
+            where: { id: fileId },
+            data: { entityType: 'quote', entityId: quote.id }
+          });
+        } else {
+          await (prisma.fileAsset as any).updateMany({
+            where: { url: documentUrl },
+            data: { entityType: 'quote', entityId: quote.id }
+          });
+        }
+      }
 
       await createNotificationSafe({
         userId: Number(sellerId),
@@ -3830,13 +3847,13 @@ const app = serverlessApp;
 
       let quotes;
       if (role === 'buyer') {
-        quotes = await prisma.quoteRequest.findMany({
+        quotes = await (prisma.quoteRequest as any).findMany({
           where: { buyerId: userId },
           include: { seller: { include: { sellerProfile: true } } },
           orderBy: { createdAt: 'desc' }
         });
       } else if (role === 'seller') {
-        quotes = await prisma.quoteRequest.findMany({
+        quotes = await (prisma.quoteRequest as any).findMany({
           where: { sellerId: userId },
           include: { buyer: { include: { buyerProfile: true } } },
           orderBy: { createdAt: 'desc' }
@@ -3877,7 +3894,8 @@ const app = serverlessApp;
         return res.status(404).json({ message: 'User not found' });
       }
 
-      // Initialize status and reasons if they are null
+
+// Initialize status and reasons if they are null
       const currentStatus = (user.sectionStatus as Record<string, any>) || {};
       const currentReasons = (user.sectionRejectionReasons as Record<string, any>) || {};
       const previousSectionStatus = String(currentStatus[section] || '');

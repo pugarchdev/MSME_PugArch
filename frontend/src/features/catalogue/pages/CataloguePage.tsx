@@ -42,7 +42,7 @@ import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureState
 import { getApi, normalizeList, postApi } from '../../shared/apiClient';
 import { formatCurrency } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
-import { usePagination } from '../../shared/hooks';
+import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import type { CatalogueItemDto, CategoryDto } from '../../shared/types';
 import { catalogueApi } from '../api';
 import { getFileAssetPreview, type DocumentPreview, openFileAsset } from '../../../lib/files';
@@ -258,7 +258,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Layout and modal states
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [selectedDetailsItem, setSelectedDetailsItem] = useState<CatalogueRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<CatalogueRecord | null>(null);
@@ -627,7 +627,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               <Button disabled={!sellerApproved} onClick={() => openCreateForm('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
                 <PackagePlus className="mr-2 h-4 w-4" />Product
               </Button>
-              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} variant="outline" className="h-10 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">
+              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} variant="outline" className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
                 <Wrench className="mr-2 h-4 w-4" />Service
               </Button>
             </>
@@ -1083,6 +1083,12 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0 flex-1">
+              {srNo !== undefined && (
+                <div className="flex flex-col items-center justify-center shrink-0 w-14 h-12 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 select-none">
+                  <span className="text-[8px] font-bold text-slate-400">SR. NO.</span>
+                  <span className="text-sm font-black text-slate-700 leading-none mt-0.5">{srNo}</span>
+                </div>
+              )}
               {imgId ? (
                 <div 
                   onClick={() => onViewDetails?.(item)}
@@ -1098,11 +1104,6 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  {srNo !== undefined && (
-                    <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                      Sr. No. {srNo}
-                    </span>
-                  )}
                   <h3 
                     onClick={() => onViewDetails?.(item)}
                     className="break-words text-sm font-black text-neutral-900 leading-snug cursor-pointer hover:text-emerald-700 hover:underline"
@@ -1650,6 +1651,7 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
     `Dear ${item.seller?.name || 'Seller'},\n\nWe are highly interested in your ${item.itemKind} "${item.name}".\n\nPlease provide your best custom quote, delivery timeline, and warranty terms for this item.\n\nThanks,\nBuyer Team`
   );
   const [docUrl, setDocUrl] = useState<string>('');
+  const [estimatedValue, setEstimatedValue] = useState<number | ''>('');
   const [submitting, setSubmitting] = useState(false);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
 
@@ -1737,7 +1739,8 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
         sellerId: Number(item.sellerId),
         subject: subject.trim(),
         message: message.trim(),
-        documentUrl: docUrl.trim() || undefined
+        documentUrl: docUrl.trim() || undefined,
+        estimatedValue: estimatedValue !== '' ? Number(estimatedValue) : undefined
       });
       onActionCreated(item, {
         rfq: {
@@ -1887,6 +1890,18 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Provide precise details, quantity required, technical specs, etc..."
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Amount / Value (Optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 50000"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
 

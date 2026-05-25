@@ -205,7 +205,7 @@ const Vendors = () => {
     
     setSubmittingQuote(true);
     try {
-      const res = await api.post('/api/quotes', {
+      const res = await api.post('/api/quote-requests', {
         sellerId: selectedVendor.id || selectedVendor._id,
         ...quoteForm
       }, {

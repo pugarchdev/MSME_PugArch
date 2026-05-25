@@ -152,7 +152,7 @@ export const api = {
             headers,
           })
             .then(async (response) => {
-              if ((response.status === 401 || response.status === 403) && shouldDispatchUnauthorized(endpoint)) {
+              if (response.status === 401 && shouldDispatchUnauthorized(endpoint)) {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('auth:unauthorized'));
                 }
@@ -186,7 +186,7 @@ export const api = {
       ...fetchOptions,
       headers,
     }).then(async (response) => {
-      if ((response.status === 401 || response.status === 403) && shouldDispatchUnauthorized(endpoint)) {
+      if (response.status === 401 && shouldDispatchUnauthorized(endpoint)) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         }

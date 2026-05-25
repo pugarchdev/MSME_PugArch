@@ -639,6 +639,7 @@ model QuoteResponse {
   deliveryDays   Int?
   validityDate   DateTime?
   notes          String?
+  documentUrl    String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   quoteRequest   QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
@@ -955,6 +956,7 @@ model QuoteRequest {
   subject        String
   message        String
   documentUrl    String?
+  estimatedValue Decimal?            @db.Decimal(18, 2)
   status         String              @default("pending")
   statusEnum     QuoteRequestStatus?
   createdAt      DateTime            @default(now())

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
@@ -9,22 +10,32 @@ import { cn } from '../lib/utils';
 import { postApi } from '../features/shared/apiClient';
 import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 import { formatCurrency, formatDate, maskEmail } from '../features/shared/format';
-import { useFeatureQuery, usePagination } from '../features/shared/hooks';
+import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { Pagination } from '../features/shared/Pagination';
+import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
 const readableStatus = (value?: string) => String(value || 'generated').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'];
 
 export default function PurchaseOrders() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const isSeller = user?.role === 'seller';
+  const isBuyer = user?.role === 'buyer';
   const { data: orders, loading, error, reload, setData } = useFeatureQuery<PurchaseOrderDto[]>('/api/purchase-orders', []);
   const [activeTab, setActiveTab] = useState<'Open' | 'Delivered' | 'Cancelled' | 'All'>('Open');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('newest');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+
+  const handleConvertToInvoice = (order: PurchaseOrderDto) => {
+    const amountVal = order.amount || order.totalValue || 0;
+    router.push(`/seller/invoices?convertPoId=${order.id}&amount=${amountVal}`);
+  };
 
   const formatTimestamp = (value?: string | Date | null) => {
     if (!value) return '-';
@@ -165,14 +176,25 @@ export default function PurchaseOrders() {
     }
   };
 
-  const renderOrderActions = (order: PurchaseOrderDto) => (
-    <div className="flex flex-wrap justify-end gap-2">
-      <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
-      {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
-      <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
-      {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
-    </div>
-  );
+  const renderOrderActions = (order: PurchaseOrderDto) => {
+    const statusLower = String(order.status || '').toLowerCase();
+    return (
+      <div className="flex flex-wrap justify-end gap-2 items-center">
+        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1.5 h-3.5 w-3.5" />View</Button>
+        <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
+        {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-200 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel</Button>}
+        {isSeller && statusLower === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white hover:bg-teal-700 shadow-sm"><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
+        {isSeller && statusLower === 'accepted' && (
+          <Button
+            onClick={() => handleConvertToInvoice(order)}
+            className="h-8 rounded-md bg-emerald-600 text-[10px] font-black uppercase text-white hover:bg-emerald-700 shadow-sm"
+          >
+            Convert to Invoice
+          </Button>
+        )}
+      </div>
+    );
+  };
 
   const downloadPdf = (order: PurchaseOrderDto) => {
     const doc = new jsPDF();
@@ -330,6 +352,7 @@ export default function PurchaseOrders() {
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
+                  <th className="p-3">Sr. No</th>
                   <th className="p-3"><SortHeader label="PO" columnKey="po" /></th>
                   <th className="p-3"><SortHeader label="Title" columnKey="title" /></th>
                   <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
@@ -340,39 +363,38 @@ export default function PurchaseOrders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pagedOrders.map(order => (
-                  <tr key={order.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono text-xs font-black text-[#12335f]">{order.poNumber}</td>
-                    <td className="p-3">
-                      <p className="font-black text-slate-900">{order.title}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
-                        {order.paymentTerms && (
-                          <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded uppercase">
-                            {order.paymentTerms.replace(/_/g, ' ')}
-                          </span>
-                        )}
-                        {order.deliveryType && (
-                          <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
-                            {order.deliveryType.replace(/_/g, ' ')}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
-                    <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
-                    <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
-                    <td className="p-3"><StatusPill status={order.status} /></td>
-                    <td className="p-3">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
-                        {order.status === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white"><Truck className="mr-1 h-3.5 w-3.5" />Acknowledge</Button>}
-                        <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase"><Download className="mr-1 h-3.5 w-3.5" />PDF</Button>
-                        {!['cancelled', 'delivered'].includes(String(order.status)) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-100 text-[10px] font-black uppercase text-red-600"><XCircle className="mr-1 h-3.5 w-3.5" />Cancel</Button>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {pagedOrders.map((order, index) => {
+                  const rowIndex = (page - 1) * pageSize + index + 1;
+                  return (
+                    <tr key={order.id} className="hover:bg-slate-50">
+                      <td className="p-3 text-xs font-black text-slate-600">{rowIndex}</td>
+                      <td className="p-3 font-mono text-xs font-black text-[#12335f]">{order.poNumber}</td>
+                      <td className="p-3">
+                        <p className="font-black text-slate-900">{order.title}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
+                          {order.paymentTerms && (
+                            <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded uppercase">
+                              {order.paymentTerms.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                          {order.deliveryType && (
+                            <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
+                              {order.deliveryType.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
+                      <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
+                      <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
+                      <td className="p-3"><StatusPill status={order.status} /></td>
+                      <td className="p-3 text-right w-[380px] min-w-[380px]">
+                        {renderOrderActions(order)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

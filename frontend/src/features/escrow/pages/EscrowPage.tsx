@@ -9,6 +9,7 @@ import { cn } from '../../../lib/utils';
 import { InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
+import { useResponsiveViewMode } from '../../shared/hooks';
 
 type Milestone = {
   id: number;
@@ -53,7 +54,7 @@ export default function EscrowPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [fundingFilter, setFundingFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<EscrowAccount | null>(null);
   const [page, setPage] = useState(1);

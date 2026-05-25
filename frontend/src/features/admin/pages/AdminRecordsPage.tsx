@@ -6,7 +6,7 @@ import { cn } from '../../../lib/utils';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/FeatureStates';
 import { Pagination } from '../../shared/Pagination';
 import { formatDate } from '../../shared/format';
-import { useFeatureQuery } from '../../shared/hooks';
+import { useFeatureQuery, useResponsiveViewMode } from '../../shared/hooks';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -94,7 +94,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(20);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   
   const [sortKey, setSortKey] = useState<string>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');

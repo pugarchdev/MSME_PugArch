@@ -25,6 +25,7 @@ import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
+import { useResponsiveViewMode } from '../../shared/hooks';
 
 type PaymentRow = {
   id: number;
@@ -68,7 +69,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   const [statusFilter, setStatusFilter] = useState('');
   const [gatewayFilter, setGatewayFilter] = useState('');
   const [escrowFilter, setEscrowFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<PaymentRow | null>(null);
   const [page, setPage] = useState(1);

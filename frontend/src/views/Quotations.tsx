@@ -21,7 +21,9 @@ import {
   Power,
   Eye,
   Edit3,
-  Trash2
+  Trash2,
+  Paperclip,
+  Upload
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -29,16 +31,18 @@ import { Card, CardContent } from '../components/ui/card';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { Pagination } from '../features/shared/Pagination';
-import { usePagination } from '../features/shared/hooks';
+import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { normalizeList } from '../features/shared/apiClient';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { compressImage } from '../lib/compress';
 
 type BidStatus = 'pending' | 'submitted' | 'technical_qualified' | 'technical_rejected' | 'financial_evaluated' | 'accepted' | 'rejected' | 'withdrawn' | 'draft' | 'modified';
 
 interface Quotation {
   id: number;
   source?: 'bid' | 'rfq';
+  responseId?: number;
   sellerId: number;
   buyerId?: number;
   tenderId?: number;
@@ -53,6 +57,8 @@ interface Quotation {
   bidNumber?: string;
   documentUrl?: string;
   documentName?: string;
+  rfqDocumentUrl?: string | null;
+  rfqDocumentName?: string | null;
   fileAssetId?: number | null;
   fileAsset?: {
     id?: number;
@@ -112,10 +118,11 @@ const normalizeBidStatus = (value?: string): BidStatus => {
 
 const quoteRequestToRecord = (rfq: any): Quotation => {
   const response = Array.isArray(rfq.quoteResponses) ? rfq.quoteResponses[0] : null;
-  const amount = Number(response?.totalAmount || 0);
+  const amount = response ? Number(response.totalAmount || 0) : Number(rfq.estimatedValue || 0);
   return {
     id: Number(rfq.id),
     source: 'rfq',
+    responseId: response?.id ? Number(response.id) : undefined,
     sellerId: Number(rfq.sellerId),
     buyerId: Number(rfq.buyerId),
     tenderId: 0,
@@ -125,8 +132,10 @@ const quoteRequestToRecord = (rfq: any): Quotation => {
     validTill: response?.validityDate,
     status: response ? normalizeBidStatus(response.status) : normalizeBidStatus(rfq.statusEnum || rfq.status),
     note: response?.notes || rfq.message,
-    documentUrl: response?.documentUrl || rfq.documentUrl,
-    documentName: response?.documentName || rfq.documentName,
+    documentUrl: response?.documentUrl || null,
+    documentName: response?.documentName || null,
+    rfqDocumentUrl: rfq.documentUrl || null,
+    rfqDocumentName: rfq.documentName || null,
     fileAssetId: response?.fileAssetId || rfq.fileAssetId || null,
     fileAsset: response?.fileAsset || rfq.fileAsset || null,
     tender: {
@@ -200,14 +209,14 @@ const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
 const getQuoteUpdatedAt = (q: Quotation) => (q as any).updatedAt || (q as any).lastModified;
-const getFileNameFromUrl = (url?: string) => {
-  if (!url) return '';
+const getFileNameFromUrl = (url?: string, fallback = 'Quotation document') => {
+  if (!url) return fallback;
   const cleanUrl = String(url).split('?')[0];
   const name = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
   try {
-    return decodeURIComponent(name || 'Quotation document');
+    return decodeURIComponent(name || fallback);
   } catch {
-    return name || 'Quotation document';
+    return name || fallback;
   }
 };
 
@@ -235,7 +244,9 @@ const getQuoteDocument = (quote: Quotation) => {
 const canSellerManageBid = (quote: Quotation, role?: string) =>
   role === 'seller' && quote.source !== 'rfq' && !['accepted', 'rejected'].includes(quote.status);
 const isDecisionOpen = (quote: Quotation) =>
-  ['pending', 'submitted', 'technical_qualified', 'financial_evaluated', 'modified'].includes(quote.status);
+  quote.source === 'rfq'
+    ? Boolean(quote.responseId) && quote.status === 'submitted'
+    : ['pending', 'submitted', 'technical_qualified', 'financial_evaluated', 'modified'].includes(quote.status);
 
 function InfoBox({ label, value, strong = false }: { label: string; value: string | number; strong?: boolean }) {
   return (
@@ -257,7 +268,7 @@ function QuotationDetailsModal({
   quote: Quotation;
   role?: string;
   onClose: () => void;
-  onOpenDocument: (quote: Quotation) => void;
+  onOpenDocument: (url: string, label: string, fileAssetId?: number | null) => void;
 }) {
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
@@ -296,7 +307,7 @@ function QuotationDetailsModal({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <InfoBox label="Supplier" value={role === 'seller' ? buyerName : sellerName} />
+            <InfoBox label={role === 'seller' ? 'Buyer' : 'Supplier'} value={role === 'seller' ? buyerName : sellerName} />
             <InfoBox label="Category" value={quote.tender?.category || 'General Procurement'} />
             <InfoBox label="Unit Rate" value={formatMoney(quote.unitPrice)} />
             <InfoBox label="Net Value" value={formatMoney(totalValue)} strong />
@@ -307,22 +318,53 @@ function QuotationDetailsModal({
             <InfoBox label="Submitted Date & Time" value={formatDateTime(getQuoteSubmittedAt(quote))} />
             <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
             <InfoBox label="Tender Closing" value={formatDateTime(quote.tender?.closesAt)} />
+
+            {/* Buyer RFQ Document */}
+            {quote.rfqDocumentUrl ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2 lg:col-span-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#12335f]">RFQ Specifications</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-800">
+                      {quote.rfqDocumentName || getFileNameFromUrl(quote.rfqDocumentUrl, 'RFQ Specifications')}
+                    </p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Attached by buyer</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onOpenDocument(quote.rfqDocumentUrl!, quote.rfqDocumentName || 'RFQ Specifications', null)}
+                    className="h-8 shrink-0 rounded-md border-slate-200 bg-white px-3 text-[10px] font-black uppercase text-[#12335f] hover:bg-slate-50"
+                  >
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    View Document
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Seller Response Document */}
             {quoteDocument ? (
               <div className="rounded-md border border-emerald-200 bg-emerald-50/40 px-3 py-2 lg:col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Document</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Proposal Document</p>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-black text-slate-800">{quoteDocument.label}</p>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Attached by seller</p>
                   </div>
-                  <Button type="button" variant="outline" onClick={() => onOpenDocument(quote)} className="h-8 shrink-0 rounded-md border-emerald-200 bg-white px-3 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onOpenDocument(quoteDocument.fileAsset.url || '', quoteDocument.label, quoteDocument.fileAsset.id)}
+                    className="h-8 shrink-0 rounded-md border-emerald-200 bg-white px-3 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50"
+                  >
                     <FileText className="mr-1.5 h-3.5 w-3.5" />
                     View Document
                   </Button>
                 </div>
               </div>
             ) : (
-              <InfoBox label="Document" value="Not Attached" />
+              !quote.rfqDocumentUrl && <InfoBox label="Document" value="Not Attached" />
             )}
           </div>
 
@@ -426,7 +468,8 @@ export default function Quotations() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | BidStatus>('all');
   const [selectedTenderId, setSelectedTenderId] = useState('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [buyerTendersReady, setBuyerTendersReady] = useState(false);
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<Quotation | null>(null);
   const [editTarget, setEditTarget] = useState<Quotation | null>(null);
@@ -479,8 +522,8 @@ export default function Quotations() {
   }, [user?.role]);
 
   useEffect(() => {
-    if (user?.role === 'buyer' && tenders.length > 0) fetchBuyerBids();
-  }, [user?.role, tenders.length, selectedTenderId]);
+    if (user?.role === 'buyer' && buyerTendersReady) fetchBuyerBids();
+  }, [user?.role, tenders.length, selectedTenderId, buyerTendersReady]);
 
   const fetchMyTenders = async () => {
     if (tenders.length === 0) setLoading(true);
@@ -494,6 +537,7 @@ export default function Quotations() {
     } catch {
       toast.error('Failed to load your tenders');
     } finally {
+      setBuyerTendersReady(true);
       setLoading(false);
     }
   };
@@ -525,7 +569,8 @@ export default function Quotations() {
       totalAmount: Number(form.get('totalAmount') || 0),
       deliveryDays: Number(form.get('deliveryDays') || 0) || undefined,
       validityDate: String(form.get('validityDate') || '') || undefined,
-      notes: String(form.get('notes') || '').trim() || undefined
+      notes: String(form.get('notes') || '').trim() || undefined,
+      documentUrl: String(form.get('documentUrl') || '').trim() || undefined
     };
     setResponding(true);
     try {
@@ -569,6 +614,16 @@ export default function Quotations() {
           }))
         ];
       }
+
+      if (selectedTenderId === 'all') {
+        const rfqRes = await api.get('/api/quote-requests', authOptions).catch(() => null);
+        if (rfqRes?.ok) {
+          const rfqData = await rfqRes.json();
+          const rfqs = normalizeList<any>(rfqData).map(quoteRequestToRecord);
+          allBids = [...rfqs, ...allBids];
+        }
+      }
+
       setQuotes(allBids);
     } catch {
       toast.error('Failed to load quotations');
@@ -577,9 +632,16 @@ export default function Quotations() {
     }
   };
 
-  const handleStatusUpdate = async (id: number, status: BidStatus) => {
+  const handleStatusUpdate = async (quote: Quotation, status: BidStatus) => {
     try {
-      const res = await api.post(`/api/bids/${id}/status`, { status }, authOptions);
+      if (quote.source === 'rfq' && !quote.responseId) {
+        throw new Error('The seller has not submitted a response yet');
+      }
+      const endpoint = quote.source === 'rfq'
+        ? `/api/quote-responses/${quote.responseId}/${status === 'accepted' ? 'accept' : 'reject'}`
+        : `/api/bids/${quote.id}/status`;
+      const payload = quote.source === 'rfq' ? {} : { status };
+      const res = await api.post(endpoint, payload, authOptions);
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || 'Update failed');
@@ -607,17 +669,12 @@ export default function Quotations() {
     }
   };
 
-  const handleOpenQuoteDocument = async (quote: Quotation) => {
-    const document = getQuoteDocument(quote);
-    if (!document) {
-      toast.error('No quotation document is attached');
-      return;
-    }
-
+  const handleOpenQuoteDocument = async (url: string, label: string, fileAssetId?: number | null) => {
     try {
-      setPreviewDocument(await getFileAssetPreview(document.fileAsset, document.label));
+      const asset = { url, id: fileAssetId, fileAssetId, fileId: fileAssetId };
+      setPreviewDocument(await getFileAssetPreview(asset, label));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to open quotation document');
+      toast.error(err instanceof Error ? err.message : 'Unable to open document');
     }
   };
 
@@ -846,18 +903,29 @@ export default function Quotations() {
         ) : viewMode === 'list' ? (
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
+              <table className="w-full table-fixed border-collapse text-left min-w-[1150px]">
+                <colgroup>
+                  <col className="w-[52px]" />
+                  <col className="w-[94px]" />
+                  <col />
+                  <col className="w-[138px]" />
+                  <col className="w-[108px]" />
+                  <col className="w-[48px]" />
+                  <col className="w-[124px]" />
+                  <col className="w-[96px]" />
+                  {(user?.role === 'buyer' || user?.role === 'seller') && <col className="w-[196px]" />}
+                </colgroup>
                 <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 w-12">Sr.No</th>
-                    <th className="px-4 py-3 w-24"><SortHeader label="Bid ID" field="id" /></th>
+                    <th className="px-3 py-3">Sr.No</th>
+                    <th className="px-3 py-3"><SortHeader label="Bid ID" field="id" /></th>
                     <th className="px-4 py-3"><SortHeader label={user?.role === 'seller' ? 'RFQ / Tender' : 'Tender'} field="title" /></th>
-                    <th className="px-4 py-3"><SortHeader label={user?.role === 'seller' ? 'Buyer' : 'Supplier'} field="seller" /></th>
-                    <th className="px-4 py-3 text-right"><SortHeader label="Rate" field="rate" className="justify-end w-full" /></th>
-                    <th className="px-4 py-3 text-center"><SortHeader label="Qty" field="qty" className="justify-center w-full" /></th>
-                    <th className="px-4 py-3 text-right"><SortHeader label="Net Value" field="netValue" className="justify-end w-full" /></th>
-                    <th className="px-4 py-3 text-center"><SortHeader label="Status" field="status" className="justify-center w-full" /></th>
-                    {(user?.role === 'buyer' || user?.role === 'seller') && <th className="px-4 py-3 text-right min-w-[260px]">Manage</th>}
+                    <th className="px-3 py-3"><SortHeader label={user?.role === 'seller' ? 'Buyer' : 'Supplier'} field="seller" /></th>
+                    <th className="px-3 py-3 text-right"><SortHeader label="Rate" field="rate" className="w-full justify-end" /></th>
+                    <th className="px-2 py-3 text-center"><SortHeader label="Qty" field="qty" className="w-full justify-center" /></th>
+                    <th className="px-3 py-3 text-right"><SortHeader label="Net Value" field="netValue" className="w-full justify-end" /></th>
+                    <th className="px-3 py-3 text-center"><SortHeader label="Status" field="status" className="w-full justify-center" /></th>
+                    {(user?.role === 'buyer' || user?.role === 'seller') && <th className="px-3 py-3 text-right">Manage</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-xs">
@@ -866,64 +934,71 @@ export default function Quotations() {
                     const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
                     return (
                       <tr key={`${quote.source || 'bid'}-${quote.id}`} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-4 py-4 font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
-                        <td className="px-4 py-4 font-mono font-bold text-[#12335f]">
+                        <td className="px-3 py-4 font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
+                        <td className="px-3 py-4 font-mono font-bold text-[#12335f]">
                           {quote.source === 'rfq' ? 'RFQ' : 'BID'}-{String(quote.id).padStart(4, '0')}
                         </td>
                         <td className="px-4 py-4">
-                          <div className="font-bold text-slate-800 line-clamp-1">{quote.tender?.title || '-'}</div>
-                          <div className="text-[10px] font-medium text-slate-500">{quote.tender?.tenderId} | {quote.tender?.category}</div>
+                          <div className="break-words font-bold text-slate-800">{quote.tender?.title || '-'}</div>
+                          <div className="break-words text-[10px] font-medium text-slate-500">{quote.tender?.tenderId} | {quote.tender?.category}</div>
                           <div className="mt-1 text-[10px] font-semibold text-slate-400">
                             Delivery: {quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} | Valid: {formatDateTime(quote.validTill)}
                           </div>
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="font-semibold text-slate-700">{user?.role === 'seller' ? quote.buyer?.name || '-' : quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-'}</div>
+                        <td className="px-3 py-4">
+                          <div className="break-words font-semibold text-slate-700">{user?.role === 'seller' ? quote.buyer?.name || '-' : quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-'}</div>
                           <div className="mt-1 text-[10px] font-semibold text-slate-400">
                             Updated: {formatDateTime(getQuoteUpdatedAt(quote))}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-right font-semibold text-slate-600">{formatMoney(quote.unitPrice)}</td>
-                        <td className="px-4 py-4 text-center font-medium">{quote.quantity}</td>
-                        <td className="px-4 py-4 text-right font-black text-[#12335f]">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="px-3 py-4 text-right font-semibold text-slate-600">
+                          <span className="block min-w-0 whitespace-normal break-all leading-relaxed">{formatMoney(quote.unitPrice)}</span>
+                        </td>
+                        <td className="px-2 py-4 text-center font-medium">{quote.quantity}</td>
+                        <td className="px-3 py-4 text-right font-black text-[#12335f]">
+                          <div className="flex min-w-0 items-start justify-end gap-1">
                             {quote.isLowest && <Trophy className="h-3 w-3 text-amber-500" />}
-                            {formatMoney(totalValue)}
+                            <span className="min-w-0 whitespace-normal break-all leading-relaxed">{formatMoney(totalValue)}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-center">
+                        <td className="px-3 py-4 text-center">
                           <span className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase border shadow-sm', statusStyles[quote.status])}>
                             {getStatusLabel(quote.status)}
                           </span>
                         </td>
                         {user?.role === 'buyer' && (
-                          <td className="px-4 py-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <td className="px-3 py-4 text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2 text-[10px] font-black uppercase text-slate-700 hover:bg-slate-50" title="View quotation details">
                                 <Eye className="h-3.5 w-3.5" />
                                 View
                               </button>
                               {isDecisionOpen(quote) && (
                                 <>
-                                <button onClick={() => handleStatusUpdate(quote.id, 'rejected')} className="h-7 w-7 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
+                                <button onClick={() => handleStatusUpdate(quote, 'rejected')} className="h-7 w-7 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
                                   <XCircle className="h-3.5 w-3.5" />
                                 </button>
-                                <button onClick={() => handleStatusUpdate(quote.id, 'accepted')} className="h-7 w-7 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
+                                <button onClick={() => handleStatusUpdate(quote, 'accepted')} className="h-7 w-7 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
                                   <CheckCircle2 className="h-3.5 w-3.5" />
                                 </button>
                                 </>
                               )}
                               {!isDecisionOpen(quote) && (
-                                <span className="inline-flex h-7 items-center rounded border border-emerald-100 bg-emerald-50 px-2 text-[10px] font-black uppercase text-emerald-700">
-                                  Finalized
+                                <span className={cn(
+                                  'inline-flex h-7 items-center rounded border px-2 text-[10px] font-black uppercase',
+                                  quote.source === 'rfq' && !quote.responseId
+                                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                    : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                )}>
+                                  {quote.source === 'rfq' && !quote.responseId ? 'Awaiting Response' : 'Finalized'}
                                 </span>
                               )}
                             </div>
                           </td>
                         )}
                         {user?.role === 'seller' && (
-                          <td className="px-4 py-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <td className="px-3 py-4 text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2 text-[10px] font-black uppercase text-slate-700 hover:bg-slate-50" title="View details">
                                 <Eye className="h-3.5 w-3.5" />
                                 View
@@ -962,8 +1037,8 @@ export default function Quotations() {
                   role={user?.role}
                   index={(page - 1) * pageSize + index}
                   onView={() => handleViewQuote(quote)}
-                  onAccept={() => handleStatusUpdate(quote.id, 'accepted')}
-                  onReject={() => handleStatusUpdate(quote.id, 'rejected')}
+                  onAccept={() => handleStatusUpdate(quote, 'accepted')}
+                  onReject={() => handleStatusUpdate(quote, 'rejected')}
                   onRespond={() => setResponseTarget(quote)}
                 />
               </React.Fragment>
@@ -1023,10 +1098,10 @@ function SummaryTile({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-0.5 text-lg font-black text-slate-900 tracking-tight">{value}</p>
+          <p className="mt-0.5 min-w-0 whitespace-normal break-all text-lg font-black leading-snug tracking-tight text-slate-900">{value}</p>
         </div>
         <div className={cn('flex h-8 w-8 items-center justify-center rounded-md shrink-0', toneClass)}>
           <Icon className="h-4 w-4" />
@@ -1122,7 +1197,7 @@ function QuotationCard({
           </Button>
 
           {role === 'buyer' ? (
-            ['pending', 'submitted', 'technical_qualified', 'financial_evaluated', 'modified'].includes(quote.status) ? (
+            isDecisionOpen(quote) ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Button variant="outline" onClick={onReject} className="h-10 rounded-md border-red-200 font-bold text-red-700 hover:bg-red-50">
                   <XCircle className="mr-2 h-4 w-4" />
@@ -1180,6 +1255,50 @@ function RfqResponseModal({
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [documentName, setDocumentName] = useState('');
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+
+  const handleUploadDocument = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingDocument(true);
+    try {
+      const optimizedFile = await compressImage(file);
+      const body = new FormData();
+      body.append('file', optimizedFile);
+      const response = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || 'Unable to upload document');
+
+      const upload = data?.data || data;
+      const fileId = Number(upload?.fileId || upload?.file?.id || 0) || null;
+      const uploadedUrl = fileId
+        ? `/api/files/${fileId}/view`
+        : upload?.url || upload?.file?.documentUrl || upload?.file?.url || '';
+      if (!uploadedUrl) throw new Error('Uploaded document link is unavailable');
+
+      setDocumentUrl(uploadedUrl);
+      setDocumentName(upload?.file?.originalName || upload?.originalName || file.name);
+      toast.success('Response document attached');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Unable to upload document');
+    } finally {
+      setUploadingDocument(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleRemoveDocument = () => {
+    setDocumentUrl('');
+    setDocumentName('');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
@@ -1207,9 +1326,37 @@ function RfqResponseModal({
             Notes
             <textarea name="notes" rows={4} defaultValue="" className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
           </label>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Upload Document (Optional)</p>
+            <div className={cn(
+              'flex items-center justify-between gap-3 rounded-md border border-dashed p-3',
+              documentUrl ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'
+            )}>
+              <div className="flex min-w-0 items-center gap-2">
+                <Paperclip className={cn('h-4 w-4 shrink-0', documentUrl ? 'text-emerald-700' : 'text-slate-400')} />
+                <p className={cn('truncate text-xs font-semibold', documentUrl ? 'text-emerald-700' : 'text-slate-500')}>
+                  {documentName || (uploadingDocument ? 'Uploading document...' : 'Attach proposal PDF or supporting file')}
+                </p>
+              </div>
+              {documentUrl ? (
+                <button type="button" onClick={handleRemoveDocument} className="shrink-0 rounded px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-50">
+                  Remove
+                </button>
+              ) : (
+                <>
+                  <input id={`rfq-response-document-${quote.id}`} type="file" accept=".pdf,.doc,.docx,.csv,.jpg,.jpeg,.png" onChange={handleUploadDocument} disabled={uploadingDocument} className="hidden" />
+                  <label htmlFor={`rfq-response-document-${quote.id}`} className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-md bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]">
+                    <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    {uploadingDocument ? 'Uploading...' : 'Upload'}
+                  </label>
+                </>
+              )}
+            </div>
+            <input type="hidden" name="documentUrl" value={documentUrl} />
+          </div>
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="h-10 text-xs font-black uppercase">Cancel</Button>
-            <Button type="submit" disabled={saving} className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]">
+            <Button type="submit" disabled={saving || uploadingDocument} className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]">
               {saving ? 'Submitting...' : 'Submit Response'}
             </Button>
           </div>

@@ -79,20 +79,40 @@ export const procurementWorkflow = {
     return updated;
   },
 
-  async createQuoteRequest(actor: WorkflowActor, input: { sellerId: number; subject: string; message: string; documentUrl?: string }) {
+  async createQuoteRequest(actor: WorkflowActor, input: { sellerId: number; subject: string; message: string; documentUrl?: string; estimatedValue?: number }) {
     assertBuyer(actor);
     const quoteRequest = await db.quoteRequest.create({
       data: { ...input, buyerId: actor.id, status: 'pending', statusEnum: 'SENT' }
     });
+
+    if (input.documentUrl) {
+      const match = input.documentUrl.match(/\/api\/files\/(\d+)/);
+      const fileId = match ? Number(match[1]) : null;
+      if (fileId) {
+        await db.fileAsset.updateMany({
+          where: { id: fileId },
+          data: { entityType: 'quote', entityId: quoteRequest.id }
+        });
+      } else {
+        await db.fileAsset.updateMany({
+          where: { url: input.documentUrl },
+          data: { entityType: 'quote', entityId: quoteRequest.id }
+        });
+      }
+    }
+
     await notifyWorkflow(input.sellerId, 'New RFQ received', input.subject, 'quote_request_created', '/quotations');
     await auditWorkflow(actor, 'workflow.rfq.created', 'quoteRequest', quoteRequest.id);
     return quoteRequest;
   },
 
   async createQuoteResponse(actor: WorkflowActor, quoteRequestId: number, input: Record<string, unknown>) {
-    const quoteRequest = await db.quoteRequest.findUnique({ where: { id: quoteRequestId } });
+    const quoteRequest = await db.quoteRequest.findUnique({ where: { id: quoteRequestId }, include: { quoteResponses: true } });
     if (!quoteRequest || (actor.role !== 'admin' && quoteRequest.sellerId !== actor.id)) {
       throw new ApiError(404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
+    }
+    if (quoteRequest.quoteResponses.length > 0 || String(quoteRequest.status) !== 'pending') {
+      throw new ApiError(409, 'RFQ response has already been submitted', 'QUOTE_RESPONSE_ALREADY_SUBMITTED');
     }
     const response = await db.$transaction(async (tx: any) => {
       const created = await tx.quoteResponse.create({
@@ -101,6 +121,24 @@ export const procurementWorkflow = {
       await tx.quoteRequest.update({ where: { id: quoteRequestId }, data: { status: 'responded', statusEnum: 'RESPONDED' } });
       return created;
     });
+
+    const responseDocUrl = (input.documentUrl as string) || undefined;
+    if (responseDocUrl) {
+      const match = responseDocUrl.match(/\/api\/files\/(\d+)/);
+      const fileId = match ? Number(match[1]) : null;
+      if (fileId) {
+        await db.fileAsset.updateMany({
+          where: { id: fileId },
+          data: { entityType: 'quote', entityId: quoteRequestId }
+        });
+      } else {
+        await db.fileAsset.updateMany({
+          where: { url: responseDocUrl },
+          data: { entityType: 'quote', entityId: quoteRequestId }
+        });
+      }
+    }
+
     await notifyWorkflow(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
     await auditWorkflow(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
     return response;
@@ -113,9 +151,25 @@ export const procurementWorkflow = {
       if (!response || (actor.role !== 'admin' && response.quoteRequest.buyerId !== actor.id)) {
         throw new ApiError(404, 'Quote response not found', 'QUOTE_RESPONSE_NOT_FOUND');
       }
+      if (response.status === 'REJECTED') {
+        throw new ApiError(409, 'Rejected RFQ response cannot be accepted', 'QUOTE_RESPONSE_FINALIZED');
+      }
       const existingPO = await tx.purchaseOrder.findFirst({ where: { sourceType: 'rfq', sourceId: response.id } });
-      if (existingPO) return { quoteResponse: response, purchaseOrder: existingPO, reused: true };
+      if (existingPO) {
+        const accepted = response.status === 'ACCEPTED'
+          ? response
+          : await tx.quoteResponse.update({ where: { id: quoteResponseId }, data: { status: 'ACCEPTED' } });
+        await tx.quoteRequest.update({
+          where: { id: response.quoteRequestId },
+          data: { status: 'accepted', statusEnum: 'CLOSED' }
+        });
+        return { quoteResponse: accepted, purchaseOrder: existingPO, reused: true };
+      }
       const accepted = await tx.quoteResponse.update({ where: { id: quoteResponseId }, data: { status: 'ACCEPTED' } });
+      await tx.quoteRequest.update({
+        where: { id: response.quoteRequestId },
+        data: { status: 'accepted', statusEnum: 'CLOSED' }
+      });
       const amount = roundMoney(Number(response.totalAmount || 0));
       const po = await tx.purchaseOrder.create({
         data: {

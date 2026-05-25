@@ -24,7 +24,7 @@ import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Pagination } from '../features/shared/Pagination';
-import { usePagination } from '../features/shared/hooks';
+import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 
@@ -90,16 +90,7 @@ export default function SellerTenders() {
   
   const router = useRouter();
   const [selectedTenderForDetails, setSelectedTenderForDetails] = useState<PublicTender | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('seller-tenders-view-mode') as 'list' | 'grid') || 'list';
-    }
-    return 'list';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('seller-tenders-view-mode', viewMode);
-  }, [viewMode]);
+  const [viewMode, setViewMode] = useResponsiveViewMode();
 
   useEffect(() => {
     fetchPublicTenders();

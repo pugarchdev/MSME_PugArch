@@ -27,25 +27,32 @@ const getAbsoluteApiUrl = (endpoint: string) => {
   return `${cleanBase}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 };
 
-export const getDocumentPreviewMode = (url: string, contentType = ''): DocumentPreviewMode => {
+export const getDocumentPreviewMode = (url: string, contentType = '', extension = ''): DocumentPreviewMode => {
   const cleanUrl = url.split('?')[0].toLowerCase();
-  const extension = cleanUrl.match(/\.([a-z0-9]+)$/)?.[1] || '';
+  const ext = extension || cleanUrl.match(/\.([a-z0-9]+)$/)?.[1] || '';
 
-  if (contentType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) return 'image';
-  if (contentType === 'application/pdf' || extension === 'pdf') return 'pdf';
+  if (contentType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
+  if (contentType.toLowerCase().includes('application/pdf') || ext === 'pdf') return 'pdf';
   if (
-    contentType.includes('word') ||
-    contentType.includes('excel') ||
-    contentType.includes('powerpoint') ||
-    ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(extension)
+    contentType.toLowerCase().includes('word') ||
+    contentType.toLowerCase().includes('excel') ||
+    contentType.toLowerCase().includes('powerpoint') ||
+    ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(ext)
   ) return 'office';
   return 'google';
 };
 
 export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): Promise<DocumentPreview> => {
-  const fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
+  let fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
   const fallbackUrl = fileAsset?.url || fileAsset?.signedUrl || fileAsset?.documentUrl;
   const absoluteFallbackUrl = fallbackUrl ? getAbsoluteApiUrl(fallbackUrl) : '';
+
+  if (!fileId && fallbackUrl) {
+    const match = String(fallbackUrl).match(/\/api\/files\/(\d+)/);
+    if (match) {
+      fileId = Number(match[1]);
+    }
+  }
 
   if (!fileId) {
     if (!absoluteFallbackUrl) throw new Error('Document link is not available yet. Please refresh and try again.');
@@ -100,19 +107,38 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
   }
 
   const contentType = res.headers.get('content-type') || fileAsset?.mimeType || '';
+  const disposition = res.headers.get('content-disposition');
+  let ext = '';
+  if (disposition) {
+    const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";\n]+)"?/i) || disposition.match(/filename="?([^";\n]+)"?/i);
+    if (match) {
+      try {
+        const filename = decodeURIComponent(match[1]);
+        ext = filename.split('.').pop()?.toLowerCase() || '';
+      } catch {}
+    }
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   return {
     label,
     url,
-    mode: getDocumentPreviewMode(url, contentType)
+    mode: getDocumentPreviewMode(url, contentType, ext)
   };
 };
 
 export const openFileAsset = async (fileAsset: any, label = 'Document') => {
-  const fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
+  let fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
   const fallbackUrl = fileAsset?.url || fileAsset?.signedUrl;
   const absoluteFallbackUrl = fallbackUrl ? getAbsoluteApiUrl(fallbackUrl) : '';
+
+  if (!fileId && fallbackUrl) {
+    const match = String(fallbackUrl).match(/\/api\/files\/(\d+)/);
+    if (match) {
+      fileId = Number(match[1]);
+    }
+  }
+
   const previewWindow = window.open('about:blank', '_blank');
 
   if (previewWindow) {

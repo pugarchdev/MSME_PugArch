@@ -34,7 +34,7 @@ import {
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
-import { usePagination } from '../features/shared/hooks';
+import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 
 interface Tender {
   id: number;
@@ -141,7 +141,7 @@ export default function Tenders() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
   const [budgetFilter, setBudgetFilter] = useState('All');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'created', direction: 'desc' });
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTender, setNewTender] = useState({
     title: '',

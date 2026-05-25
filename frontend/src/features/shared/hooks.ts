@@ -1,5 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApi, normalizeList, normalizePaginated } from './apiClient';
+
+export type ViewMode = 'list' | 'grid';
+
+export const useResponsiveViewMode = () => {
+  const [viewMode, setViewModeState] = useState<ViewMode>('list');
+  const hasManualSelection = useRef(false);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const applyDeviceDefault = () => {
+      if (!hasManualSelection.current) {
+        setViewModeState(mobileQuery.matches ? 'grid' : 'list');
+      }
+    };
+
+    applyDeviceDefault();
+    mobileQuery.addEventListener('change', applyDeviceDefault);
+    return () => mobileQuery.removeEventListener('change', applyDeviceDefault);
+  }, []);
+
+  const setViewMode = useCallback((mode: ViewMode) => {
+    hasManualSelection.current = true;
+    setViewModeState(mode);
+  }, []);
+
+  return [viewMode, setViewMode] as const;
+};
 
 export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
   const [data, setData] = useState<T>(initialValue);

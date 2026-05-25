@@ -31,7 +31,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
-import { useFeatureQuery, usePagination } from '../../shared/hooks';
+import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { usePurchaseOrders } from '../../purchaseOrders/hooks';
 import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
@@ -67,7 +67,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [statusFilter, setStatusFilter] = useState('');
   const [acceptedPoOnly, setAcceptedPoOnly] = useState(false);
   const [invoiceScope, setInvoiceScope] = useState<'all' | 'interstate' | 'domestic'>('all');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceRow | null>(null);
   const [invoiceModalMode, setInvoiceModalMode] = useState<'view' | 'track'>('view');
@@ -86,13 +86,19 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         const data = await getApi<any>(`/api/invoices/${selectedInvoice.id}`, true);
         setDetailedInvoice(data);
       } catch (err) {
-        console.error('Failed to fetch detailed invoice', err);
+        setDetailedInvoice(null);
+        const message = err instanceof Error ? err.message : 'Unable to load invoice details.';
+        if (!/session expired|sign in again/i.test(message)) {
+          toast.error(message);
+        }
       } finally {
         setDetailedLoading(false);
       }
     };
     void fetchDetailedInvoice();
   }, [selectedInvoice]);
+
+
 
   // Checkout modal state variables
   const [checkoutInvoice, setCheckoutInvoice] = useState<InvoiceRow | null>(null);
@@ -157,6 +163,29 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   };
 
   const { data: purchaseOrders, loading: purchaseOrdersLoading, reload: reloadPurchaseOrders } = usePurchaseOrders();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const convertPoId = params.get('convertPoId');
+      const amount = params.get('amount');
+      if (convertPoId && purchaseOrders && purchaseOrders.length > 0) {
+        const poId = Number(convertPoId);
+        setSelectedPurchaseOrderId(poId);
+        if (amount) {
+          setInvoiceAmount(amount);
+        }
+        setInvoiceGstRate('');
+        setInvoiceTdsRate('');
+        setInvoiceInterstate(false);
+        setCreateInvoiceModalOpen(true);
+
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    }
+  }, [purchaseOrders]);
+
   const selectedPurchaseOrder = purchaseOrders.find(po => po.id === selectedPurchaseOrderId) ?? null;
   const acceptedPurchaseOrders = useMemo(
     () => purchaseOrders.filter(po => ['accepted'].includes((po.status || po.poStatus || '').toLowerCase())),
@@ -428,7 +457,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
               variant="outline"
               onClick={openCreateInvoiceModal}
               disabled={submitting}
-              className="h-10 rounded-lg text-xs font-black uppercase"
+              className="h-10 rounded-lg text-xs bg-[#12335f] hover:bg-[#0b2445] text-white uppercase"
             >
               Create Invoice
             </Button>
@@ -721,26 +750,26 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       )}
 
       {createInvoiceModalOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
-              <div>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5 md:items-center">
+          <div className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2.5rem)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+              <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Create Invoice</p>
-                <h2 className="text-xl font-black text-slate-950">New invoice for accepted PO</h2>
-                <p className="mt-1 text-xs text-slate-500">Search and choose the purchase order, then provide the invoice amount and tax details.</p>
+                <h2 className="mt-1 text-lg font-black text-slate-950 sm:text-xl">New invoice for accepted PO</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Choose an accepted purchase order, then enter amount and tax details.</p>
               </div>
               <button
                 type="button"
                 onClick={closeCreateInvoiceModal}
-                className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                className="shrink-0 rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-4 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Search Purchase Order</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Search Purchase Order</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
@@ -752,11 +781,11 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                   />
                 </div>
 
-                <div className="max-h-52 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2 text-xs">
+                <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs sm:max-h-44">
                   {purchaseOrdersLoading ? (
                     <div className="flex items-center justify-center py-8 text-slate-500">Loading purchase orders…</div>
                   ) : filteredPurchaseOrders.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-slate-500">
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-slate-500">
                       No accepted purchase orders found. Confirm the buyer has accepted the PO before creating an invoice.
                     </div>
                   ) : (
@@ -768,13 +797,13 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                           setSelectedPurchaseOrderId(po.id);
                           setPurchaseOrderSearch('');
                         }}
-                        className={`w-full rounded-2xl px-3 py-3 text-left transition ${
+                        className={`w-full rounded-lg px-3 py-2.5 text-left transition ${
                           selectedPurchaseOrderId === po.id ? 'bg-[#12335f] text-white' : 'bg-white text-slate-800 hover:bg-slate-100'
                         }`}
                       >
-                        <p className="font-black text-sm">{po.poNumber}</p>
-                        <p className="text-[11px] text-slate-500">{po.title}</p>
-                        <p className="mt-1 text-[11px] text-slate-400">Amount: {formatCurrency(po.totalValue || po.amount || 0)}</p>
+                        <p className="break-all text-sm font-black">{po.poNumber}</p>
+                        <p className={cn('mt-0.5 text-[11px]', selectedPurchaseOrderId === po.id ? 'text-slate-200' : 'text-slate-500')}>{po.title}</p>
+                        <p className={cn('mt-1 text-[11px]', selectedPurchaseOrderId === po.id ? 'text-slate-200' : 'text-slate-400')}>Amount: {formatCurrency(po.totalValue || po.amount || 0)}</p>
                       </button>
                     ))
                   )}
@@ -782,16 +811,16 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
               </div>
 
               {selectedPurchaseOrder && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                   <p className="font-black uppercase tracking-widest text-[10px] text-slate-500">Selected Purchase Order</p>
                   <p className="mt-2 font-black text-slate-900">{selectedPurchaseOrder.poNumber} · {selectedPurchaseOrder.title}</p>
                   <p className="mt-1 text-xs text-slate-500">Total value: {formatCurrency(selectedPurchaseOrder.totalValue || selectedPurchaseOrder.amount || 0)}</p>
                 </div>
               )}
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice Amount</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice Amount</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -802,7 +831,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">GST Rate (%)</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">GST Rate (%)</label>
                   <input
                     type="number"
                     min={0}
@@ -814,9 +843,9 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">TDS Rate (%)</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">TDS Rate (%)</label>
                   <input
                     type="number"
                     min={0}
@@ -826,7 +855,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                     className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                   />
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex min-h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <input
                     id="interstate-checkbox"
                     type="checkbox"
@@ -841,12 +870,14 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
               </div>
 
               {createInvoiceError && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-800">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-800">
                   {createInvoiceError}
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 sm:flex-row sm:justify-end">
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:flex-row sm:justify-end sm:px-6">
                 <Button type="button" variant="secondary" onClick={closeCreateInvoiceModal} className="h-10 rounded-lg text-xs font-black uppercase">
                   Cancel
                 </Button>
@@ -858,7 +889,6 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 >
                   {createInvoiceSubmitting ? 'Creating...' : 'Create Invoice'}
                 </Button>
-              </div>
             </div>
           </div>
         </div>

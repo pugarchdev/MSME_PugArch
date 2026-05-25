@@ -82,6 +82,38 @@ const attachBidFileAssets = async (rows: any[]) => {
     };
   });
 };
+const fileIdFromUrl = (url: unknown) => {
+  const match = String(url || '').match(/\/api\/files\/(\d+)(?:\/|$)/);
+  return match ? Number(match[1]) : null;
+};
+const attachQuoteResponseFileAssets = async (rows: any[]) => {
+  const responses = rows.flatMap(row => Array.isArray(row?.quoteResponses) ? row.quoteResponses : []);
+  const fileIds = [...new Set(responses.map(response => fileIdFromUrl(response?.documentUrl)).filter(Boolean))] as number[];
+  const assets = fileIds.length
+    ? await db.fileAsset.findMany({
+        where: { id: { in: fileIds }, status: 'active' },
+        select: { id: true, originalName: true, mimeType: true, url: true, key: true }
+      })
+    : [];
+  const assetsById = new Map<number, any>(assets.map((asset: any) => [Number(asset.id), asset]));
+
+  return rows.map(row => ({
+    ...row,
+    quoteResponses: Array.isArray(row?.quoteResponses)
+      ? row.quoteResponses.map((response: any) => {
+          const fileAssetId = fileIdFromUrl(response?.documentUrl);
+          const fileAsset = fileAssetId ? assetsById.get(fileAssetId) || null : null;
+          return {
+            ...response,
+            fileAssetId,
+            fileAsset,
+            documentName: fileAsset?.originalName || null,
+            documentUrl: response?.documentUrl || (fileAsset ? `/api/files/${fileAsset.id}/view` : null)
+          };
+        })
+      : row?.quoteResponses
+  }));
+};
 const listWindow = (query: { page?: number; pageSize?: number; skip?: number; take?: number }) => {
   const take = Math.min(100, Math.max(1, Number(query.pageSize ?? query.take ?? 50)));
   const skip = query.page ? (Math.max(1, Number(query.page)) - 1) * take : Math.max(0, Number(query.skip ?? 0));
@@ -390,14 +422,16 @@ const quoteRequestBody = z.object({
   sellerId: z.coerce.number().int().positive(),
   subject: z.string().trim().min(3).max(160),
   message: z.string().trim().min(1).max(4000),
-  documentUrl: z.string().trim().max(1000).optional()
+  documentUrl: z.string().trim().max(1000).optional(),
+  estimatedValue: z.coerce.number().nonnegative().optional()
 });
 
 const quoteResponseBody = z.object({
   totalAmount: z.coerce.number().nonnegative().optional(),
   deliveryDays: z.coerce.number().int().positive().optional(),
   validityDate: z.coerce.date().optional(),
-  notes: z.string().trim().max(2000).optional()
+  notes: z.string().trim().max(2000).optional(),
+  documentUrl: z.string().trim().max(1000).optional()
 });
 
 const actorFrom = (req: AuthRequest) => ({
@@ -1954,14 +1988,15 @@ router.get('/quote-requests', authenticate, asyncRoute(async (req, res) => {
     db.quoteRequest.findMany({ where, include: { quoteResponses: true, seller: { select: { id: true, name: true } }, buyer: { select: { id: true, name: true } } }, orderBy: { updatedAt: 'desc' }, ...window }),
     db.quoteRequest.count({ where })
   ]);
-  ok(res, paged(rows, total, query));
+  ok(res, paged(await attachQuoteResponseFileAssets(rows), total, query));
 }));
 
 router.get('/quote-requests/:id', authenticate, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const quote = await db.quoteRequest.findUnique({ where: { id }, include: { quoteResponses: true } });
   if (!quote || (!isAdmin(req) && quote.buyerId !== userId(req) && quote.sellerId !== userId(req))) throw new ApiError(404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
-  ok(res, quote);
+  const [enriched] = await attachQuoteResponseFileAssets([quote]);
+  ok(res, enriched);
 }));
 
 router.put('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
@@ -1977,9 +2012,25 @@ router.put('/quote-requests/:id', authenticate, authorize('buyer', 'admin'), asy
       ...(body.sellerId !== undefined ? { sellerId: body.sellerId } : {}),
       ...(body.subject !== undefined ? { subject: body.subject } : {}),
       ...(body.message !== undefined ? { message: body.message } : {}),
-      ...(body.documentUrl !== undefined ? { documentUrl: body.documentUrl } : {})
+      ...(body.documentUrl !== undefined ? { documentUrl: body.documentUrl } : {}),
+      ...(body.estimatedValue !== undefined ? { estimatedValue: body.estimatedValue } : {})
     }
   });
+  if (body.documentUrl) {
+    const match = body.documentUrl.match(/\/api\/files\/(\d+)/);
+    const fileId = match ? Number(match[1]) : null;
+    if (fileId) {
+      await db.fileAsset.updateMany({
+        where: { id: fileId },
+        data: { entityType: 'quote', entityId: id }
+      });
+    } else {
+      await db.fileAsset.updateMany({
+        where: { url: body.documentUrl },
+        data: { entityType: 'quote', entityId: id }
+      });
+    }
+  }
   await notifySafe(
     updated.sellerId,
     'RFQ updated',
@@ -2032,7 +2083,19 @@ for (const [path, status, action] of [
       ok(res, await procurementWorkflow.acceptQuoteResponseAndGeneratePO(actorFrom(req), id, body));
       return;
     }
-    const updated = await db.quoteResponse.update({ where: { id }, data: { status } });
+    if (response.status === 'ACCEPTED') {
+      throw new ApiError(409, 'Accepted RFQ response cannot be rejected', 'QUOTE_RESPONSE_FINALIZED');
+    }
+    const updated = await db.$transaction(async (tx: any) => {
+      const decided = response.status === 'REJECTED'
+        ? response
+        : await tx.quoteResponse.update({ where: { id }, data: { status } });
+      await tx.quoteRequest.update({
+        where: { id: response.quoteRequestId },
+        data: { status: 'rejected', statusEnum: 'CLOSED' }
+      });
+      return decided;
+    });
     await notifySafe(
       response.sellerId,
       'RFQ response rejected',

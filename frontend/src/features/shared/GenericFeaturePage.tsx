@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
-import { CalendarDays, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, Save, FileText, Filter, Paperclip } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ClipboardList, IndianRupee, RefreshCw, Search, SlidersHorizontal, Grid, List, Eye, Edit3, Trash2, X, XCircle, Save, FileText, Filter, Paperclip } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { cn } from '../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from './FeatureStates';
 import { Pagination } from './Pagination';
 import { formatCurrency, formatDate } from './format';
-import { usePaginatedFeatureQuery } from './hooks';
-import { deleteApi, putApi } from './apiClient';
+import { usePaginatedFeatureQuery, useResponsiveViewMode } from './hooks';
+import { deleteApi, postApi, putApi } from './apiClient';
 import { toast } from 'sonner';
 import { DocumentPreviewModal } from '../../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../../lib/files';
@@ -34,12 +34,24 @@ const detailOf = (record: GenericRecord) => {
   return [identifiers.join(' | '), method, partyOf(record)].filter(Boolean).join(' | ') || record.description || record.message || 'Workflow record';
 };
 
+const getCleanFileName = (url?: string, defaultName = 'Specifications') => {
+  if (!url) return defaultName;
+  const cleanUrl = String(url).split('?')[0];
+  const name = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+  if (!name || name.toLowerCase() === 'view') return defaultName;
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+};
+
 export default function GenericFeaturePage({ title, eyebrow, description, endpoint, emptyTitle = 'No records found' }: { title: string; eyebrow: string; description: string; endpoint: string; emptyTitle?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [valueFilter, setValueFilter] = useState('');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [selectedRecord, setSelectedRecord] = useState<GenericRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<GenericRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
@@ -53,9 +65,10 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
     };
   }, [previewDocument?.url]);
 
-  const handlePreviewDocument = async (record: GenericRecord) => {
+  const handlePreviewDocument = async (rec: GenericRecord) => {
     try {
-      setPreviewDocument(await getFileAssetPreview({ url: record.documentUrl, fileId: record.fileId || record.fileAssetId }, titleOf(record)));
+      const label = rec.documentName || rec.fileAsset?.originalName || titleOf(rec);
+      setPreviewDocument(await getFileAssetPreview({ ...rec.fileAsset, url: rec.documentUrl, fileId: rec.fileId || rec.fileAssetId }, label));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to open document');
     }
@@ -72,6 +85,8 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
   const totalValue = filtered.reduce<number>((sum, record) => sum + Number(amountOf(record) || 0), 0);
   const pendingCount = filtered.filter(record => /pending|draft|requested|sent|generated/i.test(statusOf(record))).length;
   const canMutate = endpoint === '/api/direct-purchases' || endpoint === '/api/quote-requests';
+  const isRfqPage = endpoint === '/api/quote-requests';
+  const canEditRecord = (record: GenericRecord) => canMutate && !(isRfqPage && Array.isArray(record.quoteResponses) && record.quoteResponses.length > 0);
 
   const handleDelete = async (record: GenericRecord) => {
     if (!window.confirm(`Delete ${titleOf(record)}?`)) return;
@@ -95,7 +110,8 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
           subject: String(form.get('subject') || '').trim(),
           message: String(form.get('message') || '').trim(),
-          documentUrl: String(form.get('documentUrl') || '').trim() || undefined
+          documentUrl: String(form.get('documentUrl') || '').trim() || undefined,
+          estimatedValue: form.get('estimatedValue') ? Number(form.get('estimatedValue')) : undefined
         }
       : {
           sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
@@ -110,6 +126,20 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
       reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Unable to update ${title.toLowerCase()} record`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleQuoteResponseDecision = async (responseId: number, decision: 'accept' | 'reject') => {
+    setSaving(true);
+    try {
+      await postApi(`/api/quote-responses/${responseId}/${decision}`, {});
+      toast.success(`RFQ response ${decision === 'accept' ? 'accepted' : 'rejected'} successfully`);
+      setSelectedRecord(null);
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Unable to ${decision} RFQ response`);
     } finally {
       setSaving(false);
     }
@@ -190,7 +220,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
                 key={record.id || titleOf(record)}
                 record={record}
                 srNo={(page - 1) * pageSize + index + 1}
-                canMutate={canMutate}
+                canMutate={canEditRecord(record)}
                 onView={() => setSelectedRecord(record)}
                 onEdit={() => setEditingRecord(record)}
                 onDelete={() => handleDelete(record)}
@@ -219,8 +249,8 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
                     <td className="p-3">
                       <div className="flex justify-end gap-1.5">
                         <IconButton label="View details" icon={Eye} onClick={() => setSelectedRecord(record)} />
-                        {canMutate && <IconButton label="Edit" icon={Edit3} onClick={() => setEditingRecord(record)} />}
-                        {canMutate && <IconButton label="Delete" icon={Trash2} tone="red" onClick={() => handleDelete(record)} />}
+                        {canEditRecord(record) && <IconButton label="Edit" icon={Edit3} onClick={() => setEditingRecord(record)} />}
+                        {canEditRecord(record) && <IconButton label="Delete" icon={Trash2} tone="red" onClick={() => handleDelete(record)} />}
                       </div>
                     </td>
                   </tr>
@@ -235,11 +265,13 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
         <GenericDetailsModal
           title={title}
           record={selectedRecord}
-          canMutate={canMutate}
+          canMutate={canEditRecord(selectedRecord)}
           onClose={() => setSelectedRecord(null)}
           onEdit={() => setEditingRecord(selectedRecord)}
           onDelete={() => handleDelete(selectedRecord)}
-          onPreviewDocument={() => handlePreviewDocument(selectedRecord)}
+          onPreviewDocument={handlePreviewDocument}
+          onResponseDecision={isRfqPage ? handleQuoteResponseDecision : undefined}
+          decisionSaving={saving}
         />
       )}
       {editingRecord && (
@@ -286,8 +318,43 @@ function MiniDetail({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2"><p className="text-[9px] font-black uppercase text-slate-400">{label}</p><p className="mt-1 truncate text-xs font-black text-slate-900">{value}</p></div>;
 }
 
-function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDelete, onPreviewDocument }: { title: string; record: GenericRecord; canMutate: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onPreviewDocument: () => void }) {
-  const entries = Object.entries(record).filter(([key, value]) => !['buyer', 'seller', 'quoteResponses', 'requirement'].includes(key) && value !== null && value !== undefined && typeof value !== 'object');
+function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDelete, onPreviewDocument, onResponseDecision, decisionSaving = false }: { title: string; record: GenericRecord; canMutate: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onPreviewDocument: (rec: GenericRecord) => void; onResponseDecision?: (responseId: number, decision: 'accept' | 'reject') => void; decisionSaving?: boolean }) {
+  const entries = Object.entries(record).filter(([key, value]) => !['buyer', 'seller', 'buyerId', 'sellerId', 'quoteResponses', 'requirement', 'documentUrl', 'fileId', 'fileAssetId'].includes(key) && value !== null && value !== undefined && typeof value !== 'object');
+
+  const formatDetailValue = (key: string, value: any) => {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+      try {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
+      } catch {}
+    }
+    if (key.endsWith('At') || key.endsWith('Date') || key.endsWith('Time')) {
+      try {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
+      } catch {}
+    }
+    return String(value);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
@@ -306,9 +373,111 @@ function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDele
             <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-slate-700">{record.message || record.description || record.subject || detailOf(record)}</p>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {entries.map(([key, value]) => <MiniDetail key={key} label={key.replace(/([A-Z])/g, ' $1')} value={String(value)} />)}
+            {entries.map(([key, value]) => <MiniDetail key={key} label={key.replace(/([A-Z])/g, ' $1')} value={formatDetailValue(key, value)} />)}
           </div>
-          {record.documentUrl && <button onClick={onPreviewDocument} className="mt-4 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-black text-[#12335f] hover:bg-slate-50"><FileText className="h-4 w-4" />Open Document</button>}
+          {record.documentUrl && (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attachment</p>
+              <div className="mt-2 flex items-center justify-between bg-white border border-slate-200 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-[#12335f]" />
+                  <span className="text-xs font-bold text-slate-700 truncate max-w-[280px]">
+                    {getCleanFileName(record.documentUrl, 'RFQ Specifications')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onPreviewDocument(record)}
+                  className="px-3 py-1.5 rounded-md border border-slate-200 bg-white text-xs font-black text-[#12335f] hover:bg-slate-50 shadow-sm"
+                >
+                  Open Document
+                </button>
+              </div>
+            </div>
+          )}
+          {record.quoteResponses && record.quoteResponses.length > 0 && (
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Seller Response Details</p>
+              <div className="mt-3 space-y-3">
+                {record.quoteResponses.map((resp: any, idx: number) => (
+                  <div key={resp.id || idx} className="rounded-xl border border-emerald-250 bg-emerald-50/20 p-4 space-y-3">
+                    <div className="flex justify-between items-center border-b border-emerald-100/50 pb-2">
+                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wide">
+                        Response #{resp.responseNumber || resp.id}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400">
+                        {formatDetailValue('createdAt', resp.createdAt)}
+                      </span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                      <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-[9px] font-black uppercase text-slate-400">Total Amount Quoted</p>
+                        <p className="mt-1 text-sm font-black text-emerald-850">{formatCurrency(resp.totalAmount)}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-[9px] font-black uppercase text-slate-400">Delivery Days</p>
+                        <p className="mt-1 text-sm font-black text-slate-800">{resp.deliveryDays ? `${resp.deliveryDays} days` : 'Not specified'}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-[9px] font-black uppercase text-slate-400">Validity Date</p>
+                        <p className="mt-1 text-sm font-black text-slate-800">{resp.validityDate ? new Date(resp.validityDate).toLocaleDateString() : 'Not specified'}</p>
+                      </div>
+                    </div>
+                    {resp.notes && (
+                      <div className="rounded-lg border border-slate-150 bg-white p-3">
+                        <p className="text-[9px] font-black uppercase text-slate-400">Seller Notes</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{resp.notes}</p>
+                      </div>
+                    )}
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                      <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-slate-400">Seller Attachment</p>
+                      {resp.documentUrl || resp.fileAssetId || resp.fileAsset?.id ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText className="h-5 w-5 shrink-0 text-[#12335f]" />
+                            <span className="truncate text-xs font-bold text-slate-700">
+                              {resp.documentName || resp.fileAsset?.originalName || getCleanFileName(resp.documentUrl, 'Seller Proposal Document')}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onPreviewDocument(resp)}
+                            className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-[#12335f] shadow-sm hover:bg-slate-50"
+                          >
+                            Open Document
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-500">No supporting document was attached by the seller.</p>
+                      )}
+                    </div>
+                    {onResponseDecision && String(resp.status || '').toUpperCase() === 'SUBMITTED' && (
+                      <div className="flex justify-end gap-2 border-t border-emerald-100 pt-3">
+                        <Button type="button" variant="outline" disabled={decisionSaving} onClick={() => onResponseDecision(Number(resp.id), 'reject')} className="h-9 border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50">
+                          <XCircle className="mr-1.5 h-4 w-4" />
+                          Reject
+                        </Button>
+                        <Button type="button" disabled={decisionSaving} onClick={() => onResponseDecision(Number(resp.id), 'accept')} className="h-9 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]">
+                          <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                          Accept
+                        </Button>
+                      </div>
+                    )}
+                    {onResponseDecision && ['ACCEPTED', 'REJECTED'].includes(String(resp.status || '').toUpperCase()) && (
+                      <p className={cn(
+                        'rounded-md border px-3 py-2 text-center text-xs font-black uppercase',
+                        String(resp.status).toUpperCase() === 'ACCEPTED'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      )}>
+                        Response {String(resp.status).toLowerCase()}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {canMutate && <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4"><Button variant="outline" onClick={onEdit} className="h-10 text-xs font-black uppercase"><Edit3 className="mr-2 h-4 w-4" />Edit</Button><Button variant="outline" onClick={onDelete} className="h-10 border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50"><Trash2 className="mr-2 h-4 w-4" />Delete</Button></div>}
         </div>
       </div>
@@ -361,6 +530,7 @@ function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }
           {isRfq ? (
             <>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Subject<input name="subject" defaultValue={record.subject || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Estimated Value<input name="estimatedValue" type="number" min="0" defaultValue={record.estimatedValue || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Message<textarea name="message" rows={4} defaultValue={record.message || ''} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" /></label>
               <div className="space-y-1.5">
                 <span className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Document File</span>
@@ -370,7 +540,7 @@ function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }
                       <Paperclip className="h-3.5 w-3.5" />
                     </div>
                     <span className={`text-xs font-semibold truncate max-w-[240px] ${uploadedDocUrl ? 'text-emerald-700' : 'text-slate-600'}`}>
-                      {uploadedDocUrl ? (uploadedDocUrl.split('/').pop() || "Document attached") : "Attach document file (PDF, Doc, Excel)"}
+                      {uploadedDocUrl ? getCleanFileName(uploadedDocUrl, "Document attached") : "Attach document file (PDF, Doc, Excel)"}
                     </span>
                   </div>
                   

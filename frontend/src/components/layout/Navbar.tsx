@@ -112,7 +112,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin'] },
     { label: 'Seller Hub', path: '/seller/onboarding', icon: Store, roles: ['seller'] },
     { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'] },
-    { label: 'Orders', path: '/seller/orders', icon: ShoppingCart, roles: ['seller'] },
+    { label: 'Purchase Orders', path: '/seller/orders', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Delivery', path: '/seller/delivery', icon: Truck, roles: ['seller'] },
     { label: 'Invoices', path: '/seller/invoices', icon: CreditCard, roles: ['seller'] },
     { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },

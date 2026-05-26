@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/u
 import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
+import RoleAwareActionCards from '../features/dashboard/components/RoleAwareActionCards';
 
 
 
@@ -340,7 +341,7 @@ export default function Dashboard() {
         </button>
       </div>
 
-
+      {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

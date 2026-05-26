@@ -265,6 +265,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<CatalogueRecord | null>(null);
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
   const [sellerLoading, setSellerLoading] = useState(false);
+  const [addingItemId, setAddingItemId] = useState<number | null>(null);
   const [buyerActions, setBuyerActions] = useState<Record<string, BuyerActionState>>({});
 
   // File upload state for catalogue form
@@ -517,6 +518,25 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       return;
     }
     setSelectedPurchaseItem(item);
+  };
+
+  const handleAddToCart = async (item: CatalogueRecord) => {
+    if (buyerProcurementLocked) {
+      toast.error('Your buyer account must be approved by admin before purchase or RFQ actions are allowed.');
+      return;
+    }
+    setAddingItemId(item.id);
+    try {
+      const payload = item.itemKind === 'product'
+        ? { productId: item.id, quantity: 1 }
+        : { serviceId: item.id, quantity: 1 };
+      await postApi('/api/cart/items', payload);
+      toast.success(`${item.name} added to cart`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add to cart');
+    } finally {
+      setAddingItemId(null);
+    }
   };
 
   const deleteItem = async (item: CatalogueRecord) => {
@@ -774,6 +794,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                 onDelete={deleteItem}
                 onViewDetails={setSelectedDetailsItem}
                 onPurchaseBid={openPurchaseBid}
+                onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
+                addingToCart={addingItemId === item.id}
                 canPurchase={buyerApproved}
                 onSellerClick={openSellerProfile}
                 actionState={buyerActions[`${item.itemKind}-${item.id}`]}
@@ -1050,7 +1072,7 @@ function CatalogueForm({
   );
 }
 
-function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase = true, onEdit, onDelete, onViewDetails, onPurchaseBid, onSellerClick, srNo }: {
+function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase = true, onEdit, onDelete, onViewDetails, onPurchaseBid, onAddToCart, addingToCart, onSellerClick, srNo }: {
   item: CatalogueRecord;
   mode: CatalogueMode;
   viewMode?: 'grid' | 'list';
@@ -1060,6 +1082,8 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
   onDelete?: (item: CatalogueRecord) => void;
   onViewDetails?: (item: CatalogueRecord) => void;
   onPurchaseBid?: (item: CatalogueRecord) => void;
+  onAddToCart?: (item: CatalogueRecord) => void;
+  addingToCart?: boolean;
   onSellerClick?: (seller: CatalogueRecord['seller']) => void;
   srNo?: number;
 }) {
@@ -1216,6 +1240,19 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                       <Eye className="mr-1 h-3 w-3 text-slate-400" />
                       Details
                     </Button>
+                    {onAddToCart && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onAddToCart(item)}
+                        disabled={!canPurchase || !!addingToCart}
+                        title={canPurchase ? 'Add to organisation cart' : 'Approval required'}
+                        className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider border-[#12335f] text-[#12335f] hover:bg-[#12335f]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ShoppingCart className="mr-1 h-3 w-3" />
+                        {addingToCart ? 'Adding...' : 'Add to Cart'}
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       onClick={() => onPurchaseBid?.(item)}

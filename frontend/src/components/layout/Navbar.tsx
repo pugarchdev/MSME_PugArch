@@ -34,7 +34,9 @@ import {
   FileSearch,
   Info,
   Check,
-  CheckSquare
+  CheckSquare,
+  UserPlus,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -124,6 +126,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Invoices', path: '/seller/invoices', icon: CreditCard, roles: ['seller'] },
     { label: 'Invoices', path: '/buyer/invoices', icon: FileText, roles: ['buyer'] },
     { label: 'Delivery', path: '/seller/delivery', icon: Truck, roles: ['seller'] },
+    { label: 'Delivery Mgmt', path: '/seller/delivery-management', icon: Truck, roles: ['seller'] },
     { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
     { label: 'Requirements', path: '/buyer/requirements', icon: ClipboardCheck, roles: ['buyer'] },
     { label: 'Direct Purchase', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
@@ -138,6 +141,14 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'MIS Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'] },
     { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
     { label: 'Profile', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
+    { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer', 'seller'] },
+    { label: 'Cart Approvals', path: '/cart/approvals', icon: CheckSquare, roles: ['buyer', 'seller'] },
+    { label: 'Technical Review', path: '/cart/technical-review', icon: ShieldCheck, roles: ['buyer', 'seller'] },
+    { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer', 'seller'] },
+    { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer', 'seller'] },
+    { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+    { label: 'Security Settings', path: '/settings/security', icon: ShieldCheck, roles: ['buyer', 'seller', 'admin'] },
+    { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
     { label: 'Organizations', path: '/admin/organizations', icon: Building2, roles: ['admin'] },

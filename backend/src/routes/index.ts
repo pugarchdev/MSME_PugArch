@@ -4,6 +4,11 @@ import paymentRoutes from '../modules/payments/payment.routes.js';
 import deliveryRoutes from '../modules/delivery/delivery.routes.js';
 import ratingsRoutes from '../modules/ratings/ratings.routes.js';
 import phase4Routes from './phase4.routes.js';
+import orgRoutes from './org.routes.js';
+import cartRoutes from './cart.routes.js';
+import approvalsRoutes from './approvals.routes.js';
+import grnRoutes from './grn.routes.js';
+import tenderEvalRoutes from './tender-evaluation.routes.js';
 import prisma from '../config/prisma.js';
 
 const router = Router();
@@ -47,6 +52,11 @@ router.use('/auth', authRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/ratings', ratingsRoutes);
+router.use('/', orgRoutes);
+router.use('/', cartRoutes);
+router.use('/', approvalsRoutes);
+router.use('/', grnRoutes);
+router.use('/', tenderEvalRoutes);
 router.use('/', phase4Routes);
 
 export default router;

@@ -51,8 +51,29 @@ const RbacPanel = lazy(() => import('./views/RbacPanel'));
 const OrganizationManagement = lazy(() => import('./views/OrganizationManagement'));
 const NotificationCenter = lazy(() => import('./views/NotificationCenter'));
 const MISReports = lazy(() => import('./views/MISReports'));
+const TeamManagementPage = lazy(() => import('./features/orgTeam/pages/TeamManagementPage'));
+const AcceptInvitePage = lazy(() => import('./features/orgTeam/pages/AcceptInvitePage'));
+const CartPage = lazy(() => import('./features/cart/pages/CartPage'));
+const CartApprovalPage = lazy(() => import('./features/cart/pages/CartApprovalPage'));
+const TechnicalReviewPage = lazy(() => import('./features/cart/pages/TechnicalReviewPage'));
+const ApprovalQueuePage = lazy(() => import('./features/approvals/pages/ApprovalQueuePage'));
+const GrnListPage = lazy(() => import('./features/grn/pages/GrnListPage'));
+const GrnDetailPage = lazy(() => import('./features/grn/pages/GrnDetailPage'));
+const TenderEvaluationPage = lazy(() => import('./features/tenderEval/pages/TenderEvaluationPage'));
+const SellerDeliveryManagementPage = lazy(() => import('./features/sellerDelivery/pages/SellerDeliveryManagementPage'));
+const DisputesPage = lazy(() => import('./features/disputes/pages/DisputesPage'));
+const MessagesPage = lazy(() => import('./features/messages/pages/MessagesPage'));
+const SecuritySettingsPage = lazy(() => import('./features/settings/pages/SecuritySettingsPage'));
+const NotificationPrefsPage = lazy(() => import('./features/settings/pages/NotificationPrefsPage'));
+const ProcurementReportPage = lazy(() => import('./features/reports/pages/ProcurementReportPage'));
+const PaymentsReportPage = lazy(() => import('./features/reports/pages/PaymentsReportPage'));
+const SuppliersReportPage = lazy(() => import('./features/reports/pages/SuppliersReportPage'));
+const VendorStorefrontPage = lazy(() => import('./features/vendors/pages/VendorStorefrontPage'));
+const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
+const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
+import { OrgApprovalBanner } from './components/OrgApprovalBanner';
 
 /**
  * Lightweight skeleton for lazy-loaded routes. Replaces a full-page spinner
@@ -187,9 +208,10 @@ export default function App() {
     if (/^\/seller\/services\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="Edit Service" eyebrow="Seller Marketplace" description="Review and update seller service details." endpoint="/api/seller/services" />;
     if (pathname === '/seller/orders' && roleOk(user.role, ['seller'])) return <PurchaseOrders />;
     if (pathname === '/seller/delivery' && roleOk(user.role, ['seller'])) return <ParcelTracking />;
+    if (pathname === '/seller/delivery-management' && roleOk(user.role, ['seller'])) return <SellerDeliveryManagementPage />;
     if (pathname === '/seller/invoices' && roleOk(user.role, ['seller'])) return <InvoiceRegisterPage role="seller" />;
-    if (pathname === '/seller/disputes' && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="Seller Disputes" eyebrow="Resolution" description="Dispute records available to this seller." endpoint="/api/disputes" />;
-    if (pathname === '/seller/messages' && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="Messages" eyebrow="Messaging" description="Procurement conversations and notifications." endpoint="/api/messages" />;
+    if (pathname === '/seller/disputes' && roleOk(user.role, ['seller'])) return <DisputesPage />;
+    if (pathname === '/seller/messages' && roleOk(user.role, ['seller'])) return <MessagesPage />;
     if (pathname === '/seller/ratings' && roleOk(user.role, ['seller'])) return <RatingsPage endpoint={`/api/ratings/supplier/${user.id}`} mode="supplier" />;
     if (pathname === '/seller/tenders' && roleOk(user.role, ['seller'])) return <SellerTenders />;
     if (pathname === '/seller/settings' && roleOk(user.role, ['seller'])) return <SellerSettings />;
@@ -212,8 +234,8 @@ export default function App() {
     if (pathname === '/buyer/invoices' && roleOk(user.role, ['buyer'])) return <InvoiceRegisterPage role="buyer" />;
     if (pathname === '/buyer/payments' && roleOk(user.role, ['buyer'])) return <PaymentHistoryPage />;
     if (pathname === '/buyer/escrow' && roleOk(user.role, ['buyer'])) return <EscrowPage />;
-    if (pathname === '/buyer/disputes' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Buyer Disputes" eyebrow="Resolution" description="Dispute records available to this buyer." endpoint="/api/disputes" />;
-    if (pathname === '/buyer/messages' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Messages" eyebrow="Messaging" description="Procurement conversations and notifications." endpoint="/api/messages" />;
+    if (pathname === '/buyer/disputes' && roleOk(user.role, ['buyer'])) return <DisputesPage />;
+    if (pathname === '/buyer/messages' && roleOk(user.role, ['buyer'])) return <MessagesPage />;
     if (pathname === '/buyer/ratings' && roleOk(user.role, ['buyer'])) return <RatingsPage endpoint={`/api/ratings/buyer/${user.id}`} mode="buyer" />;
     if (pathname === '/payments' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <PaymentHistoryPage admin={user.role === 'admin'} />;
     if (pathname === '/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
@@ -232,12 +254,9 @@ export default function App() {
     if (pathname === '/admin/marketplace' && roleOk(user.role, ['admin'])) return <CataloguePage mode="admin" />;
     if (pathname === '/admin/categories' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Categories" eyebrow="Admin" description="Category taxonomy loaded from marketplace API." endpoint="/api/categories" />;
     if (pathname === '/admin/fraud-alerts' && roleOk(user.role, ['admin'])) return <FraudAlertsPage />;
-    if (pathname === '/admin/disputes' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Disputes" eyebrow="Admin" description="Platform dispute queue." endpoint="/api/disputes" />;
+    if (pathname === '/admin/disputes' && roleOk(user.role, ['admin'])) return <DisputesPage />;
     if (pathname === '/admin/grievances' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Grievances" eyebrow="Admin" description="Grievance records and statuses." endpoint="/api/grievances" />;
     if (pathname === '/admin/payments' && roleOk(user.role, ['admin'])) return <PaymentHistoryPage admin />;
-    if (pathname === '/admin/reports/procurement' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Procurement Report" eyebrow="Reports" description="Procurement summary from backend reporting APIs." endpoint="/api/admin/reports/procurement" />;
-    if (pathname === '/admin/reports/payments' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Payments Report" eyebrow="Reports" description="Payments summary from backend reporting APIs." endpoint="/api/admin/reports/payments" />;
-    if (pathname === '/admin/reports/suppliers' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Suppliers Report" eyebrow="Reports" description="Supplier report from backend reporting APIs." endpoint="/api/admin/reports/suppliers" />;
     if (pathname === '/admin/compliance-rules' && roleOk(user.role, ['admin'])) return <ComplianceRulesPage />;
     if (pathname === '/admin/security-monitoring' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Security Monitoring" eyebrow="Security" description="Audit and fraud signals for platform operations." endpoint="/api/admin/fraud-alerts" />;
     if (['/admin/governance', '/admin/procurement', '/admin/compliance'].includes(pathname) && roleOk(user.role, ['admin'])) return <AdminOperations section="procurement" />;
@@ -245,6 +264,40 @@ export default function App() {
     if (pathname === '/admin/rbac' && roleOk(user.role, ['admin'])) return <RbacPanel />;
     if (pathname === '/admin/organizations' && roleOk(user.role, ['admin'])) return <OrganizationManagement />;
     if (pathname === '/notifications') return <NotificationCenter />;
+    if (pathname === '/org/team') return <TeamManagementPage />;
+    if (pathname === '/invite/accept') return <AcceptInvitePage />;
+    if (pathname === '/cart') return <CartPage />;
+    if (pathname === '/cart/approvals') return <CartApprovalPage />;
+    if (pathname === '/cart/technical-review') return <TechnicalReviewPage />;
+    if (pathname === '/approvals') return <ApprovalQueuePage />;
+    if (pathname === '/grn') return <GrnListPage />;
+    {
+      const grnDetailMatch = pathname.match(/^\/grn\/(\d+)$/);
+      if (grnDetailMatch) {
+        const id = Number(grnDetailMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <GrnDetailPage id={id} />;
+      }
+      const tenderEvalMatch = pathname.match(/^\/buyer\/tenders\/(\d+)\/evaluate$/);
+      if (tenderEvalMatch && roleOk(user.role, ['buyer'])) {
+        const id = Number(tenderEvalMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <TenderEvaluationPage tenderId={id} />;
+      }
+      const vendorStorefrontMatch = pathname.match(/^\/vendors\/(\d+)$/);
+      if (vendorStorefrontMatch) {
+        const id = Number(vendorStorefrontMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <VendorStorefrontPage id={id} />;
+      }
+      const auctionLiveMatch = pathname.match(/^\/auctions\/(\d+)\/live$/);
+      if (auctionLiveMatch) {
+        const id = Number(auctionLiveMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <AuctionLivePage id={id} />;
+      }
+    }
+    if (pathname === '/settings/security') return <SecuritySettingsPage />;
+    if (pathname === '/settings/notifications') return <NotificationPrefsPage />;
+    if (pathname === '/admin/reports/procurement' && roleOk(user.role, ['admin'])) return <ProcurementReportPage />;
+    if (pathname === '/admin/reports/payments' && roleOk(user.role, ['admin'])) return <PaymentsReportPage />;
+    if (pathname === '/admin/reports/suppliers' && roleOk(user.role, ['admin'])) return <SuppliersReportPage />;
     return <Redirect to="/dashboard" />;
   };
 
@@ -274,7 +327,7 @@ export default function App() {
             isSidebarCollapsed={isSidebarCollapsed}
           />
         )}
-
+        {showDashboardLayout && <OrgApprovalBanner />}
         <main className={cn(
           "flex-1 min-w-0",
           !showDashboardLayout ? "min-h-dvh overflow-y-auto p-0" : "overflow-y-auto p-3 sm:p-4 md:p-5"
@@ -284,6 +337,11 @@ export default function App() {
           </Suspense>
         </main>
       </div>
+      {showDashboardLayout && (
+        <Suspense fallback={null}>
+          <GlobalSearch />
+        </Suspense>
+      )}
     </div>
   );
 }

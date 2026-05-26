@@ -104,6 +104,17 @@ model User {
   paymentSettlementsApproved  PaymentSettlement[]     @relation("PaymentSettlementApprover")
   paymentSettlementsReleased  PaymentSettlement[]     @relation("PaymentSettlementReleaser")
   paymentSettlementsRejected  PaymentSettlement[]     @relation("PaymentSettlementRejecter")
+  orgMemberships              OrgMembership[]         @relation("OrgMembershipUser")
+  orgMembershipsInvited       OrgMembership[]         @relation("OrgMembershipInviter")
+  orgInvitationsSent          OrgInvitation[]         @relation("OrgInvitationInviter")
+  cartsCreated                Cart[]                  @relation("CartCreator")
+  cartsApproved               Cart[]                  @relation("CartApprover")
+  cartsRejected               Cart[]                  @relation("CartRejecter")
+  cartItemsAsSeller           CartItem[]              @relation("CartItemSeller")
+  cartItemsTechApproved       CartItem[]              @relation("CartItemTechApprover")
+  procurementApprovalsDecided ProcurementApproval[]   @relation("ProcurementApprovalApprover")
+  grnsReceived                GoodsReceiptNote[]      @relation("GrnReceiver")
+  grnDocumentsUploaded        GrnDocument[]           @relation("GrnDocumentUploader")
 
   @@index([role, onboardingStatus])
   @@index([mobile])
@@ -292,6 +303,11 @@ model Organization {
   services                     Service[]
   requirements                 Requirement[]
   tenders                      Tender[]
+  memberships                  OrgMembership[]
+  invitations                  OrgInvitation[]
+  carts                        Cart[]
+  procurementApprovals         ProcurementApproval[]
+  grns                         GoodsReceiptNote[]
 
   @@index([gstin])
   @@index([panNumber])
@@ -479,6 +495,7 @@ model Product {
   bidItems           BidItem[]
   purchaseOrderItems PurchaseOrderItem[]
   invoiceItems       InvoiceItem[]
+  cartItems          CartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -533,6 +550,7 @@ model Service {
   organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   certifications Certification[]
+  cartItems      CartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -1199,6 +1217,7 @@ model FileAsset {
   certifications      Certification[]
   deliveryDocuments   DeliveryDocument[] @relation("DeliveryDocumentFile")
   deliveryStatusLogs  DeliveryStatusLog[] @relation("DeliveryStatusLogFile")
+  grnDocuments        GrnDocument[]
 
   @@index([ownerId])
   @@index([entityType, entityId])
@@ -1250,6 +1269,7 @@ model PurchaseOrder {
   invoices          Invoice[]
   payments          PaymentTransaction[]
   contract          Contract?            @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  grns              GoodsReceiptNote[]
 
   @@index([buyerId, status])
   @@index([sellerId, status])
@@ -2508,6 +2528,236 @@ enum Role {
   seller
   buyer
   admin
+}
+
+// ─── Intra-Organisation Roles ────────────────────────────────────────────────
+enum OrgRole {
+  ORG_ADMIN
+  PROCUREMENT_OFFICER
+  FINANCE_OFFICER
+  TECHNICAL_OFFICER
+  LOGISTICS_OFFICER
+  VIEWER
+}
+
+model OrgMembership {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  organizationId Int
+  orgRole        OrgRole      @default(VIEWER)
+  isActive       Boolean      @default(true)
+  invitedById    Int?
+  invitedAt      DateTime     @default(now())
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user           User         @relation("OrgMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User?        @relation("OrgMembershipInviter", fields: [invitedById], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, orgRole])
+  @@index([userId])
+  @@index([invitedById])
+}
+
+model OrgInvitation {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  email          String
+  orgRole        OrgRole
+  token          String       @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  invitedById    Int
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User         @relation("OrgInvitationInviter", fields: [invitedById], references: [id])
+
+  @@index([organizationId])
+  @@index([token])
+  @@index([email])
+}
+
+// ─── Cart System ─────────────────────────────────────────────────────────────
+enum CartStatus {
+  ACTIVE
+  SUBMITTED_FOR_APPROVAL
+  APPROVED
+  REJECTED
+  CONVERTED_TO_ORDER
+  ABANDONED
+}
+
+model Cart {
+  id             Int        @id @default(autoincrement())
+  organizationId Int
+  createdById    Int
+  status         CartStatus @default(ACTIVE)
+  notes          String?
+  approvedById   Int?
+  approvedAt     DateTime?
+  rejectedById   Int?
+  rejectedAt     DateTime?
+  rejectionNote  String?
+  convertedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User         @relation("CartCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy     User?        @relation("CartApprover", fields: [approvedById], references: [id])
+  rejectedBy     User?        @relation("CartRejecter", fields: [rejectedById], references: [id])
+  items          CartItem[]
+
+  @@index([organizationId, status])
+  @@index([createdById])
+  @@index([approvedById])
+  @@index([rejectedById])
+}
+
+model CartItem {
+  id                    Int      @id @default(autoincrement())
+  cartId                Int
+  productId             Int?
+  serviceId             Int?
+  sellerId              Int
+  itemName              String
+  quantity              Decimal  @db.Decimal(18, 3)
+  unitOfMeasure         String
+  unitPrice             Decimal  @db.Decimal(18, 2)
+  currency              String   @default("INR")
+  technicalApproved     Boolean?
+  technicalApprovedById Int?
+  technicalNote         String?
+  technicalDecidedAt    DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  cart                  Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product               Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service               Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  seller                User     @relation("CartItemSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  technicalApprovedBy   User?    @relation("CartItemTechApprover", fields: [technicalApprovedById], references: [id])
+
+  @@index([cartId])
+  @@index([productId])
+  @@index([serviceId])
+  @@index([sellerId])
+  @@index([technicalApprovedById])
+}
+
+// ─── Multi-Level Procurement Approval Workflow ───────────────────────────────
+enum ApprovalStage {
+  DEPARTMENT_HEAD
+  FINANCE_DEPT
+  PROCUREMENT_HEAD
+}
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT_FOR_CLARIFICATION
+}
+
+model ProcurementApproval {
+  id                Int              @id @default(autoincrement())
+  entityType        String           // 'tender' | 'purchase_order' | 'cart' | 'direct_purchase'
+  entityId          Int
+  organizationId    Int
+  stage             ApprovalStage
+  sequence          Int              // 1, 2, 3 — order in the chain
+  decision          ApprovalDecision @default(PENDING)
+  approverId        Int?
+  remarks           String?
+  clarificationNote String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  approver          User?            @relation("ProcurementApprovalApprover", fields: [approverId], references: [id])
+
+  @@unique([entityType, entityId, stage])
+  @@index([entityType, entityId])
+  @@index([organizationId, stage, decision])
+  @@index([approverId])
+}
+
+// ─── Goods Receipt Note (GRN) ────────────────────────────────────────────────
+enum GrnStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PARTIAL
+}
+
+model GoodsReceiptNote {
+  id              Int       @id @default(autoincrement())
+  grnNumber       String    @unique
+  purchaseOrderId Int
+  receivedById    Int
+  organizationId  Int
+  status          GrnStatus @default(DRAFT)
+  receivedAt      DateTime  @default(now())
+  remarks         String?
+  inspectionNote  String?
+  approvedById    Int?
+  approvedAt      DateTime?
+  rejectedById    Int?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  receivedBy      User          @relation("GrnReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items           GrnItem[]
+  documents       GrnDocument[]
+
+  @@index([purchaseOrderId])
+  @@index([organizationId, status])
+  @@index([receivedById])
+}
+
+model GrnItem {
+  id                  Int              @id @default(autoincrement())
+  grnId               Int
+  purchaseOrderItemId Int?
+  itemName            String
+  orderedQty          Decimal          @db.Decimal(18, 3)
+  receivedQty         Decimal          @db.Decimal(18, 3)
+  acceptedQty         Decimal          @db.Decimal(18, 3)
+  rejectedQty         Decimal          @db.Decimal(18, 3)
+  rejectionReason     String?
+  unitOfMeasure       String
+  createdAt           DateTime         @default(now())
+
+  grn                 GoodsReceiptNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+
+  @@index([grnId])
+}
+
+model GrnDocument {
+  id           Int              @id @default(autoincrement())
+  grnId        Int
+  fileAssetId  Int
+  documentType String
+  uploadedById Int
+  createdAt    DateTime         @default(now())
+
+  grn          GoodsReceiptNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset        @relation(fields: [fileAssetId], references: [id])
+  uploadedBy   User             @relation("GrnDocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([grnId])
+  @@index([fileAssetId])
+  @@index([uploadedById])
 }
 
 enum RegistrationStatus {

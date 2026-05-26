@@ -3046,6 +3046,142 @@ router.get('/admin/compliance-rules', authenticate, authorizeAdmin, asyncRoute(a
   ok(res, { records, total, filters: query });
 }));
 
+/**
+ * Compliance Rule mutation endpoints. Admins can edit a rule's title,
+ * description, severity, and toggle isActive. Code is immutable - it's the
+ * machine-readable identifier that compliance violations reference.
+ */
+router.put('/admin/compliance-rules/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const body = parse(z.object({
+    title: z.string().trim().min(2).max(160).optional(),
+    description: z.string().trim().max(2000).optional(),
+    severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+    isActive: z.boolean().optional()
+  }), req.body);
+  const existing = await db.complianceRule.findUnique({ where: { id } });
+  if (!existing) throw new ApiError(404, 'Compliance rule not found', 'COMPLIANCE_RULE_NOT_FOUND');
+  const updated = await db.complianceRule.update({ where: { id }, data: body });
+  await auditWrite(req, 'compliance_rule.updated', 'complianceRule', id, body);
+  ok(res, updated);
+}));
+
+router.post('/admin/compliance-rules', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const body = parse(z.object({
+    code: z.string().trim().min(3).max(80).regex(/^[A-Z0-9_]+$/, 'Code must be uppercase, numbers, and underscores only'),
+    title: z.string().trim().min(2).max(160),
+    description: z.string().trim().max(2000).optional(),
+    severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+    isActive: z.boolean().default(true)
+  }), req.body);
+  const existing = await db.complianceRule.findUnique({ where: { code: body.code } });
+  if (existing) throw new ApiError(409, 'A rule with this code already exists', 'COMPLIANCE_RULE_DUPLICATE');
+  const rule = await db.complianceRule.create({ data: body });
+  await auditWrite(req, 'compliance_rule.created', 'complianceRule', rule.id, body);
+  ok(res, rule, 201);
+}));
+
+router.get('/admin/compliance-rules/:id/violations', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const query = parse(paginationQuery, req.query);
+  const window = listWindow(query);
+  const [records, total] = await Promise.all([
+    db.complianceViolation.findMany({
+      where: { ruleId: id },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip: window.skip,
+      take: window.take
+    }),
+    db.complianceViolation.count({ where: { ruleId: id } })
+  ]);
+  ok(res, { records, total, ...window });
+}));
+
+router.post('/admin/compliance-violations/:id/resolve', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const body = parse(z.object({
+    remarks: z.string().trim().max(2000).optional()
+  }), req.body || {});
+  const violation = await db.complianceViolation.findUnique({ where: { id } });
+  if (!violation) throw new ApiError(404, 'Violation not found', 'COMPLIANCE_VIOLATION_NOT_FOUND');
+  const updated = await db.complianceViolation.update({
+    where: { id },
+    data: {
+      status: 'resolved',
+      resolvedAt: new Date(),
+      metadata: { ...((violation.metadata as any) || {}), resolutionRemarks: body.remarks, resolvedById: userId(req) }
+    }
+  });
+  await auditWrite(req, 'compliance_violation.resolved', 'complianceViolation', id, body);
+  ok(res, updated);
+}));
+
+/**
+ * Fraud Alert mutation endpoints. Admin can assign themselves to an alert,
+ * mark it under review, confirm, dismiss, or resolve. All transitions write
+ * an audit log entry with the actor and reason.
+ */
+router.get('/admin/fraud-alerts/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const alert = await db.fraudAlert.findUnique({
+    where: { id },
+    include: {
+      user: { select: { id: true, name: true, email: true, role: true } },
+      organization: true,
+      reviewedBy: { select: { id: true, name: true, email: true } }
+    }
+  });
+  if (!alert) throw new ApiError(404, 'Fraud alert not found', 'FRAUD_ALERT_NOT_FOUND');
+  ok(res, alert);
+}));
+
+router.put('/admin/fraud-alerts/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const body = parse(z.object({
+    status: z.enum(['OPEN', 'UNDER_REVIEW', 'CONFIRMED', 'DISMISSED', 'RESOLVED']).optional(),
+    severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+    remarks: z.string().trim().max(2000).optional(),
+    assignToSelf: z.boolean().optional()
+  }), req.body || {});
+
+  const existing = await db.fraudAlert.findUnique({ where: { id } });
+  if (!existing) throw new ApiError(404, 'Fraud alert not found', 'FRAUD_ALERT_NOT_FOUND');
+
+  const data: any = {};
+  if (body.status !== undefined) data.status = body.status;
+  if (body.severity !== undefined) data.severity = body.severity;
+
+  // Auto-stamp reviewer when transitioning to a non-OPEN status, OR when the
+  // admin explicitly assigns themselves to triage the alert.
+  const isTransitioningToReview = body.status && body.status !== 'OPEN';
+  if (body.assignToSelf || isTransitioningToReview) {
+    data.reviewedById = userId(req);
+    data.reviewedAt = new Date();
+  }
+
+  if (body.remarks !== undefined) {
+    data.details = {
+      ...((existing.details as any) || {}),
+      reviewerRemarks: body.remarks,
+      reviewerRemarksAt: new Date().toISOString(),
+      reviewerRemarksById: userId(req)
+    };
+  }
+
+  const updated = await db.fraudAlert.update({
+    where: { id },
+    data,
+    include: {
+      user: { select: { id: true, name: true, email: true, role: true } },
+      organization: true,
+      reviewedBy: { select: { id: true, name: true, email: true } }
+    }
+  });
+  await auditWrite(req, 'fraud_alert.updated', 'fraudAlert', id, body);
+  ok(res, updated);
+}));
+
 router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
   const pendingOnboardingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
   const [

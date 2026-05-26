@@ -75,3 +75,16 @@ body {
     transform: translateX(100%);
   }
 }
+
+
+/* Always-wrap helpers used across feature pages so names, emails, addresses
+   and PO/invoice numbers never get truncated with ellipsis. Long unbroken
+   tokens (PAN/GST/PO numbers) get word-break:break-word so they wrap rather
+   than overflowing the cell. */
+.text-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.text-wrap-balance {
+  text-wrap: balance;
+}

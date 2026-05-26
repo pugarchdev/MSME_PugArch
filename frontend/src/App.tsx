@@ -44,6 +44,9 @@ const InvoiceRegisterPage = lazy(() => import('./features/invoices/pages/Invoice
 const RatingsPage = lazy(() => import('./features/ratings/pages/RatingsPage'));
 const ComplianceRulesPage = lazy(() => import('./features/compliance/pages/ComplianceRulesPage'));
 const FraudAlertsPage = lazy(() => import('./features/fraudAlerts/pages/FraudAlertsPage'));
+const RequirementsPage = lazy(() => import('./features/requirements/pages/RequirementsPage'));
+const RfqPage = lazy(() => import('./features/rfq/pages/RfqPage'));
+const DirectPurchasePage = lazy(() => import('./features/directPurchase/pages/DirectPurchasePage'));
 const RbacPanel = lazy(() => import('./views/RbacPanel'));
 const OrganizationManagement = lazy(() => import('./views/OrganizationManagement'));
 const NotificationCenter = lazy(() => import('./views/NotificationCenter'));
@@ -194,10 +197,12 @@ export default function App() {
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
     if (pathname === '/buyer/marketplace' && roleOk(user.role, ['buyer'])) return <CataloguePage mode="buyer" />;
-    if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Requirements" eyebrow="Demand Planning" description="Buyer requirements from the procurement workflow." endpoint="/api/buyer/requirements" />;
-    if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="New Requirement" eyebrow="Demand Planning" description="Create requirements using the buyer requirements API." endpoint="/api/buyer/requirements" />;
-    if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Direct Purchase" eyebrow="Procurement Method" description="Direct purchase requests and seller responses." endpoint="/api/direct-purchases" />;
-    if (pathname === '/buyer/rfq' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="RFQ" eyebrow="Quotations" description="Quote requests and responses loaded from RFQ APIs." endpoint="/api/quote-requests" />;
+    if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
+    if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
+    if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage />;
+    if (pathname === '/buyer/rfq' && roleOk(user.role, ['buyer'])) return <RfqPage />;
+    if (pathname === '/seller/rfq' && roleOk(user.role, ['seller'])) return <RfqPage />;
+    if (pathname === '/seller/direct-purchase' && roleOk(user.role, ['seller'])) return <DirectPurchasePage />;
     if (/^\/buyer\/tenders\/[^/]+$/.test(pathname) && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Tender Detail" eyebrow="Tendering" description="Tender detail and linked procurement records." endpoint="/api/tenders" />;
     if (pathname === '/buyer/tenders' && roleOk(user.role, ['buyer'])) return <Tenders />;
     if (pathname === '/buyer/vendors' && roleOk(user.role, ['buyer'])) return <Vendors />;

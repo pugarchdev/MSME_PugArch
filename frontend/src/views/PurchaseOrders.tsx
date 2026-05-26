@@ -12,6 +12,7 @@ import { EmptyState, InlineError, LoadingState } from '../features/shared/Featur
 import { formatCurrency, formatDate, maskEmail } from '../features/shared/format';
 import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { Pagination } from '../features/shared/Pagination';
+import { EntityIdLink } from '../features/shared/EntityIdLink';
 import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
@@ -317,8 +318,8 @@ export default function PurchaseOrders() {
                 <CardContent className="space-y-4 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-mono text-xs font-black text-[#12335f]">{order.poNumber}</p>
-                      <h3 className="mt-1 line-clamp-2 text-base font-black leading-snug text-slate-950">{order.title}</h3>
+                      <EntityIdLink label={order.poNumber} id={order.id} size="sm" onClick={() => setViewingOrder(order)} />
+                      <h3 className="mt-2 line-clamp-2 text-base font-black leading-snug text-slate-950">{order.title}</h3>
                     </div>
                     <StatusPill status={order.status} />
                   </div>
@@ -368,7 +369,9 @@ export default function PurchaseOrders() {
                   return (
                     <tr key={order.id} className="hover:bg-slate-50">
                       <td className="p-3 text-xs font-black text-slate-600">{rowIndex}</td>
-                      <td className="p-3 font-mono text-xs font-black text-[#12335f]">{order.poNumber}</td>
+                      <td className="p-3 font-mono text-xs font-black text-[#12335f]">
+                        <EntityIdLink label={order.poNumber} id={order.id} size="sm" onClick={() => setViewingOrder(order)} />
+                      </td>
                       <td className="p-3">
                         <p className="font-black text-slate-900">{order.title}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">

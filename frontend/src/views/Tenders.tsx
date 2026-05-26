@@ -34,6 +34,7 @@ import {
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
+import { EntityIdLink } from '../features/shared/EntityIdLink';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 
 interface Tender {
@@ -613,7 +614,7 @@ export default function Tenders() {
                       {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
                     </td>
                     <td className="px-4 py-4 text-xs font-mono text-slate-500">
-                      {tender.tenderId || `T-2026-01${tender.id}`}
+                      <EntityIdLink label={tender.tenderId || `T-2026-01${tender.id}`} id={tender.id} size="sm" onClick={() => setSelectedTender(tender)} />
                     </td>
                     <td className="px-4 py-4 w-64">
                       <p className="text-[15px] font-bold text-slate-900 leading-snug">{tender.title}</p>
@@ -712,9 +713,14 @@ export default function Tenders() {
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                       Sr. No. {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
                     </p>
-                    <p className="mt-1 font-mono text-xs font-bold text-[#12335f]">
-                      {tender.tenderId || `T-2026-01${tender.id}`}
-                    </p>
+                    <div className="mt-1">
+                      <EntityIdLink
+                        label={tender.tenderId || `T-2026-01${tender.id}`}
+                        id={tender.id}
+                        size="sm"
+                        onClick={() => setSelectedTender(tender)}
+                      />
+                    </div>
                   </div>
                   <span className={cn(
                     'rounded-md px-3 py-1.5 text-xs font-bold',

@@ -4,15 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/button';
 import { api, unwrapApiData } from '../../lib/api';
-import { 
+import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Building2, 
-  Store, 
-  LayoutDashboard, 
-  LogOut, 
-  ShieldCheck, 
+  Building2,
+  Store,
+  LayoutDashboard,
+  LogOut,
+  ShieldCheck,
   ShoppingCart,
   Menu,
   X,
@@ -61,7 +61,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
   const pathname = usePathname();
   const [isHovered, setIsHovered] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  
+
   const handleHover = (value: boolean) => {
     setIsHovered(value);
     onHoverChange?.(value);
@@ -81,7 +81,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
       if (!sidebarRef.current) return;
-      
+
       const rect = sidebarRef.current.getBoundingClientRect();
       const isInside = (
         e.clientX >= rect.left &&
@@ -89,7 +89,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom
       );
-      
+
       if (!isInside) {
         handleHover(false);
       }
@@ -128,6 +128,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Requirements', path: '/buyer/requirements', icon: ClipboardCheck, roles: ['buyer'] },
     { label: 'Direct Purchase', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'RFQ', path: '/buyer/rfq', icon: FileSearch, roles: ['buyer'] },
+    { label: 'RFQ', path: '/seller/rfq', icon: FileSearch, roles: ['seller'] },
+    { label: 'Direct Purchase', path: '/seller/direct-purchase', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Vendors', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
     { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'] },
@@ -162,92 +164,92 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-blue-800/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
         />
       )}
 
-      <aside 
+      <aside
         ref={sidebarRef}
-        onMouseEnter={() => handleHover(true)} 
+        onMouseEnter={() => handleHover(true)}
         className={cn(
           "w-64 bg-gradient-to-b from-[#1e293b] to-[#0f172a] text-white flex flex-col shrink-0 h-full fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out lg:translate-x-0 border-r border-slate-800",
-        isActuallyCollapsed ? "lg:w-20" : "w-64",
-        !isActuallyCollapsed && "lg:w-64",
-        isOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-      <div className={cn("h-14 px-3 border-b border-white/10 flex items-center", isActuallyCollapsed ? "justify-center" : "justify-between")}>
-        <div
-          className={cn("flex items-center gap-3 min-w-0 select-none", isActuallyCollapsed && "lg:justify-center")}
-          title="MSME Portal"
-        >
-          <div className="w-11 h-11 bg-white rounded-lg flex items-center justify-center overflow-hidden shadow-sm border border-white/10 p-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
+          isActuallyCollapsed ? "lg:w-20" : "w-64",
+          !isActuallyCollapsed && "lg:w-64",
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}>
+        <div className={cn("h-14 px-3 border-b border-white/10 flex items-center", isActuallyCollapsed ? "justify-center" : "justify-between")}>
+          <div
+            className={cn("flex items-center gap-3 min-w-0 select-none", isActuallyCollapsed && "lg:justify-center")}
+            title="MSME Portal"
+          >
+            <div className="w-11 h-11 bg-white rounded-lg flex items-center justify-center overflow-hidden shadow-sm border border-white/10 p-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
+            </div>
+            <span className={cn("font-bold tracking-tight text-base truncate", isActuallyCollapsed && "lg:hidden")}>MSME Portal</span>
           </div>
-          <span className={cn("font-bold tracking-tight text-base truncate", isActuallyCollapsed && "lg:hidden")}>MSME Portal</span>
+          <button onClick={onClose} className="lg:hidden p-2 text-blue-100 hover:text-white" aria-label="Close sidebar">
+            <X className="h-5 w-5" />
+          </button>
+
         </div>
-        <button onClick={onClose} className="lg:hidden p-2 text-blue-100 hover:text-white" aria-label="Close sidebar">
-          <X className="h-5 w-5" />
-        </button>
 
-      </div>
+        <nav className={cn("flex-1 overflow-y-auto", isActuallyCollapsed ? "p-2 space-y-2" : "p-3 space-y-1")}>
+          <div className={cn("text-blue-200/70 text-[10px] font-bold uppercase tracking-widest px-3 mb-2", isActuallyCollapsed && "lg:hidden")}>Navigation</div>
+          {filteredNav.map((item) => (
+            <Link
+              key={item.label}
+              href={item.path}
+              onClick={onClose}
+              title={isActuallyCollapsed ? item.label : undefined}
+              className={cn("flex items-center gap-3 rounded-md transition-all duration-200 group",
+                isActuallyCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
+                pathname === item.path
+                  ? "bg-white text-[#1d4ed8] shadow-sm"
+                  : "text-blue-50/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", pathname === item.path ? "text-[#1d4ed8]" : "text-blue-100")} />
+              <span className={cn("text-sm font-medium truncate", isActuallyCollapsed && "lg:hidden")}>{item.label}</span>
+              {pathname === item.path && <ChevronRight className={cn("ml-auto h-3 w-3 opacity-60", isActuallyCollapsed && "lg:hidden")} />}
+            </Link>
+          ))}
+        </nav>
 
-      <nav className={cn("flex-1 overflow-y-auto", isActuallyCollapsed ? "p-2 space-y-2" : "p-3 space-y-1")}>
-        <div className={cn("text-blue-200/70 text-[10px] font-bold uppercase tracking-widest px-3 mb-2", isActuallyCollapsed && "lg:hidden")}>Navigation</div>
-        {filteredNav.map((item) => (
+        <div className={cn("border-t border-white/10 bg-[#0f172a]/60", isActuallyCollapsed ? "p-2" : "p-3")}>
           <Link
-            key={item.label}
-            href={item.path}
+            href={pathname === '/profile' ? '/dashboard' : '/profile'}
             onClick={onClose}
-            title={isActuallyCollapsed ? item.label : undefined}
-            className={cn("flex items-center gap-3 rounded-md transition-all duration-200 group",
-              isActuallyCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
-              pathname === item.path
-                ? "bg-white text-[#1d4ed8] shadow-sm"
-                : "text-blue-50/80 hover:bg-white/10 hover:text-white"
+            className={cn(
+              "flex items-center gap-3 px-2 mb-3 py-1.5 rounded-md hover:bg-white/10 transition-all duration-200",
+              isActuallyCollapsed && "lg:justify-center lg:px-0",
+              pathname === '/profile' && "bg-white/10 ring-1 ring-white/30"
             )}
           >
-            <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", pathname === item.path ? "text-[#1d4ed8]" : "text-blue-100")} />
-            <span className={cn("text-sm font-medium truncate", isActuallyCollapsed && "lg:hidden")}>{item.label}</span>
-            {pathname === item.path && <ChevronRight className={cn("ml-auto h-3 w-3 opacity-60", isActuallyCollapsed && "lg:hidden")} />}
+            <div className="w-8 h-8 rounded-full bg-[#f9a825] flex items-center justify-center text-xs font-bold text-[#12335f] shadow-inner">
+              {user.name.charAt(0)}
+            </div>
+            <div className={cn("flex flex-col min-w-0", isActuallyCollapsed && "lg:hidden")}>
+              <span className="text-sm font-medium truncate">{user.name}</span>
+              <span className="text-[10px] text-blue-100/70 uppercase tracking-wide font-bold">{user.role} Account</span>
+            </div>
           </Link>
-        ))}
-      </nav>
-
-      <div className={cn("border-t border-white/10 bg-[#0f172a]/60", isActuallyCollapsed ? "p-2" : "p-3")}>
-        <Link 
-          href={pathname === '/profile' ? '/dashboard' : '/profile'}
-          onClick={onClose}
-          className={cn(
-            "flex items-center gap-3 px-2 mb-3 py-1.5 rounded-md hover:bg-white/10 transition-all duration-200", 
-            isActuallyCollapsed && "lg:justify-center lg:px-0",
-            pathname === '/profile' && "bg-white/10 ring-1 ring-white/30"
-          )}
-        >
-          <div className="w-8 h-8 rounded-full bg-[#f9a825] flex items-center justify-center text-xs font-bold text-[#12335f] shadow-inner">
-            {user.name.charAt(0)}
-          </div>
-          <div className={cn("flex flex-col min-w-0", isActuallyCollapsed && "lg:hidden")}>
-            <span className="text-sm font-medium truncate">{user.name}</span>
-            <span className="text-[10px] text-blue-100/70 uppercase tracking-wide font-bold">{user.role} Account</span>
-          </div>
-        </Link>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleLogout} 
-          title="Logout"
-          className={cn("w-full bg-red/300 border-white/20 text-white hover:bg-white hover:text-red-500 py-2", isActuallyCollapsed && "lg:px-0")}
-        >
-          <LogOut className={cn("h-4 w-4", !isActuallyCollapsed && "mr-2")} />
-          <span className={cn(isActuallyCollapsed && "lg:hidden")}>Logout</span>
-        </Button>
-      </div>
-    </aside>
-      </>
-    );
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            title="Logout"
+            className={cn("w-full bg-red/300 border-white/20 text-white hover:bg-white hover:text-red-500 py-2", isActuallyCollapsed && "lg:px-0")}
+          >
+            <LogOut className={cn("h-4 w-4", !isActuallyCollapsed && "mr-2")} />
+            <span className={cn(isActuallyCollapsed && "lg:hidden")}>Logout</span>
+          </Button>
+        </div>
+      </aside>
+    </>
+  );
 }
 
 interface HeaderProps {
@@ -429,7 +431,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
     <header className="h-14 bg-white border-b border-slate-200 sticky top-0 z-40 transition-all duration-300">
       <div className="h-full px-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={onMenuClick}
             className="p-2 -ml-2 text-slate-500 hover:text-[#1d4ed8] lg:hidden"
             aria-label="Open menu"
@@ -443,7 +445,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
           >
             {isSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
           </button>
-          
+
           {/* <div className="hidden md:flex relative group">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#1d4ed8] transition-colors" />
             <input 
@@ -456,7 +458,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="relative" ref={notificationRef}>
-            <button 
+            <button
               onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
               className={cn(
                 "p-2 rounded-lg transition-all relative",
@@ -497,7 +499,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                       const Icon = item.type === 'alert' ? AlertTriangle : item.type === 'success' ? CheckCircle2 : Info;
                       const isWarning = item.type === 'alert';
                       const isSuccess = item.type === 'success';
-                      
+
                       return (
                         <button
                           key={item.id}
@@ -561,7 +563,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                   )}
                 </div>
                 {Array.isArray(notifications) && notifications.length > 0 && (
-                  <button 
+                  <button
                     onClick={() => {
                       router.push('/notifications');
                       setIsNotificationsOpen(false);
@@ -578,7 +580,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
           <div className="h-8 w-px bg-slate-200 hidden sm:block" />
 
           <div className="relative" ref={profileDropdownRef}>
-            <button 
+            <button
               onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
               className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors group text-left"
             >

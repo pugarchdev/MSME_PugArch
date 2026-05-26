@@ -35,6 +35,7 @@ import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../../sha
 import { usePurchaseOrders } from '../../purchaseOrders/hooks';
 import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
+import { EntityIdLink } from '../../shared/EntityIdLink';
 
 type InvoiceRow = {
   id: number;
@@ -586,8 +587,8 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                     <tr key={invoice.id} className="hover:bg-slate-50">
                       <td className="p-3 text-xs font-black text-slate-600">{rowIndex}</td>
                       <td className="p-3">
-                        <p className="font-mono text-xs font-black text-[#12335f]">{invoice.invoiceNumber || `INV-${invoice.id}`}</p>
-                        <p className="text-[10px] font-semibold text-slate-500">{formatDate(invoice.createdAt)}</p>
+                        <EntityIdLink label={invoice.invoiceNumber || `INV-${invoice.id}`} id={invoice.id} size="sm" onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }} />
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500">{formatDate(invoice.createdAt)}</p>
                       </td>
                       <td className="p-3">
                         <p className="text-xs font-black text-slate-900">{invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
@@ -603,12 +604,12 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       <td className="p-3 text-xs font-bold text-slate-500">{formatDate(invoice.dueDate)}</td>
                       <td className="p-3">
                         <span className={`rounded-lg border px-2.5 py-0.5 text-[9px] font-black uppercase ${state === 'paid'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : state === 'approved'
-                              ? 'border-blue-200 bg-slate-50 text-[#12335f]'
-                              : state === 'submitted'
-                                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                : 'border-slate-200 bg-slate-50 text-slate-600'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : state === 'approved'
+                            ? 'border-blue-200 bg-slate-50 text-[#12335f]'
+                            : state === 'submitted'
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-600'
                           }`}>
                           {state.replace(/_/g, ' ')}
                         </span>
@@ -671,16 +672,18 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice #{rowIndex}</p>
-                    <p className="mt-2 text-sm font-black text-slate-950">{invoice.invoiceNumber || `INV-${invoice.id}`}</p>
-                    <p className="text-[11px] text-slate-500">{invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
+                    <div className="mt-2">
+                      <EntityIdLink label={invoice.invoiceNumber || `INV-${invoice.id}`} id={invoice.id} size="sm" onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }} />
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">{invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${state === 'paid'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : state === 'approved'
-                        ? 'bg-blue-100 text-[#12335f]'
-                        : state === 'submitted'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-slate-100 text-slate-600'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : state === 'approved'
+                      ? 'bg-blue-100 text-[#12335f]'
+                      : state === 'submitted'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-100 text-slate-600'
                     }`}>
                     {state.replace(/_/g, ' ')}
                   </span>
@@ -1465,8 +1468,8 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       type="button"
                       onClick={() => setActiveTab('razorpay')}
                       className={`flex items-center justify-center gap-2 rounded-md px-3 py-3 text-xs font-black uppercase transition-all ${activeTab === 'razorpay'
-                          ? 'bg-white text-[#12335f] shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800'
+                        ? 'bg-white text-[#12335f] shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
                         }`}
                     >
                       <CreditCard className="h-4 w-4" />
@@ -1476,8 +1479,8 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       type="button"
                       onClick={() => setActiveTab('bank')}
                       className={`flex items-center justify-center gap-2 rounded-md px-3 py-3 text-xs font-black uppercase transition-all ${activeTab === 'bank'
-                          ? 'bg-white text-[#12335f] shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800'
+                        ? 'bg-white text-[#12335f] shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
                         }`}
                     >
                       <Building2 className="h-4 w-4" />

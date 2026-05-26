@@ -21,6 +21,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { notificationService } from '../services/notification.service.js';
+import { ensureOrgMembership } from '../services/org-membership.service.js';
 import { transporter } from '../services/mail.service.js';
 import { env } from '../config/env.js';
 import type { AuthRequest } from '../middleware/authenticate.js';

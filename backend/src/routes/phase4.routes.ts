@@ -8,6 +8,7 @@ import { authenticate, authorize, authorizeAdmin, type AuthRequest } from '../mi
 import { verifyAccessToken } from '../services/token.service.js';
 import { upload } from '../config/storage.js';
 import { auditLog } from '../modules/audit/audit.service.js';
+import { onUserLinkedToOrganization } from '../services/org-membership.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
 import { paymentRateLimit, verificationRateLimit } from '../middleware/rateLimit.js';
 import { getOrSetCache, deleteCache } from '../services/cache.service.js';
@@ -1326,6 +1327,38 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
   const user = await db.user.update({ where: { id }, data: updateData });
   await auditWrite(req, 'admin.onboarding.status_updated', 'user', id, body);
 
+  // Mirror approval state onto the Organization so requireApprovedOrg
+  // unlocks transactional routes for everyone in that org.
+  if (body.onboardingStatus === 'approved_for_procurement') {
+    const linkedUser = await db.user.findUnique({ where: { id }, select: { organizationId: true } });
+    if (linkedUser?.organizationId) {
+      await db.organization.update({
+        where: { id: linkedUser.organizationId },
+        data: { verificationStatus: 'VERIFIED' as any }
+      }).catch(err => console.error('[Onboarding] org verification mirror failed', err));
+    }
+  }
+  if (body.onboardingStatus === 'rejected') {
+    const linkedUser = await db.user.findUnique({ where: { id }, select: { organizationId: true } });
+    if (linkedUser?.organizationId) {
+      // Don't downgrade an org that already has other approved users — only
+      // suspend if this is the org's only user or the org is still PENDING.
+      const otherApproved = await db.user.count({
+        where: {
+          organizationId: linkedUser.organizationId,
+          onboardingStatus: 'approved_for_procurement',
+          NOT: { id }
+        }
+      });
+      if (otherApproved === 0) {
+        await db.organization.update({
+          where: { id: linkedUser.organizationId },
+          data: { verificationStatus: 'REJECTED' as any }
+        }).catch(err => console.error('[Onboarding] org reject mirror failed', err));
+      }
+    }
+  }
+
   notificationService.notifyWithEmail(id, {
     title: 'Application Status Updated',
     message: `Your onboarding status has been updated to: ${body.onboardingStatus}. ${body.adminFeedback ? 'Admin feedback: ' + body.adminFeedback : ''}`,
@@ -1537,6 +1570,8 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'seller');
     await db.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
     await db.sellerProfile.update({ where: { id: sellerProfile.id }, data: { organizationId: org.id } });
+    // Create the OrgMembership so the user can use cart / approvals / GRN flows.
+    await onUserLinkedToOrganization(user.id, org.id).catch(err => console.error('[Membership] seller link failed', err));
 
     finalSectionStatus.offices = 'approved';
     finalSectionStatus.details = 'approved';
@@ -1577,6 +1612,8 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     if (bpRecord) {
       await db.buyerProfile.update({ where: { id: bpRecord.id }, data: { organizationId: org.id } });
     }
+    // Create the OrgMembership so the user can use cart / approvals / GRN flows.
+    await onUserLinkedToOrganization(user.id, org.id).catch(err => console.error('[Membership] buyer link failed', err));
 
     finalSectionStatus.org = 'approved';
     finalSectionStatus.address = 'approved';

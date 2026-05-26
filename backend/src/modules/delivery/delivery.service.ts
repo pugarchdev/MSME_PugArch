@@ -72,15 +72,25 @@ const safeNotify = (
   priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
 ) => {
   if (!userId) return Promise.resolve(null);
-  return notificationService
-    .notifyWithEmail(userId, {
-      title,
-      message,
-      type: DELIVERY_NOTIFICATION_TYPE,
-      priority,
-      redirectUrl
-    })
-    .catch(() => null);
+  return (async () => {
+    // Respect the user's procurement alert preference. If they've muted
+    // procurement notifications, silently skip both the in-app + email push.
+    try {
+      const pref = await db.notificationPreference.findUnique({ where: { userId } });
+      if (pref && pref.procurementAlerts === false) return null;
+    } catch {
+      // If the preference fetch fails, fall through and notify by default.
+    }
+    return notificationService
+      .notifyWithEmail(userId, {
+        title,
+        message,
+        type: DELIVERY_NOTIFICATION_TYPE,
+        priority,
+        redirectUrl
+      })
+      .catch(() => null);
+  })();
 };
 
 const isAdmin = (actor: DeliveryActor) => actor.role === 'admin';
@@ -346,51 +356,63 @@ export const deliveryService = {
   async listForActor(actor: DeliveryActor, query: Record<string, unknown> = {}) {
     // Auto-seed delivery records for the actor's POs so the list reflects
     // every active order even if the seller hasn't manually started dispatch.
-    if (actor.role === 'seller' || actor.role === 'buyer') {
-      const ownedPOs = await db.purchaseOrder.findMany({
-        where: {
-          ...(actor.role === 'seller' ? { sellerId: actor.id } : { buyerId: actor.id }),
-          status: { notIn: ['cancelled', 'completed'] },
-          deliveryTrackings: { none: {} }
-        },
-        select: { id: true, expectedDelivery: true }
-      });
-      if (ownedPOs.length > 0) {
-        await db.deliveryTracking.createMany({
-          data: ownedPOs.map((po: any) => ({
-            purchaseOrderId: po.id,
-            status: 'CREATED',
-            expectedDelivery: po.expectedDelivery || null
-          })),
-          skipDuplicates: true
-        }).catch(() => undefined);
-      }
-    } else if (isAdmin(actor)) {
-      // Admin sees everything: backfill deliveries for any orphan POs so the
-      // console reflects the full universe of active orders.
-      const orphanCount = await db.purchaseOrder.count({
-        where: {
-          status: { notIn: ['cancelled', 'completed'] },
-          deliveryTrackings: { none: {} }
-        }
-      }).catch(() => 0);
-      if (orphanCount > 0) {
-        const orphans = await db.purchaseOrder.findMany({
+    //
+    // PRODUCTION SAFETY: this fires off a write on every list-page visit. In
+    // dev that's a feature; in prod it would let any user trigger a hidden
+    // bulk insert. So we gate it behind a flag that defaults to ON in dev and
+    // OFF everywhere else. Admins can run a one-shot backfill via the
+    // dedicated POST /api/delivery/admin/backfill endpoint when needed.
+    const autoSeedEnabled =
+      process.env.DELIVERY_AUTO_SEED === 'true' ||
+      (process.env.NODE_ENV !== 'production' && process.env.DELIVERY_AUTO_SEED !== 'false');
+
+    if (autoSeedEnabled) {
+      if (actor.role === 'seller' || actor.role === 'buyer') {
+        const ownedPOs = await db.purchaseOrder.findMany({
           where: {
+            ...(actor.role === 'seller' ? { sellerId: actor.id } : { buyerId: actor.id }),
             status: { notIn: ['cancelled', 'completed'] },
             deliveryTrackings: { none: {} }
           },
-          select: { id: true, expectedDelivery: true },
-          take: 500
+          select: { id: true, expectedDelivery: true }
         });
-        await db.deliveryTracking.createMany({
-          data: orphans.map((po: any) => ({
-            purchaseOrderId: po.id,
-            status: 'CREATED',
-            expectedDelivery: po.expectedDelivery || null
-          })),
-          skipDuplicates: true
-        }).catch(() => undefined);
+        if (ownedPOs.length > 0) {
+          await db.deliveryTracking.createMany({
+            data: ownedPOs.map((po: any) => ({
+              purchaseOrderId: po.id,
+              status: 'CREATED',
+              expectedDelivery: po.expectedDelivery || null
+            })),
+            skipDuplicates: true
+          }).catch(() => undefined);
+        }
+      } else if (isAdmin(actor)) {
+        // Admin sees everything: backfill deliveries for any orphan POs so the
+        // console reflects the full universe of active orders.
+        const orphanCount = await db.purchaseOrder.count({
+          where: {
+            status: { notIn: ['cancelled', 'completed'] },
+            deliveryTrackings: { none: {} }
+          }
+        }).catch(() => 0);
+        if (orphanCount > 0) {
+          const orphans = await db.purchaseOrder.findMany({
+            where: {
+              status: { notIn: ['cancelled', 'completed'] },
+              deliveryTrackings: { none: {} }
+            },
+            select: { id: true, expectedDelivery: true },
+            take: 500
+          });
+          await db.deliveryTracking.createMany({
+            data: orphans.map((po: any) => ({
+              purchaseOrderId: po.id,
+              status: 'CREATED',
+              expectedDelivery: po.expectedDelivery || null
+            })),
+            skipDuplicates: true
+          }).catch(() => undefined);
+        }
       }
     }
 

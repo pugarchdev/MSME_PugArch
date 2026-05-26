@@ -14,8 +14,9 @@
     "lint": "npm run typecheck",
     "lint:security": "eslint index.ts src --ext .ts --max-warnings=0",
     "prisma:validate": "npx prisma validate",
-    "test:security": "node --test tests/security.test.mjs tests/phase8.integration.test.mjs",
+    "test:security": "node --test tests/security.test.mjs tests/phase8.integration.test.mjs tests/delivery.test.mjs",
     "test:integration": "node --test tests/phase8.integration.test.mjs",
+    "test:delivery": "node --test tests/delivery.test.mjs",
     "audit:deps": "npm audit --workspace=backend --audit-level=high",
     "security:check": "npm run typecheck && npm run prisma:validate && npm run lint:security && npm run test:security && npm run audit:deps"
   },

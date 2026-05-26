@@ -52,13 +52,13 @@ const actorFrom = (req: AuthRequest): DeliveryActor => ({
 
 const wrap =
   (handler: (req: AuthRequest, res: Response) => Promise<unknown>, fallback = 'Unable to complete request') =>
-  async (req: AuthRequest, res: Response) => {
-    try {
-      await handler(req, res);
-    } catch (error) {
-      return handleSecureRouteError(res, error, fallback);
-    }
-  };
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await handler(req, res);
+      } catch (error) {
+        return handleSecureRouteError(res, error, fallback);
+      }
+    };
 
 /* ============== Listing & detail ============== */
 
@@ -230,6 +230,11 @@ router.post('/:id/finance/release-payment', authenticate, wrap(async (req, res) 
 }));
 
 /* ============== Admin override ============== */
+
+router.post('/admin/backfill', authenticate, wrap(async (req, res) => {
+  const result = await deliveryService.backfillDeliveriesForExistingPOs(actorFrom(req));
+  ok(res, result);
+}));
 
 router.post('/:id/admin/override', authenticate, wrap(async (req, res) => {
   const { id } = parse<any>(idParam, req.params);

@@ -36,6 +36,7 @@ import { tenderWorkflow } from '../services/workflow/tender-workflow.service.js'
 import { fulfillmentWorkflow } from '../services/workflow/fulfillment-workflow.service.js';
 import { contractWorkflow } from '../services/workflow/contract-workflow.service.js';
 import { ratingWorkflow } from '../services/workflow/rating-workflow.service.js';
+import { ratingsService } from '../modules/ratings/ratings.service.js';
 import { STRICT_VERIFICATION } from '../config/verification.js';
 
 const db = prisma as any;
@@ -67,9 +68,9 @@ const attachBidFileAssets = async (rows: any[]) => {
   const fileIds = [...new Set(rows.map(row => Number(row?.fileAssetId)).filter(Boolean))];
   const assets = fileIds.length
     ? await db.fileAsset.findMany({
-        where: { id: { in: fileIds }, status: 'active' },
-        select: { id: true, originalName: true, mimeType: true, url: true, key: true }
-      })
+      where: { id: { in: fileIds }, status: 'active' },
+      select: { id: true, originalName: true, mimeType: true, url: true, key: true }
+    })
     : [];
   const assetsById = new Map<number, any>(assets.map((asset: any) => [Number(asset.id), asset]));
 
@@ -91,9 +92,9 @@ const attachQuoteResponseFileAssets = async (rows: any[]) => {
   const fileIds = [...new Set(responses.map(response => fileIdFromUrl(response?.documentUrl)).filter(Boolean))] as number[];
   const assets = fileIds.length
     ? await db.fileAsset.findMany({
-        where: { id: { in: fileIds }, status: 'active' },
-        select: { id: true, originalName: true, mimeType: true, url: true, key: true }
-      })
+      where: { id: { in: fileIds }, status: 'active' },
+      select: { id: true, originalName: true, mimeType: true, url: true, key: true }
+    })
     : [];
   const assetsById = new Map<number, any>(assets.map((asset: any) => [Number(asset.id), asset]));
 
@@ -101,16 +102,16 @@ const attachQuoteResponseFileAssets = async (rows: any[]) => {
     ...row,
     quoteResponses: Array.isArray(row?.quoteResponses)
       ? row.quoteResponses.map((response: any) => {
-          const fileAssetId = fileIdFromUrl(response?.documentUrl);
-          const fileAsset = fileAssetId ? assetsById.get(fileAssetId) || null : null;
-          return {
-            ...response,
-            fileAssetId,
-            fileAsset,
-            documentName: fileAsset?.originalName || null,
-            documentUrl: response?.documentUrl || (fileAsset ? `/api/files/${fileAsset.id}/view` : null)
-          };
-        })
+        const fileAssetId = fileIdFromUrl(response?.documentUrl);
+        const fileAsset = fileAssetId ? assetsById.get(fileAssetId) || null : null;
+        return {
+          ...response,
+          fileAssetId,
+          fileAsset,
+          documentName: fileAsset?.originalName || null,
+          documentUrl: response?.documentUrl || (fileAsset ? `/api/files/${fileAsset.id}/view` : null)
+        };
+      })
       : row?.quoteResponses
   }));
 };
@@ -550,7 +551,7 @@ router.put('/seller/onboarding', authenticate, authorize('seller'), asyncRoute(a
 router.post('/buyer/onboarding/send-otp', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const { generateOtp, storeOtp } = await import('../services/otp.service.js');
   const { sendOtpEmail } = await import('../services/mail.service.js');
-  
+
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
   if (!user.email) throw new ApiError(400, 'Login email is not available for OTP delivery.');
@@ -585,7 +586,7 @@ router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(asy
       throw new ApiError(400, 'Bank address must be between 10 and 250 characters');
     }
   }
-  
+
   // Guard personal fields with OTP check if profile already exists
   const personalFields = [
     'representativeName',
@@ -604,7 +605,7 @@ router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(asy
       if (!otp) {
         throw new ApiError(400, 'OTP is required for updating personal information');
       }
-      
+
       const user = await db.user.findUnique({ where: { id: userId(req) } });
       if (!user || !user.email) throw new ApiError(404, 'User not found or email not set');
 
@@ -613,7 +614,7 @@ router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(asy
       if (!verifyResult.ok) {
         throw new ApiError(400, 'Invalid or expired OTP');
       }
-      
+
       await consumeOtp('buyer_profile_update', user.email);
     }
   }
@@ -946,35 +947,45 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
   const [users, total, statusGroups, approvedRoleGroups, flagged] = await Promise.all([
     db.user.findMany({
       where,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      onboardingStatus: true,
-      createdAt: true,
-      sectionStatus: true,
-      adminFeedback: true,
-      complianceViolations: true,
-      buyerProfile: {
-        select: { organizationName: true, procurementCategories: true, industry: true, gst: true, pan: true, state: true, documents: true }
-      },
-      sellerProfile: {
-        select: {
-          businessName: true,
-          productCategories: true,
-          pan: true,
-          msmeCategory: true,
-          documents: true,
-          sellerDocuments: {
-            include: {
-              fileAsset: true
-            }
+      select: {
+        // List view payload - intentionally lean. Heavy fields like
+        // offices/bankAccounts/sellerDocuments/full profile are loaded only
+        // when the scrutiny modal is opened via GET /admin/onboarding/:id.
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        onboardingStatus: true,
+        registrationStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        sectionStatus: true,
+        adminFeedback: true,
+        complianceViolations: { select: { id: true, type: true, severity: true, status: true } },
+        buyerProfile: {
+          select: {
+            organizationName: true,
+            businessType: true,
+            organizationType: true,
+            industry: true,
+            gst: true,
+            pan: true,
+            state: true,
+            city: true,
+            mobile: true
+          }
+        },
+        sellerProfile: {
+          select: {
+            businessName: true,
+            organizationType: true,
+            pan: true,
+            msmeCategory: true,
+            mobile: true
           }
         }
-      }
-    },
-    orderBy: { updatedAt: 'desc' },
+      },
+      orderBy: { updatedAt: 'desc' },
       ...window
     }),
     db.user.count({ where }),
@@ -1007,9 +1018,9 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
     .map((u: any) => u.id);
   const documentAssets = documentOwners.length > 0
     ? await db.fileAsset.findMany({
-        where: { ownerId: { in: [...new Set(documentOwners)] }, status: 'active' },
-        select: { id: true, ownerId: true, key: true, url: true, originalName: true, mimeType: true }
-      })
+      where: { ownerId: { in: [...new Set(documentOwners)] }, status: 'active' },
+      select: { id: true, ownerId: true, key: true, url: true, originalName: true, mimeType: true }
+    })
     : [];
   const findDocumentAsset = (ownerId: number, url: string) => {
     const decodedUrl = (() => {
@@ -1068,6 +1079,77 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
   };
 
   res.json(maskSensitive({ sellers, buyers, total, ...window, filters: query, summary }));
+}));
+
+/**
+ * Heavy-detail endpoint for the scrutiny modal. The list endpoint above is
+ * intentionally lean (only the columns the table cells need); when an admin
+ * actually opens an application for review we fetch the full picture in one
+ * roundtrip. Keeps the list fast while still showing every onboarding field
+ * the seller/buyer submitted.
+ */
+router.get('/admin/onboarding/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const user = await db.user.findUnique({
+    where: { id },
+    include: {
+      complianceViolations: { orderBy: { createdAt: 'desc' } },
+      buyerProfile: true,
+      sellerProfile: {
+        include: {
+          offices: { orderBy: [{ isMandatory: 'desc' }, { id: 'asc' }] },
+          bankAccounts: true,
+          certifications: { include: { fileAsset: true } },
+          sellerDocuments: { include: { fileAsset: true } },
+          organization: true
+        }
+      },
+      organization: true
+    }
+  });
+  if (!user) throw new ApiError(404, 'Application not found', 'APPLICATION_NOT_FOUND');
+  if (!['buyer', 'seller'].includes(String(user.role))) {
+    throw new ApiError(404, 'Application not found', 'APPLICATION_NOT_FOUND');
+  }
+
+  // Enrich documents (the same legacy JSON shape the list endpoint expanded).
+  const profile = user.role === 'seller' ? user.sellerProfile : user.buyerProfile;
+  const docFileIds: number[] = [];
+  if (profile?.documents && typeof profile.documents === 'object' && !Array.isArray(profile.documents)) {
+    for (const value of Object.values(profile.documents as Record<string, any>)) {
+      const list = Array.isArray(value) ? value : [value];
+      for (const entry of list) {
+        const match = String(entry?.url || entry?.fileUrl || '').match(/\/api\/files\/(\d+)/);
+        if (match) docFileIds.push(Number(match[1]));
+      }
+    }
+  }
+  const fileAssets = docFileIds.length > 0
+    ? await db.fileAsset.findMany({ where: { id: { in: docFileIds } } })
+    : [];
+  const fileAssetById = new Map(fileAssets.map((f: any) => [f.id, f]));
+  const enrichDocuments = (documents: any) => {
+    if (!documents || typeof documents !== 'object' || Array.isArray(documents)) return documents;
+    return Object.fromEntries(Object.entries(documents).map(([key, value]) => {
+      const arr = Array.isArray(value) ? value : [value];
+      return [key, arr.map((entry: any) => {
+        const match = String(entry?.url || entry?.fileUrl || '').match(/\/api\/files\/(\d+)/);
+        const fileAsset = match ? fileAssetById.get(Number(match[1])) : null;
+        return { ...entry, fileAsset };
+      })];
+    }));
+  };
+
+  const enrichedProfile = profile ? { ...profile, documents: enrichDocuments(profile.documents) } : null;
+
+  res.json(maskSensitive({
+    success: true,
+    data: {
+      _id: user.id,
+      ...user,
+      profile: enrichedProfile
+    }
+  }));
 }));
 
 router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
@@ -1243,7 +1325,7 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
 
   const user = await db.user.update({ where: { id }, data: updateData });
   await auditWrite(req, 'admin.onboarding.status_updated', 'user', id, body);
-  
+
   notificationService.notifyWithEmail(id, {
     title: 'Application Status Updated',
     message: `Your onboarding status has been updated to: ${body.onboardingStatus}. ${body.adminFeedback ? 'Admin feedback: ' + body.adminFeedback : ''}`,
@@ -1417,7 +1499,7 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
 
     const officeName = 'Registered Head Office';
     const existingOffice = sellerProfile.offices?.find(o => o.isMandatory || o.type === 'Registered Office' || o.gstNumber === normalizedGstin);
-    
+
     if (existingOffice) {
       await db.sellerOffice.update({
         where: { id: existingOffice.id },
@@ -1537,11 +1619,10 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
   try {
     await notificationService.notifyWithEmail(user.id, {
       title: 'GST Verified Successfully',
-      message: `Your business GSTIN ${normalizedGstin} has been successfully verified. ${
-        onboardingStatus === 'approved_for_procurement'
-          ? 'Your account is now fully approved for procurement!'
-          : 'Your organization details have been updated.'
-      }`,
+      message: `Your business GSTIN ${normalizedGstin} has been successfully verified. ${onboardingStatus === 'approved_for_procurement'
+        ? 'Your account is now fully approved for procurement!'
+        : 'Your organization details have been updated.'
+        }`,
       type: 'gst_verified',
       priority: 'high',
       redirectUrl: '/dashboard'
@@ -2772,6 +2853,7 @@ router.post('/escrow/:id/unfreeze', authenticate, authorize('buyer', 'admin'), a
 router.post('/ratings/supplier', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   await assertBuyerProcurementApproved(req);
   const body = parse(z.object({ sellerId: z.coerce.number().int().positive(), purchaseOrderId: z.coerce.number().int().positive().optional(), rating: z.coerce.number().int().min(1).max(5), review: z.string().max(2000).optional(), qualityScore: z.coerce.number().int().min(1).max(5).optional(), deliveryScore: z.coerce.number().int().min(1).max(5).optional(), communicationScore: z.coerce.number().int().min(1).max(5).optional() }), req.body);
+  await ratingsService.assertNotAlreadyRatedPO(userId(req), String(req.user?.role), body.purchaseOrderId);
   const rating = await ratingWorkflow.rateSupplier(actorFrom(req), body);
   await auditWrite(req, 'rating.supplier_created', 'supplierRating', rating.id);
   ok(res, rating, 201);
@@ -2779,20 +2861,14 @@ router.post('/ratings/supplier', authenticate, authorize('buyer'), asyncRoute(as
 
 router.post('/ratings/buyer', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const body = parse(z.object({ buyerId: z.coerce.number().int().positive(), purchaseOrderId: z.coerce.number().int().positive().optional(), rating: z.coerce.number().int().min(1).max(5), review: z.string().max(2000).optional(), paymentTimelinessScore: z.coerce.number().int().min(1).max(5).optional(), communicationScore: z.coerce.number().int().min(1).max(5).optional() }), req.body);
+  await ratingsService.assertNotAlreadyRatedPO(userId(req), String(req.user?.role), body.purchaseOrderId);
   const rating = await ratingWorkflow.rateBuyer(actorFrom(req), body);
   await auditWrite(req, 'rating.buyer_created', 'buyerRating', rating.id);
   ok(res, rating, 201);
 }));
 
-router.get('/ratings/supplier/:sellerId', authenticate, asyncRoute(async (req, res) => {
-  const { sellerId } = parse(sellerIdParams, req.params);
-  ok(res, await db.supplierRating.findMany({ where: { sellerId }, orderBy: { createdAt: 'desc' }, take: 100 }));
-}));
-
-router.get('/ratings/buyer/:buyerId', authenticate, asyncRoute(async (req, res) => {
-  const { buyerId } = parse(buyerIdParams, req.params);
-  ok(res, await db.buyerRating.findMany({ where: { buyerId }, orderBy: { createdAt: 'desc' }, take: 100 }));
-}));
+// GET /ratings/supplier/:sellerId and GET /ratings/buyer/:buyerId are served
+// by the dedicated ratings module mounted at /api/ratings (see routes/index.ts).
 
 // Admin reports
 router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
@@ -2838,7 +2914,7 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
 router.put('/admin/users/:id/status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const body = parse(z.object({ accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']) }), req.body);
-  
+
   if (id === userId(req) && body.accountStatus !== 'ACTIVE') {
     throw new ApiError(400, 'You cannot deactivate your own account', 'ADMIN_SELF_DEACTIVATION_BLOCKED');
   }
@@ -2860,11 +2936,11 @@ router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (r
     role: z.string().trim().optional(),
     accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']).optional()
   }), req.body);
-  
+
   if (id === userId(req) && body.accountStatus && body.accountStatus !== 'ACTIVE') {
     throw new ApiError(400, 'You cannot deactivate your own account', 'ADMIN_SELF_DEACTIVATION_BLOCKED');
   }
-  
+
   const updated = await db.user.update({
     where: { id },
     data: {
@@ -2882,7 +2958,7 @@ router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (r
 router.delete('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   if (id === userId(req)) throw new ApiError(400, 'You cannot delete your own account', 'ADMIN_SELF_DELETE_BLOCKED');
-  
+
   await db.userSession.deleteMany({ where: { userId: id } });
   await db.complianceViolation.deleteMany({ where: { userId: id } });
   await db.fraudAlert.deleteMany({ where: { userId: id } });
@@ -3001,7 +3077,7 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
     where: { createdAt: { gte: sixMonthsAgo } },
     select: { createdAt: true, role: true }
   });
-  
+
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const growthMap = new Map();
   // Initialize last 6 months
@@ -3010,7 +3086,7 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
     d.setMonth(d.getMonth() - i);
     growthMap.set(monthNames[d.getMonth()], { name: monthNames[d.getMonth()], buyers: 0, sellers: 0 });
   }
-  
+
   recentUsers.forEach((u: any) => {
     const d = new Date(u.createdAt);
     const m = monthNames[d.getMonth()];
@@ -3411,35 +3487,35 @@ router.post('/notifications/read-all', authenticate, asyncRoute(async (req, res)
 router.post('/seller/settings/change-password/send-otp', authenticate, asyncRoute(async (req, res) => {
   const { generateOtp, storeOtp } = await import('../services/otp.service.js');
   const { sendOtpEmail } = await import('../services/mail.service.js');
-  
+
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
-  
+
   const otp = generateOtp();
   await storeOtp('forgot_password', user.email, otp, { userId: user.id });
   await sendOtpEmail(user.email, otp, '[SECURE AUTH] Password change authorization code');
-  
+
   ok(res, { success: true });
 }));
 
 router.post('/seller/settings/change-password', authenticate, asyncRoute(async (req, res) => {
   const { verifyOtp, consumeOtp } = await import('../services/otp.service.js');
   const { hashPassword, validatePasswordStrength } = await import('../services/password.service.js');
-  
+
   const { newPassword, otp } = req.body;
   if (!newPassword || !otp) throw new ApiError(400, 'Password and OTP are required');
-  
+
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
-  
+
   const result = await verifyOtp('forgot_password', user.email, otp);
   if (!result.ok) throw new ApiError(400, 'Invalid or expired OTP');
-  
+
   const passwordValidation = validatePasswordStrength(newPassword);
   if (!passwordValidation.ok) {
     throw new ApiError(400, 'Password does not meet security requirements: ' + passwordValidation.errors.join(', '));
   }
-  
+
   const hashedPassword = await hashPassword(newPassword);
   await db.user.update({
     where: { id: user.id },
@@ -3450,7 +3526,7 @@ router.post('/seller/settings/change-password', authenticate, asyncRoute(async (
       lastPasswordChangeAt: new Date()
     }
   });
-  
+
   await consumeOtp('forgot_password', user.email);
   ok(res, { success: true, message: 'Password updated successfully' });
 }));
@@ -3458,25 +3534,25 @@ router.post('/seller/settings/change-password', authenticate, asyncRoute(async (
 router.post('/seller/settings/change-email', authenticate, asyncRoute(async (req, res) => {
   const { verifyEmailOtp, consumeEmailOtp } = await import('../services/otp.service.js');
   const { verifyPassword } = await import('../services/password.service.js');
-  
+
   const { newEmail, otp, password } = req.body;
   if (!newEmail || !otp || !password) throw new ApiError(400, 'New email, OTP, and password are required');
-  
+
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
-  
+
   const isPasswordMatch = await verifyPassword(password, user.password);
   if (!isPasswordMatch) throw new ApiError(400, 'Current password incorrect');
-  
+
   const otpCheck = await verifyEmailOtp(newEmail, otp);
   if (!otpCheck.ok) throw new ApiError(400, 'Invalid or expired OTP');
-  
+
   // Update email
   await db.user.update({
     where: { id: user.id },
     data: { email: newEmail.trim().toLowerCase() }
   });
-  
+
   await consumeEmailOtp(newEmail);
   ok(res, { success: true, message: 'Email updated successfully' });
 }));
@@ -3484,7 +3560,7 @@ router.post('/seller/settings/change-email', authenticate, asyncRoute(async (req
 router.post('/seller/settings/aadhaar', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const { aadhaarNumber } = req.body;
   if (!aadhaarNumber) throw new ApiError(400, 'Aadhaar number is required');
-  
+
   const sellerProfile = await db.sellerProfile.update({
     where: { userId: userId(req) },
     data: {
@@ -3493,7 +3569,7 @@ router.post('/seller/settings/aadhaar', authenticate, authorize('seller'), async
       aadhaarVerified: true
     }
   });
-  
+
   ok(res, { success: true, sellerProfile });
 }));
 

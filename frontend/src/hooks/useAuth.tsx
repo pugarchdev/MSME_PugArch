@@ -101,6 +101,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Keep the auth cookie in sync with localStorage so Next.js middleware
+    // (which only sees the cookie) doesn't redirect us to '/' while we're
+    // still authenticated. The cookie is short-lived by design (15 min); we
+    // re-stamp it here on every refresh to extend its lifetime.
+    document.cookie = `token=${currentToken}; path=/; max-age=900; SameSite=Lax`;
+
     const headers = { Authorization: `Bearer ${currentToken}` };
     const cachedMe = api.peek('/api/auth/me', { headers });
     if (cachedMe?.user) {
@@ -115,6 +121,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await res.json();
         setUser(data.user);
         localStorage.setItem('msme_user_cache', JSON.stringify(data.user));
+        // Re-stamp the cookie now that the token is confirmed valid.
+        document.cookie = `token=${currentToken}; path=/; max-age=900; SameSite=Lax`;
       } else {
         if (![401, 403].includes(res.status)) return;
 
@@ -162,11 +170,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, [logout]);
 
+  // Cookie heartbeat: middleware reads the auth cookie and redirects to '/'
+  // when it's missing. The cookie has a 15-minute max-age but the JWT lasts
+  // longer; without periodic re-stamping, an active session would get bounced
+  // when the cookie expired, even though the JWT is still valid.
+  useEffect(() => {
+    if (!user) return;
+    const restamp = () => {
+      const t = localStorage.getItem('token');
+      if (t) {
+        document.cookie = `token=${t}; path=/; max-age=900; SameSite=Lax`;
+      }
+    };
+    restamp();
+    const interval = setInterval(restamp, 5 * 60_000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   const login = useCallback((token: string, user: User, refreshToken?: string) => {
     localStorage.setItem('token', token);
     if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('msme_user_cache', JSON.stringify(user));
-    document.cookie = `token=${token}; path=/; max-age=900; SameSite=Lax`; 
+    document.cookie = `token=${token}; path=/; max-age=900; SameSite=Lax`;
     setToken(token);
     setUser(user);
     setLoading(false);

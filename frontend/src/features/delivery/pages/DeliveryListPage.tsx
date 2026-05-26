@@ -1,11 +1,11 @@
 /**
  * DeliveryListPage - master list of deliveries scoped to the current user's
- * role. Supports a list (table) view and a grid (cards) view, with pagination
- * and search applied server-side. Sr.No respects pagination so it stays
- * accurate across pages.
+ * role. Powered by React Query so navigating between pages and back is
+ * instant from cache. Supports list/grid view, server-side search, and proper
+ * skeleton loaders.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Filter,
@@ -29,15 +29,16 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { useAuth } from '../../../hooks/useAuth';
-import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
+import { EmptyState, InlineError } from '../../shared/FeatureStates';
+import { TableSkeleton, ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
 import { Pagination } from '../../shared/Pagination';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { cn } from '../../../lib/utils';
 import { DeliveryStatusBadge } from '../components/DeliveryStatusBadge';
 import { DELIVERY_STATUS_LABELS } from '../status';
-import { fetchDeliveryReport, listDeliveries } from '../api';
-import type { DeliveryDetailDto, DeliveryReportSummary, DeliveryStatus } from '../types';
+import { useDeliveryList, useDeliveryReport } from '../hooks';
+import type { DeliveryDetailDto, DeliveryStatus } from '../types';
 import { DeliveryDetailPage } from './DeliveryDetailPage';
 
 const STATUS_OPTIONS = Object.keys(DELIVERY_STATUS_LABELS) as DeliveryStatus[];
@@ -50,93 +51,53 @@ interface Props {
 
 export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
   const { user } = useAuth();
-  const [records, setRecords] = useState<DeliveryDetailDto[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<DeliveryStatus | ''>('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [summary, setSummary] = useState<DeliveryReportSummary | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode();
 
-  // Debounce search so we don't refire on every keystroke.
+  // Debounced search to avoid hammering the API on every keystroke.
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(handle);
   }, [search]);
 
-  // Reset to page 1 whenever a filter changes.
+  // Reset to page 1 when filters narrow.
   useEffect(() => {
     setPage(1);
   }, [statusFilter, debouncedSearch, pageSize]);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listDeliveries({
-        page,
-        pageSize,
-        status: statusFilter || undefined,
-        q: debouncedSearch || undefined
-      });
-      setRecords(result.records || []);
-      setTotal(result.total || 0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load deliveries');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, statusFilter, debouncedSearch]);
+  const listQuery = useDeliveryList({
+    page,
+    pageSize,
+    status: statusFilter || undefined,
+    q: debouncedSearch || undefined
+  });
+  const reportQuery = useDeliveryReport(user?.role === 'admin');
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const records = (listQuery.data?.records || []) as DeliveryDetailDto[];
+  const total = listQuery.data?.total || 0;
 
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      fetchDeliveryReport().then(setSummary).catch(() => setSummary(null));
-    }
-  }, [user?.role]);
-
-  // Client-side filter as a safety net so the search remains responsive even
-  // before the backend acknowledges a query change.
-  const filtered = useMemo(() => {
-    if (!debouncedSearch) return records;
-    const term = debouncedSearch.toLowerCase();
-    return records.filter(record => {
-      const haystack = [
-        record.trackingNumber,
-        record.carrierName,
-        record.currentLocation,
-        record.purchaseOrder?.poNumber,
-        record.purchaseOrder?.title,
-        record.purchaseOrder?.seller?.name,
-        record.purchaseOrder?.buyer?.name
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [records, debouncedSearch]);
-
+  // Lightweight client-side counters from whatever the current page has.
   const counters = useMemo(() => {
     const inMovement = records.filter(r =>
       ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'AT_HUB', 'PICKED_UP'].includes(r.status)
     ).length;
-    const completed = records.filter(r => ['DELIVERED', 'ACCEPTED', 'CLOSED', 'PAYMENT_RELEASED'].includes(r.status)).length;
-    const risk = records.filter(r => ['DELAYED', 'DELIVERY_FAILED', 'DISPUTE_RAISED', 'RETURNED', 'CANCELLED'].includes(r.status)).length;
+    const completed = records.filter(r =>
+      ['DELIVERED', 'ACCEPTED', 'CLOSED', 'PAYMENT_RELEASED'].includes(r.status)
+    ).length;
+    const risk = records.filter(r =>
+      ['DELAYED', 'DELIVERY_FAILED', 'DISPUTE_RAISED', 'RETURNED', 'CANCELLED'].includes(r.status)
+    ).length;
     return { inMovement, completed, risk };
   }, [records]);
 
-  // Sr.No is computed from the page window so the numbers always stay correct
-  // even on page 2+ or with custom page sizes.
   const startIndex = (page - 1) * pageSize;
+  const isInitialLoading = listQuery.isLoading && !listQuery.data;
+  const isBackgroundFetching = listQuery.isFetching && !!listQuery.data;
 
   if (selectedId) {
     return <DeliveryDetailPage deliveryId={selectedId} onClose={() => setSelectedId(null)} />;
@@ -158,31 +119,48 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle viewMode={viewMode} onChange={setViewMode} />
-          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-            <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
+          <Button
+            variant="outline"
+            onClick={() => listQuery.refetch()}
+            className="h-10 rounded-lg text-xs font-black uppercase"
+          >
+            <RefreshCw className={cn('mr-2 h-4 w-4', isBackgroundFetching && 'animate-spin')} /> Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} />
-        <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} />
-        <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} />
-        <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} />
-      </div>
+      {isInitialLoading ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[1, 2, 3, 4].map(i => (
+            <MetricCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} />
+          <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} />
+          <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} />
+          <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} />
+        </div>
+      )}
 
-      {scope === 'admin' && summary && (
+      {scope === 'admin' && reportQuery.data && (
         <Card>
           <CardContent className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-            <Info label="Pending Payment" value={String(summary.paymentPendingAfterAcceptance)} />
-            <Info label="Disputed" value={String(summary.disputed)} />
-            <Info label="Delayed" value={String(summary.delayed)} />
-            <Info label="Returned" value={String(summary.returned)} />
+            <Info label="Pending Payment" value={String(reportQuery.data.paymentPendingAfterAcceptance)} />
+            <Info label="Disputed" value={String(reportQuery.data.disputed)} />
+            <Info label="Delayed" value={String(reportQuery.data.delayed)} />
+            <Info label="Returned" value={String(reportQuery.data.returned)} />
           </CardContent>
         </Card>
       )}
 
-      {error && <InlineError message={error} onRetry={reload} />}
+      {listQuery.error && (
+        <InlineError
+          message={listQuery.error instanceof Error ? listQuery.error.message : 'Failed to load deliveries'}
+          onRetry={() => listQuery.refetch()}
+        />
+      )}
 
       <Card>
         <CardContent className="space-y-3 p-4">
@@ -220,16 +198,16 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         </CardContent>
       </Card>
 
-      {loading && records.length === 0 ? (
-        <LoadingState label="Loading deliveries..." />
-      ) : filtered.length === 0 ? (
+      {isInitialLoading ? (
+        viewMode === 'list' ? <TableSkeleton rows={6} cols={8} /> : <ListSkeleton rows={4} />
+      ) : records.length === 0 ? (
         <EmptyState
           title="No deliveries found"
           description="Adjust the filters or wait for sellers to dispatch their orders."
         />
       ) : viewMode === 'grid' ? (
         <GridView
-          records={filtered}
+          records={records}
           startIndex={startIndex}
           page={page}
           pageSize={pageSize}
@@ -237,10 +215,11 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
           onSelect={setSelectedId}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
+          isFetching={isBackgroundFetching}
         />
       ) : (
         <ListView
-          records={filtered}
+          records={records}
           startIndex={startIndex}
           page={page}
           pageSize={pageSize}
@@ -248,6 +227,7 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
           onSelect={setSelectedId}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
+          isFetching={isBackgroundFetching}
         />
       )}
     </div>
@@ -296,11 +276,12 @@ interface ViewProps {
   onSelect: (id: number) => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  isFetching: boolean;
 }
 
-function ListView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange }: ViewProps) {
+function ListView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange, isFetching }: ViewProps) {
   return (
-    <Card>
+    <Card className={cn('transition-opacity', isFetching && 'opacity-90')}>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <Table className="min-w-[960px]">
@@ -376,9 +357,9 @@ function ListView({ records, startIndex, page, pageSize, total, onSelect, onPage
 
 /* ---------- Grid (cards) view ---------- */
 
-function GridView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange }: ViewProps) {
+function GridView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange, isFetching }: ViewProps) {
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4 transition-opacity', isFetching && 'opacity-90')}>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {records.map((record, index) => (
           <button

@@ -774,7 +774,7 @@ export default function Quotations() {
       }
     });
   }, [quotes, searchTerm, statusFilter, sortField, sortOrder]);
-  const { page, pageSize, pageItems: pagedQuotes, total, setPage, setPageSize } = usePagination(filteredQuotes, 20);
+  const { page, pageSize, pageItems: pagedQuotes, total, setPage, setPageSize } = usePagination(filteredQuotes, 10);
 
   const stats = useMemo(() => {
     const total = quotes.length;
@@ -975,12 +975,12 @@ export default function Quotations() {
                               </button>
                               {isDecisionOpen(quote) && (
                                 <>
-                                <button onClick={() => handleStatusUpdate(quote, 'rejected')} className="h-7 w-7 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
-                                  <XCircle className="h-3.5 w-3.5" />
-                                </button>
-                                <button onClick={() => handleStatusUpdate(quote, 'accepted')} className="h-7 w-7 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                </button>
+                                  <button onClick={() => handleStatusUpdate(quote, 'rejected')} className="h-7 w-7 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
+                                    <XCircle className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => handleStatusUpdate(quote, 'accepted')} className="h-7 w-7 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </>
                               )}
                               {!isDecisionOpen(quote) && (
@@ -1031,17 +1031,17 @@ export default function Quotations() {
           <>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {pagedQuotes.map((quote, index) => (
-              <React.Fragment key={`${quote.source || 'bid'}-${quote.id}`}>
-                <QuotationCard
-                  quote={quote}
-                  role={user?.role}
-                  index={(page - 1) * pageSize + index}
-                  onView={() => handleViewQuote(quote)}
-                  onAccept={() => handleStatusUpdate(quote, 'accepted')}
-                  onReject={() => handleStatusUpdate(quote, 'rejected')}
-                  onRespond={() => setResponseTarget(quote)}
-                />
-              </React.Fragment>
+                <React.Fragment key={`${quote.source || 'bid'}-${quote.id}`}>
+                  <QuotationCard
+                    quote={quote}
+                    role={user?.role}
+                    index={(page - 1) * pageSize + index}
+                    onView={() => handleViewQuote(quote)}
+                    onAccept={() => handleStatusUpdate(quote, 'accepted')}
+                    onReject={() => handleStatusUpdate(quote, 'rejected')}
+                    onRespond={() => setResponseTarget(quote)}
+                  />
+                </React.Fragment>
               ))}
             </div>
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -1211,9 +1211,9 @@ function QuotationCard({
             ) : (
               <div className={cn('flex h-10 items-center justify-center rounded-md border text-sm font-bold', statusStyles[quote.status])}>
                 <StatusIcon className="mr-2 h-4 w-4" />
-                {quote.status === 'accepted' ? 'Quotation Accepted' : 
-                 quote.status === 'rejected' || quote.status === 'technical_rejected' ? 'Quotation Rejected' : 
-                 'Status: ' + getStatusLabel(quote.status)}
+                {quote.status === 'accepted' ? 'Quotation Accepted' :
+                  quote.status === 'rejected' || quote.status === 'technical_rejected' ? 'Quotation Rejected' :
+                    'Status: ' + getStatusLabel(quote.status)}
               </div>
             )
           ) : (
@@ -1226,14 +1226,14 @@ function QuotationCard({
               <div className={cn('flex h-10 items-center justify-center rounded-md border text-sm font-bold', statusStyles[quote.status])}>
                 <StatusIcon className="mr-2 h-4 w-4" />
                 {quote.source === 'rfq' && quote.status === 'submitted' ? 'RFQ response submitted' :
-                 quote.status === 'pending' ? 'Pending buyer review' : 
-                 quote.status === 'submitted' ? 'Submitted (Awaiting Review)' :
-                 quote.status === 'technical_qualified' ? 'Technically Qualified' :
-                 quote.status === 'technical_rejected' ? 'Technically Rejected' :
-                 quote.status === 'financial_evaluated' ? 'Financial Evaluated' :
-                 quote.status === 'accepted' ? 'Accepted by buyer' : 
-                 quote.status === 'withdrawn' ? 'Inactive quotation' : 
-                 quote.status === 'rejected' ? 'Not selected' : 'Status: ' + getStatusLabel(quote.status)}
+                  quote.status === 'pending' ? 'Pending buyer review' :
+                    quote.status === 'submitted' ? 'Submitted (Awaiting Review)' :
+                      quote.status === 'technical_qualified' ? 'Technically Qualified' :
+                        quote.status === 'technical_rejected' ? 'Technically Rejected' :
+                          quote.status === 'financial_evaluated' ? 'Financial Evaluated' :
+                            quote.status === 'accepted' ? 'Accepted by buyer' :
+                              quote.status === 'withdrawn' ? 'Inactive quotation' :
+                                quote.status === 'rejected' ? 'Not selected' : 'Status: ' + getStatusLabel(quote.status)}
               </div>
             )
           )}

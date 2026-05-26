@@ -127,7 +127,7 @@ export default function PurchaseOrders() {
       .sort((a, b) => {
         if (sortBy === 'value_high') return Number(b.amount || b.totalValue || 0) - Number(a.amount || a.totalValue || 0);
         if (sortBy === 'value_low') return Number(a.amount || a.totalValue || 0) - Number(b.amount || b.totalValue || 0);
-        
+
         if (sortBy === 'status' || sortBy === 'status_asc') return String(a.status || '').localeCompare(String(b.status || ''));
         if (sortBy === 'status_desc') return String(b.status || '').localeCompare(String(a.status || ''));
 
@@ -154,7 +154,7 @@ export default function PurchaseOrders() {
         return String(b.createdAt || b.poNumber).localeCompare(String(a.createdAt || a.poNumber));
       });
   }, [activeTab, orders, searchTerm, sortBy]);
-  const { page, pageSize, pageItems: pagedOrders, total, setPage, setPageSize } = usePagination(filteredOrders, 20);
+  const { page, pageSize, pageItems: pagedOrders, total, setPage, setPageSize } = usePagination(filteredOrders, 10);
 
   const totalSpend = orders.filter(order => order.status !== 'cancelled').reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0);
   const deliveredCount = orders.filter(order => order.status === 'delivered').length;
@@ -257,7 +257,7 @@ export default function PurchaseOrders() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search PO, seller, buyer, status..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
             </div>
-            
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full xl:w-auto">
               <div className="flex flex-wrap items-center gap-3">
                 <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 min-w-[130px]">

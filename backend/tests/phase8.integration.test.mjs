@@ -87,7 +87,7 @@ test('frontend key pages are routed and production mock data has been removed', 
   assert.doesNotMatch(purchaseOrdersView, /SAMPLE_ORDERS|Bharat Office Solutions|Heritage Furniture Co\./, 'PurchaseOrders production page must not use sample orders');
   assert.doesNotMatch(trackingView, /const shipments|PKG-92837465|DHL Government Desk/, 'ParcelTracking production page must not use static tracking data');
   assert.doesNotMatch(adminOperations, /\/api\/admin\/stats/, 'AdminOperations must use report APIs instead of legacy in-memory stats route');
-  assert.match(appRoutes, /roleOk\(user\.role,\['admin'\]\)/, 'unauthorized role routing must remain guarded');
+  assert.match(appRoutes, /roleOk\(user\.role,\s*\['admin'\]\)/, 'unauthorized role routing must remain guarded');
 });
 
 test('PostgreSQL integration: idempotency unique guard blocks duplicate financial request keys', async t => {

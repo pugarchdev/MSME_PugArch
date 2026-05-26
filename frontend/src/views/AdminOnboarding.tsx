@@ -69,19 +69,19 @@ const getDocumentUrl = (document: any) =>
 const getSellerOnboardingDocuments = (profile: any) => {
   const sellerDocuments = Array.isArray(profile?.sellerDocuments)
     ? profile.sellerDocuments.filter((doc: any) =>
-        SELLER_ONBOARDING_DOCUMENT_TYPES.has(String(doc?.documentType || "")) && Boolean(doc?.fileAsset),
-      )
+      SELLER_ONBOARDING_DOCUMENT_TYPES.has(String(doc?.documentType || "")) && Boolean(doc?.fileAsset),
+    )
     : [];
 
   const legacyDocuments =
     profile?.documents && typeof profile.documents === "object" && !Array.isArray(profile.documents)
       ? Object.entries(profile.documents).filter(([key, value]) => {
-          if (!SELLER_ONBOARDING_DOCUMENT_TYPES.has(String(key))) return false;
-          if (!getDocumentFiles(value).some(getDocumentUrl)) return false;
-          return !sellerDocuments.some(
-            (doc: any) => String(doc.documentType).toLowerCase() === String(key).toLowerCase(),
-          );
-        })
+        if (!SELLER_ONBOARDING_DOCUMENT_TYPES.has(String(key))) return false;
+        if (!getDocumentFiles(value).some(getDocumentUrl)) return false;
+        return !sellerDocuments.some(
+          (doc: any) => String(doc.documentType).toLowerCase() === String(key).toLowerCase(),
+        );
+      })
       : [];
 
   return { sellerDocuments, legacyDocuments };
@@ -117,6 +117,34 @@ export default function AdminOnboarding() {
   // Override Modal State
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+
+  /**
+   * Open the scrutiny modal with the lightweight list row for instant feedback,
+   * then fetch the heavy detail (full profile, offices, banks, certs, docs)
+   * from /admin/onboarding/:id and merge it in. Two-step pattern keeps the
+   * list endpoint lean while still showing complete data when a reviewer
+   * actually opens an application.
+   */
+  const openItemForReview = async (item: any) => {
+    setSelectedItem(item);
+    setFeedback(item.adminFeedback || "");
+    try {
+      const res = await api.fetch(`/api/admin/onboarding/${item._id || item.id}`, authOptions);
+      if (!res.ok) return;
+      const payload = await res.json();
+      const detail = payload?.data || payload;
+      if (detail) {
+        // Preserve the list-derived fields (e.g. cached profile from the list)
+        // and overlay the heavy detail. Detail wins because it's the
+        // authoritative deep copy.
+        setSelectedItem((prev: any) => (prev && (prev._id === item._id || prev._id === item.id)
+          ? { ...prev, ...detail }
+          : prev));
+      }
+    } catch {
+      // Modal already shows the lightweight row; silent failure is fine.
+    }
+  };
 
   const fetchData = async () => {
     if (!cachedData) setIsLoading(true);
@@ -212,11 +240,11 @@ export default function AdminOnboarding() {
       prevList.map((item) =>
         item._id === userId
           ? {
-              ...item,
-              onboardingStatus: status,
-              sectionStatus: updatedSectionStatus,
-              adminFeedback: reason || item.adminFeedback,
-            }
+            ...item,
+            onboardingStatus: status,
+            sectionStatus: updatedSectionStatus,
+            adminFeedback: reason || item.adminFeedback,
+          }
           : item,
       );
 
@@ -276,22 +304,22 @@ export default function AdminOnboarding() {
     // 2. Define default status map based on the role
     const defaultStatusMap = selectedItem.role === "buyer"
       ? {
-          org: "pending",
-          rep: "pending",
-          address: "pending",
-          procurement: "pending",
-          docs: "pending",
-        }
+        org: "pending",
+        rep: "pending",
+        address: "pending",
+        procurement: "pending",
+        docs: "pending",
+      }
       : {
-          pan: "pending",
-          details: "pending",
-          additional: "pending",
-          offices: "pending",
-          bank: "pending",
-          einvoicing: "pending",
-          ownership: "pending",
-          documents: "pending",
-        };
+        pan: "pending",
+        details: "pending",
+        additional: "pending",
+        offices: "pending",
+        bank: "pending",
+        einvoicing: "pending",
+        ownership: "pending",
+        documents: "pending",
+      };
 
     // 3. Compute updated sectionStatus
     const updatedSectionStatus = {
@@ -313,9 +341,9 @@ export default function AdminOnboarding() {
     // 5. Update rejection reasons
     const updatedRejectionReasons = reason
       ? {
-          ...(selectedItem.sectionRejectionReasons || {}),
-          [section]: reason,
-        }
+        ...(selectedItem.sectionRejectionReasons || {}),
+        [section]: reason,
+      }
       : selectedItem.sectionRejectionReasons;
 
     const updatedItem = {
@@ -332,11 +360,11 @@ export default function AdminOnboarding() {
       prevList.map((item) =>
         item._id === userId
           ? {
-              ...item,
-              onboardingStatus: newStatus,
-              sectionStatus: updatedSectionStatus,
-              sectionRejectionReasons: updatedRejectionReasons,
-            }
+            ...item,
+            onboardingStatus: newStatus,
+            sectionStatus: updatedSectionStatus,
+            sectionRejectionReasons: updatedRejectionReasons,
+          }
           : item,
       );
 
@@ -504,15 +532,15 @@ export default function AdminOnboarding() {
     item.role === "buyer"
       ? ["org", "rep", "address", "procurement", "docs"]
       : [
-          "pan",
-          "details",
-          "additional",
-          "offices",
-          "bank",
-          "einvoicing",
-          "ownership",
-          "documents",
-        ];
+        "pan",
+        "details",
+        "additional",
+        "offices",
+        "bank",
+        "einvoicing",
+        "ownership",
+        "documents",
+      ];
 
   const getProgress = (item: any) => {
     if (!item?.sectionStatus) return 0;
@@ -595,7 +623,7 @@ export default function AdminOnboarding() {
           return getSubmittedDate(a).getTime() - getSubmittedDate(b).getTime();
         if (sortBy === "newest")
           return getSubmittedDate(b).getTime() - getSubmittedDate(a).getTime();
-        
+
         if (sortBy === "progress") return getProgress(b) - getProgress(a);
         if (sortBy === "progress_asc") return getProgress(a) - getProgress(b);
 
@@ -663,11 +691,11 @@ export default function AdminOnboarding() {
   ).length;
   const averageProgress = totalNetwork
     ? Math.round(
-        [...sellers, ...buyers].reduce(
-          (sum, item) => sum + getProgress(item),
-          0,
-        ) / totalNetwork,
-      )
+      [...sellers, ...buyers].reduce(
+        (sum, item) => sum + getProgress(item),
+        0,
+      ) / totalNetwork,
+    )
     : 0;
 
   const toggleAdminSort = (key: string) => {
@@ -1084,14 +1112,14 @@ export default function AdminOnboarding() {
                                   <div className="text-[10px] font-black text-indigo-600 uppercase">
                                     {item.role === "buyer"
                                       ? item.profile?.annualBudget ||
-                                        "Budget N/A"
+                                      "Budget N/A"
                                       : getPrimaryCategory(item)}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
                                     {item.role === "buyer"
                                       ? getPrimaryCategory(item)
                                       : item.profile?.industry ||
-                                        "Manufacturing"}
+                                      "Manufacturing"}
                                   </div>
                                 </div>
                               </TableCell>
@@ -1128,8 +1156,8 @@ export default function AdminOnboarding() {
                                               "approved"
                                               ? "bg-green-500"
                                               : item.sectionStatus?.[
-                                                    section
-                                                  ] === "rejected"
+                                                section
+                                              ] === "rejected"
                                                 ? "bg-red-500"
                                                 : "bg-slate-200",
                                           ) || ""
@@ -1144,8 +1172,7 @@ export default function AdminOnboarding() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedItem(item);
-                                    setFeedback(item.adminFeedback || "");
+                                    void openItemForReview(item);
                                   }}
                                   className="text-[10px] font-black text-indigo-600 uppercase hover:underline hover:text-indigo-800 transition-all decoration-2 underline-offset-4"
                                 >
@@ -1203,7 +1230,7 @@ export default function AdminOnboarding() {
                                           "approved"
                                           ? "bg-green-500"
                                           : item.sectionStatus?.[section] ===
-                                              "rejected"
+                                            "rejected"
                                             ? "bg-red-500"
                                             : "bg-slate-200",
                                       ) || ""
@@ -1214,8 +1241,7 @@ export default function AdminOnboarding() {
                             </div>
                             <button
                               onClick={() => {
-                                setSelectedItem(item);
-                                setFeedback(item.adminFeedback || "");
+                                void openItemForReview(item);
                               }}
                               className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase"
                             >
@@ -1243,32 +1269,56 @@ export default function AdminOnboarding() {
 
       {/* FULL SCREEN REVIEW OVERLAY */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1f3a]/80 p-2 animate-in fade-in duration-300 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1f3a]/85 p-2 animate-in fade-in duration-300 md:p-4 backdrop-blur-sm">
           <div className="flex h-[95dvh] w-full max-w-[1300px] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl animate-in zoom-in-95 duration-300">
-            {/* Header */}
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-200 bg-[#12335f] px-6 py-4 text-white md:px-8">
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-100">
-                  Registration Scrutiny Desk
-                </p>
-                <h2 className="text-lg font-extrabold uppercase leading-none tracking-tight md:text-xl">
-                  Application Review
-                </h2>
-                <p className="text-xs font-medium text-slate-100">
-                  Detailed participant verification and compliance decision
-                  module
-                </p>
+            {/* Government tricolor accent strip */}
+            <div className="flex h-1 w-full">
+              <div className="h-full flex-1 bg-[#ff9933]" aria-hidden />
+              <div className="h-full flex-1 bg-white" aria-hidden />
+              <div className="h-full flex-1 bg-[#138808]" aria-hidden />
+            </div>
+
+            {/* Header - government-portal styling: deep navy, gold accent, embossed feel */}
+            <div className="relative border-b-2 border-[#f9a825] bg-gradient-to-r from-[#0b1f3a] via-[#12335f] to-[#0b1f3a] px-6 py-5 text-white md:px-8">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-[#f9a825]/40 bg-white/10 text-[#f9a825] shadow-inner">
+                    <ShieldCheck className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#f9a825]">
+                      Government of India · MSME Procurement Portal
+                    </p>
+                    <h2 className="text-lg font-extrabold uppercase leading-none tracking-tight md:text-xl">
+                      Registration Scrutiny Desk
+                    </h2>
+                    <p className="text-[11px] font-medium text-slate-200">
+                      Statutory verification and compliance decision module
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="hidden flex-col items-end gap-0.5 border-l border-white/20 pl-4 md:flex">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-300">Application ID</p>
+                    <p className="font-mono text-xs font-extrabold text-white">
+                      {selectedItem.registrationDetails?.userId || `MSME-${selectedItem._id?.toString().padStart(6, '0')}`}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-300">
+                      Submitted {selectedItem.createdAt ? formatDate(selectedItem.createdAt) : '—'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedItem(null);
+                      setFeedback("");
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition-all hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-[#f9a825]"
+                    aria-label="Close application review"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedItem(null);
-                  setFeedback("");
-                }}
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition-all hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-[#f9a825]"
-                aria-label="Close application review"
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
 
             {/* Content Area */}
@@ -1886,8 +1936,8 @@ export default function AdminOnboarding() {
                             value={
                               selectedItem.profile?.dateAsInPan
                                 ? new Date(
-                                    selectedItem.profile.dateAsInPan,
-                                  ).toLocaleDateString()
+                                  selectedItem.profile.dateAsInPan,
+                                ).toLocaleDateString()
                                 : "N/A"
                             }
                           />
@@ -1974,8 +2024,8 @@ export default function AdminOnboarding() {
                             value={
                               selectedItem.profile?.dateOfIncorporation
                                 ? new Date(
-                                    selectedItem.profile.dateOfIncorporation,
-                                  ).toLocaleDateString()
+                                  selectedItem.profile.dateOfIncorporation,
+                                ).toLocaleDateString()
                                 : "N/A"
                             }
                           />
@@ -2166,10 +2216,10 @@ export default function AdminOnboarding() {
                           ))}
                           {(!selectedItem.profile?.offices ||
                             selectedItem.profile.offices.length === 0) && (
-                            <p className="text-[10px] font-bold text-slate-400">
-                              No offices registered.
-                            </p>
-                          )}
+                              <p className="text-[10px] font-bold text-slate-400">
+                                No offices registered.
+                              </p>
+                            )}
                         </div>
                       </div>
 
@@ -2432,99 +2482,99 @@ export default function AdminOnboarding() {
                             </button>
                           </div>
                         </div>
-                        
+
                         {(() => {
                           const { sellerDocuments, legacyDocuments } = getSellerOnboardingDocuments(selectedItem.profile);
                           return (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {/* Render sellerDocuments (relational) */}
-                          {sellerDocuments.length > 0 ? (
-                            sellerDocuments.map((doc: any) => {
-                              const file = doc.fileAsset;
-                              if (!file) return null;
-                              return (
-                                <div key={doc.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                        {doc.documentType}
-                                      </span>
-                                      <Badge variant="default" className={cn(
-                                        "text-[9px] font-bold px-1.5 py-0.5",
-                                        doc.verificationStatus === 'APPROVED' ? "bg-green-50 text-green-700 border-green-200" :
-                                        doc.verificationStatus === 'REJECTED' ? "bg-red-50 text-red-700 border-red-200" :
-                                        "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                      )}>
-                                        {doc.verificationStatus}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-xs font-bold text-slate-700 mt-1 line-clamp-1" title={file.originalName}>
-                                      {file.originalName}
-                                    </p>
-                                    {doc.uploadedAt && (
-                                      <p className="text-[9px] text-slate-400 mt-0.5">
-                                        Uploaded: {formatDate(doc.uploadedAt)}
-                                      </p>
-                                    )}
-                                    {doc.remarks && (
-                                      <p className="text-[10px] text-slate-500 mt-1 italic">
-                                        Note: {doc.remarks}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="pt-2 border-t border-slate-100 mt-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleViewDocument(file, doc.documentType)}
-                                      className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"
-                                    >
-                                      <Eye className="h-3 w-3" /> View Document
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          ) : null}
-
-                          {/* Render documents JSON if any */}
-                          {legacyDocuments.length > 0 &&
-                            legacyDocuments.map(
-                              ([key, url]: [string, any]) => {
-                                const documentFiles = getDocumentFiles(url).filter(getDocumentUrl);
-                                if (documentFiles.length === 0) return null;
-                                return (
-                                  <div key={key} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
-                                    <div>
-                                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                        {key}
-                                      </span>
-                                      <p className="text-xs font-bold text-slate-700 mt-1">
-                                        Legacy Link Document
-                                      </p>
-                                    </div>
-                                    <div className="pt-2 border-t border-slate-100 mt-2">
-                                      {documentFiles.map((file: any, index: number) => (
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {/* Render sellerDocuments (relational) */}
+                              {sellerDocuments.length > 0 ? (
+                                sellerDocuments.map((doc: any) => {
+                                  const file = doc.fileAsset;
+                                  if (!file) return null;
+                                  return (
+                                    <div key={doc.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                                      <div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                            {doc.documentType}
+                                          </span>
+                                          <Badge variant="default" className={cn(
+                                            "text-[9px] font-bold px-1.5 py-0.5",
+                                            doc.verificationStatus === 'APPROVED' ? "bg-green-50 text-green-700 border-green-200" :
+                                              doc.verificationStatus === 'REJECTED' ? "bg-red-50 text-red-700 border-red-200" :
+                                                "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                          )}>
+                                            {doc.verificationStatus}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-700 mt-1 line-clamp-1" title={file.originalName}>
+                                          {file.originalName}
+                                        </p>
+                                        {doc.uploadedAt && (
+                                          <p className="text-[9px] text-slate-400 mt-0.5">
+                                            Uploaded: {formatDate(doc.uploadedAt)}
+                                          </p>
+                                        )}
+                                        {doc.remarks && (
+                                          <p className="text-[10px] text-slate-500 mt-1 italic">
+                                            Note: {doc.remarks}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="pt-2 border-t border-slate-100 mt-2">
                                         <button
-                                          key={`${key}-${file?.fileId || file?.url || index}`}
                                           type="button"
-                                          onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
+                                          onClick={() => handleViewDocument(file, doc.documentType)}
                                           className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"
                                         >
-                                          <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
+                                          <Eye className="h-3 w-3" /> View Document
                                         </button>
-                                      ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              }
-                            )}
+                                  );
+                                })
+                              ) : null}
 
-                          {sellerDocuments.length === 0 && legacyDocuments.length === 0 && (
-                            <div className="col-span-full py-4 text-center text-xs text-slate-400 font-medium">
-                              No uploaded documents found for this seller profile.
+                              {/* Render documents JSON if any */}
+                              {legacyDocuments.length > 0 &&
+                                legacyDocuments.map(
+                                  ([key, url]: [string, any]) => {
+                                    const documentFiles = getDocumentFiles(url).filter(getDocumentUrl);
+                                    if (documentFiles.length === 0) return null;
+                                    return (
+                                      <div key={key} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                                        <div>
+                                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                            {key}
+                                          </span>
+                                          <p className="text-xs font-bold text-slate-700 mt-1">
+                                            Legacy Link Document
+                                          </p>
+                                        </div>
+                                        <div className="pt-2 border-t border-slate-100 mt-2">
+                                          {documentFiles.map((file: any, index: number) => (
+                                            <button
+                                              key={`${key}-${file?.fileId || file?.url || index}`}
+                                              type="button"
+                                              onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
+                                              className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"
+                                            >
+                                              <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                )}
+
+                              {sellerDocuments.length === 0 && legacyDocuments.length === 0 && (
+                                <div className="col-span-full py-4 text-center text-xs text-slate-400 font-medium">
+                                  No uploaded documents found for this seller profile.
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
                           );
                         })()}
                       </div>

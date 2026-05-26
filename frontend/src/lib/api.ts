@@ -101,9 +101,11 @@ const shouldDispatchUnauthorized = (endpoint: string) =>
   ].some((path) => endpoint.startsWith(path));
 
 const networkErrorResponse = (error: unknown) => {
-  if (typeof window !== 'undefined' && !window.location.pathname.includes('503')) {
-    window.location.href = '/503.html';
-  }
+  // Note: we used to hard-navigate to '/503.html' here but that nuked the
+  // entire app on any transient blip (Neon cold start, Redis flap, brief
+  // network drop). Returning a synthetic 503 Response is enough: callers
+  // surface a toast or inline error and React Query retries automatically.
+  // The 503 page can still be reached manually by users if needed.
   return new Response(
     JSON.stringify({
       success: false,
@@ -218,31 +220,31 @@ export const api = {
       return response;
     }).catch(networkErrorResponse);
   },
-  
-  get: (endpoint: string, options: RequestInit = {}) => 
+
+  get: (endpoint: string, options: RequestInit = {}) =>
     api.fetch(endpoint, { ...options, method: 'GET' }),
-    
-  post: (endpoint: string, body: any, options: RequestInit = {}) => 
-    api.fetch(endpoint, { 
-      ...options, 
-      method: 'POST', 
-      body: JSON.stringify(body) 
+
+  post: (endpoint: string, body: any, options: RequestInit = {}) =>
+    api.fetch(endpoint, {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(body)
     }).then((response) => {
       if (response.ok) clearApiCache();
       return response;
     }),
-    
-  put: (endpoint: string, body: any, options: RequestInit = {}) => 
-    api.fetch(endpoint, { 
-      ...options, 
-      method: 'PUT', 
-      body: JSON.stringify(body) 
+
+  put: (endpoint: string, body: any, options: RequestInit = {}) =>
+    api.fetch(endpoint, {
+      ...options,
+      method: 'PUT',
+      body: JSON.stringify(body)
     }).then((response) => {
       if (response.ok) clearApiCache();
       return response;
     }),
-    
-  delete: (endpoint: string, options: RequestInit = {}) => 
+
+  delete: (endpoint: string, options: RequestInit = {}) =>
     api.fetch(endpoint, { ...options, method: 'DELETE' }).then((response) => {
       if (response.ok) clearApiCache();
       return response;

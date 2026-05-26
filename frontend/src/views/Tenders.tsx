@@ -7,13 +7,13 @@ import { compressImage } from '../lib/compress';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Plus,
+  Search,
+  Filter,
+  Clock,
+  CheckCircle2,
+  XCircle,
   MoreVertical,
   ChevronRight,
   FileText,
@@ -413,23 +413,23 @@ export default function Tenders() {
     </div>
   );
 
-  const currentTenders = (activeTab === 'published' 
+  const currentTenders = (activeTab === 'published'
     ? tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin'))
     : activeTab === 'closed'
-    ? tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated')
-    : tenders.filter(t => t.status === activeTab)
+      ? tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated')
+      : tenders.filter(t => t.status === activeTab)
   ).filter(t => {
-    const matchesSearch = !searchText || 
-      t.title.toLowerCase().includes(searchText.toLowerCase()) || 
+    const matchesSearch = !searchText ||
+      t.title.toLowerCase().includes(searchText.toLowerCase()) ||
       (t.tenderId && t.tenderId.toLowerCase().includes(searchText.toLowerCase()));
-    
+
     const matchesCategory = selectedCategoryFilter === 'All' || t.category === selectedCategoryFilter;
     const matchesBudget =
       budgetFilter === 'All' ||
       (budgetFilter === 'under_10l' && Number(t.budget || 0) < 1000000) ||
       (budgetFilter === '10l_50l' && Number(t.budget || 0) >= 1000000 && Number(t.budget || 0) <= 5000000) ||
       (budgetFilter === 'above_50l' && Number(t.budget || 0) > 5000000);
-    
+
     return matchesSearch && matchesCategory && matchesBudget;
   }).sort((a, b) => {
     const direction = sortConfig.direction === 'asc' ? 1 : -1;
@@ -448,7 +448,7 @@ export default function Tenders() {
     if (typeof aValue === 'number' && typeof bValue === 'number') return (aValue - bValue) * direction;
     return String(aValue).localeCompare(String(bValue)) * direction;
   });
-  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(currentTenders, 20);
+  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(currentTenders, 10);
 
   if (loading) {
     return (
@@ -466,7 +466,7 @@ export default function Tenders() {
           <h1 className="text-xl font-black tracking-tight text-[#1a1c21] uppercase">Tender Management</h1>
           <p className="text-xs text-slate-500 font-medium">Create and manage your corporate tenders efficiently.</p>
         </div>
-        <Button 
+        <Button
           onClick={() => setIsModalOpen(true)}
           className="bg-[#12335f] hover:bg-[#0b2445] text-white h-9 px-4 rounded-md font-black text-[11px] flex items-center gap-2 shadow-sm transition-all uppercase tracking-wide shrink-0"
         >
@@ -489,8 +489,8 @@ export default function Tenders() {
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
                   "flex items-center gap-2 px-5 py-2 rounded-md text-sm font-bold transition-all",
-                  activeTab === tab.id 
-                    ? "bg-white text-slate-900 shadow-sm border border-[#dadce0]" 
+                  activeTab === tab.id
+                    ? "bg-white text-slate-900 shadow-sm border border-[#dadce0]"
                     : "text-slate-500 hover:text-slate-700"
                 )}
               >
@@ -529,7 +529,7 @@ export default function Tenders() {
         <div className="grid grid-cols-1 gap-3 pt-1 pb-1 lg:grid-cols-[minmax(260px,1fr)_220px_180px_170px]">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input 
+            <Input
               placeholder="Quick search by Tender ID or Title..."
               className="pl-9 h-10 border-slate-200 bg-slate-50/50 text-sm font-medium focus:bg-white transition-all"
               value={searchText}
@@ -537,7 +537,7 @@ export default function Tenders() {
             />
           </div>
           <div>
-            <select 
+            <select
               className="w-full bg-white border border-slate-200 rounded-md h-10 px-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#12335f] transition-all cursor-pointer"
               value={selectedCategoryFilter}
               onChange={(e) => setSelectedCategoryFilter(e.target.value)}
@@ -592,7 +592,7 @@ export default function Tenders() {
             </thead>
             <tbody className="divide-y divide-[#dadce0]">
               {loading ? (
-                [1,2,3].map(i => (
+                [1, 2, 3].map(i => (
                   <tr key={i} className="animate-pulse">
                     <td colSpan={9} className="px-8 py-10"><div className="h-4 bg-slate-50 rounded w-full"></div></td>
                   </tr>
@@ -636,7 +636,7 @@ export default function Tenders() {
                       <span className={cn(
                         "px-3 py-1.5 rounded-md text-xs font-bold",
                         tender.status === 'draft' ? "bg-slate-100 text-slate-600" :
-                        "bg-[#e6f4ea] text-[#1e8e3e]"
+                          "bg-[#e6f4ea] text-[#1e8e3e]"
                       )}>
                         {tender.status === 'draft' ? 'Draft' : 'Active'}
                       </span>
@@ -758,226 +758,226 @@ export default function Tenders() {
         )}
 
         {/* New Tender Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="relative w-full max-w-xl max-h-[calc(100vh-2rem)] bg-white rounded-lg border border-slate-200 shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-300">
-            <button 
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-6 right-6 p-2 rounded-xl hover:bg-slate-50 transition-colors"
-            >
-              <X className="h-5 w-5 text-slate-400" />
-            </button>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="relative w-full max-w-xl max-h-[calc(100vh-2rem)] bg-white rounded-lg border border-slate-200 shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-300">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="absolute top-6 right-6 p-2 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                <X className="h-5 w-5 text-slate-400" />
+              </button>
 
-            <form onSubmit={handleCreateTender} className="p-6 space-y-5">
-              <div className="space-y-2">
-                <h2 className="text-xl font-extrabold tracking-tight text-[#12335f]">New Tender</h2>
-                <p className="text-xs text-slate-500 font-medium">Save as draft now. You can add line items and publish from the draft list.</p>
-              </div>
-              <div className="space-y-4">
+              <form onSubmit={handleCreateTender} className="p-6 space-y-5">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Title</label>
-                  <input 
-                    required
-                    value={newTender.title}
-                    onChange={(e) => setNewTender({...newTender, title: e.target.value})}
-                    placeholder="Supply of 500 ergonomic office chairs"
-                    className={cn(
-                      "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all text-slate-900",
-                      newTender.title && newTender.title.trim().length < 3 && "border-red-500 focus:ring-red-500/20"
-                    )}
-                  />
-                  {newTender.title && newTender.title.trim().length < 3 && (
-                    <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Title must be at least 3 characters long.</p>
-                  )}
+                  <h2 className="text-xl font-extrabold tracking-tight text-[#12335f]">New Tender</h2>
+                  <p className="text-xs text-slate-500 font-medium">Save as draft now. You can add line items and publish from the draft list.</p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Category</label>
-                    <select
+                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Title</label>
+                    <input
                       required
-                      value={newTender.category}
-                      onChange={(e) => setNewTender({...newTender, category: e.target.value})}
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
-                    >
-                      <option value="">Select Category</option>
-                      {TENDER_CATEGORY_OPTIONS.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Budget (Rs.)</label>
-                    <input 
-                      required
-                      type="number"
-                      value={newTender.budget}
-                      onChange={(e) => setNewTender({...newTender, budget: e.target.value})}
-                      placeholder="2500000"
+                      value={newTender.title}
+                      onChange={(e) => setNewTender({ ...newTender, title: e.target.value })}
+                      placeholder="Supply of 500 ergonomic office chairs"
                       className={cn(
                         "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all text-slate-900",
-                        newTender.budget && Number(newTender.budget) <= 0 && "border-red-500 focus:ring-red-500/20"
+                        newTender.title && newTender.title.trim().length < 3 && "border-red-500 focus:ring-red-500/20"
                       )}
                     />
-                    {newTender.budget && Number(newTender.budget) <= 0 && (
-                      <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Budget must be a positive number.</p>
+                    {newTender.title && newTender.title.trim().length < 3 && (
+                      <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Title must be at least 3 characters long.</p>
                     )}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Tender Closing Date</label>
-                    <input
-                      type="date"
-                      value={newTender.closesAt}
-                      onChange={(e) => setNewTender({...newTender, closesAt: e.target.value})}
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all text-slate-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Brief Description</label>
-                    <textarea 
-                      required
-                      value={newTender.description}
-                      onChange={(e) => setNewTender({...newTender, description: e.target.value})}
-                      placeholder="Specifications, delivery timelines, etc."
-                      rows={4}
-                      className={cn(
-                        "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none text-slate-900",
-                        newTender.description && newTender.description.trim().length < 5 && "border-red-500 focus:ring-red-500/20"
-                      )}
-                    />
-                    {newTender.description && newTender.description.trim().length < 5 && (
-                      <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Brief description must be at least 5 characters long.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Quantity Unit</label>
-                    <select
-                      value={newTender.quantityUnit}
-                      onChange={(e) => setNewTender({...newTender, quantityUnit: e.target.value})}
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
-                    >
-                      <option value="">Select Unit</option>
-                      {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Payment Terms</label>
-                    <select
-                      value={newTender.paymentTerms}
-                      onChange={(e) => setNewTender({...newTender, paymentTerms: e.target.value})}
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
-                    >
-                      <option value="">Select Payment Terms</option>
-                      {PAYMENT_TERMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Delivery Type</label>
-                    <select
-                      value={newTender.deliveryType}
-                      onChange={(e) => setNewTender({...newTender, deliveryType: e.target.value})}
-                      className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
-                    >
-                      <option value="">Select Delivery Type</option>
-                      {DELIVERY_TYPES.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Specification Document</label>
-                  <div className={cn(
-                    "relative flex items-center justify-between w-full bg-slate-50 border border-slate-200 border-dashed rounded-md p-4 transition-all",
-                    newTender.documentUrl && "bg-green-50/30 border-green-200"
-                  )}>
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "p-2 rounded-lg",
-                        newTender.documentUrl ? "bg-green-100 text-green-600" : "bg-slate-200 text-slate-500"
-                      )}>
-                        <Paperclip className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">
-                          {newTender.documentUrl ? "Document attached" : "Upload Specifications PDF"}
-                        </p>
-                        <p className="text-[10px] font-medium text-slate-500">Maximum size 5MB (PDF/DOC)</p>
-                      </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Category</label>
+                      <select
+                        required
+                        value={newTender.category}
+                        onChange={(e) => setNewTender({ ...newTender, category: e.target.value })}
+                        className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
+                      >
+                        <option value="">Select Category</option>
+                        {TENDER_CATEGORY_OPTIONS.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
                     </div>
-                    
-                    <input 
-                      type="file" 
-                      id="spec-upload" 
-                      accept=".pdf,.doc,.docx" 
-                      className="hidden" 
-                      onChange={handleFileUpload}
-                      disabled={isUploading}
-                    />
-                    <label 
-                      htmlFor="spec-upload"
-                      className={cn(
-                        "px-4 py-2 rounded-md text-[10px] font-bold uppercase tracking-wide cursor-pointer transition-all flex items-center gap-2",
-                        newTender.documentUrl 
-                          ? "bg-white border border-green-200 text-green-700 shadow-sm"
-                          : "bg-[#12335f] text-white shadow-sm hover:bg-[#0b2445]"
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Budget (Rs.)</label>
+                      <input
+                        required
+                        type="number"
+                        value={newTender.budget}
+                        onChange={(e) => setNewTender({ ...newTender, budget: e.target.value })}
+                        placeholder="2500000"
+                        className={cn(
+                          "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all text-slate-900",
+                          newTender.budget && Number(newTender.budget) <= 0 && "border-red-500 focus:ring-red-500/20"
+                        )}
+                      />
+                      {newTender.budget && Number(newTender.budget) <= 0 && (
+                        <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Budget must be a positive number.</p>
                       )}
-                    >
-                      {isUploading ? (
-                        <>Processing...</>
-                      ) : newTender.documentUrl ? (
-                        <>Change File</>
-                      ) : (
-                        <><Upload className="h-3 w-3" /> Select File</>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Tender Closing Date</label>
+                      <input
+                        type="date"
+                        value={newTender.closesAt}
+                        onChange={(e) => setNewTender({ ...newTender, closesAt: e.target.value })}
+                        className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Brief Description</label>
+                      <textarea
+                        required
+                        value={newTender.description}
+                        onChange={(e) => setNewTender({ ...newTender, description: e.target.value })}
+                        placeholder="Specifications, delivery timelines, etc."
+                        rows={4}
+                        className={cn(
+                          "w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none text-slate-900",
+                          newTender.description && newTender.description.trim().length < 5 && "border-red-500 focus:ring-red-500/20"
+                        )}
+                      />
+                      {newTender.description && newTender.description.trim().length < 5 && (
+                        <p className="text-red-500 text-[11px] mt-1 ml-1 font-semibold">Brief description must be at least 5 characters long.</p>
                       )}
-                    </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Quantity Unit</label>
+                      <select
+                        value={newTender.quantityUnit}
+                        onChange={(e) => setNewTender({ ...newTender, quantityUnit: e.target.value })}
+                        className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
+                      >
+                        <option value="">Select Unit</option>
+                        {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Payment Terms</label>
+                      <select
+                        value={newTender.paymentTerms}
+                        onChange={(e) => setNewTender({ ...newTender, paymentTerms: e.target.value })}
+                        className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
+                      >
+                        <option value="">Select Payment Terms</option>
+                        {PAYMENT_TERMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Delivery Type</label>
+                      <select
+                        value={newTender.deliveryType}
+                        onChange={(e) => setNewTender({ ...newTender, deliveryType: e.target.value })}
+                        className="w-full bg-slate-50 border-slate-200 border rounded-md py-3 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all appearance-none text-slate-900"
+                      >
+                        <option value="">Select Delivery Type</option>
+                        {DELIVERY_TYPES.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 ml-1">Specification Document</label>
+                    <div className={cn(
+                      "relative flex items-center justify-between w-full bg-slate-50 border border-slate-200 border-dashed rounded-md p-4 transition-all",
+                      newTender.documentUrl && "bg-green-50/30 border-green-200"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "p-2 rounded-lg",
+                          newTender.documentUrl ? "bg-green-100 text-green-600" : "bg-slate-200 text-slate-500"
+                        )}>
+                          <Paperclip className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">
+                            {newTender.documentUrl ? "Document attached" : "Upload Specifications PDF"}
+                          </p>
+                          <p className="text-[10px] font-medium text-slate-500">Maximum size 5MB (PDF/DOC)</p>
+                        </div>
+                      </div>
+
+                      <input
+                        type="file"
+                        id="spec-upload"
+                        accept=".pdf,.doc,.docx"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={isUploading}
+                      />
+                      <label
+                        htmlFor="spec-upload"
+                        className={cn(
+                          "px-4 py-2 rounded-md text-[10px] font-bold uppercase tracking-wide cursor-pointer transition-all flex items-center gap-2",
+                          newTender.documentUrl
+                            ? "bg-white border border-green-200 text-green-700 shadow-sm"
+                            : "bg-[#12335f] text-white shadow-sm hover:bg-[#0b2445]"
+                        )}
+                      >
+                        {isUploading ? (
+                          <>Processing...</>
+                        ) : newTender.documentUrl ? (
+                          <>Change File</>
+                        ) : (
+                          <><Upload className="h-3 w-3" /> Select File</>
+                        )}
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-end gap-4 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancel
-                </button>
-                <Button 
-                  disabled={submitting}
-                  className="bg-[#12335f] hover:bg-[#0b2445] text-white border-0 h-10 px-6 rounded-md font-bold uppercase text-xs tracking-wide transition-all"
-                >
-                  {submitting ? 'Saving...' : 'Save as draft'}
-                </Button>
-              </div>
-            </form>
+                <div className="flex items-center justify-end gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <Button
+                    disabled={submitting}
+                    className="bg-[#12335f] hover:bg-[#0b2445] text-white border-0 h-10 px-6 rounded-md font-bold uppercase text-xs tracking-wide transition-all"
+                  >
+                    {submitting ? 'Saving...' : 'Save as draft'}
+                  </Button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-      {selectedTender && (
-        <TenderDetailsModal
-          tender={selectedTender}
-          onClose={() => setSelectedTender(null)}
-          onEdit={() => {
-            setEditingTender(selectedTender);
-          }}
-          onDelete={() => handleDeleteTender(selectedTender)}
-          onViewBids={() => router.push('/quotations')}
-        />
-      )}
-      {editingTender && (
-        <TenderEditModal
-          tender={editingTender}
-          saving={savingEdit}
-          onClose={() => setEditingTender(null)}
-          onSubmit={handleUpdateTender}
-        />
-      )}
+        )}
+        {selectedTender && (
+          <TenderDetailsModal
+            tender={selectedTender}
+            onClose={() => setSelectedTender(null)}
+            onEdit={() => {
+              setEditingTender(selectedTender);
+            }}
+            onDelete={() => handleDeleteTender(selectedTender)}
+            onViewBids={() => router.push('/quotations')}
+          />
+        )}
+        {editingTender && (
+          <TenderEditModal
+            tender={editingTender}
+            saving={savingEdit}
+            onClose={() => setEditingTender(null)}
+            onSubmit={handleUpdateTender}
+          />
+        )}
       </div>
     </div>
   );

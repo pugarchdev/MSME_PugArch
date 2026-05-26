@@ -130,7 +130,7 @@ export default function PaymentsEscrow() {
       }
     });
   }, [payments, sortField, sortOrder]);
-  const { page: paymentsPage, pageSize: paymentsPageSize, pageItems: pagedPayments, total: paymentsTotal, setPage: setPaymentsPage, setPageSize: setPaymentsPageSize } = usePagination(sortedPayments, 20);
+  const { page: paymentsPage, pageSize: paymentsPageSize, pageItems: pagedPayments, total: paymentsTotal, setPage: setPaymentsPage, setPageSize: setPaymentsPageSize } = usePagination(sortedPayments, 10);
   const { page: escrowPage, pageSize: escrowPageSize, pageItems: pagedEscrowAccounts, total: escrowTotal, setPage: setEscrowPage, setPageSize: setEscrowPageSize } = usePagination(escrowAccounts, 10);
 
   const headers = useMemo<Record<string, string>>(() => {

@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { 
-  Search, 
-  Filter, 
-  Clock, 
+import {
+  Search,
+  Filter,
+  Clock,
   MapPin,
   Building2,
   ChevronRight,
@@ -78,7 +78,7 @@ export default function SellerTenders() {
   const cachedTenders = api.peek('/api/tenders/public', authOptions);
   const [tenders, setTenders] = useState<PublicTender[]>(cachedTenders || []);
   const [loading, setLoading] = useState(!cachedTenders);
-  
+
   // Enhanced Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -87,7 +87,7 @@ export default function SellerTenders() {
   const [sortBy, setSortBy] = useState('newest');
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  
+
   const router = useRouter();
   const [selectedTenderForDetails, setSelectedTenderForDetails] = useState<PublicTender | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode();
@@ -142,15 +142,15 @@ export default function SellerTenders() {
   ].filter(Boolean).length;
 
   const filteredTenders = tenders.filter(t => {
-    const matchesSearch = 
+    const matchesSearch =
       t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.tenderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (t.buyer?.buyerProfile?.organizationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.category.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
     const matchesCategory = selectedCategory === 'All' || t.category === selectedCategory;
     const matchesState = selectedState === 'All' || t.buyer?.buyerProfile?.state === selectedState;
-    
+
     let matchesBudget = true;
     if (budgetRange === 'under_10l') matchesBudget = t.budget < 1000000;
     else if (budgetRange === '10l_50l') matchesBudget = t.budget >= 1000000 && t.budget <= 5000000;
@@ -164,7 +164,7 @@ export default function SellerTenders() {
     if (sortBy === 'deadline') return (parseDate(a.closesAt)?.getTime() || Number.MAX_SAFE_INTEGER) - (parseDate(b.closesAt)?.getTime() || Number.MAX_SAFE_INTEGER);
     return 0;
   });
-  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(filteredTenders, 20);
+  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(filteredTenders, 10);
 
   const getDaysLeft = (date: string) => {
     const closesAt = parseDate(date);
@@ -189,18 +189,18 @@ export default function SellerTenders() {
         {/* Compact Header Section */}
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-0.5 text-center md:text-left">
-            <div className="flex items-center justify-center gap-2 md:justify-start">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">Active Tenders</h1>
-              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold">
-                {filteredTenders.length} Found
-              </span>
+            <div className="space-y-0.5 text-center md:text-left">
+              <div className="flex items-center justify-center gap-2 md:justify-start">
+                <h1 className="text-xl font-black text-slate-900 tracking-tight">Active Tenders</h1>
+                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold">
+                  {filteredTenders.length} Found
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Discover procurement opportunities.
+              </p>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Discover procurement opportunities.
-            </p>
-          </div>
-          
+
             <div className="flex items-center justify-center gap-2 md:justify-end">
               <button
                 type="button"
@@ -252,9 +252,9 @@ export default function SellerTenders() {
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
             <div className="relative w-full md:max-w-sm lg:w-64">
               <Search className="absolute inset-y-0 left-3 flex items-center h-full w-3.5 text-slate-400 pointer-events-none" />
-              <input 
-                type="text" 
-                placeholder="Search keyword, ID or company..." 
+              <input
+                type="text"
+                placeholder="Search keyword, ID or company..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-9 pr-3 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500/30 outline-none shadow-sm"
@@ -380,7 +380,7 @@ export default function SellerTenders() {
 
                       {/* Specs Doc if available */}
                       {((tender.tenderDocuments && tender.tenderDocuments.length > 0) || tender.documentUrl) && (
-                        <div 
+                        <div
                           onClick={(e) => {
                             e.stopPropagation();
                             if (tender.tenderDocuments && tender.tenderDocuments.length > 0) {
@@ -427,7 +427,7 @@ export default function SellerTenders() {
                           <p className="text-sm font-black text-slate-800">₹{tender.budget?.toLocaleString()}</p>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Button 
+                          <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedTenderForDetails(tender);
@@ -438,7 +438,7 @@ export default function SellerTenders() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button 
+                          <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(`/seller/tenders/${tender.id}/bid`);
@@ -484,7 +484,7 @@ export default function SellerTenders() {
                           "absolute left-0 top-0 bottom-0 w-1 transition-colors",
                           participated ? "bg-emerald-500" : "bg-indigo-500/20 group-hover:bg-indigo-500"
                         )} />
-                        
+
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span className="text-[11px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded min-w-[24px] text-center">
                             {(page - 1) * pageSize + index + 1}
@@ -546,7 +546,7 @@ export default function SellerTenders() {
                           {tender.description}
                         </p>
                         {((tender.tenderDocuments && tender.tenderDocuments.length > 0) || tender.documentUrl) && (
-                          <div 
+                          <div
                             onClick={(e) => {
                               e.stopPropagation();
                               if (tender.tenderDocuments && tender.tenderDocuments.length > 0) {
@@ -561,8 +561,8 @@ export default function SellerTenders() {
                           >
                             <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0 transition-transform group-hover/spec:scale-110" />
                             <span className="text-[10px] font-extrabold text-emerald-800 tracking-wide">
-                              {tender.tenderDocuments && tender.tenderDocuments.length > 0 
-                                ? tender.tenderDocuments[0].originalName || tender.tenderDocuments[0].title 
+                              {tender.tenderDocuments && tender.tenderDocuments.length > 0
+                                ? tender.tenderDocuments[0].originalName || tender.tenderDocuments[0].title
                                 : 'Specifications Doc.pdf'}
                             </span>
                             <div className="h-3 w-px bg-emerald-200 mx-0.5" />
@@ -617,7 +617,7 @@ export default function SellerTenders() {
                           <p className="text-lg font-black text-slate-800 font-bold">₹{tender.budget?.toLocaleString()}</p>
                         </div>
                         <div className="flex items-center gap-2 w-full justify-end md:justify-center">
-                          <Button 
+                          <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedTenderForDetails(tender);
@@ -628,7 +628,7 @@ export default function SellerTenders() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button 
+                          <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(`/seller/tenders/${tender.id}/bid`);

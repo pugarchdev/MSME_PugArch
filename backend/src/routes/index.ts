@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authRoutes } from '../modules/auth/auth.routes.js';
 import paymentRoutes from '../modules/payments/payment.routes.js';
 import deliveryRoutes from '../modules/delivery/delivery.routes.js';
+import ratingsRoutes from '../modules/ratings/ratings.routes.js';
 import phase4Routes from './phase4.routes.js';
 import prisma from '../config/prisma.js';
 
@@ -45,6 +46,7 @@ router.get('/health', async (_req, res) => {
 router.use('/auth', authRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery', deliveryRoutes);
+router.use('/ratings', ratingsRoutes);
 router.use('/', phase4Routes);
 
 export default router;

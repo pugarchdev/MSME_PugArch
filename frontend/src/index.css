@@ -29,6 +29,7 @@ body {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -62,3 +63,15 @@ body {
   scrollbar-color: #cbd5e1 #f8fafc;
 }
 
+
+
+/* Skeleton shimmer animation - used by components/ui/skeleton.tsx */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}

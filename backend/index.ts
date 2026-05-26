@@ -4717,17 +4717,17 @@ export async function startServer() {
     console.warn('[AuctionFinalizer] Initial run failed:', error instanceof Error ? error.message : error)
   );
 
-  // Neon serverless DB keepalive: a tiny query every 4 minutes prevents the
-  // database from auto-suspending, which is what causes 8-12s cold starts and
-  // makes interactive transactions blow past their 5s default timeout.
-  // The query is cheap, but only runs in development by default to avoid
-  // running it in production if the prod DB is on the always-on tier.
+  // Neon serverless DB keepalive: a tiny query every 90 seconds prevents
+  // the database from auto-suspending, which is what causes 8-12s cold starts
+  // and makes interactive transactions blow past their 5s default timeout.
+  // We fire one ping immediately on startup so the very first user request
+  // never hits a cold compute.
   if (process.env.NODE_ENV !== 'production' || process.env.DB_KEEPALIVE === 'true') {
-    const dbKeepaliveInterval = setInterval(() => {
-      void prisma.$queryRawUnsafe('SELECT 1').catch(error =>
-        logger.warn({ err: error }, 'DB keepalive ping failed')
-      );
-    }, 4 * 60_000);
+    const ping = () => prisma.$queryRawUnsafe('SELECT 1').catch(error =>
+      logger.warn({ err: error }, 'DB keepalive ping failed')
+    );
+    void ping(); // immediate warm-up
+    const dbKeepaliveInterval = setInterval(() => { void ping(); }, 90_000);
     dbKeepaliveInterval.unref?.();
   }
 }

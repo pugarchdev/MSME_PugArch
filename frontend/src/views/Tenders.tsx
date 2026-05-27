@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '../lib/api';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, PAYMENT_TERMS, DELIVERY_TYPES } from '../constants/dropdowns';
 import { compressImage } from '../lib/compress';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
@@ -162,6 +163,7 @@ export default function Tenders() {
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null);
   const [editingTender, setEditingTender] = useState<Tender | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -181,7 +183,10 @@ export default function Tenders() {
 
       if (res.ok) {
         const data = await res.json();
-        setNewTender(prev => ({ ...prev, documentUrl: data?.data?.url || data?.url || '' }));
+        const uploaded = data?.data || data;
+        const fileId = Number(uploaded?.fileId || uploaded?.file?.id || 0);
+        const documentUrl = uploaded?.file?.documentUrl || uploaded?.url || (fileId ? `/api/files/${fileId}/view` : '');
+        setNewTender(prev => ({ ...prev, documentUrl }));
         toast.success('Specifications document uploaded successfully');
       } else {
         toast.error('Failed to upload document');
@@ -190,6 +195,18 @@ export default function Tenders() {
       toast.error('Network error during upload');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  useEffect(() => () => {
+    if (previewDocument?.url.startsWith('blob:')) URL.revokeObjectURL(previewDocument.url);
+  }, [previewDocument]);
+
+  const handlePreviewDocument = async (url: string, label: string) => {
+    try {
+      setPreviewDocument(await getFileAssetPreview({ url }, label));
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to open document');
     }
   };
 
@@ -952,6 +969,7 @@ export default function Tenders() {
             }}
             onDelete={() => handleDeleteTender(selectedTender)}
             onViewBids={() => router.push('/quotations')}
+            onPreviewDocument={handlePreviewDocument}
           />
         )}
         {editingTender && (
@@ -962,6 +980,7 @@ export default function Tenders() {
             onSubmit={handleUpdateTender}
           />
         )}
+        <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
       </div>
     </div>
   );
@@ -972,13 +991,15 @@ function TenderDetailsModal({
   onClose,
   onEdit,
   onDelete,
-  onViewBids
+  onViewBids,
+  onPreviewDocument
 }: {
   tender: Tender;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onViewBids: () => void;
+  onPreviewDocument: (url: string, label: string) => void;
 }) {
   const closesLabel = tender.closesAt ? new Date(tender.closesAt).toLocaleString() : 'Not available';
   const documentName = tender.documentUrl ? tender.documentUrl.split('/').pop() || 'Specification document' : '';
@@ -1020,7 +1041,7 @@ function TenderDetailsModal({
             <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Document</p>
               <p className="mt-2 text-sm font-semibold text-slate-700 truncate">{documentName}</p>
-              <button type="button" onClick={() => window.open(tender.documentUrl, '_blank', 'noopener,noreferrer')} className="mt-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-black text-[#12335f] hover:bg-slate-50">
+              <button type="button" onClick={() => onPreviewDocument(tender.documentUrl!, `${tender.tenderId} Specifications`)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-black text-[#12335f] hover:bg-slate-50">
                 <FileText className="h-4 w-4" />
                 Open Document
               </button>

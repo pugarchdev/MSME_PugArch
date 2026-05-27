@@ -357,7 +357,7 @@ export default function AdminOnboarding() {
         ...(selectedItem.sectionRejectionReasons || {}),
         [section]: reason,
       }
-      : selectedItem.sectionRejectionReasons;
+      : (selectedItem.sectionRejectionReasons || {});
 
     const updatedItem = {
       ...selectedItem,
@@ -2164,14 +2164,14 @@ export default function AdminOnboarding() {
                             label="Verification Method"
                             value={selectedItem.registrationDetails?.verificationMethod?.toUpperCase() || "N/A"}
                           />
-                          <InfoItem
+                          {/* <InfoItem
                             label="Aadhaar Number (Masked)"
                             value={selectedItem.registrationDetails?.aadhaarNumber ? selectedItem.registrationDetails.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : "N/A"}
                           />
                           <InfoItem
                             label="Aadhaar Verification"
                             value={selectedItem.registrationDetails?.isAadhaarVerified ? "VERIFIED" : "PENDING"}
-                          />
+                          /> */}
                         </div>
                       </div>
 
@@ -2245,7 +2245,7 @@ export default function AdminOnboarding() {
                           />
                           <InfoItem
                             label="Registered Mobile"
-                            value={selectedItem.profile?.mobile || selectedItem.mobile || "N/A"}
+                            value={selectedItem.profile?.mobile || selectedItem.mobile || selectedItem.profile?.offices?.[0]?.contactNumber || "N/A"}
                           />
                           <InfoItem
                             label="Date of Birth"

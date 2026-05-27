@@ -62,9 +62,11 @@ import {
 import { createMilestoneSchema, milestoneReasonSchema } from './src/modules/payments/payment.validation.js';
 import { createHashFingerprint, randomToken, sha256 } from './src/utils/crypto.js';
 import { ApiError } from './src/utils/ApiError.js';
+import { calculateBidPricing, quotedBidTotal } from './src/utils/bidPricing.js';
 import { STRICT_VERIFICATION } from './src/config/verification.js';
 import { maskAadhaar, maskBankAccount, maskGST, maskPAN, maskSensitive, maskValue } from './src/utils/maskSensitive.js';
 import { redisKeys } from './src/constants/redis-keys.js';
+import { invalidateByPattern } from './src/services/cache.service.js';
 
 // Cloudinary Configuration
 if (configureCloudinary()) {
@@ -629,6 +631,8 @@ const tenderStatusSchema = z.object({
 const bidSchema = z.object({
   unitPrice: positiveNumber.max(1_000_000_000),
   quantity: z.coerce.number().int().positive().max(10_000_000),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
+  discountAmount: z.coerce.number().nonnegative().max(1_000_000_000).optional(),
   deliveryDays: z.coerce.number().int().positive().max(3650),
   warranty: z.string().trim().max(500).optional().nullable(),
   validTill: z.coerce.date().optional().nullable(),
@@ -847,7 +851,7 @@ const flagSuspiciousBidPatterns = async (payload: {
 }) => {
   try {
     const flags: Array<Parameters<typeof createComplianceFlag>[0]> = [];
-    const bidValue = Number(payload.bid.unitPrice || payload.bid.bidAmount || 0) * Number(payload.bid.quantity || 1);
+    const bidValue = payload.bid.bidAmount ? Number(payload.bid.bidAmount) : quotedBidTotal(payload.bid);
 
     if (payload.ipAddress) {
       const sameIpBid = await prisma.bid.findFirst({
@@ -1303,6 +1307,7 @@ app.post('/api/tenders/:id/bids', authenticate, authorize('seller'), async (req:
     if (payload.validTill && payload.validTill < new Date()) {
       return res.status(400).json({ message: 'Bid validity date must be in the future' });
     }
+    const pricing = calculateBidPricing(payload);
 
     const bid = await prisma.$transaction(async (tx) => {
       const existing = await tx.bid.findUnique({
@@ -1315,6 +1320,7 @@ app.post('/api/tenders/:id/bids', authenticate, authorize('seller'), async (req:
 
       const bidData = {
         ...payload,
+        ...pricing,
         validTill: payload.validTill || null,
         warranty: payload.warranty || null,
         note: payload.note || null,
@@ -1461,11 +1467,13 @@ app.put('/api/bids/:id', authenticate, authorize('seller'), async (req: AuthRequ
     if (payload.validTill && payload.validTill < new Date()) {
       return res.status(400).json({ message: 'Bid validity date must be in the future' });
     }
+    const pricing = calculateBidPricing({ ...existingBid, ...payload });
 
     const bid = await prisma.bid.update({
       where: { id: bidId },
       data: {
         ...payload,
+        ...pricing,
         ...(payload.validTill !== undefined ? { validTill: payload.validTill || null } : {}),
         ...(payload.warranty !== undefined ? { warranty: payload.warranty || null } : {}),
         ...(payload.note !== undefined ? { note: payload.note || null } : {}),
@@ -1853,6 +1861,7 @@ app.put('/api/tenders/:id/status', authenticate, authorize('buyer', 'admin'), as
       where: { id: tenderId },
       data: { status }
     });
+    await invalidateByPattern('cache:tender_public:*');
 
     await auditLog({
       actorUserId: Number(req.user?.id),

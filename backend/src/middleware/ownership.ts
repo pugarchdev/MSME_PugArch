@@ -35,7 +35,7 @@ export const checkOwnership = async (
 
   if (entityType === 'tender') {
     const tender = await prisma.tender.findUnique({ where: { id: entityId }, select: { buyerId: true, status: true } });
-    return Boolean(tender && (tender.buyerId === user.id || (user.role === 'seller' && tender.status === 'published')));
+    return Boolean(tender && (tender.buyerId === user.id || (user.role === 'seller' && ['published', 'bid_submission'].includes(String(tender.status)))));
   }
 
   if (entityType === 'bid') {

@@ -50,6 +50,11 @@ interface Quotation {
   tenderId?: number;
   unitPrice: number;
   quantity: number;
+  taxRate?: number;
+  discountAmount?: number;
+  subtotal?: number;
+  taxAmount?: number;
+  totalAmount?: number;
   deliveryDays: number;
   warranty?: string;
   validTill?: string;
@@ -207,6 +212,14 @@ const getStatusLabel = (status: BidStatus) => {
 };
 
 const formatMoney = (value?: number) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+const getQuotePricing = (quote: Quotation) => {
+  const subtotal = Number(quote.subtotal ?? (Number(quote.unitPrice || 0) * Number(quote.quantity || 0)));
+  const taxRate = Number(quote.taxRate || 0);
+  const taxAmount = Number(quote.taxAmount ?? (subtotal * taxRate / 100));
+  const discountAmount = Number(quote.discountAmount || 0);
+  const totalAmount = Number(quote.totalAmount ?? (subtotal + taxAmount - discountAmount));
+  return { subtotal, taxRate, taxAmount, discountAmount, totalAmount };
+};
 const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
@@ -275,7 +288,7 @@ function QuotationDetailsModal({
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
   const buyerName = quote.buyer?.name || '-';
-  const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+  const pricing = getQuotePricing(quote);
   const quoteDocument = getQuoteDocument(quote);
 
   return (
@@ -312,7 +325,10 @@ function QuotationDetailsModal({
             <InfoBox label={role === 'seller' ? 'Buyer' : 'Supplier'} value={role === 'seller' ? buyerName : sellerName} />
             <InfoBox label="Category" value={quote.tender?.category || 'General Procurement'} />
             <InfoBox label="Unit Rate" value={formatMoney(quote.unitPrice)} />
-            <InfoBox label="Net Value" value={formatMoney(totalValue)} strong />
+            <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
+            <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
+            <InfoBox label="Discount" value={formatMoney(pricing.discountAmount)} />
+            <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
             <InfoBox label="Quantity" value={quote.quantity || '-'} />
             <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
             <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
@@ -426,6 +442,17 @@ function BidEditModal({
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
               Delivery Days
               <input name="deliveryDays" type="number" min="1" required defaultValue={quote.deliveryDays || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Tax (%)
+              <input name="taxRate" type="number" min="0" max="100" step="0.01" defaultValue={quote.taxRate || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+            </label>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Discount Amount
+              <input name="discountAmount" type="number" min="0" step="0.01" defaultValue={quote.discountAmount || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
             </label>
           </div>
 
@@ -611,14 +638,14 @@ export default function Quotations() {
         const data = await res.json();
         const bids = normalizeList<Quotation>(data);
         const tender = tenders.find(item => item.id === tenderId);
-        const prices = bids.map((bid: Quotation) => Number(bid.unitPrice || 0)).filter(Boolean);
+        const prices = bids.map((bid: Quotation) => getQuotePricing(bid).totalAmount);
         const lowestPrice = prices.length > 0 ? Math.min(...prices) : null;
         allBids = [
           ...allBids,
           ...bids.map((bid: Quotation) => ({
             ...bid,
             tender,
-            isLowest: lowestPrice !== null && Number(bid.unitPrice) === lowestPrice && bids.length > 1
+            isLowest: lowestPrice !== null && getQuotePricing(bid).totalAmount === lowestPrice && bids.length > 1
           }))
         ];
       }
@@ -694,6 +721,8 @@ export default function Quotations() {
     const payload = {
       unitPrice: Number(form.get('unitPrice') || 0),
       quantity: Number(form.get('quantity') || 0),
+      taxRate: Number(form.get('taxRate') || 0),
+      discountAmount: Number(form.get('discountAmount') || 0),
       deliveryDays: Number(form.get('deliveryDays') || 0),
       warranty: String(form.get('warranty') || '').trim() || null,
       validTill: String(form.get('validTill') || '') || null,
@@ -768,8 +797,8 @@ export default function Quotations() {
         aVal = Number(a.quantity || 0);
         bVal = Number(b.quantity || 0);
       } else if (sortField === 'netValue') {
-        aVal = Number(a.unitPrice || 0) * Number(a.quantity || 0);
-        bVal = Number(b.unitPrice || 0) * Number(b.quantity || 0);
+        aVal = getQuotePricing(a).totalAmount;
+        bVal = getQuotePricing(b).totalAmount;
       } else if (sortField === 'status') {
         aVal = a.status || '';
         bVal = b.status || '';
@@ -790,7 +819,7 @@ export default function Quotations() {
     const pending = quotes.filter(quote => evaluableStatuses.includes(quote.status)).length;
     const accepted = quotes.filter(quote => quote.status === 'accepted').length;
     const rejected = quotes.filter(quote => quote.status === 'rejected' || quote.status === 'technical_rejected').length;
-    const totalValue = quotes.reduce((sum, quote) => sum + Number(quote.unitPrice || 0) * Number(quote.quantity || 0), 0);
+    const totalValue = quotes.reduce((sum, quote) => sum + getQuotePricing(quote).totalAmount, 0);
     return { total, pending, accepted, rejected, totalValue };
   }, [quotes]);
 
@@ -918,7 +947,7 @@ export default function Quotations() {
                 <tbody className="divide-y divide-slate-200 text-xs">
                   {pagedQuotes.map((quote, index) => {
                     const StatusIcon = statusIcons[quote.status] || Clock;
-                    const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+                    const totalValue = getQuotePricing(quote).totalAmount;
                     return (
                       <tr key={`${quote.source || 'bid'}-${quote.id}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="px-3 py-4 font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
@@ -1123,7 +1152,7 @@ function QuotationCard({
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || 'Submitted Bid';
   const counterpartyName = role === 'seller' && quote.source === 'rfq' ? quote.buyer?.name || 'Buyer RFQ' : sellerName;
-  const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+  const pricing = getQuotePricing(quote);
   const isUnansweredRfq = role === 'seller' && quote.source === 'rfq' && (!quote.quoteResponses || quote.quoteResponses.length === 0);
 
   return (
@@ -1167,11 +1196,14 @@ function QuotationCard({
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <InfoBox label={quote.source === 'rfq' ? 'Quoted Amount' : 'Unit Price'} value={quote.unitPrice ? formatMoney(quote.unitPrice) : 'Awaiting response'} />
             <InfoBox label="Quantity" value={quote.quantity || '-'} />
-            <InfoBox label="Total Value" value={formatMoney(totalValue)} strong />
+            <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
             <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+            <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
+            <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
+            <InfoBox label="Discount" value={formatMoney(pricing.discountAmount)} />
             <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
             <InfoBox label="Valid Till" value={quote.validTill ? new Date(quote.validTill).toLocaleDateString() : 'Not Provided'} />
           </div>

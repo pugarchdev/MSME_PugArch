@@ -1,7 +1,8 @@
 import { ApiError } from '../../utils/ApiError.js';
 import { withDistributedLock } from '../../utils/redisLock.js';
 import { redisKeys } from '../../constants/redis-keys.js';
-import { auditWorkflow, db, notifyWorkflow, numberSeries, roundMoney, type WorkflowActor } from './workflow-common.js';
+import { calculateBidPricing, quotedBidTotal } from '../../utils/bidPricing.js';
+import { auditWorkflow, db, notifyWorkflow, numberSeries, type WorkflowActor } from './workflow-common.js';
 import {
   bidStatusEnumFor,
   poStatusEnumFor,
@@ -90,16 +91,19 @@ export const tenderWorkflow = {
     const tender = await db.tender.findUnique({ where: { id: tenderId } });
     if (!tender) throw new ApiError(404, 'Tender not found', 'TENDER_NOT_FOUND');
     assertBeforeDeadline(tender);
+    const pricing = calculateBidPricing(input);
     const bid = await db.bid.upsert({
       where: { bidCompoundId: { tenderId, sellerId: actor.id } },
       update: {
         ...input,
+        ...pricing,
         status: 'modified',
         statusEnum: bidStatusEnumFor('modified'),
         modifiedAt: new Date()
       },
       create: {
         ...input,
+        ...pricing,
         tenderId,
         sellerId: actor.id,
         bidNumber: numberSeries('BID'),
@@ -126,9 +130,10 @@ export const tenderWorkflow = {
     const bid = await assertBidSeller(actor, bidId);
     assertBeforeDeadline(bid.tender);
     statusTransitions.bid(bid.status, 'modified');
+    const pricing = calculateBidPricing({ ...bid, ...input });
     const updated = await db.bid.update({
       where: { id: bidId },
-      data: { ...input, status: 'modified', statusEnum: bidStatusEnumFor('modified'), modifiedAt: new Date() }
+      data: { ...input, ...pricing, status: 'modified', statusEnum: bidStatusEnumFor('modified'), modifiedAt: new Date() }
     });
     if (input.fileAssetId) {
       await db.fileAsset.updateMany({
@@ -187,7 +192,7 @@ export const tenderWorkflow = {
       statusTransitions.bid(bid.status, 'accepted');
       const existingPo = await tx.purchaseOrder.findUnique({ where: { bidId } });
       if (existingPo) return { tender: bid.tender, bid, purchaseOrder: existingPo, reused: true };
-      const amount = roundMoney(Number(bid.unitPrice) * Number(bid.quantity));
+      const amount = quotedBidTotal(bid);
       const acceptedBid = await tx.bid.update({ where: { id: bidId }, data: { status: 'accepted', statusEnum: bidStatusEnumFor('accepted') } });
       await tx.bid.updateMany({ where: { tenderId: bid.tenderId, id: { not: bidId }, status: { not: 'withdrawn' } }, data: { status: 'rejected', statusEnum: bidStatusEnumFor('rejected') } });
       const tender = await tx.tender.update({
@@ -209,12 +214,22 @@ export const tenderWorkflow = {
           expectedDelivery: bid.deliveryDays ? new Date(Date.now() + Number(bid.deliveryDays) * 24 * 60 * 60 * 1000) : null,
           sourceType: 'tender',
           sourceId: bid.tenderId,
+          metadata: {
+            quotationPricing: {
+              subtotal: bid.subtotal,
+              taxRate: bid.taxRate,
+              taxAmount: bid.taxAmount,
+              discountAmount: bid.discountAmount,
+              totalAmount: amount
+            }
+          },
           items: {
             create: [{
               itemName: bid.tender.title,
               quantity: bid.quantity,
               unitOfMeasure: 'unit',
               unitPrice: bid.unitPrice,
+              taxRate: bid.taxRate,
               totalAmount: amount
             }]
           }
@@ -246,7 +261,7 @@ export const tenderWorkflow = {
         bidId: bid.id,
         sellerId: bid.sellerId,
         sellerName: bid.seller?.name,
-        amount: Number(bid.unitPrice) * Number(bid.quantity),
+        amount: quotedBidTotal(bid),
         status: bid.status,
         technicalScore: technicalResults.filter((r: any) => r.bidId === bid.id).reduce((sum: number, r: any) => sum + Number(r.score || 0), 0),
         financialRank: financialEvaluations.find((r: any) => r.bidId === bid.id)?.rank || null

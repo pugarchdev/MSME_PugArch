@@ -718,7 +718,7 @@ export default function SellerTenders() {
                 {((selectedTenderForDetails.tenderDocuments && selectedTenderForDetails.tenderDocuments.length > 0) || selectedTenderForDetails.documentUrl) ? (
                   <div className="space-y-2">
                     {/* Render legacy/main documentUrl if it exists */}
-                    {selectedTenderForDetails.documentUrl && (
+                    {selectedTenderForDetails.documentUrl && !(selectedTenderForDetails.tenderDocuments && selectedTenderForDetails.tenderDocuments.length > 0) && (
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-emerald-50/40 border border-emerald-100 rounded-xl p-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-sm">

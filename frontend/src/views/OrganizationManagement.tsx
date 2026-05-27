@@ -949,7 +949,12 @@ export default function OrganizationManagement() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              <ScopeListPanel orgId={scopeOrg.id} tab={scopeTab} authHeaders={authHeaders} />
+              <ScopeListPanel
+                orgId={scopeOrg.id}
+                tab={scopeTab}
+                count={scopeOrg._count?.[scopeTab] ?? 0}
+                authHeaders={authHeaders}
+              />
             </div>
           </div>
         </div>
@@ -967,10 +972,12 @@ export default function OrganizationManagement() {
 function ScopeListPanel({
   orgId,
   tab,
+  count,
   authHeaders
 }: {
   orgId: number;
   tab: 'users' | 'products' | 'services';
+  count: number;
   authHeaders: { headers: Record<string, string> };
 }) {
   const [items, setItems] = useState<any[]>([]);
@@ -979,6 +986,12 @@ function ScopeListPanel({
 
   useEffect(() => {
     let cancelled = false;
+    if (count === 0) {
+      setLoading(false);
+      setError(null);
+      setItems([]);
+      return () => { cancelled = true; };
+    }
     setLoading(true);
     setError(null);
     setItems([]);
@@ -1008,7 +1021,9 @@ function ScopeListPanel({
                   : Array.isArray(data.items)
                     ? data.items
                     : [];
-        if (!cancelled) setItems(list.filter((i: any) => Number(i.organizationId || i.organization?.id) === Number(orgId) || !i.organizationId));
+        if (!cancelled) {
+          setItems(list.filter((i: any) => Number(i.organizationId ?? i.organization?.id) === Number(orgId)));
+        }
       })
       .catch(err => {
         if (!cancelled) setError(err?.message || 'Unable to load');
@@ -1017,7 +1032,7 @@ function ScopeListPanel({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [orgId, tab, authHeaders]);
+  }, [orgId, tab, count, authHeaders]);
 
   if (loading) return <p className="text-center text-xs font-bold text-slate-400 py-8">Loading {tab}...</p>;
   if (error) return <p className="text-center text-xs font-bold text-red-500 py-8">{error}</p>;

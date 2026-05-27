@@ -112,8 +112,6 @@ export default function SellerOnboarding() {
   const [onboardingStatus, setOnboardingStatus] = useState(cachedStatus || 'pending');
   const [isProfileLocked, setIsProfileLocked] = useState(shouldLockSellerProfile(cachedMe?.user));
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedMe?.user));
-  const [selectedOfficeState, setSelectedOfficeState] = useState('');
-  const [selectedOfficeCity, setSelectedOfficeCity] = useState('');
   const [editingOfficeId, setEditingOfficeId] = useState<number | null>(null);
   const [officeForm, setOfficeForm] = useState({
     name: '',
@@ -128,6 +126,7 @@ export default function SellerOnboarding() {
     contact: ''
   });
   const [officeErrors, setOfficeErrors] = useState<Record<string, string>>({});
+  const officeDistrictOptions = officeForm.state ? indiaStatesDistricts[officeForm.state] || [] : [];
 
   const validateOfficeForm = (candidate = officeForm) => {
     const errors: Record<string, string> = {};
@@ -404,6 +403,10 @@ export default function SellerOnboarding() {
         return;
       }
     }
+    if (currentSection === 'details' && !/^[6-9]\d{9}$/.test(String(formData.mobile || '').trim())) {
+      toast.error('Please enter a valid 10-digit registered mobile number.');
+      return;
+    }
     setIsLoading(true);
     try {
       let dataToSave = { ...formData, _completedSection: currentSection };
@@ -627,8 +630,6 @@ export default function SellerOnboarding() {
 
   const handleEditOffice = (office: any) => {
     setEditingOfficeId(office.id);
-    setSelectedOfficeState(office.state || '');
-    setSelectedOfficeCity(office.city || '');
     const parts = office.address.split(', ');
     setOfficeForm({
       name: office.name,
@@ -647,8 +648,6 @@ export default function SellerOnboarding() {
   };
 
   const resetOfficeForm = () => {
-    setSelectedOfficeState('');
-    setSelectedOfficeCity('');
     setOfficeForm({
       name: '',
       type: 'Registered',
@@ -692,6 +691,10 @@ export default function SellerOnboarding() {
       toast.error('Please enter a valid 10-digit PAN');
       return;
     }
+    if (!formData.dateAsInPan) {
+      toast.error('Please select Date (As in PAN) before verification');
+      return;
+    }
     setIsLoading(true);
     try {
       // Simulation of a PAN API response
@@ -700,7 +703,6 @@ export default function SellerOnboarding() {
         setFormData((prev: any) => ({
           ...prev,
           nameAsInPan: prev.businessName || "FETCHED NAME FROM PAN",
-          dateAsInPan: "2010-01-01",
           panVerified: true
         }));
         toast.success('PAN details autofetched and verified');
@@ -1024,6 +1026,13 @@ export default function SellerOnboarding() {
                       className="bg-slate-50 border-slate-200" 
                     />
                     <Input label="Date of Incorporation" name="dateOfIncorporation" type="date" value={formData.dateOfIncorporation} onChange={handleChange} />
+                    <Input
+                      label="Registered Mobile Number"
+                      name="mobile"
+                      value={formData.mobile}
+                      onChange={(event) => setFormData((prev: any) => ({ ...prev, mobile: event.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                      placeholder="Enter registered mobile number"
+                    />
                   </div>
                   <div className="flex justify-end gap-3 pt-2">
                     <Button onClick={() => handleSaveSection('additional')} className="bg-[#12335f] hover:bg-slate-800 rounded px-6 h-9 font-bold uppercase text-xs tracking-wide text-white">
@@ -1262,10 +1271,8 @@ export default function SellerOnboarding() {
                                <label className="block text-xs font-bold text-gray-700 mb-1">State*</label>
                                <select 
                                  id="new-office-state" 
-                                 value={selectedOfficeState}
+                                 value={officeForm.state}
                                  onChange={(e) => {
-                                   setSelectedOfficeState(e.target.value);
-                                   setSelectedOfficeCity('');
                                    const next = { ...officeForm, state: e.target.value, city: '' };
                                    setOfficeForm(next);
                                    setOfficeErrors(validateOfficeForm(next).errors);
@@ -1283,18 +1290,13 @@ export default function SellerOnboarding() {
                                <label className="block text-xs font-bold text-gray-700 mb-1">Town/City/District*</label>
                                <select 
                                  id="new-office-city"
-                                 value={selectedOfficeCity}
-                                 disabled={!selectedOfficeState}
-                                 onChange={(e) => {
-                                   setSelectedOfficeCity(e.target.value);
-                                   const next = { ...officeForm, city: e.target.value };
-                                   setOfficeForm(next);
-                                   setOfficeErrors(validateOfficeForm(next).errors);
-                                 }}
+                                 value={officeForm.city}
+                                 disabled={!officeForm.state}
+                                 onChange={(e) => updateOfficeForm('city', e.target.value)}
                                  className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white disabled:opacity-60 disabled:bg-gray-50 ${officeErrors.city ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                                >
-                                 <option value="">Select District</option>
-                                 {selectedOfficeState && (indiaStatesDistricts as any)[selectedOfficeState]?.map((dist: string) => (
+                                 <option value="">{officeForm.state ? 'Select District' : 'Select State First'}</option>
+                                 {officeDistrictOptions.map((dist) => (
                                    <option key={dist} value={dist}>{dist}</option>
                                  ))}
                                </select>
@@ -1364,11 +1366,7 @@ export default function SellerOnboarding() {
 
                     {bankTab === 'manage' && (
                       <div className="pt-4 space-y-6 animate-in fade-in min-w-0 w-full">
-                         <div className="bg-slate-50/50 text-slate-700 p-5 rounded text-sm border border-slate-100">
-                            <p>Public Finance Management System (PFMS) verification is mandatory to receive payments from buyers using PFMS method of payment. Enter your PFMS verified account for better experience.</p>
-                            <p className="mt-4">Don't have a PFMS verification yet? Don't worry, you can proceed with a non-PFMS verified account now and come back to this section later.</p>
-                         </div>
-                         
+
                          <div className="overflow-x-auto border border-gray-200 bg-white rounded-xl w-full">
                             <table className="w-full text-left text-sm min-w-[640px]">
                               <thead className="bg-gray-50 border-b border-gray-200">
@@ -1378,7 +1376,7 @@ export default function SellerOnboarding() {
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('bankName')} className="inline-flex items-center">Bank Name <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('accountNumber')} className="inline-flex items-center">Bank Account Number <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('holderName')} className="inline-flex items-center">Account Holder <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')} className="inline-flex items-center">PFMS <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                     {/* <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')} className="inline-flex items-center">PFMS <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th> */}
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('primary')} className="inline-flex items-center">Primary <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
                                      <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
                                  </tr>

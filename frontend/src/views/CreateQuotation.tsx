@@ -53,6 +53,10 @@ const getUploadedFileName = (file: { documentUrl?: string; originalName?: string
   }
 };
 
+const roundMoney = (value: number) => Number(value.toFixed(2));
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
+
 export default function CreateQuotation() {
   const pathname = usePathname() || '';
   const match = pathname.match(/\/seller\/tenders\/([^/]+)\/bid/);
@@ -68,6 +72,8 @@ export default function CreateQuotation() {
   const [formData, setFormData] = useState({
     unitPrice: '',
     quantity: '',
+    taxRate: '',
+    discountAmount: '',
     deliveryDays: '',
     warranty: '',
     validTill: '',
@@ -76,6 +82,11 @@ export default function CreateQuotation() {
     fileAssetId: null as number | null,
     documentName: ''
   });
+  const subtotal = roundMoney(Number(formData.unitPrice || 0) * Number(formData.quantity || 0));
+  const taxRate = Number(formData.taxRate || 0);
+  const taxAmount = roundMoney(subtotal * taxRate / 100);
+  const discountAmount = roundMoney(Number(formData.discountAmount || 0));
+  const totalValue = roundMoney(subtotal + taxAmount - discountAmount);
 
   useEffect(() => {
     fetchTenderDetails();
@@ -165,12 +176,17 @@ export default function CreateQuotation() {
     if (!formData.unitPrice || !formData.quantity || !formData.deliveryDays) {
       return toast.error('Please fill in all required fields');
     }
+    if (discountAmount > subtotal + taxAmount) {
+      return toast.error('Discount cannot exceed subtotal plus tax');
+    }
 
     setSubmitting(true);
     try {
       const res = await api.post(`/api/tenders/${id}/bids`, {
         unitPrice: Number(formData.unitPrice),
         quantity: Number(formData.quantity),
+        taxRate,
+        discountAmount,
         deliveryDays: Number(formData.deliveryDays),
         warranty: formData.warranty,
         validTill: formData.validTill ? new Date(formData.validTill).toISOString() : null,
@@ -199,7 +215,6 @@ export default function CreateQuotation() {
   if (!tender) return null;
 
   if (isSuccess) {
-    const totalValue = Number(formData.unitPrice) * Number(formData.quantity);
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-6 text-slate-900">
         <div className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 shadow-2xl p-8 text-center space-y-6 animate-in zoom-in-95 duration-300">
@@ -243,9 +258,26 @@ export default function CreateQuotation() {
 
             <div className="h-px bg-slate-200" />
 
+            <div className="space-y-2 text-sm font-semibold text-slate-600">
+              <div className="flex items-center justify-between">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Tax ({taxRate.toFixed(2)}%)</span>
+                <span>{formatCurrency(taxAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Discount</span>
+                <span>- {formatCurrency(discountAmount)}</span>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-200" />
+
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider font-sans">Total Proposed Value</p>
-              <p className="text-xl font-black text-[#12335f]">₹{totalValue.toLocaleString()}</p>
+              <p className="text-xl font-black text-[#12335f]">{formatCurrency(totalValue)}</p>
             </div>
           </div>
 
@@ -412,6 +444,39 @@ export default function CreateQuotation() {
                     </div>
 
                     <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tax (%)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="e.g. 18"
+                          value={formData.taxRate}
+                          onChange={(e) => setFormData({ ...formData, taxRate: e.target.value })}
+                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Discount Amount (Optional)</label>
+                      <div className="relative">
+                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.discountAmount}
+                          onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
+                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Validity Date (Optional)</label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -485,6 +550,28 @@ export default function CreateQuotation() {
                         onChange={(e) => setFormData({...formData, note: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all resize-none"
                       />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Quotation Total</p>
+                    <div className="space-y-2 text-sm font-semibold text-slate-600">
+                      <div className="flex items-center justify-between">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Tax ({taxRate.toFixed(2)}%)</span>
+                        <span>{formatCurrency(taxAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Discount</span>
+                        <span>- {formatCurrency(discountAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-black text-[#12335f]">
+                        <span>Total</span>
+                        <span>{formatCurrency(totalValue)}</span>
+                      </div>
                     </div>
                   </div>
 

@@ -11,7 +11,7 @@ import { auditLog } from '../modules/audit/audit.service.js';
 import { onUserLinkedToOrganization } from '../services/org-membership.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
 import { paymentRateLimit, verificationRateLimit } from '../middleware/rateLimit.js';
-import { getOrSetCache, deleteCache } from '../services/cache.service.js';
+import { getOrSetCache, deleteCache, invalidateByPattern } from '../services/cache.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -87,6 +87,36 @@ const attachBidFileAssets = async (rows: any[]) => {
 const fileIdFromUrl = (url: unknown) => {
   const match = String(url || '').match(/\/api\/files\/(\d+)(?:\/|$)/);
   return match ? Number(match[1]) : null;
+};
+const linkUploadedTenderDocument = async (tenderId: number, documentUrl: unknown, ownerId: number) => {
+  const fileAssetId = fileIdFromUrl(documentUrl);
+  if (!fileAssetId) return;
+
+  const asset = await db.fileAsset.findFirst({
+    where: { id: fileAssetId, ownerId, status: 'active' }
+  });
+  if (!asset) throw new ApiError(400, 'Uploaded specification document is unavailable', 'TENDER_DOCUMENT_INVALID');
+
+  await db.$transaction(async (tx: any) => {
+    await tx.fileAsset.update({
+      where: { id: fileAssetId },
+      data: { entityType: 'tender', entityId: tenderId }
+    });
+    const existing = await tx.tenderDocument.findFirst({
+      where: { tenderId, fileAssetId }
+    });
+    if (!existing) {
+      await tx.tenderDocument.create({
+        data: {
+          tenderId,
+          fileAssetId,
+          documentType: 'specification',
+          title: asset.originalName,
+          isPublic: true
+        }
+      });
+    }
+  });
 };
 const attachQuoteResponseFileAssets = async (rows: any[]) => {
   const responses = rows.flatMap(row => Array.isArray(row?.quoteResponses) ? row.quoteResponses : []);
@@ -400,12 +430,18 @@ const tenderBody = z.object({
   requirementId: z.coerce.number().int().positive().optional(),
   budget: z.coerce.number().positive(),
   description: z.string().trim().min(5).max(5000),
-  closesAt: z.coerce.date().optional()
+  documentUrl: z.string().trim().max(1000).optional(),
+  closesAt: z.coerce.date().optional(),
+  quantityUnit: z.string().trim().max(40).optional(),
+  paymentTerms: z.string().trim().max(80).optional(),
+  deliveryType: z.string().trim().max(80).optional()
 });
 
 const bidBody = z.object({
   unitPrice: z.coerce.number().positive(),
   quantity: z.coerce.number().int().positive(),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
+  discountAmount: z.coerce.number().nonnegative().optional(),
   deliveryDays: z.coerce.number().int().positive(),
   warranty: z.string().trim().max(500).nullable().optional(),
   validTill: z.coerce.date().nullable().optional(),
@@ -1157,7 +1193,7 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
   const { id } = parse(idParams, req.params);
   const body = parse(z.object({
     sectionStatus: z.record(z.string(), z.unknown()),
-    sectionRejectionReasons: z.record(z.string(), z.unknown()).optional()
+    sectionRejectionReasons: z.record(z.string(), z.unknown()).nullish()
   }), req.body);
 
   const existing = await db.user.findUnique({
@@ -1907,10 +1943,13 @@ router.get('/services/search', asyncRoute(async (req, res) => {
 }));
 
 router.get('/admin/catalogue/products', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
-  const query = parse(paginationQuery, req.query);
+  const query = parse(paginationQuery.extend({
+    organizationId: z.coerce.number().int().positive().optional()
+  }), req.query);
   const where: any = {};
   if (query.status) where.status = query.status;
   if (query.categoryId) where.categoryId = query.categoryId;
+  if (query.organizationId) where.organizationId = query.organizationId;
   if (query.q) {
     where.OR = [
       { name: { contains: query.q, mode: 'insensitive' } },
@@ -1933,10 +1972,13 @@ router.get('/admin/catalogue/products', authenticate, authorizeAdmin, asyncRoute
 }));
 
 router.get('/admin/catalogue/services', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
-  const query = parse(paginationQuery, req.query);
+  const query = parse(paginationQuery.extend({
+    organizationId: z.coerce.number().int().positive().optional()
+  }), req.query);
   const where: any = {};
   if (query.status) where.status = query.status;
   if (query.categoryId) where.categoryId = query.categoryId;
+  if (query.organizationId) where.organizationId = query.organizationId;
   if (query.q) {
     where.OR = [
       { name: { contains: query.q, mode: 'insensitive' } },
@@ -2260,6 +2302,7 @@ router.post('/tenders', authenticate, authorize('buyer'), asyncRoute(async (req,
   await assertBuyerProcurementApproved(req);
   const body = parse(tenderBody, req.body);
   const tender = await tenderWorkflow.createTender(actorFrom(req), body);
+  await linkUploadedTenderDocument(tender.id, body.documentUrl, userId(req));
   ok(res, tender, 201);
 }));
 
@@ -2347,6 +2390,7 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
     }));
     return {
       ...tender,
+      documentUrl: docs[0]?.url || tender.documentUrl,
       hasParticipated: !!myBid,
       participationStatus: myBid ? myBid.status : null,
       myBidId: myBid ? myBid.id : null,
@@ -2370,6 +2414,8 @@ router.put('/tenders/:id', authenticate, authorize('buyer', 'admin'), asyncRoute
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const body = parse(tenderBody.partial(), req.body);
   const updated = await db.tender.update({ where: { id }, data: body });
+  await linkUploadedTenderDocument(id, body.documentUrl, userId(req));
+  await invalidateByPattern('cache:tender_public:*');
   await auditWrite(req, 'tender.updated', 'tender', id);
   ok(res, updated);
 }));
@@ -2384,6 +2430,7 @@ for (const [path, data, action] of [
     const tender = await assertTenderAccess(req, id);
     if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
     const updated = await tenderWorkflow.transitionTender(actorFrom(req), id, data);
+    await invalidateByPattern('cache:tender_public:*');
     await auditWrite(req, action, 'tender', id);
     ok(res, updated);
   }));
@@ -2408,6 +2455,7 @@ router.post('/tenders/:id/documents', authenticate, authorize('buyer', 'admin'),
   if (!req.file) throw new ApiError(400, 'Document file is required', 'DOCUMENT_REQUIRED');
   const asset = await db.fileAsset.create({ data: { ownerId: userId(req), ownerRole: String(req.user?.role), entityType: 'tender', entityId: id, storageProvider: 'local', key: `tenders/${id}/${Date.now()}-${req.file.originalname}`, mimeType: req.file.mimetype, size: req.file.size, checksum: sha256(req.file.buffer.toString('base64')), originalName: req.file.originalname, status: 'active' } });
   const doc = await db.tenderDocument.create({ data: { tenderId: id, fileAssetId: asset.id, documentType: clean(req.body?.documentType || 'tender'), title: clean(req.body?.title), isPublic: Boolean(req.body?.isPublic) } });
+  await invalidateByPattern('cache:tender_public:*');
   await auditWrite(req, 'tender.document_added', 'tenderDocument', doc.id);
   ok(res, { asset, document: doc }, 201);
 }));
@@ -2952,13 +3000,15 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
     role: z.string().trim().optional(),
     onboardingStatus: z.string().trim().optional(),
     accountStatus: z.string().trim().optional(),
-    registrationStatus: z.string().trim().optional()
+    registrationStatus: z.string().trim().optional(),
+    organizationId: z.coerce.number().int().positive().optional()
   }), req.query);
   const where: any = {};
   if (query.role) where.role = query.role;
   if (query.onboardingStatus) where.onboardingStatus = query.onboardingStatus;
   if (query.accountStatus) where.accountStatus = query.accountStatus;
   if (query.registrationStatus) where.registrationStatus = query.registrationStatus;
+  if (query.organizationId) where.organizationId = query.organizationId;
   if (query.q) {
     where.OR = [
       { name: { contains: query.q, mode: 'insensitive' } },

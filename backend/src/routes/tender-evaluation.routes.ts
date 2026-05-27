@@ -22,6 +22,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
+import { quotedBidTotal } from '../utils/bidPricing.js';
 
 const router = Router();
 
@@ -310,7 +311,7 @@ router.get(
             const fin = financialEvals.find(f => f.bidId === bid.id);
             const bidResults = results.filter(r => r.bidId === bid.id);
             const techScore = bidResults.reduce((s, r) => s + Number(r.score), 0);
-            const total = Number(bid.unitPrice) * bid.quantity;
+            const total = quotedBidTotal(bid);
             return {
                 bid,
                 quotedAmount: total,
@@ -345,7 +346,7 @@ router.post(
             throw new ApiError(404, 'Bid not found in this tender', 'BID_NOT_FOUND');
         }
 
-        const quotedAmount = Number(bid.unitPrice) * bid.quantity;
+        const quotedAmount = quotedBidTotal(bid);
         const evaluatedAmount = body.evaluatedAmount ?? quotedAmount;
 
         const fin = await prisma.financialEvaluation.upsert({
@@ -404,13 +405,13 @@ router.get(
                 const techScore = bidResults.reduce((s, r) => s + Number(r.score), 0);
                 const techPercent = maxScore > 0 ? (techScore / maxScore) * 100 : 0;
                 const fin = financialEvals.find(f => f.bidId === bid.id);
-                const finalAmount = fin ? Number(fin.evaluatedAmount || fin.quotedAmount) : Number(bid.unitPrice) * bid.quantity;
+                const finalAmount = fin ? Number(fin.evaluatedAmount || fin.quotedAmount) : quotedBidTotal(bid);
                 return {
                     bid,
                     technicalScore: techScore,
                     technicalPercent: Math.round(techPercent * 100) / 100,
                     qualified: techPercent >= 60,
-                    quotedAmount: Number(bid.unitPrice) * bid.quantity,
+                    quotedAmount: quotedBidTotal(bid),
                     evaluatedAmount: finalAmount
                 };
             })
@@ -470,7 +471,7 @@ router.post(
                 const techScore = bidResults.reduce((s, r) => s + Number(r.score), 0);
                 const techPercent = maxScore > 0 ? (techScore / maxScore) * 100 : 0;
                 const fin = financialEvals.find(f => f.bidId === bid.id);
-                const quoted = Number(bid.unitPrice) * bid.quantity;
+                const quoted = quotedBidTotal(bid);
                 return {
                     bidId: bid.id,
                     seller: bid.seller,

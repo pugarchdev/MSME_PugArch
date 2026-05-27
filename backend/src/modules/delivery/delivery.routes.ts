@@ -9,6 +9,7 @@
 import { Router, type Response } from 'express';
 import type { ZodTypeAny } from 'zod';
 import { authenticate, type AuthRequest } from '../../middleware/auth.js';
+import { shortCache, longCache } from '../../middleware/httpCache.js';
 import { handleSecureRouteError } from '../../utils/routeHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import {
@@ -62,19 +63,19 @@ const wrap =
 
 /* ============== Listing & detail ============== */
 
-router.get('/', authenticate, wrap(async (req, res) => {
+router.get('/', authenticate, shortCache(15), wrap(async (req, res) => {
   const query = parse<any>(deliveryListQuery, req.query);
   const result = await deliveryService.listForActor(actorFrom(req), query);
   ok(res, result);
 }));
 
-router.get('/reports/summary', authenticate, wrap(async (req, res) => {
+router.get('/reports/summary', authenticate, shortCache(30), wrap(async (req, res) => {
   const query = parse<any>(deliveryReportQuery, req.query);
   const summary = await deliveryService.report(actorFrom(req), query);
   ok(res, summary);
 }));
 
-router.get('/logistics-partners', authenticate, wrap(async (_req, res) => {
+router.get('/logistics-partners', authenticate, longCache(120), wrap(async (_req, res) => {
   const partners = await deliveryService.listLogisticsPartners();
   ok(res, partners);
 }));
@@ -98,13 +99,13 @@ router.post('/by-purchase-order/:purchaseOrderId', authenticate, wrap(async (req
   ok(res, delivery, 201);
 }));
 
-router.get('/:id', authenticate, wrap(async (req, res) => {
+router.get('/:id', authenticate, shortCache(15), wrap(async (req, res) => {
   const { id } = parse<any>(idParam, req.params);
   const delivery = await deliveryService.getDetail(actorFrom(req), id);
   ok(res, delivery);
 }));
 
-router.get('/:id/timeline', authenticate, wrap(async (req, res) => {
+router.get('/:id/timeline', authenticate, shortCache(15), wrap(async (req, res) => {
   const { id } = parse<any>(idParam, req.params);
   const timeline = await deliveryService.getTimeline(actorFrom(req), id);
   ok(res, timeline);

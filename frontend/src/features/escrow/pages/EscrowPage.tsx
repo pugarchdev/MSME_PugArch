@@ -31,6 +31,8 @@ type EscrowAccount = {
   status: string;
   buyerId: number;
   sellerId: number;
+  buyer?: { id: number; name: string; email?: string };
+  seller?: { id: number; name: string; email?: string };
   createdAt?: string;
   fundedAt?: string;
   frozenAt?: string;
@@ -211,7 +213,11 @@ export default function EscrowPage() {
                         />
                         <p className="mt-1 text-xs text-slate-500">{formatCurrency(escrow.amount)}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs font-semibold text-slate-600">Buyer #{escrow.buyerId}<br />Seller #{escrow.sellerId}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-600">
+                        <span className="text-wrap-anywhere">{escrow.buyer?.name || `Buyer #${escrow.buyerId}`}</span>
+                        <br />
+                        <span className="text-wrap-anywhere">{escrow.seller?.name || `Seller #${escrow.sellerId}`}</span>
+                      </td>
                       <td className="px-4 py-3 text-xs font-semibold text-slate-700">{formatCurrency(escrow.amount)}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">PO {escrow.purchaseOrder?.poNumber || '-'}<br />Ref {escrow.paymentTransaction?.referenceId || '-'}</td>
                       <td className="px-4 py-3"><span className={cn('inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span></td>
@@ -238,7 +244,7 @@ export default function EscrowPage() {
                           onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}
                         />
                         <p className="mt-2 text-xs font-bold text-slate-500 text-wrap-anywhere">{formatCurrency(escrow.amount)} | PO {escrow.purchaseOrder?.poNumber || '-'}</p>
-                        <p className="mt-2 text-xs text-slate-500 text-wrap-anywhere">Ref {escrow.paymentTransaction?.referenceId || '-'} | Buyer #{escrow.buyerId} / Seller #{escrow.sellerId}</p>
+                        <p className="mt-2 text-xs text-slate-500 text-wrap-anywhere">Ref {escrow.paymentTransaction?.referenceId || '-'} | {escrow.buyer?.name || `Buyer #${escrow.buyerId}`} → {escrow.seller?.name || `Seller #${escrow.sellerId}`}</p>
                       </div>
                       <div className="flex flex-col items-start gap-2 sm:items-end">
                         <span className={cn('rounded-full border px-3 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
@@ -311,8 +317,8 @@ function EscrowDetail({ escrow, detailTab, onClose, onTabChange }: { escrow: Esc
         </div>
         <div className="space-y-4 p-5">
           <div className="grid gap-3 md:grid-cols-3">
-            <DetailMetric label="Buyer" value={`#${escrow.buyerId}`} />
-            <DetailMetric label="Seller" value={`#${escrow.sellerId}`} />
+            <DetailMetric label="Buyer" value={escrow.buyer?.name || `#${escrow.buyerId}`} />
+            <DetailMetric label="Seller" value={escrow.seller?.name || `#${escrow.sellerId}`} />
             <DetailMetric label="Funded" value={escrow.fundedAt ? formatDate(escrow.fundedAt) : 'Pending'} />
           </div>
 

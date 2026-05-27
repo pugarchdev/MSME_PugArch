@@ -65,10 +65,14 @@ export default function RoleAwareActionCards() {
         queryFn: () => getApi<DashboardSummary>('/api/dashboard/summary').catch(() => null),
         enabled: !!user && user.role !== 'admin',
         staleTime: 60_000,
+        // Show whatever we last cached immediately so KPI tiles never flash
+        // empty after navigation. React Query revalidates in the background.
+        placeholderData: (prev) => prev,
         refetchOnWindowFocus: false
     });
 
     const data: DashboardSummary = summary.data || {};
+    const isLoading = summary.isLoading && !summary.data;
     const isBuyer = user?.role === 'buyer';
     const isSeller = user?.role === 'seller';
 
@@ -216,7 +220,11 @@ export default function RoleAwareActionCards() {
                             </div>
                             <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-[#12335f] transition" />
                         </div>
-                        <p className="text-2xl font-black text-slate-950">{card.count}</p>
+                        {isLoading ? (
+                            <div className="h-7 w-12 rounded bg-slate-100 animate-pulse mb-1" />
+                        ) : (
+                            <p className="text-2xl font-black text-slate-950">{card.count}</p>
+                        )}
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">{card.label}</p>
                     </button>
                 ))}

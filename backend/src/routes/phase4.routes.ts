@@ -2870,7 +2870,17 @@ router.get('/escrow', authenticate, authorize('buyer', 'seller', 'admin'), async
 
 router.get('/escrow/:id', authenticate, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
-  const escrow = await db.escrowAccount.findUnique({ where: { id }, include: { milestones: true, transactions: true, paymentTransaction: true } });
+  const escrow = await db.escrowAccount.findUnique({
+    where: { id },
+    include: {
+      milestones: true,
+      transactions: true,
+      paymentTransaction: true,
+      buyer: { select: { id: true, name: true, email: true } },
+      seller: { select: { id: true, name: true, email: true } },
+      purchaseOrder: { select: { id: true, poNumber: true, status: true } }
+    }
+  });
   if (!escrow || (!isAdmin(req) && escrow.buyerId !== userId(req) && escrow.sellerId !== userId(req))) throw new ApiError(404, 'Escrow not found', 'ESCROW_NOT_FOUND');
   ok(res, escrow);
 }));

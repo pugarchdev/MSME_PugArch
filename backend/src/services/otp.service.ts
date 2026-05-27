@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { logger } from '../config/logger.js';
 import { isRedisReady, redis } from '../config/redis.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -132,7 +133,8 @@ const latestVerifiedDbState = async (purpose: OtpPurpose, normalizedIdentity: st
       expiresAt: record.expiresAt.toISOString(),
       metadata: record.metadata || undefined
     };
-  } catch {
+  } catch (error) {
+    logger.error({ err: error, purpose }, '[OTP] DB fallback lookup failed for verified OTP');
     return null;
   }
 };
@@ -215,7 +217,13 @@ export const storeOtp = async (
       verified: false,
       expiresAt
     } as any
-  }).catch(() => undefined);
+  }).catch((error) => {
+    // OTP must be persisted to DB - it's the cross-instance source of truth
+    // when Redis is unavailable. If this fails, verification will mysteriously
+    // fail when the verify request lands on a different lambda instance.
+    logger.error({ err: error, purpose }, '[OTP] Failed to persist OTP to database');
+    throw new ApiError(500, 'Unable to issue verification code right now. Please try again.', 'OTP_PERSIST_FAILED');
+  });
 
   return {
     sendsRemaining: Math.max(0, MAX_OTP_SENDS - sendCount)
@@ -227,25 +235,38 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
   const useRedis = redis && isRedisReady();
   const key = keyFor(purpose, normalizedIdentity);
 
-  let raw: string | null = null;
   let state: OtpState | null = null;
 
   if (useRedis) {
-    raw = await redis.get(key);
-    if (raw) state = JSON.parse(raw) as OtpState;
+    try {
+      const raw = await redis.get(key);
+      if (raw) state = JSON.parse(raw) as OtpState;
+    } catch (error) {
+      logger.error({ err: error, purpose }, '[OTP] Redis lookup failed during verification; falling back to DB');
+    }
   } else {
+    // In-memory store is per-instance only; on serverless platforms different
+    // lambda instances handle send vs. verify so the map is unreliable.
+    // We still consult it as an opportunistic cache before going to the DB.
     state = localOtpStore.get(key) || null;
   }
 
+  // Authoritative fallback: persistent DB record. This is what makes verification
+  // work across different serverless instances when Redis is unavailable.
   if (!state) {
     state = await latestDbState(purpose, normalizedIdentity);
   }
 
-  if (!state) return { ok: false, reason: 'invalid' as const, attemptsRemaining: MAX_OTP_ATTEMPTS };
+  if (!state) {
+    logger.warn({ purpose, useRedis }, '[OTP] No active OTP state found in cache or DB');
+    return { ok: false, reason: 'invalid' as const, attemptsRemaining: MAX_OTP_ATTEMPTS };
+  }
 
   if (new Date(state.expiresAt) < new Date()) {
     if (useRedis) {
-      await redis.del(key);
+      await redis.del(key).catch(error =>
+        logger.warn({ err: error }, '[OTP] Failed to clear expired Redis OTP state')
+      );
     } else {
       localOtpStore.delete(key);
     }
@@ -254,7 +275,9 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
 
   if (state.attempts >= MAX_OTP_ATTEMPTS) {
     if (useRedis) {
-      await redis.del(key);
+      await redis.del(key).catch(error =>
+        logger.warn({ err: error }, '[OTP] Failed to clear locked Redis OTP state')
+      );
     } else {
       localOtpStore.delete(key);
     }
@@ -262,26 +285,34 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
   }
 
   const submittedHash = sha256(otp);
-  const validHashes = state.otpHashes || [state.otpHash];
+  const validHashes = state.otpHashes && state.otpHashes.length > 0
+    ? state.otpHashes
+    : (state.otpHash ? [state.otpHash] : []);
 
   if (!validHashes.includes(submittedHash)) {
     state.attempts += 1;
     if (useRedis) {
-      await redis.set(key, JSON.stringify(state), 'KEEPTTL');
-      await redis.incr(attemptsKeyFor(purpose, normalizedIdentity));
+      await redis.set(key, JSON.stringify(state), 'KEEPTTL').catch(error =>
+        logger.warn({ err: error }, '[OTP] Failed to update Redis attempts counter')
+      );
+      await redis.incr(attemptsKeyFor(purpose, normalizedIdentity)).catch(() => undefined);
     } else {
       localOtpStore.set(key, state);
     }
     await prisma.otpVerification.updateMany({
       where: state.id ? { id: state.id } : { identifierHash: sha256(normalizedIdentity), purpose, verified: false },
       data: { attempts: state.attempts }
-    }).catch(() => undefined);
+    }).catch(error => {
+      logger.error({ err: error, purpose }, '[OTP] Failed to persist failed attempt counter');
+    });
     return { ok: false, reason: 'invalid' as const, attemptsRemaining: Math.max(0, MAX_OTP_ATTEMPTS - state.attempts) };
   }
 
   state.verified = true;
   if (useRedis) {
-    await redis.set(key, JSON.stringify(state), 'KEEPTTL');
+    await redis.set(key, JSON.stringify(state), 'KEEPTTL').catch(error =>
+      logger.warn({ err: error }, '[OTP] Failed to flag OTP verified in Redis')
+    );
   } else {
     localOtpStore.set(key, state);
   }
@@ -289,7 +320,11 @@ export const verifyOtp = async (purpose: OtpPurpose, identity: string, otp: stri
   await prisma.otpVerification.updateMany({
     where: state.id ? { id: state.id } : { identifierHash: sha256(normalizedIdentity), purpose, verified: false },
     data: { verified: true, verifiedAt: new Date(), attempts: state.attempts }
-  }).catch(() => undefined);
+  }).catch(error => {
+    // This MUST succeed for assertOtpVerified() to find a verified record on
+    // a different lambda instance during the subsequent /register call.
+    logger.error({ err: error, purpose }, '[OTP] Failed to persist verified state to DB');
+  });
 
   return { ok: true, reason: 'verified' as const, metadata: state.metadata };
 };

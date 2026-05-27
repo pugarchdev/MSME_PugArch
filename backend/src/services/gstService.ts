@@ -1,6 +1,7 @@
 import https from 'https';
 import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
+import { logger } from '../config/logger.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -383,8 +384,29 @@ export class GstService {
       : [{ method: 'GET', url }, { method: 'POST', url: 'https://apisetu.gov.in/certificate/v3/taxpayers/gstn', body: JSON.stringify(certificateRequestBody(gstin, clientId)) }];
 
     let lastResponse: { status: number; text: string } | null = null;
+    let lastNetworkError: { code?: string; message: string } | null = null;
     for (const attempt of attempts) {
-      const response = await requestJson(attempt.url, { method: attempt.method, body: attempt.body }, headers);
+      let response: { ok: boolean; status: number; body: any; text: string };
+      try {
+        response = await requestJson(attempt.url, { method: attempt.method, body: attempt.body }, headers);
+      } catch (error: any) {
+        // Network-level failure (DNS, TLS, timeout, abort). Log full detail so
+        // the underlying issue is visible in production logs, then try next
+        // attempt. We never want a single transient failure to mask the POST
+        // fallback that often succeeds.
+        lastNetworkError = {
+          code: error?.cause?.code || error?.code || error?.name,
+          message: String(error?.message || error)
+        };
+        logger.error({
+          err: error,
+          gstinHash: gstin.slice(0, 4),
+          attemptUrl: attempt.url,
+          attemptMethod: attempt.method,
+          errorCode: lastNetworkError.code
+        }, '[GST] API Setu request failed');
+        continue;
+      }
       if (!response.ok) {
         lastResponse = { status: response.status, text: response.text };
         if (![404, 405, 415].includes(response.status)) break;
@@ -415,11 +437,26 @@ export class GstService {
       return normalized;
     }
 
+    if (lastResponse) {
+      logger.warn({
+        gstinHash: gstin.slice(0, 4),
+        providerStatus: lastResponse.status,
+        providerBody: lastResponse.text?.slice(0, 500)
+      }, '[GST] API Setu returned a non-success status');
+      throw new ApiError(
+        lastResponse.status < 500 ? 400 : 424,
+        `GST verification failed: API Setu returned status ${lastResponse.status}`,
+        'GST_PROVIDER_ERROR',
+        { providerStatus: lastResponse.status, providerBody: lastResponse.text?.slice(0, 500) }
+      );
+    }
+
+    // No response at all - every attempt threw a network error.
     throw new ApiError(
-      lastResponse && lastResponse.status < 500 ? 400 : 424,
-      `GST verification failed: API Setu returned status ${lastResponse?.status || 0}`,
-      'GST_PROVIDER_ERROR',
-      { providerStatus: lastResponse?.status, providerBody: lastResponse?.text?.slice(0, 500) }
+      424,
+      'GST verification provider is unreachable. Please try again later.',
+      'GST_PROVIDER_UNREACHABLE',
+      { cause: lastNetworkError?.code || lastNetworkError?.message || 'unknown' }
     );
   }
 }

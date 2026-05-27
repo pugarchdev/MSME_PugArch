@@ -1421,6 +1421,8 @@ async function verifyGstinInternal(gstin: string) {
     return await GstService.verifyGstin(gstin);
   } catch (e: any) {
     if (e instanceof ApiError) {
+      // Pass through real provider errors (config missing 503, mismatch 400,
+      // unreachable 424, etc.) without flattening them all into a generic 424.
       throw e;
     }
     throw new ApiError(424, e?.message?.startsWith('GST verification failed') ? e.message : 'GST verification provider is unreachable. Please try again later.', e?.code || 'GST_PROVIDER_UNREACHABLE');

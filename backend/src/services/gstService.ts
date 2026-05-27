@@ -79,6 +79,17 @@ export interface GstData {
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const cleanEnv = (value: unknown) => clean(value).replace(/^['"]|['"]$/g, '');
+const LEGACY_PLACEHOLDER_ADDRESS = '123 Business Chambers, Bandra Kurla Complex, Mumbai, Maharashtra - 400051';
+
+// API Setu currently presents an eMudhra chain rooted at AAA Certificate
+// Services, which is not in Node's default trust set on Vercel.
+const APISETU_ROOT_CA_BASE64 =
+  'MIIEMjCCAxqgAwIBAgIBATANBgkqhkiG9w0BAQUFADB7MQswCQYDVQQGEwJHQjEbMBkGA1UECAwSR3JlYXRlciBNYW5jaGVzdGVyMRAwDgYDVQQHDAdTYWxmb3JkMRowGAYDVQQKDBFDb21vZG8gQ0EgTGltaXRlZDEhMB8GA1UEAwwYQUFBIENlcnRpZmljYXRlIFNlcnZpY2VzMB4XDTA0MDEwMTAwMDAwMFoXDTI4MTIzMTIzNTk1OVowezELMAkGA1UEBhMCR0IxGzAZBgNVBAgMEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBwwHU2FsZm9yZDEaMBgGA1UECgwRQ29tb2RvIENBIExpbWl0ZWQxITAfBgNVBAMMGEFBQSBDZXJ0aWZpY2F0ZSBTZXJ2aWNlczCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL5AnfRu4ep2hxxNRUSOvkbIgwadwSr+GB+O5AL686tdUIoWMQuaBtDFcCLNSS1UY8y2bmhGC1Pqy0wkwLxyTurxFa70VJoSCsN6sjNg4tqJVfMiWPPe3M/vg4aijJRPn2jymJBGhCfHdr/jzDUsi14HZGWCwEiwqJH5YZ92IFCokcdmtet4YgNW8IoaE+oxox6gmf049vYnMlhvB/VruPsUK6+3qszWY19zjNoFmag4qMsXeDZRrOme9Hg6jc8P2ULimAyrL58OAd7vn5lJ8S3frHRNG5i1R8XlKdH5kBjHYpy+g8cmez6KJcfA3Z3mNWgQIJ2P2N7Sw4ScDV7oL8kCAwEAAaOBwDCBvTAdBgNVHQ4EFgQUoBEKIz6W8Qfs4q8p74Klf9AwpLQwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wewYDVR0fBHQwcjA4oDagNIYyaHR0cDovL2NybC5jb21vZG9jYS5jb20vQUFBQ2VydGlmaWNhdGVTZXJ2aWNlcy5jcmwwNqA0oDKGMGh0dHA6Ly9jcmwuY29tb2RvLm5ldC9BQUFDZXJ0aWZpY2F0ZVNlcnZpY2VzLmNybDANBgkqhkiG9w0BAQUFAAOCAQEACFb8AvCb6P+k+tZ7xkSAzk/ExfYAWMymtrwUSWgEdujm7l3sAg9g1o1QGE8mTgHj5rCl7r+8dFRBv/38ErjHT1r0iWAFf2C3BUrz9vHCv8S5dIa2LX1rzNLzRt0vxuBqw8M0Ayx9lt1awg6nCpnBBYurDC/zXDrPbDdVCYfeU0BsWO/8tqtlbgT2G9w84FoVxp7Z8VlIMCFlA2zs6SFz7JsDoeA3raAVGI/6ugLOpyypEBMs1OUIJqsil2D4kF501KKaU73yqWjgom7C12yxow+ev+to51byrvLjKzg6CYG1a4XXvi3tPxq3smPi9WIsgtRqAEFQ8TmDn5XpNpaYbg==';
+const APISETU_ROOT_CA = [
+  '-----BEGIN CERTIFICATE-----',
+  ...(APISETU_ROOT_CA_BASE64.match(/.{1,64}/g) || []),
+  '-----END CERTIFICATE-----'
+].join('\n');
 
 export const normalizeGstin = (value: unknown) => clean(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -142,25 +153,27 @@ const parseJson = (text: string) => {
   }
 };
 
-const allowInsecureTls = () =>
-  cleanEnv(process.env.APISETU_ALLOW_INSECURE_TLS).toLowerCase() === 'true' ||
-  process.env.NODE_ENV !== 'production';
+const isApiSetuHost = (url: string) => {
+  try {
+    return /(^|\.)apisetu\.gov\.in$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+
+const apiSetuCa = () => {
+  const configured = clean(process.env.APISETU_CA_CERT).replace(/\\n/g, '\n');
+  return configured || APISETU_ROOT_CA;
+};
 
 const requestJson = async (url: string, init: RequestInit, headers: Record<string, string>) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const response = await fetch(url, { ...init, headers, signal: controller.signal });
-    const text = await response.text();
-    return { ok: response.ok, status: response.status, body: parseJson(text), text };
-  } catch (error: any) {
-    if (!allowInsecureTls()) throw error;
-
+  if (isApiSetuHost(url)) {
     return new Promise<{ ok: boolean; status: number; body: any; text: string }>((resolve, reject) => {
       const request = https.request(url, {
         method: init.method || 'GET',
         headers,
-        rejectUnauthorized: false
+        ca: apiSetuCa(),
+        rejectUnauthorized: true
       }, response => {
         let text = '';
         response.setEncoding('utf8');
@@ -177,6 +190,14 @@ const requestJson = async (url: string, init: RequestInit, headers: Record<strin
       if (init.body) request.write(String(init.body));
       request.end();
     });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, { ...init, headers, signal: controller.signal });
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, body: parseJson(text), text };
   } finally {
     clearTimeout(timeout);
   }
@@ -289,24 +310,6 @@ const normalizeProviderData = (raw: any, requestedGstin: string, source: GstData
     message: address ? undefined : 'Address not available from GST API. Please enter manually.'
   };
 
-  // Graceful fallback for mock or incomplete data
-  if (!normalized.legalName && !normalized.tradeName) {
-    normalized.legalName = `GST Business (${requested})`;
-    normalized.tradeName = `GST Trade (${requested})`;
-    normalized.organizationName = `GST Business (${requested})`;
-  }
-  if (!normalized.pincode || !normalized.city || !normalized.address || normalized.address === 'Maharashtra') {
-    normalized.city = normalized.city || 'Mumbai';
-    normalized.district = normalized.district || 'Mumbai';
-    normalized.pincode = '400001';
-    normalized.pinCode = '400001';
-    normalized.state = normalized.state || 'Maharashtra';
-    normalized.address = '123 Business Chambers, Bandra Kurla Complex, Mumbai, Maharashtra - 400051';
-    normalized.businessAddress = normalized.address;
-    normalized.registeredOfficeAddress = normalized.address;
-    normalized.partial = false;
-  }
-
   return normalized;
 };
 
@@ -363,7 +366,11 @@ export class GstService {
   static async verifyGstin(rawGstin: string): Promise<GstData> {
     const gstin = this.normalize(rawGstin);
     const cached = await prisma.gstCache.findUnique({ where: { gstNumber: gstin } }).catch(() => null);
-    if (cached) return normalizeCacheData(cached, gstin);
+    const isLegacyPlaceholder = cached && (
+      cached.businessAddress === LEGACY_PLACEHOLDER_ADDRESS ||
+      cached.legalBusinessName === `GST Business (${gstin})`
+    );
+    if (cached && !isLegacyPlaceholder) return normalizeCacheData(cached, gstin);
 
     const { apiKey, clientId, urlTemplate, configured } = config();
     if (!configured) {
@@ -416,22 +423,6 @@ export class GstService {
       const normalized = normalizeProviderData(response.body, gstin, 'live_apisetu');
       if (normalized.responseGstin && normalized.responseGstin !== gstin) {
         throw new ApiError(400, `GSTIN mismatch: requested ${gstin}, but API returned ${normalized.responseGstin}`, 'GSTIN_MISMATCH');
-      }
-      if (!normalized.legalName && !normalized.tradeName) {
-        normalized.legalName = `GST Business (${gstin})`;
-        normalized.tradeName = `GST Trade (${gstin})`;
-        normalized.organizationName = `GST Business (${gstin})`;
-      }
-      if (!normalized.pincode || !normalized.city || !normalized.address || normalized.address === 'Maharashtra') {
-        normalized.city = normalized.city || 'Mumbai';
-        normalized.district = normalized.district || 'Mumbai';
-        normalized.pincode = normalized.pincode || '400001';
-        normalized.pinCode = normalized.pincode;
-        normalized.state = normalized.state || 'Maharashtra';
-        normalized.address = '123 Business Chambers, Bandra Kurla Complex, Mumbai, Maharashtra - 400051';
-        normalized.businessAddress = normalized.address;
-        normalized.registeredOfficeAddress = normalized.address;
-        normalized.partial = false;
       }
       await cacheResult(normalized);
       return normalized;

@@ -81,8 +81,16 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
   const records = (listQuery.data?.records || []) as DeliveryDetailDto[];
   const total = listQuery.data?.total || 0;
 
-  // Lightweight client-side counters from whatever the current page has.
+  // Use server-side report data for KPIs when available, fall back to client-side counters
   const counters = useMemo(() => {
+    if (reportQuery.data) {
+      return {
+        inMovement: reportQuery.data.inMovement || 0,
+        completed: reportQuery.data.completed || 0,
+        risk: reportQuery.data.risk || 0
+      };
+    }
+    // Fallback: lightweight client-side counters from current page
     const inMovement = records.filter(r =>
       ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'AT_HUB', 'PICKED_UP'].includes(r.status)
     ).length;
@@ -93,7 +101,7 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
       ['DELAYED', 'DELIVERY_FAILED', 'DISPUTE_RAISED', 'RETURNED', 'CANCELLED'].includes(r.status)
     ).length;
     return { inMovement, completed, risk };
-  }, [records]);
+  }, [records, reportQuery.data]);
 
   const startIndex = (page - 1) * pageSize;
   const isInitialLoading = listQuery.isLoading && !listQuery.data;

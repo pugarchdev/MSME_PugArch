@@ -35,8 +35,9 @@ import type { DeliveryStatus } from './types';
 
 export { useFeatureQuery } from '../shared/hooks';
 
-const STALE_DETAIL = 30_000;
-const STALE_LIST = 30_000;
+const STALE_DETAIL = 60_000; // 1 minute
+const STALE_LIST = 45_000; // 45 seconds
+const STALE_REPORT = 90_000; // 1.5 minutes
 
 export const useDeliveryList = (
     params: {
@@ -56,7 +57,9 @@ export const useDeliveryList = (
                 q: params.q
             }),
         placeholderData: previous => previous, // keeps last page visible while next page loads
-        staleTime: STALE_LIST
+        staleTime: STALE_LIST,
+        gcTime: 5 * 60_000, // keep in cache for 5 minutes
+        refetchOnWindowFocus: false // don't refetch on window focus for better UX
     });
 
 export const useDeliveryDetail = (id: number | null | undefined) =>
@@ -64,7 +67,9 @@ export const useDeliveryDetail = (id: number | null | undefined) =>
         queryKey: queryKeys.deliveries.detail(id || 0),
         queryFn: () => getDeliveryById(id as number),
         enabled: Number.isFinite(id) && (id as number) > 0,
-        staleTime: STALE_DETAIL
+        staleTime: STALE_DETAIL,
+        gcTime: 10 * 60_000, // keep details in cache longer
+        refetchOnWindowFocus: false
     });
 
 export const useDeliveryByPO = (purchaseOrderId: number | null | undefined) =>
@@ -72,7 +77,9 @@ export const useDeliveryByPO = (purchaseOrderId: number | null | undefined) =>
         queryKey: ['deliveries', 'by-po', purchaseOrderId],
         queryFn: () => getDeliveryByPurchaseOrder(purchaseOrderId as number),
         enabled: Number.isFinite(purchaseOrderId) && (purchaseOrderId as number) > 0,
-        staleTime: STALE_DETAIL
+        staleTime: STALE_DETAIL,
+        gcTime: 10 * 60_000,
+        refetchOnWindowFocus: false
     });
 
 export const useDeliveryReport = (enabled = true) =>
@@ -80,7 +87,10 @@ export const useDeliveryReport = (enabled = true) =>
         queryKey: queryKeys.deliveries.summary,
         queryFn: () => fetchDeliveryReport(),
         enabled,
-        staleTime: 60_000
+        staleTime: STALE_REPORT,
+        gcTime: 10 * 60_000,
+        placeholderData: previous => previous, // show cached KPIs instantly
+        refetchOnWindowFocus: false
     });
 
 export const useLogisticsPartners = () =>

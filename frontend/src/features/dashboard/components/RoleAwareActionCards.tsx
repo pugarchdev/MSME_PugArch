@@ -77,40 +77,6 @@ export default function RoleAwareActionCards() {
     const isSeller = user?.role === 'seller';
 
     const cards: Array<{ label: string; count: number; href: string; icon: any; tone: string; show: boolean }> = [
-        // ─── Role-gated approval tiles ───
-        {
-            label: 'Approvals Pending',
-            count: data.pendingApprovalsCount || 0,
-            href: '/approvals',
-            icon: Inbox,
-            tone: 'amber',
-            show: isOrgAdmin || isProcurementOfficer || isFinanceOfficer
-        },
-        {
-            label: 'Carts to Approve',
-            count: data.cartApprovalsCount || 0,
-            href: '/cart/approvals',
-            icon: ClipboardCheck,
-            tone: 'blue',
-            show: isOrgAdmin || isFinanceOfficer
-        },
-        {
-            label: 'Tech Review Queue',
-            count: data.techReviewCount || 0,
-            href: '/cart/technical-review',
-            icon: FileText,
-            tone: 'purple',
-            show: isOrgAdmin || isTechnicalOfficer
-        },
-        {
-            label: 'GRNs to Approve',
-            count: data.grnsToApproveCount || 0,
-            href: '/grn',
-            icon: ClipboardList,
-            tone: 'emerald',
-            show: !!user && user.role !== 'admin'
-        },
-
         // ─── Buyer baseline tiles (always visible to every buyer) ───
         {
             label: 'My Tenders',
@@ -142,6 +108,22 @@ export default function RoleAwareActionCards() {
             href: '/invoices',
             icon: Receipt,
             tone: 'rose',
+            show: isBuyer
+        },
+        {
+            label: 'Cart Items',
+            count: data.cartItemCount || 0,
+            href: '/cart',
+            icon: ShoppingCart,
+            tone: 'slate',
+            show: isBuyer
+        },
+        {
+            label: 'GRNs to Approve',
+            count: data.grnsToApproveCount || 0,
+            href: '/grn',
+            icon: ClipboardList,
+            tone: 'emerald',
             show: isBuyer
         },
 
@@ -176,7 +158,7 @@ export default function RoleAwareActionCards() {
             href: '/seller/delivery-management',
             icon: Truck,
             tone: 'cyan',
-            show: isSeller && (isOrgAdmin || isLogisticsOfficer || !orgRole)
+            show: isSeller
         },
         {
             label: 'Pending Invoices',
@@ -186,15 +168,39 @@ export default function RoleAwareActionCards() {
             tone: 'rose',
             show: isSeller
         },
-
-        // ─── Common shortcut for both ───
         {
-            label: 'Cart Items',
-            count: data.cartItemCount || 0,
-            href: '/cart',
-            icon: ShoppingCart,
-            tone: 'slate',
-            show: isBuyer
+            label: 'Quotations',
+            count: data.sellerPendingInvoicesCount || 0,
+            href: '/quotations',
+            icon: FileText,
+            tone: 'purple',
+            show: isSeller
+        },
+
+        // ─── Role-gated approval tiles (show if user has org role) ───
+        {
+            label: 'Approvals Pending',
+            count: data.pendingApprovalsCount || 0,
+            href: '/approvals',
+            icon: Inbox,
+            tone: 'amber',
+            show: !!(isOrgAdmin || isProcurementOfficer || isFinanceOfficer)
+        },
+        {
+            label: 'Carts to Approve',
+            count: data.cartApprovalsCount || 0,
+            href: '/cart/approvals',
+            icon: ClipboardCheck,
+            tone: 'blue',
+            show: !!(isOrgAdmin || isFinanceOfficer)
+        },
+        {
+            label: 'Tech Review Queue',
+            count: data.techReviewCount || 0,
+            href: '/cart/technical-review',
+            icon: FileText,
+            tone: 'purple',
+            show: !!(isOrgAdmin || isTechnicalOfficer)
         }
     ];
 

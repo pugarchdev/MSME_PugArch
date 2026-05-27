@@ -144,16 +144,6 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         </div>
       )}
 
-      {scope === 'admin' && reportQuery.data && (
-        <Card>
-          <CardContent className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-            <Info label="Pending Payment" value={String(reportQuery.data.paymentPendingAfterAcceptance)} />
-            <Info label="Disputed" value={String(reportQuery.data.disputed)} />
-            <Info label="Delayed" value={String(reportQuery.data.delayed)} />
-            <Info label="Returned" value={String(reportQuery.data.returned)} />
-          </CardContent>
-        </Card>
-      )}
 
       {listQuery.error && (
         <InlineError

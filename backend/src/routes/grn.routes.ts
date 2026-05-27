@@ -18,6 +18,7 @@ import prisma from '../config/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requireOrgRole } from '../middleware/requireOrgRole.js';
 import { requireApprovedOrg } from '../middleware/requireApprovedOrg.js';
+import { shortCache } from '../middleware/httpCache.js';
 import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
@@ -139,6 +140,7 @@ router.get(
     '/grn',
     authenticate,
     authorize('buyer', 'seller'),
+    shortCache(15),
     asyncRoute(async (req, res) => {
         ensureOrg(req);
         const { status } = req.query;

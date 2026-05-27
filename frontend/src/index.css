@@ -6,6 +6,9 @@
   --color-brand-navy: #12335f;
   --color-brand-deep: #0b2445;
   --color-brand-amber: #d97706;
+  --color-brand-gold: #f9a825;
+  --color-brand-saffron: #ff9933;
+  --color-brand-green: #138808;
 }
 
 .buyer-font {
@@ -85,6 +88,147 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
 .text-wrap-balance {
   text-wrap: balance;
+}
+
+
+/* ─── Brand utilities ──────────────────────────────────────────────────────
+   Tricolor accent strip — drop-in 2px bar above any page header that
+   wants the government-portal vibe. */
+.brand-tricolor-strip {
+  height: 2px;
+  background: linear-gradient(90deg,
+      #ff9933 0%,
+      #ff9933 33%,
+      #ffffff 33%,
+      #ffffff 66%,
+      #138808 66%,
+      #138808 100%);
+}
+
+/* Navy gradient panel — matches the modal headers used across the portal. */
+.brand-navy-panel {
+  background: linear-gradient(135deg, #0b1f3a 0%, #12335f 100%);
+}
+
+/* Gold focus ring — slightly more visible than the default slate ring. */
+.brand-focus-gold:focus-visible {
+  outline: 2px solid #f9a825;
+  outline-offset: 2px;
+}
+
+/* ─── Page rhythm tokens ────────────────────────────────────────────────────
+   Standardised vertical spacing scale. Use class="page" instead of ad-hoc
+   space-y-4 / space-y-5 mixes. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .page {
+    gap: 1.25rem;
+  }
+}
+
+/* Section header — eyebrow + title + description in a single block. */
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .page-header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+
+/* ─── Table alignment defaults ──────────────────────────────────────────────
+   Every list page renders standardised tables. Default every cell to
+   left-aligned, top-aligned content so rows with multi-line entries don't
+   centre vertically (which makes short-text columns look detached from the
+   long ones beside them). Pages that explicitly need right/center alignment
+   for currency or numeric columns can still override via `text-right` or
+   `text-center` Tailwind utilities — those override the defaults below. */
+table th,
+table td {
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Allow explicit alignment overrides to win without specificity headaches. */
+table th.text-right,
+table td.text-right {
+  text-align: right;
+}
+
+table th.text-center,
+table td.text-center {
+  text-align: center;
+}
+
+table th.align-middle,
+table td.align-middle {
+  vertical-align: middle;
+}
+
+table th.align-bottom,
+table td.align-bottom {
+  vertical-align: bottom;
+}
+
+
+/* ─── Table shell + sticky column rules ─────────────────────────────────────
+   Standard wrapper for every list page table. Provides the rounded card
+   chrome WITHOUT breaking sticky positioning on action columns. The trick:
+   `overflow: clip` on the outer wrapper gives the same visual clipping as
+   `overflow: hidden` but doesn't form a scroll container, so descendant
+   `position: sticky` cells continue to work relative to the inner
+   `overflow-x: auto` scroller. */
+.table-shell {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  overflow: clip;
+}
+
+/* Fallback for browsers without `overflow: clip` (rare) — they get a slightly
+   less visually rounded scroll edge but sticky still works. */
+@supports not (overflow: clip) {
+  .table-shell {
+    overflow: visible;
+  }
+}
+
+.table-shell-scroller {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Sticky right column helper — apply to <th> / <td> that need to remain
+   pinned to the right when the table scrolls horizontally. */
+.col-sticky-right {
+  position: sticky;
+  right: 0;
+  z-index: 5;
+  background-color: #ffffff;
+  box-shadow: -6px 0 8px -6px rgba(15, 23, 42, 0.12);
+}
+
+thead .col-sticky-right {
+  background-color: #f8fafc;
+  z-index: 10;
+}
+
+tr:hover .col-sticky-right {
+  background-color: #f8fafc;
 }

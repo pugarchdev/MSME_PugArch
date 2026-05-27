@@ -36,6 +36,7 @@ import { usePurchaseOrders } from '../../purchaseOrders/hooks';
 import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
 import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 
 type InvoiceRow = {
   id: number;
@@ -490,24 +491,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end md:gap-4 w-full md:w-auto">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 text-[10px] font-black uppercase transition ${viewMode === 'list' ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <List className="h-4 w-4" /> List
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 text-[10px] font-black uppercase transition ${viewMode === 'grid' ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <LayoutGrid className="h-4 w-4" /> Grid
-                </button>
-              </div>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
 
               <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-[180px_160px_160px] md:items-center w-full md:w-auto">
                 <select
@@ -558,7 +542,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
           }
         />
       ) : viewMode === 'list' ? (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1140px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">

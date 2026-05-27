@@ -24,6 +24,7 @@ export default function SecuritySettingsPage() {
 
     return (
         <div className="space-y-4 max-w-3xl">
+            <div className="brand-tricolor-strip rounded-full" />
             <div className="border-b border-slate-200 pb-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Account</p>
                 <h1 className="text-2xl font-black text-slate-950">Security Settings</h1>

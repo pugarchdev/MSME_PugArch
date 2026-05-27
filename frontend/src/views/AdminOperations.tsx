@@ -220,21 +220,21 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
 
   const tiles = section === 'reports'
     ? [
-        { label: 'Total Network', value: stats?.totalNetwork ?? records.length, helper: 'Buyer and seller records', icon: Users },
-        { label: 'Approved Entities', value: approvedCount, helper: 'Cleared for procurement', icon: CheckCircle2 },
-        { label: 'Pending Review', value: queueCount, helper: 'Requires admin decision', icon: FileSearch },
-        { label: 'Exceptions', value: rejectedCount + resubmissionCount, helper: 'Rejected or resubmitted', icon: AlertTriangle }
-      ]
+      { label: 'Total Network', value: stats?.totalNetwork ?? records.length, helper: 'Buyer and seller records', icon: Users },
+      { label: 'Approved Entities', value: approvedCount, helper: 'Cleared for procurement', icon: CheckCircle2 },
+      { label: 'Pending Review', value: queueCount, helper: 'Requires admin decision', icon: FileSearch },
+      { label: 'Exceptions', value: rejectedCount + resubmissionCount, helper: 'Rejected or resubmitted', icon: AlertTriangle }
+    ]
     : [
-        // { label: 'Total Stakeholders', value: summary?.total ?? stats?.totalNetwork ?? totalRecords, helper: 'Buyer and seller records', icon: Users },
-        { label: 'Approved for Procurement', value: approvedCount, helper: 'Ready to transact', icon: CheckCircle2 },
-        { label: 'Pending Review Queue', value: queueCount, helper: 'Needs admin verification', icon: FileSearch },
-        { label: 'Compliance Exceptions', value: complianceExceptionCount, helper: 'Flags, rejected, or returned', icon: AlertTriangle },
-        { label: 'Active Sellers', value: activeSellerCount, helper: 'Approved supplier pool', icon: Users },
-        { label: 'Active Buyers', value: activeBuyerCount, helper: 'Approved buyer departments', icon: ClipboardCheck },
-        { label: 'Resubmission Required', value: resubmissionCount, helper: 'Returned for correction', icon: AlertTriangle },
-        { label: 'Avg Verification Progress', value: `${averageProgress}%`, helper: 'Section approval completion', icon: BarChart3 }
-      ];
+      // { label: 'Total Stakeholders', value: summary?.total ?? stats?.totalNetwork ?? totalRecords, helper: 'Buyer and seller records', icon: Users },
+      { label: 'Approved for Procurement', value: approvedCount, helper: 'Ready to transact', icon: CheckCircle2 },
+      { label: 'Pending Review Queue', value: queueCount, helper: 'Needs admin verification', icon: FileSearch },
+      // { label: 'Compliance Exceptions', value: complianceExceptionCount, helper: 'Flags, rejected, or returned', icon: AlertTriangle },
+      { label: 'Active Sellers', value: activeSellerCount, helper: 'Approved supplier pool', icon: Users },
+      { label: 'Active Buyers', value: activeBuyerCount, helper: 'Approved buyer departments', icon: ClipboardCheck },
+      { label: 'Resubmission Required', value: resubmissionCount, helper: 'Returned for correction', icon: AlertTriangle },
+      { label: 'Avg Verification Progress', value: `${averageProgress}%`, helper: 'Section approval completion', icon: BarChart3 }
+    ];
 
   const toggleSort = (key: SortKey) => {
     setSortDirection(prev => sortKey === key && prev === 'asc' ? 'desc' : 'asc');
@@ -269,7 +269,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
         profile.businessName || profile.organizationName || profile.officeZoneName || '',
         item.email || '',
         statusLabel(item.onboardingStatus || item.status),
-        item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
+        item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
       ];
     });
     const csv = [headers, ...rows]
@@ -307,7 +307,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
         {tiles.map(tile => (
           <button
             key={tile.label}
@@ -346,7 +346,8 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 setStatusFilter('all');
               }
             }}
-            className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 text-left shadow-sm transition-all hover:border-[#12335f]/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#12335f]"
+            className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 text-left shadow-sm transition-all hover:border-[#12335f]/40 hover:-translate-y-0.5 hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#12335f] focus:ring-offset-2"
+            aria-label={`Filter by ${tile.label}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -370,9 +371,6 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 <SectionIcon className="h-5 w-5 text-[#12335f]" />
                 <div className="min-w-0">
                   <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Stakeholder Register</h2>
-                  <p className="text-xs font-medium text-slate-500">
-                    {displayedRecordCount} {displayedRecordCount === 1 ? 'record' : 'records'} matching current filters
-                  </p>
                 </div>
               </div>
               {hasActiveFilters && (
@@ -383,7 +381,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                     setRoleFilter('all');
                     setStatusFilter('all');
                   }}
-                  className="h-9 rounded-md border border-slate-200 px-3 text-xs font-black uppercase tracking-wide text-slate-600 transition hover:border-[#12335f]/30 hover:text-[#12335f]"
+                  className="h-7 rounded-md border border-slate-200 px-3 text-xs font-black uppercase tracking-wide text-slate-600 transition hover:border-[#12335f]/30 hover:text-[#12335f]"
                 >
                   Clear Filters
                 </button>
@@ -391,45 +389,62 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
             </div>
 
             <div className="space-y-3">
-              <div className="flex flex-col md:flex-row gap-2 items-center">
-                <div className="relative min-w-0 flex-1 w-full">
+              <div className="flex items-stretch gap-2">
+                {/* Search box: takes ~80% on desktop */}
+                <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={searchTerm}
                     onChange={event => setSearchTerm(event.target.value)}
                     placeholder="Search name, GST, PAN, state..."
-                    className="h-10 w-full rounded-md border-slate-200 pl-9 text-xs"
+                    className="h-11 w-full rounded-md border-slate-200 pl-9 text-xs"
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowMobileFilters(!showMobileFilters)}
-                  className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
-                >
-                  <Filter className="h-4 w-4 text-slate-500" />
-                  <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
-                </Button>
-              </div>
 
-              <div className={cn(
-                "grid gap-3 items-center",
-                showMobileFilters 
-                  ? "grid grid-cols-2" 
-                  : "hidden md:grid md:grid-cols-[150px_190px] md:justify-end"
-              )}>
-                <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                {/* Desktop filters inline */}
+                <div className="hidden md:flex items-stretch gap-2">
+                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
                     <option value="all">All Roles</option>
                     <option value="seller">Sellers</option>
                     <option value="buyer">Buyers</option>
-                </select>
-                <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                  </select>
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
                     {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
                     {statusOptions.map(status => (
                       <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
                     ))}
-                </select>
+                  </select>
+                </div>
+
+                {/* Mobile filters toggle */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                  className="md:hidden h-11 gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                  aria-expanded={showMobileFilters}
+                >
+                  <Filter className="h-4 w-4 text-slate-500" />
+                  <span>Filters</span>
+                </Button>
               </div>
+
+              {/* Mobile filters drawer */}
+              {showMobileFilters && (
+                <div className="md:hidden grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-11 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
+                    <option value="all">All Roles</option>
+                    <option value="seller">Sellers</option>
+                    <option value="buyer">Buyers</option>
+                  </select>
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-11 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
+                    {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
+                    {statusOptions.map(status => (
+                      <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -473,7 +488,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                           {statusLabel(status)}
                         </span>
                       </td>
-                      <td className="px-3 py-4 text-xs font-bold text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'}</td>
+                      <td className="px-3 py-4 text-xs font-bold text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</td>
                       <td className="px-3 py-4">
                         <Link href="/admin/onboarding" className="text-xs font-black uppercase tracking-wide text-[#12335f] hover:text-[#12335f]">
                           Open Review
@@ -490,7 +505,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
           )}
         </section>
 
-        <aside className="space-y-4">
+        {/* <aside className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-[#12335f]" />
@@ -526,7 +541,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               Go to verification console
             </Link>
           </div>
-        </aside>
+        </aside> */}
       </div>
     </div>
   );

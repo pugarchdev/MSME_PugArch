@@ -123,6 +123,7 @@ export default function TeamManagementPage() {
 
     return (
         <div className="space-y-4">
+            <div className="brand-tricolor-strip rounded-full" />
             {/* Header */}
             <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
                 <div>

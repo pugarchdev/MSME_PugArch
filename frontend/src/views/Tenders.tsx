@@ -35,6 +35,7 @@ import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 
 interface Tender {
@@ -500,30 +501,7 @@ export default function Tenders() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1 rounded-lg border border-[#e8eaed] bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
-                viewMode === 'list' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
-              )}
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
-                viewMode === 'grid' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
-              )}
-              title="Grid view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-          </div>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
         </div>
 
         {/* Filters and Search Row */}

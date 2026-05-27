@@ -26,6 +26,7 @@ import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureState
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
 
 type PaymentRow = {
@@ -131,9 +132,13 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             Payment status, escrow linkage, tax/TDS summary, and immutable ledger entries.
           </p>
         </div>
-        <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-          <RefreshCw className="mr-2 h-4 w-4" />Refresh
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
+            <RefreshCw className="mr-2 h-4 w-4" />Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -203,26 +208,9 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               <option value="not_funded">Not funded</option>
             </select>
           </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-500">Showing {filtered.length} payments</div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'list' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className="h-9 rounded-lg px-3 text-[10px] font-black uppercase"
-              >
-                <List className="mr-1 h-4 w-4" /> List
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="h-9 rounded-lg px-3 text-[10px] font-black uppercase"
-              >
-                <LayoutGrid className="mr-1 h-4 w-4" /> Grid
-              </Button>
-            </div>
+
           </div>
         </CardContent>
       </Card>
@@ -274,7 +262,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
           })}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">

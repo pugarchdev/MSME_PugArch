@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Pagination } from '../features/shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 
@@ -220,32 +221,7 @@ export default function SellerTenders() {
                 )}
               </button>
 
-              <div className="inline-flex h-9 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className={cn(
-                    "flex h-7 w-8 items-center justify-center rounded-md transition-colors",
-                    viewMode === 'list' ? "bg-[#12335f] text-white" : "text-slate-500 hover:bg-slate-50"
-                  )}
-                  title="List view"
-                  aria-label="List view"
-                >
-                  <List className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={cn(
-                    "flex h-7 w-8 items-center justify-center rounded-md transition-colors",
-                    viewMode === 'grid' ? "bg-[#12335f] text-white" : "text-slate-500 hover:bg-slate-50"
-                  )}
-                  title="Grid view"
-                  aria-label="Grid view"
-                >
-                  <Grid2X2 className="h-4 w-4" />
-                </button>
-              </div>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
             </div>
           </div>
 

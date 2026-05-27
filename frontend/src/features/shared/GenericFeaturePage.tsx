@@ -7,6 +7,7 @@ import { cn } from '../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from './FeatureStates';
 import { Pagination } from './Pagination';
 import { EntityIdLink } from './EntityIdLink';
+import { ViewModeToggle } from './ViewModeToggle';
 import { formatCurrency, formatDate } from './format';
 import { usePaginatedFeatureQuery, useResponsiveViewMode } from './hooks';
 import { deleteApi, postApi, putApi } from './apiClient';
@@ -157,10 +158,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           <p className="mt-1 max-w-2xl text-xs font-semibold text-slate-500">{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => setViewMode('grid')} className={`flex h-8 w-8 items-center justify-center rounded-md ${viewMode === 'grid' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}><Grid className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setViewMode('list')} className={`flex h-8 w-8 items-center justify-center rounded-md ${viewMode === 'list' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}><List className="h-4 w-4" /></button>
-          </div>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
           <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
         </div>
       </div>
@@ -233,7 +231,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           </div>
         </>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">

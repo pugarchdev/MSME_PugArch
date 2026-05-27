@@ -135,7 +135,7 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
         <div className="flex items-center gap-2">
           {onClose && (
             <Button variant="outline" onClick={onClose} className="h-10 rounded-lg text-xs font-black uppercase">
-              Close
+              Back
             </Button>
           )}
           <Button

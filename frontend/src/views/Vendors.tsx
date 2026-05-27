@@ -34,7 +34,8 @@ import { compressImage } from '../lib/compress';
 import { indiaStatesDistricts } from '../data/indiaStatesDistricts';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
-import { usePagination } from '../features/shared/hooks';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
+import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { useSupplierSummary } from '../features/ratings/hooks';
 import { Star as StarIcon } from 'lucide-react';
 
@@ -72,7 +73,7 @@ const Vendors = () => {
   const [selectedStateFilter, setSelectedStateFilter] = useState('All states');
   const [selectedDistrictFilter, setSelectedDistrictFilter] = useState('All districts');
   const [verifiedOnly, setVerifiedOnly] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [sortKey, setSortKey] = useState<'name' | 'region' | 'gst' | 'capability'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -295,19 +296,8 @@ const Vendors = () => {
             <h1 className="text-2xl font-black tracking-tight text-[#1a1c21] uppercase">Supplier Registry</h1>
             <p className="text-xs text-slate-500 font-medium">Locate and engage verified MSME vendors across nationwide sectors.</p>
           </div>
-          <div className="flex items-center gap-2 bg-[#f1f3f4] p-1 rounded-lg border border-[#dadce0]">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${viewMode === 'grid' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" /> Grid
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${viewMode === 'list' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              <List className="h-3.5 w-3.5" /> List
-            </button>
+          <div className="flex items-center gap-2">
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
           </div>
         </div>
       </div>

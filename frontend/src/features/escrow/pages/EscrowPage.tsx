@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 
 type Milestone = {
   id: number;
@@ -175,9 +176,7 @@ export default function EscrowPage() {
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">View</span>
-              <Button variant={viewMode === 'grid' ? 'secondary' : 'outline'} onClick={() => setViewMode('grid')} className="h-10 rounded-lg px-3 text-xs font-black"><LayoutGrid className="mr-2 h-4 w-4" />Grid</Button>
-              <Button variant={viewMode === 'list' ? 'secondary' : 'outline'} onClick={() => setViewMode('list')} className="h-10 rounded-lg px-3 text-xs font-black"><List className="mr-2 h-4 w-4" />List</Button>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
             </div>
           </div>
         </CardContent>

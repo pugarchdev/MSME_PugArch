@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
-import { formatDate } from "../features/shared/format";
+import { formatDate, formatDateTime } from "../features/shared/format";
 import { Button } from "../components/ui/button";
 import { Pagination } from "../features/shared/Pagination";
+import { useResponsiveViewMode } from "../features/shared/hooks";
+import { ViewModeToggle } from "../features/shared/ViewModeToggle";
 import {
   Card,
   CardHeader,
@@ -45,6 +47,8 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -117,6 +121,10 @@ export default function AdminOnboarding() {
   // Override Modal State
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+
+  // View / Toolbar UI state
+  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   /**
    * Open the scrutiny modal with the lightweight list row for instant feedback,
@@ -328,7 +336,12 @@ export default function AdminOnboarding() {
     };
 
     // 4. Compute onboardingStatus
-    const statuses = Object.values(updatedSectionStatus);
+    // Skip non-section meta keys like `submitted` that the seller-side
+    // /onboarding/submit endpoint stores in sectionStatus.
+    const sectionKeys = selectedItem.role === "buyer"
+      ? ["org", "rep", "address", "procurement", "docs"]
+      : ["pan", "details", "additional", "offices", "bank", "einvoicing", "ownership", "documents"];
+    const statuses = sectionKeys.map((k) => updatedSectionStatus[k as keyof typeof updatedSectionStatus] || "pending");
     let newStatus = "under_compliance_review";
     if (statuses.every((s) => s === "approved")) {
       newStatus = "approved_for_procurement";
@@ -376,10 +389,16 @@ export default function AdminOnboarding() {
 
     // 7. Make the backend API request
     try {
+      // Strip non-section meta keys before sending so backend computation
+      // stays consistent and we don't accidentally persist stale flags.
+      const cleanSectionStatus: Record<string, string> = {};
+      for (const k of sectionKeys) {
+        cleanSectionStatus[k] = String(updatedSectionStatus[k as keyof typeof updatedSectionStatus] || "pending");
+      }
       const res = await api.post(
         `/api/admin/onboarding/${userId}/section-status`,
         {
-          sectionStatus: updatedSectionStatus,
+          sectionStatus: cleanSectionStatus,
           sectionRejectionReasons: updatedRejectionReasons,
         },
         {
@@ -392,7 +411,8 @@ export default function AdminOnboarding() {
         toast.success(`${section} status updated to ${status}`);
         fetchData();
       } else {
-        toast.error("Failed to update section status");
+        const errBody = await res.json().catch(() => ({} as any));
+        toast.error(errBody?.message || errBody?.error || "Failed to update section status");
         // Revert to original state
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
@@ -795,7 +815,7 @@ export default function AdminOnboarding() {
       GST: item.profile?.gst || "",
       State: item.profile?.state || "",
       Category: getPrimaryCategory(item),
-      "Submitted Date": formatDate(item.createdAt),
+      "Submitted Date": formatDateTime(item.createdAt),
       Status: item.onboardingStatus || "pending",
       "Verification Progress": `${getProgress(item)}%`,
     }));
@@ -898,9 +918,10 @@ export default function AdminOnboarding() {
                   key={stat.label}
                   type="button"
                   onClick={() => handleKpiClick(stat.target)}
-                  className="text-left"
+                  className="text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#12335f] focus:ring-offset-2 rounded-2xl"
+                  aria-label={`Filter by ${stat.label}`}
                 >
-                  <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                  <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 hover:border-[#12335f]/40 transition-all">
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div>
@@ -969,32 +990,36 @@ export default function AdminOnboarding() {
                 />
               </CardHeader>
               <CardContent className="p-0">
-                <div className="p-6 space-y-4 bg-slate-50/50">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-[#12335f]">
-                      <Filter className="h-4 w-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">
-                        Procurement Verification Filters
-                      </p>
-                    </div>
-                    <p className="text-xs font-medium text-slate-500">
-                      Showing {currentData.length}{" "}
-                      {activeTab === "sellers" ? "seller" : "buyer"} application
-                      {currentData.length === 1 ? "" : "s"} for the selected
-                      criteria.
+                <div className="p-4 md:p-6 space-y-4 bg-slate-50/50">
+                  <div className="flex items-center gap-2 text-[#12335f]">
+                    <Filter className="h-4 w-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">
+                      Procurement Verification Filters
                     </p>
                   </div>
-                  <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-                    <div className="relative w-full max-w-xl">
+                  <p className="text-xs font-medium text-slate-500">
+                    Showing {currentData.length}{" "}
+                    {activeTab === "sellers" ? "seller" : "buyer"} application
+                    {currentData.length === 1 ? "" : "s"} for the selected
+                    criteria.
+                  </p>
+
+                  {/* Toolbar: search + filters + reset + view toggles. On mobile,
+                      filters collapse into a drawer toggled by the Filters button. */}
+                  <div className="flex items-stretch gap-2">
+                    {/* Search box: takes ~80% on desktop */}
+                    <div className="relative flex-1 min-w-0">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                       <input
                         placeholder="Search by company, PAN, GST, state, or applicant name..."
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                        className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
                     </div>
-                    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 md:w-auto">
+
+                    {/* Desktop filters inline */}
+                    <div className="hidden md:flex items-stretch gap-2">
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
@@ -1003,9 +1028,7 @@ export default function AdminOnboarding() {
                         <option value="all">All Status</option>
                         <option value="pending">Pending / Review</option>
                         <option value="approved">Approved</option>
-                        <option value="resubmission">
-                          Correction Required
-                        </option>
+                        <option value="resubmission">Correction Required</option>
                         <option value="rejected">Rejected</option>
                       </select>
                       <select
@@ -1029,8 +1052,20 @@ export default function AdminOnboarding() {
                         <option value="entity">Entity A-Z</option>
                       </select>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+
+                    {/* Mobile filters toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileFilters((v) => !v)}
+                      className="md:hidden h-11 px-3 rounded-xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] inline-flex items-center gap-1.5 shrink-0"
+                      aria-expanded={showMobileFilters}
+                      aria-controls="admin-onboarding-mobile-filters"
+                    >
+                      <Filter className="h-3.5 w-3.5" />
+                      Filters
+                    </button>
+
+                    {/* Reset */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1039,16 +1074,79 @@ export default function AdminOnboarding() {
                         setProgressFilter("all");
                         setSortBy("newest");
                       }}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 hover:text-[#12335f]"
+                      className="hidden md:inline-flex h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] shrink-0"
+                      title="Reset filters"
                     >
-                      <RefreshCw className="h-3 w-3" /> Reset Filters
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span className="hidden lg:inline">Reset</span>
                     </button>
-                    {adminView !== "applications" && (
+
+                    {/* Standardised list/grid toggle (hidden on mobile - use cards) */}
+                    <div className="hidden md:inline-flex shrink-0">
+                      <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                    </div>
+                  </div>
+
+                  {/* Mobile filters drawer */}
+                  {showMobileFilters && (
+                    <div
+                      id="admin-onboarding-mobile-filters"
+                      className="md:hidden grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200"
+                    >
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending / Review</option>
+                        <option value="approved">Approved</option>
+                        <option value="resubmission">Correction Required</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <select
+                        value={progressFilter}
+                        onChange={(e) => setProgressFilter(e.target.value)}
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">All Progress</option>
+                        <option value="not_started">0% Verified</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">100% Verified</option>
+                      </select>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="progress">Progress High</option>
+                        <option value="entity">Entity A-Z</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setProgressFilter("all");
+                          setSortBy("newest");
+                          setShowMobileFilters(false);
+                        }}
+                        className="h-11 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" /> Reset Filters
+                      </button>
+                    </div>
+                  )}
+
+                  {adminView !== "applications" && (
+                    <div className="flex flex-wrap gap-2">
                       <span className="rounded-full bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-[#12335f]">
                         View: {adminView.replace("_", " ")}
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {isLoading ? (
@@ -1061,8 +1159,11 @@ export default function AdminOnboarding() {
                   </div>
                 ) : (
                   <>
-                    {/* Responsive Table for Desktop */}
-                    <div className="hidden md:block overflow-x-auto no-scrollbar">
+                    {/* Responsive Table for Desktop (List view) */}
+                    <div className={cn(
+                      "overflow-x-auto no-scrollbar",
+                      viewMode === "list" ? "hidden md:block" : "hidden"
+                    )}>
                       <Table>
                         <TableHeader className="bg-slate-50/80 border-y border-slate-100">
                           <TableRow className="hover:bg-transparent">
@@ -1092,12 +1193,21 @@ export default function AdminOnboarding() {
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
-                                <div className="font-bold text-slate-800 text-xs tracking-tight">
-                                  {item.name}
-                                </div>
-                                <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.role || activeTab.replace(/s$/, "")}
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openItemForReview(item);
+                                  }}
+                                  className="block text-left group/name"
+                                >
+                                  <div className="font-bold text-slate-800 text-xs tracking-tight group-hover/name:text-[#12335f] group-hover/name:underline decoration-[#f9a825] underline-offset-2 transition-colors">
+                                    {item.name}
+                                  </div>
+                                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    {item.role || activeTab.replace(/s$/, "")}
+                                  </div>
+                                </button>
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="font-bold text-slate-600 text-xs underline decoration-indigo-200 underline-offset-4">
@@ -1125,7 +1235,7 @@ export default function AdminOnboarding() {
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="text-xs font-bold text-slate-500 font-mono">
-                                  {formatDate(item.createdAt)}
+                                  {formatDateTime(item.createdAt)}
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
@@ -1185,6 +1295,102 @@ export default function AdminOnboarding() {
                       </Table>
                     </div>
 
+                    {/* Desktop Grid view (alternative to table) */}
+                    {viewMode === "grid" && (
+                      <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 md:p-6">
+                        {pagedCurrentData.map((item, index) => (
+                          <div
+                            key={item._id}
+                            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => void openItemForReview(item)}
+                                className="flex items-start gap-3 text-left min-w-0 flex-1"
+                              >
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#12335f] text-sm font-extrabold text-white">
+                                  {String(item.name || "?").charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-800 text-xs tracking-tight hover:text-[#12335f] hover:underline decoration-[#f9a825] underline-offset-2 transition-colors text-wrap-anywhere">
+                                    {item.name}
+                                  </div>
+                                  <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    {item.role || activeTab.replace(/s$/, "")}
+                                    {" · "}
+                                    {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
+                                  </div>
+                                  <div className="mt-1 text-[11px] font-semibold text-slate-600 underline decoration-indigo-200 underline-offset-2 text-wrap-anywhere">
+                                    {getEntityName(item)}
+                                  </div>
+                                </div>
+                              </button>
+                              {getStatusBadge(item.onboardingStatus)}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              <div>
+                                <p className="text-slate-400">State</p>
+                                <p className="text-slate-700">{item.profile?.state || "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-400">Category</p>
+                                <p className="text-slate-700 truncate">
+                                  {item.role === "buyer"
+                                    ? item.profile?.annualBudget || "Budget N/A"
+                                    : getPrimaryCategory(item)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-400">Submitted</p>
+                                <p className="text-slate-700 font-mono text-[10px] normal-case">
+                                  {formatDateTime(item.createdAt)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-400">Verified</p>
+                                <p className="text-slate-700">{getProgress(item)}%</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-[#12335f]"
+                                style={{ width: `${getProgress(item)}%` }}
+                              />
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <div className="flex space-x-0.5">
+                                {getSections(item).map((section) => (
+                                  <div
+                                    key={section}
+                                    className={cn(
+                                      "h-1.5 w-3 rounded-full",
+                                      item.sectionStatus?.[section] === "approved"
+                                        ? "bg-green-500"
+                                        : item.sectionStatus?.[section] === "rejected"
+                                          ? "bg-red-500"
+                                          : "bg-slate-200"
+                                    )}
+                                    title={`${section}: ${item.sectionStatus?.[section] || "pending"}`}
+                                  />
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void openItemForReview(item)}
+                                className="text-[10px] font-black text-indigo-600 uppercase hover:underline decoration-2 underline-offset-4 hover:text-indigo-800"
+                              >
+                                Review →
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Responsive Card Grid for Mobile */}
                     <div className="md:hidden divide-y divide-slate-100">
                       {pagedCurrentData.map((item, index) => (
@@ -1194,8 +1400,12 @@ export default function AdminOnboarding() {
                               <div className="font-mono text-[10px] font-black text-slate-400">
                                 {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                               </div>
-                              <div className="space-y-1">
-                                <div className="font-bold text-slate-800 text-xs tracking-tight">
+                              <button
+                                type="button"
+                                onClick={() => void openItemForReview(item)}
+                                className="space-y-1 text-left"
+                              >
+                                <div className="font-bold text-slate-800 text-xs tracking-tight hover:text-[#12335f] hover:underline decoration-[#f9a825] underline-offset-2 transition-colors">
                                   {item.name}
                                 </div>
                                 <div className="font-bold text-slate-500 text-[10px] underline decoration-indigo-200 underline-offset-2">
@@ -1204,7 +1414,7 @@ export default function AdminOnboarding() {
                                 <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
                                   {item.profile?.state || "State N/A"}
                                 </div>
-                              </div>
+                              </button>
                             </div>
                             {getStatusBadge(item.onboardingStatus)}
                           </div>
@@ -1304,7 +1514,7 @@ export default function AdminOnboarding() {
                       {selectedItem.registrationDetails?.userId || `MSME-${selectedItem._id?.toString().padStart(6, '0')}`}
                     </p>
                     <p className="text-[9px] font-bold text-slate-300">
-                      Submitted {selectedItem.createdAt ? formatDate(selectedItem.createdAt) : '—'}
+                      Submitted {selectedItem.createdAt ? formatDateTime(selectedItem.createdAt) : '—'}
                     </p>
                   </div>
                   <button

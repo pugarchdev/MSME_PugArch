@@ -147,7 +147,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer', 'seller'] },
     { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer', 'seller'] },
     { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
-    { label: 'Security Settings', path: '/settings/security', icon: ShieldCheck, roles: ['buyer', 'seller', 'admin'] },
+    
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },

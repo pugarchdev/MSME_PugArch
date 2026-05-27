@@ -30,7 +30,10 @@ import {
   FileUp,
   Loader2,
   ImageIcon,
-  Paperclip
+  Paperclip,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -44,6 +47,7 @@ import { formatCurrency } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import type { CatalogueItemDto, CategoryDto } from '../../shared/types';
 import { catalogueApi } from '../api';
 import { getFileAssetPreview, type DocumentPreview, openFileAsset } from '../../../lib/files';
@@ -260,6 +264,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
   // Layout and modal states
   const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [sortKey, setSortKey] = useState<'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status'>('sr');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedDetailsItem, setSelectedDetailsItem] = useState<CatalogueRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<CatalogueRecord | null>(null);
@@ -455,7 +461,27 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       return matchesSearch && matchesKind && matchesStatus && matchesCategory && matchesPrice;
     });
   }, [categoryFilter, data, kindFilter, priceFilter, searchTerm, statusFilter]);
-  const { page, pageSize, pageItems: pagedItems, total, setPage, setPageSize } = usePagination(filtered, 18);
+
+  const sorted = useMemo(() => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    const valueOf = (item: CatalogueRecord): number | string => {
+      if (sortKey === 'name') return (item.name || '').toLowerCase();
+      if (sortKey === 'kind') return item.itemKind || '';
+      if (sortKey === 'category') return (item.category?.name || '').toLowerCase();
+      if (sortKey === 'seller') return (item.seller?.name || '').toLowerCase();
+      if (sortKey === 'price') return cataloguePrice(item);
+      if (sortKey === 'status') return (item.status || '').toLowerCase();
+      return Number(item.id || 0);
+    };
+    return [...filtered].sort((a, b) => {
+      const av = valueOf(a);
+      const bv = valueOf(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * direction;
+      return String(av).localeCompare(String(bv)) * direction;
+    });
+  }, [filtered, sortKey, sortDirection]);
+
+  const { page, pageSize, pageItems: pagedItems, total, setPage, setPageSize } = usePagination(sorted, 10);
 
   const averageValue = filtered.length ? filtered.reduce((sum, item) => sum + cataloguePrice(item), 0) / filtered.length : 0;
 
@@ -635,7 +661,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       : 'Search approved products and services from active sellers.';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#059669]">{title}</p>
@@ -656,6 +682,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           <Button variant="outline" onClick={loadCatalogue} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">
             <RefreshCw className="mr-2 h-4 w-4" />Refresh
           </Button>
+          {/* Standardised list/grid view toggle */}
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+
         </div>
       </div>
 
@@ -718,60 +747,32 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               <Settings2 className="h-4 w-4 text-slate-500" />
               <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
             </Button>
-          </div>
 
-          <div className={cn(
-            "grid gap-3 items-center",
-            showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
-          )}>
-            <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="all">All types</option>
-              <option value="product">Products</option>
-              <option value="service">Services</option>
-            </select>
-            <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All categories</option>
-              {categories.map(category => <option key={category} value={category}>{category}</option>)}
-            </select>
-            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All statuses</option>
-              {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-            </select>
-            <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All prices</option>
-              <option value="high">Above Rs. 10k</option>
-              <option value="mid">Rs. 1k to 10k</option>
-              <option value="low">Below Rs. 1k</option>
-            </select>
+            <div className={cn(
+              "grid gap-3 items-center",
+              showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
+            )}>
+              <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="all">All types</option>
+                <option value="product">Products</option>
+                <option value="service">Services</option>
+              </select>
+              <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All categories</option>
+                {categories.map(category => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All statuses</option>
+                {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+              </select>
+              <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All prices</option>
+                <option value="high">Above Rs. 10k</option>
+                <option value="mid">Rs. 1k to 10k</option>
+                <option value="low">Below Rs. 1k</option>
+              </select>
 
-            {/* Grid/List View switcher Toggle */}
-            <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-1 bg-slate-50 w-fit xl:ml-auto">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={cn(
-                  "p-1.5 rounded-md transition-all",
-                  viewMode === 'grid'
-                    ? "bg-white text-emerald-700 shadow-sm font-bold"
-                    : "text-slate-400 hover:text-slate-650"
-                )}
-                title="Grid View"
-              >
-                <Grid className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  "p-1.5 rounded-md transition-all",
-                  viewMode === 'list'
-                    ? "bg-white text-emerald-700 shadow-sm font-bold"
-                    : "text-slate-400 hover:text-slate-650"
-                )}
-                title="List View"
-              >
-                <List className="h-4 w-4" />
-              </button>
+
             </div>
           </div>
         </CardContent>
@@ -779,33 +780,267 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
       {filtered.length === 0 ? <EmptyState title="No marketplace items found matching filters" /> : (
         <>
-          <div className={cn(
-            viewMode === 'grid'
-              ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-              : "flex flex-col gap-3"
-          )}>
-            {pagedItems.map((item, index) => (
-              <CatalogueCard
-                key={`${item.itemKind}-${item.id}`}
-                item={item}
-                mode={mode}
-                viewMode={viewMode}
-                onEdit={openEditForm}
-                onDelete={deleteItem}
-                onViewDetails={setSelectedDetailsItem}
-                onPurchaseBid={openPurchaseBid}
-                onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
-                addingToCart={addingItemId === item.id}
-                canPurchase={buyerApproved}
-                onSellerClick={openSellerProfile}
-                actionState={buyerActions[`${item.itemKind}-${item.id}`]}
-                srNo={(page - 1) * pageSize + index + 1}
-              />
-            ))}
-          </div>
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
-          </div>
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {pagedItems.map((item, index) => (
+                <CatalogueCard
+                  key={`${item.itemKind}-${item.id}`}
+                  item={item}
+                  mode={mode}
+                  viewMode={viewMode}
+                  onEdit={openEditForm}
+                  onDelete={deleteItem}
+                  onViewDetails={setSelectedDetailsItem}
+                  onPurchaseBid={openPurchaseBid}
+                  onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
+                  addingToCart={addingItemId === item.id}
+                  canPurchase={buyerApproved}
+                  onSellerClick={openSellerProfile}
+                  actionState={buyerActions[`${item.itemKind}-${item.id}`]}
+                  srNo={(page - 1) * pageSize + index + 1}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="relative overflow-x-auto">
+                <table className="w-full min-w-[960px] table-auto text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      <th className="px-2 py-3 w-10 text-center">
+                        <CatalogueSortHead label="Sr." field="sr" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-14 text-center">Image</th>
+                      <th className="px-3 py-3 min-w-[180px]">
+                        <CatalogueSortHead label="Item" field="name" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-20 whitespace-nowrap">
+                        <CatalogueSortHead label="Type" field="kind" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-24 whitespace-nowrap">
+                        <CatalogueSortHead label="Category" field="category" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-20 whitespace-nowrap">
+                        <CatalogueSortHead label="HSN" field="hsn" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-28 whitespace-nowrap">
+                        <CatalogueSortHead label="Seller" field="seller" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-24 text-right whitespace-nowrap">
+                        <CatalogueSortHead label="Price" field="price" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} align="right" />
+                      </th>
+                      <th className="px-2 py-3 w-24 whitespace-nowrap">
+                        <CatalogueSortHead label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pagedItems.map((item, index) => {
+                      const value = cataloguePrice(item);
+                      const status = item.status || 'DRAFT';
+                      const imgId = getItemImageId(item);
+                      const actionState = buyerActions[`${item.itemKind}-${item.id}`];
+                      const buyerStatusLabel = actionState?.purchase
+                        ? `Purchase ${String(actionState.purchase.status || 'requested').replace(/_/g, ' ')}`
+                        : actionState?.rfq
+                          ? `RFQ ${String(actionState.rfq.status || 'sent').replace(/_/g, ' ')}`
+                          : '';
+                      return (
+                        <tr key={`${item.itemKind}-${item.id}`} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-3 py-3 text-center text-xs font-black text-slate-400">
+                            {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetailsItem(item)}
+                              className="inline-block h-10 w-10 rounded-md overflow-hidden border border-slate-200 bg-slate-50 hover:opacity-85 transition-opacity"
+                              title="View details"
+                            >
+                              {imgId ? (
+                                <img src={getCatalogueImageUrl(imgId)} alt={item.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className={cn('flex h-full w-full items-center justify-center text-white', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
+                                  {item.itemKind === 'product' ? <PackageSearch className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
+                                </div>
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <EntityIdLink
+                                label={`${item.itemKind === 'product' ? 'PRD' : 'SVC'}-${item.id}`}
+                                id={item.id}
+                                size="sm"
+                                onClick={() => setSelectedDetailsItem(item)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetailsItem(item)}
+                              className="block text-left"
+                            >
+                              <p className="text-sm font-black text-neutral-900 hover:text-emerald-700 hover:underline text-wrap-anywhere leading-snug line-clamp-2">
+                                {item.name}
+                              </p>
+                            </button>
+                            <p className="mt-0.5 text-[11px] font-medium text-slate-500 line-clamp-1 text-wrap-anywhere">{item.description || 'No description'}</p>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-700">
+                              {item.itemKind}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 align-top  ">
+                            {item.category?.name ? (
+                              <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700 text-wrap-anywhere">
+                                {item.category.name}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">NA</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            {item.hsnCode ? (
+                              <span className="font-mono text-[11px] font-bold text-slate-700 text-wrap-anywhere">{item.hsnCode}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">NA</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            {item.seller?.name ? (
+                              mode === 'seller' ? (
+                                <span className="text-xs font-bold text-slate-700 text-wrap-anywhere">{item.seller.name}</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openSellerProfile(item.seller)}
+                                  className="inline-flex items-start gap-1 text-xs font-bold text-slate-700 hover:text-[#059669] hover:underline text-wrap-anywhere text-left"
+                                >
+                                  <Store className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
+                                  <span className="text-wrap-anywhere">{item.seller.name}</span>
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right whitespace-nowrap align-top">
+                            <p className="text-sm font-black text-emerald-700">{formatCurrency(value)}</p>
+                            {item.itemKind === 'product' && item.unitOfMeasure && (
+                              <p className="text-[10px] font-bold text-slate-400">/{item.unitOfMeasure}</p>
+                            )}
+                            {item.itemKind === 'service' && item.pricingModel && (
+                              <p className="text-[10px] font-bold text-slate-400">{item.pricingModel.replace(/_/g, ' ')}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top whitespace-nowrap min-w-[112px]">
+                            <Badge variant={status === 'ACTIVE' ? 'success' : status === 'ARCHIVED' || status === 'INACTIVE' ? 'warning' : 'default'}>
+                              {status.replace(/_/g, ' ')}
+                            </Badge>
+                            {buyerStatusLabel && (
+                              <p className="mt-1 text-[9px] font-black uppercase tracking-wide text-emerald-700">{buyerStatusLabel}</p>
+                            )}
+                          </td>
+                          <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
+                            <div className="inline-flex items-center justify-end gap-1">
+                              {mode === 'seller' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditForm(item)}
+                                    disabled={status === 'ARCHIVED'}
+                                    title="Edit item"
+                                    aria-label="Edit"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                                  >
+                                    <Settings2 className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteItem(item)}
+                                    title="Delete item"
+                                    aria-label="Delete"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {mode === 'admin' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDetailsItem(item)}
+                                    title="View details"
+                                    aria-label="Details"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                  {item.seller && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openSellerProfile(item.seller)}
+                                      title="View seller"
+                                      aria-label="Seller"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors shrink-0"
+                                    >
+                                      <Store className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {mode === 'buyer' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDetailsItem(item)}
+                                    title="View details"
+                                    aria-label="Details"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddToCart(item)}
+                                    disabled={!buyerApproved || addingItemId === item.id}
+                                    title={buyerApproved ? 'Add to cart' : 'Approval required'}
+                                    aria-label="Add to cart"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#12335f] text-[#12335f] hover:bg-[#12335f]/5 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shrink-0"
+                                  >
+                                    {addingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openPurchaseBid(item)}
+                                    disabled={!buyerApproved}
+                                    title={buyerApproved ? 'Purchase or request bid' : 'Approval required'}
+                                    aria-label="Purchase"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 transition-colors shrink-0"
+                                  >
+                                    <ShoppingCart className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
+            </div>
+          )}
+          {viewMode === 'grid' && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
+            </div>
+          )}
         </>
       )}
 
@@ -1436,6 +1671,47 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Sort header used in the marketplace table view. Toggles between ascending,
+ * descending, and unsorted states for the column it represents.
+ */
+function CatalogueSortHead({
+  label,
+  field,
+  sortKey,
+  sortDirection,
+  onToggle,
+  align = 'left'
+}: {
+  label: string;
+  field: 'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status' | 'hsn';
+  sortKey: string;
+  sortDirection: 'asc' | 'desc';
+  onToggle: (field: any) => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const active = sortKey === field;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(field)}
+      className={cn(
+        'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest hover:text-emerald-700 transition-colors',
+        active ? 'text-[#12335f]' : 'text-slate-500',
+        align === 'right' && 'justify-end w-full',
+        align === 'center' && 'justify-center w-full'
+      )}
+    >
+      {label}
+      {active ? (
+        sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
   );
 }
 

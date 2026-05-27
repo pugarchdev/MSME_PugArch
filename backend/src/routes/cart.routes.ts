@@ -21,6 +21,7 @@ import prisma from '../config/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requireOrgRole } from '../middleware/requireOrgRole.js';
 import { requireApprovedOrg } from '../middleware/requireApprovedOrg.js';
+import { shortCache } from '../middleware/httpCache.js';
 import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
@@ -116,7 +117,7 @@ const cartIncludes = {
 
 // ─── GET /api/cart — my org's active cart ────────────────────────────────────
 
-router.get('/cart', authenticate, authorize('buyer', 'seller'), asyncRoute(async (req, res) => {
+router.get('/cart', authenticate, authorize('buyer', 'seller'), shortCache(10), asyncRoute(async (req, res) => {
     ensureOrg(req);
     const cart = await getOrCreateActiveCart(orgId(req), userId(req));
     ok(res, cart);

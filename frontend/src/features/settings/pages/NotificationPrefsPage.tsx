@@ -46,6 +46,7 @@ export default function NotificationPrefsPage() {
 
     return (
         <div className="space-y-4 max-w-3xl">
+            <div className="brand-tricolor-strip rounded-full" />
             <div className="flex items-end justify-between border-b border-slate-200 pb-4">
                 <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Account</p>

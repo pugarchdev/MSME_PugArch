@@ -1,4 +1,4 @@
-import { AlertTriangle, Inbox, Loader2 } from 'lucide-react';
+import { AlertTriangle, Inbox, Loader2, type LucideIcon } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 
 export function LoadingState({ label = 'Loading records...' }: { label?: string }) {
@@ -10,12 +10,32 @@ export function LoadingState({ label = 'Loading records...' }: { label?: string 
   );
 }
 
-export function EmptyState({ title = 'No records found', description = 'Try changing filters or create a new record.' }: { title?: string; description?: string }) {
+interface EmptyStateProps {
+  title?: string;
+  description?: string;
+  icon?: LucideIcon;
+  /** Optional CTA button. */
+  action?: { label: string; onClick: () => void };
+}
+
+export function EmptyState({
+  title = 'No records found',
+  description = 'Try changing filters or create a new record.',
+  icon: Icon = Inbox,
+  action
+}: EmptyStateProps) {
   return (
     <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
-      <Inbox className="h-8 w-8 text-slate-300" />
-      <h3 className="mt-3 text-sm font-black text-slate-900">{title}</h3>
-      <p className="mt-1 max-w-md text-xs font-semibold text-slate-500">{description}</p>
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+        <Icon className="h-6 w-6 text-slate-400" />
+      </div>
+      <h3 className="mt-3 text-sm font-black text-slate-900 text-wrap-anywhere">{title}</h3>
+      <p className="mt-1 max-w-md text-xs font-semibold text-slate-500 text-wrap-anywhere">{description}</p>
+      {action && (
+        <Button onClick={action.onClick} className="mt-4 bg-[#12335f] text-white hover:bg-[#0e2a4f]">
+          {action.label}
+        </Button>
+      )}
     </div>
   );
 }

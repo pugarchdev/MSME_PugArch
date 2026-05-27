@@ -74,6 +74,7 @@ function DisputeList({ isAdmin, onSelect, onCreate, showCreate, onCloseCreate }:
 
     return (
         <div className="space-y-4">
+            <div className="brand-tricolor-strip rounded-full" />
             <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
                 <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Resolution</p>

@@ -1181,6 +1181,14 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
     ? ['org', 'rep', 'address', 'procurement', 'docs']
     : ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership', 'documents'];
 
+  // Strip non-section meta keys (e.g. seller-side `submitted: true` flag) so
+  // the persisted state stays canonical and onboarding status calculations
+  // never get confused by stray boolean values.
+  const cleanSectionStatus: Record<string, string> = {};
+  for (const s of sections) {
+    cleanSectionStatus[s] = String(nextStatus[s] || previousStatus[s] || 'pending');
+  }
+
   const sectionLabels: Record<string, string> = {
     pan: 'Business PAN Validation',
     details: 'Business Details',
@@ -1197,7 +1205,7 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
     docs: 'Verification Documents'
   };
 
-  const statuses = sections.map(s => String(nextStatus[s] || 'pending'));
+  const statuses = sections.map(s => cleanSectionStatus[s]);
   let newOnboardingStatus = existing.onboardingStatus;
 
   if (statuses.every(s => s === 'approved')) {
@@ -1213,7 +1221,7 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
   const user = await db.user.update({
     where: { id },
     data: {
-      sectionStatus: body.sectionStatus,
+      sectionStatus: cleanSectionStatus,
       sectionRejectionReasons: body.sectionRejectionReasons || {},
       onboardingStatus: newOnboardingStatus
     }

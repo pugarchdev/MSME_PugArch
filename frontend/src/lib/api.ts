@@ -193,7 +193,12 @@ export const api = {
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         }
       }
-      if (response.status >= 500 && !endpoint.includes('/health')) {
+      if (response.status === 503 && !endpoint.includes('/health')) {
+        // 503 means the backend explicitly declared itself down (e.g. behind a
+        // maintenance proxy). Hard-navigate to the maintenance page so the
+        // user gets a clear status. 500/502/504 are treated as transient and
+        // bubble up to the caller, which can show a toast and let React Query
+        // retry instead of nuking the whole app.
         if (typeof window !== 'undefined' && !window.location.pathname.includes('503')) {
           window.location.href = '/503.html';
         }

@@ -13,6 +13,7 @@ import { formatCurrency, formatDate, maskEmail } from '../features/shared/format
 import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
@@ -287,24 +288,7 @@ export default function PurchaseOrders() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 ml-auto sm:ml-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'list' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
-                  title="List view"
-                >
-                  <List className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'grid' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
-                  title="Grid view"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
-              </div>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} className="ml-auto sm:ml-0" />
             </div>
           </div>
         </CardContent>
@@ -348,7 +332,7 @@ export default function PurchaseOrders() {
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">

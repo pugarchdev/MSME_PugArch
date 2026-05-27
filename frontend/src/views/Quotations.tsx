@@ -32,6 +32,7 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { normalizeList } from '../features/shared/apiClient';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
@@ -534,12 +535,18 @@ export default function Quotations() {
       const data = await res.json();
       const tenderList = normalizeList<any>(data);
       setTenders(tenderList);
-      if (tenderList.length === 0) setQuotes([]);
+      if (tenderList.length === 0) {
+        // No tenders → no bids to load. Safe to clear loading and quotes here.
+        setQuotes([]);
+        setLoading(false);
+      }
+      // If tenders exist, leave `loading=true` so the spinner stays visible
+      // until fetchBuyerBids() resolves (avoids the empty-state flash).
     } catch {
       toast.error('Failed to load your tenders');
+      setLoading(false);
     } finally {
       setBuyerTendersReady(true);
-      setLoading(false);
     }
   };
 
@@ -861,28 +868,7 @@ export default function Quotations() {
 
                 <div className="h-10 w-px bg-slate-200 mx-1 hidden md:block" />
 
-                <div className="flex items-center gap-1 rounded-lg bg-[#f1f3f4] p-1 border border-[#dadce0] h-10">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('grid')}
-                    className={cn(
-                      "flex h-8 w-9 items-center justify-center rounded transition-all",
-                      viewMode === 'grid' ? "bg-white shadow-sm border border-[#dadce0] text-[#12335f]" : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('list')}
-                    className={cn(
-                      "flex h-8 w-9 items-center justify-center rounded transition-all",
-                      viewMode === 'list' ? "bg-white shadow-sm border border-[#dadce0] text-[#12335f]" : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                </div>
+                <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
             </div>
           </CardContent>
@@ -902,7 +888,7 @@ export default function Quotations() {
             onPrimary={() => router.push(user?.role === 'seller' ? '/seller/marketplace' : '/buyer/tenders')}
           />
         ) : viewMode === 'list' ? (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-clip">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left min-w-[1150px]">
                 <colgroup>

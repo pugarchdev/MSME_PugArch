@@ -4,9 +4,8 @@
  * Route: /grn
  */
 import { useState } from 'react';
-import {
-    CheckCircle2, ClipboardList, Clock, FileCheck2, Loader2, Plus, RefreshCw, XCircle
-} from 'lucide-react';
+import { CheckCircle2, ClipboardList, Clock, FileCheck2, Plus, RefreshCw, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useRouter } from 'next/navigation';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

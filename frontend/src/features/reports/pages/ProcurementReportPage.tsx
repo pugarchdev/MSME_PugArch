@@ -4,7 +4,8 @@
  * Route: /admin/reports/procurement
  */
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardCheck, FileText, Loader2, RefreshCw, ShoppingCart, Truck } from 'lucide-react';
+import { ClipboardCheck, FileText, RefreshCw, ShoppingCart, Truck } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { InlineError } from '../../shared/FeatureStates';

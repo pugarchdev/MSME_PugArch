@@ -14,16 +14,14 @@ const KEY = ['requirements'] as const;
 export const useRequirements = (params: { q?: string; status?: string; page?: number; pageSize?: number } = {}) =>
     useQuery({
         queryKey: [...KEY, 'list', params] as const,
-        queryFn: () => fetchRequirements(params),
-        staleTime: 30_000
+        queryFn: () => fetchRequirements(params)
     });
 
 export const useRequirement = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchRequirementById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!id && id > 0
     });
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY });

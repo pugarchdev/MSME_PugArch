@@ -1,40 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import {
-  Boxes,
-  IndianRupee,
-  PackagePlus,
-  PackageSearch,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings2,
-  Store,
-  Wrench,
-  Grid,
-  List,
-  Eye,
-  ShoppingCart,
-  X,
-  Globe,
-  Tag,
-  Barcode,
-  Info,
-  FileText,
-  Mail,
-  MapPin,
-  ShieldCheck,
-  CalendarDays,
-  Building2,
-  Upload,
-  Trash2,
-  FileUp,
-  Loader2,
-  ImageIcon,
-  Paperclip,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown
-} from 'lucide-react';
+import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';

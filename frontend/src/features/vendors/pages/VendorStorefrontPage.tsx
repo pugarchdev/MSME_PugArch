@@ -6,10 +6,8 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-    ArrowLeft, Award, Building2, Calendar, CheckCircle2, Globe, Loader2, Mail, MapPin,
-    Package, Phone, Send, ShieldCheck, ShoppingCart, Star, Store, Wrench
-} from 'lucide-react';
+import { ArrowLeft, Award, Building2, Calendar, CheckCircle2, Globe, Mail, MapPin, Package, Phone, Send, ShieldCheck, ShoppingCart, Star, Store, Wrench } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useRouter } from 'next/navigation';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -35,15 +33,13 @@ export default function VendorStorefrontPage({ id }: Props) {
     const products = useQuery({
         queryKey: ['vendor-products', id] as const,
         queryFn: () => getApi<any>(`/api/products/search?sellerId=${id}&take=24`),
-        enabled: id > 0 && tab === 'catalogue',
-        staleTime: 60_000
+        enabled: id > 0 && tab === 'catalogue'
     });
 
     const services = useQuery({
         queryKey: ['vendor-services', id] as const,
         queryFn: () => getApi<any>(`/api/services/search?sellerId=${id}&take=24`),
-        enabled: id > 0 && tab === 'catalogue',
-        staleTime: 60_000
+        enabled: id > 0 && tab === 'catalogue'
     });
 
     const ratingSummary = useSupplierSummary(id);

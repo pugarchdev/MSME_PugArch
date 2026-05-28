@@ -5,18 +5,8 @@
  * Access: ORG_ADMIN, TECHNICAL_OFFICER
  */
 import { useState } from 'react';
-import {
-    CheckCircle2,
-    Clock,
-    Cog,
-    Loader2,
-    PackageSearch,
-    RefreshCw,
-    Shield,
-    Wrench,
-    X,
-    XCircle
-} from 'lucide-react';
+import { CheckCircle2, Clock, Cog, PackageSearch, RefreshCw, Shield, Wrench, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';

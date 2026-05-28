@@ -16,11 +16,11 @@ import {
   Key,
   ChevronRight,
   ChevronLeft,
-  Loader2,
   Info,
   EyeOff,
   Pencil
 } from 'lucide-react';
+import { Loader2 } from '../ui/loader';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { cn } from '../../lib/utils';

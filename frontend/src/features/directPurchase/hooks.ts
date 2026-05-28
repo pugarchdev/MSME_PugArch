@@ -14,16 +14,14 @@ const KEY = ['direct-purchases'] as const;
 export const useDirectPurchases = (params: { q?: string; status?: string; page?: number; pageSize?: number } = {}) =>
     useQuery({
         queryKey: [...KEY, 'list', params] as const,
-        queryFn: () => fetchDirectPurchases(params),
-        staleTime: 30_000
+        queryFn: () => fetchDirectPurchases(params)
     });
 
 export const useDirectPurchase = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchDirectPurchaseById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!id && id > 0
     });
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY });

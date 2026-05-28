@@ -16,8 +16,7 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const useDisputes = () =>
     useQuery({
         queryKey: [...KEY, 'list'] as const,
-        queryFn: fetchDisputes,
-        staleTime: 15_000
+        queryFn: fetchDisputes
     });
 
 export const useDispute = (id: number | undefined) =>

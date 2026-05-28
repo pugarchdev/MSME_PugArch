@@ -14,16 +14,14 @@ const KEY = ['quote-requests'] as const;
 export const useQuoteRequests = (params: { q?: string; status?: string; page?: number; pageSize?: number } = {}) =>
     useQuery({
         queryKey: [...KEY, 'list', params] as const,
-        queryFn: () => fetchQuoteRequests(params),
-        staleTime: 30_000
+        queryFn: () => fetchQuoteRequests(params)
     });
 
 export const useQuoteRequest = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchQuoteRequestById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!id && id > 0
     });
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY });

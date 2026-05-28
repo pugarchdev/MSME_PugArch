@@ -6,19 +6,8 @@
  * Access: ORG_ADMIN, PROCUREMENT_OFFICER, FINANCE_OFFICER
  */
 import { useMemo, useState } from 'react';
-import {
-    CheckCircle2,
-    ChevronDown,
-    Clock,
-    History,
-    Inbox,
-    Loader2,
-    MessageCircle,
-    RefreshCw,
-    Shield,
-    X,
-    XCircle
-} from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock, History, Inbox, MessageCircle, RefreshCw, Shield, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';

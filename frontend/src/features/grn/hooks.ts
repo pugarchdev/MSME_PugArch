@@ -24,16 +24,14 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const useGrns = (status?: GrnStatus) =>
     useQuery({
         queryKey: [...KEY, 'list', status || 'all'] as const,
-        queryFn: () => fetchGrns(status),
-        staleTime: 15_000
+        queryFn: () => fetchGrns(status)
     });
 
 export const useGrn = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchGrnById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 10_000
+        enabled: !!id && id > 0
     });
 
 export const useGrnEligibility = (poId: number | undefined) =>

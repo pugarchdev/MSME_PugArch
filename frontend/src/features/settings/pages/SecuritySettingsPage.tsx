@@ -4,9 +4,8 @@
  * Route: /settings/security
  */
 import { useState } from 'react';
-import {
-    CheckCircle2, KeyRound, Loader2, Lock, LogOut, Mail, Shield, ShieldCheck, X
-} from 'lucide-react';
+import { CheckCircle2, KeyRound, Lock, LogOut, Mail, Shield, ShieldCheck, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';

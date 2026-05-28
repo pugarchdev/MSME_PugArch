@@ -1,30 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle2,
-  Clock,
-  FileText,
-  IndianRupee,
-  RefreshCw,
-  Search,
-  Building2,
-  CreditCard,
-  Lock,
-  Loader2,
-  ShieldCheck,
-  Sparkles,
-  Terminal,
-  ArrowRight,
-  AlertCircle,
-  X,
-  ChevronRight,
-  Check,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  Filter,
-  LayoutGrid,
-  List
-} from 'lucide-react';
+import { CheckCircle2, Clock, FileText, IndianRupee, RefreshCw, Search, Building2, CreditCard, Lock, ShieldCheck, Sparkles, Terminal, ArrowRight, AlertCircle, X, ChevronRight, Check, ArrowUp, ArrowDown, ArrowUpDown, Filter, LayoutGrid, List } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -1610,7 +1586,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
               {checkoutStep === 'processing' && (
                 <div className="flex flex-1 flex-col items-center justify-center space-y-4 px-6 py-16 text-center">
                   <div className="relative">
-                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-[#12335f]"></div>
+                    <Loader2 className="h-16 w-16" />
                     <Lock className="absolute inset-0 m-auto h-6 w-6 text-[#12335f]" />
                   </div>
                   <div className="space-y-1.5">

@@ -12,10 +12,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-    ArrowLeft, Award, BarChart3, ClipboardCheck, FileText, Loader2, Lock,
-    Plus, Send, Settings2, Trophy, Unlock, X
-} from 'lucide-react';
+import { ArrowLeft, Award, BarChart3, ClipboardCheck, FileText, Lock, Plus, Send, Settings2, Trophy, Unlock, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

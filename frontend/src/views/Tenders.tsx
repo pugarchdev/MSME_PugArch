@@ -33,6 +33,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
@@ -472,7 +473,7 @@ export default function Tenders() {
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+        <Loader2 className="h-8 w-8" />
       </div>
     );
   }

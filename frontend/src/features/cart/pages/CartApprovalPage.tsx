@@ -5,19 +5,8 @@
  * Access: ORG_ADMIN, FINANCE_OFFICER
  */
 import { useState } from 'react';
-import {
-    AlertCircle,
-    CheckCircle2,
-    ChevronDown,
-    Clock,
-    Inbox,
-    Loader2,
-    RefreshCw,
-    Shield,
-    User as UserIcon,
-    X,
-    XCircle
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, Inbox, RefreshCw, Shield, User as UserIcon, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';

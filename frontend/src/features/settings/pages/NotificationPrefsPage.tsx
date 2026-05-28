@@ -4,7 +4,8 @@
  * Route: /settings/notifications
  */
 import { useState } from 'react';
-import { Bell, Loader2, Mail, MessageSquare, RefreshCw, Save, Smartphone } from 'lucide-react';
+import { Bell, Mail, MessageSquare, RefreshCw, Save, Smartphone } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

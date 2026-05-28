@@ -4,9 +4,8 @@
  * Routes: /buyer/messages, /seller/messages
  */
 import { useState } from 'react';
-import {
-    ArrowLeft, FileText, Loader2, MessageSquare, Plus, RefreshCw, Send, X
-} from 'lucide-react';
+import { ArrowLeft, FileText, MessageSquare, Plus, RefreshCw, Send, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

@@ -13,8 +13,7 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const useConversations = () =>
     useQuery({
         queryKey: [...KEY, 'list'] as const,
-        queryFn: fetchConversations,
-        staleTime: 15_000
+        queryFn: fetchConversations
     });
 
 export const useConversation = (id: number | undefined) =>

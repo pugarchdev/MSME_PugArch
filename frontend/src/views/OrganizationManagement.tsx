@@ -147,7 +147,7 @@ export default function OrganizationManagement() {
       if (searchQuery) url += `&q=${encodeURIComponent(searchQuery)}`;
       if (statusFilter !== 'all') url += `&status=${encodeURIComponent(statusFilter)}`;
 
-      const res = await api.fetch(url, { ...authHeaders, skipCache: true });
+      const res = await api.fetch(url, { ...authHeaders });
       if (res.ok) {
         const payload = await res.json();
         const data = payload?.data || payload || {};
@@ -1003,7 +1003,7 @@ function ScopeListPanel({
       : tab === 'products'
         ? `/api/admin/catalogue/products?${params.toString()}`
         : `/api/admin/catalogue/services?${params.toString()}`;
-    api.fetch(endpoint, { ...authHeaders, skipCache: true })
+    api.fetch(endpoint, { ...authHeaders })
       .then(async res => {
         if (!res.ok) throw new Error('Failed to load list');
         const body = await res.json();

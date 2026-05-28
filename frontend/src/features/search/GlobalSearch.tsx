@@ -6,10 +6,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-    ArrowRight, FileText, Loader2, Package, Search, ShoppingCart,
-    Store, X, Wrench
-} from 'lucide-react';
+import { ArrowRight, FileText, Package, Search, ShoppingCart, Store, X, Wrench } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useAuth } from '../../hooks/useAuth';
 import { getApi } from '../shared/apiClient';
 

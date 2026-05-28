@@ -27,16 +27,14 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const useDeliveries = (params?: { status?: string; q?: string; role?: string }) =>
     useQuery({
         queryKey: [...KEY, 'list', params || {}] as const,
-        queryFn: () => fetchDeliveries(params),
-        staleTime: 15_000
+        queryFn: () => fetchDeliveries(params)
     });
 
 export const useDelivery = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchDelivery(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 10_000
+        enabled: !!id && id > 0
     });
 
 export const useDeliveryTimeline = (id: number | undefined) =>

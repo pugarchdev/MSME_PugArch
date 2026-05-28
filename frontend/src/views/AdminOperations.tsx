@@ -20,6 +20,7 @@ import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Pagination } from '../features/shared/Pagination';
+import { formatDateTime } from '../features/shared/format';
 import { cn } from '../lib/utils';
 
 type AdminSection = 'procurement' | 'compliance' | 'reports';
@@ -61,6 +62,34 @@ const statusTone = (status = 'pending') => {
 
 const pendingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
 
+// Entity column: prefer the registered legal/business name. If the user
+// has not yet completed onboarding, fall back to a clear placeholder rather
+// than a generic "N/A" + "Location pending" double dash, which made the
+// column read like an error.
+const getEntityName = (item: any): string => {
+  const profile = item?.profile || {};
+  const direct = profile.businessName
+    || profile.organizationName
+    || profile.officeZoneName
+    || (typeof item?.organization === 'object' ? item.organization?.legalName || item.organization?.name : '');
+  return (typeof direct === 'string' ? direct.trim() : '') || '';
+};
+
+const getEntityLocation = (item: any): string => {
+  const profile = item?.profile || {};
+  const parts = [profile.city, profile.state].filter(part => typeof part === 'string' && part.trim().length > 0);
+  return parts.join(', ');
+};
+
+const getEntitySubtitle = (item: any): string => {
+  const profile = item?.profile || {};
+  const role = String(item?.role || '').toLowerCase();
+  if (role === 'seller') {
+    return [profile.organizationType, profile.msmeCategory].filter(Boolean).join(' · ');
+  }
+  return [profile.organizationType, profile.industry, profile.businessType].filter(Boolean).join(' · ');
+};
+
 const getRecordStatus = (item: any) => item.onboardingStatus || item.status || 'pending';
 
 const getReviewSections = (item: any) => item.role === 'buyer'
@@ -77,11 +106,33 @@ const getApprovalProgress = (item: any) => {
 export default function AdminOperations({ section }: AdminOperationsProps) {
   const token = localStorage.getItem('token') || '';
   const authOptions = { headers: { Authorization: `Bearer ${token}` } };
-  const [data, setData] = useState<{ sellers: any[]; buyers: any[] }>({ sellers: [], buyers: [] });
-  const [stats, setStats] = useState<any>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [loading, setLoading] = useState(true);
+
+  // Seed initial state from the in-memory cache so revisits within the session
+  // render instantly (the api client refreshes in the background). The cache
+  // key is the URL + auth header, so this only hits when the same params were
+  // requested before. We use a sensible default page (page=1, pageSize=20,
+  // no filters) which matches the first render below.
+  const initialParams = new URLSearchParams();
+  initialParams.set('skip', '0');
+  initialParams.set('take', '20');
+  const initialOnboardingPath = `/api/admin/onboarding?${initialParams.toString()}`;
+  const initialStatsPath = section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement';
+  const cachedOnboardingRaw = api.peek(initialOnboardingPath, authOptions);
+  const cachedOnboarding = cachedOnboardingRaw?.data ?? cachedOnboardingRaw;
+  const cachedStatsRaw = api.peek(initialStatsPath, authOptions);
+  const cachedStats = cachedStatsRaw?.data ?? cachedStatsRaw;
+
+  const [data, setData] = useState<{ sellers: any[]; buyers: any[] }>(
+    cachedOnboarding && (Array.isArray(cachedOnboarding) || cachedOnboarding.sellers || cachedOnboarding.buyers)
+      ? Array.isArray(cachedOnboarding)
+        ? { sellers: cachedOnboarding.filter((item: any) => item.role === 'seller'), buyers: cachedOnboarding.filter((item: any) => item.role === 'buyer') }
+        : { sellers: cachedOnboarding.sellers || [], buyers: cachedOnboarding.buyers || [] }
+      : { sellers: [], buyers: [] }
+  );
+  const [stats, setStats] = useState<any>(cachedStats || null);
+  const [summary, setSummary] = useState<any>(cachedOnboarding?.summary || null);
+  const [totalRecords, setTotalRecords] = useState(Number(cachedOnboarding?.total ?? 0));
+  const [loading, setLoading] = useState(!cachedOnboarding);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -113,17 +164,28 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
 
   useEffect(() => {
     const fetchAdminData = async () => {
-      setLoading(true);
+      const params = new URLSearchParams();
+      params.set('skip', String((page - 1) * pageSize));
+      params.set('take', String(pageSize));
+      if (debouncedSearchTerm.trim()) params.set('q', debouncedSearchTerm.trim());
+      if (roleFilter !== 'all') params.set('role', roleFilter);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      const onboardingPath = `/api/admin/onboarding?${params.toString()}`;
+      const statsPath = section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement';
+
+      // Only show the loading spinner when we genuinely have nothing to
+      // render. If the api client already has a cached response for this
+      // exact URL+auth combo, the fetch resolves synchronously below and a
+      // background refresh happens — no spinner needed. Without this the
+      // page flickered "Loading admin records..." every time you navigated
+      // back, even when the cache had data ready.
+      const hasCached = Boolean(api.peek(onboardingPath, authOptions));
+      if (!hasCached) setLoading(true);
+
       try {
-        const params = new URLSearchParams();
-        params.set('skip', String((page - 1) * pageSize));
-        params.set('take', String(pageSize));
-        if (debouncedSearchTerm.trim()) params.set('q', debouncedSearchTerm.trim());
-        if (roleFilter !== 'all') params.set('role', roleFilter);
-        if (statusFilter !== 'all') params.set('status', statusFilter);
         const [onboardingRes, statsRes] = await Promise.all([
-          api.fetch(`/api/admin/onboarding?${params.toString()}`, { ...authOptions, skipCache: true }),
-          api.fetch(section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement', { ...authOptions, skipCache: true })
+          api.fetch(onboardingPath, authOptions),
+          api.fetch(statsPath, authOptions)
         ]);
         if (onboardingRes.ok) {
           const body = await onboardingRes.json();
@@ -162,11 +224,10 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
 
   const filteredRecords = useMemo(() => {
     const valueForSort = (item: any) => {
-      const profile = item.profile || {};
       if (sortKey === 'role') return item.role;
       if (sortKey === 'status') return getRecordStatus(item);
       if (sortKey === 'date') return new Date(item.createdAt || 0).getTime();
-      if (sortKey === 'entity') return profile.businessName || profile.organizationName || profile.officeZoneName || '';
+      if (sortKey === 'entity') return getEntityName(item);
       return item.name || '';
     };
 
@@ -261,15 +322,14 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
   const exportCsv = () => {
     const headers = ['Sr No', 'Name', 'Role', 'Entity', 'Email', 'Status', 'Submitted At'];
     const rows = filteredRecords.map((item, index) => {
-      const profile = item.profile || {};
       return [
         index + 1,
         item.name || '',
         item.role || '',
-        profile.businessName || profile.organizationName || profile.officeZoneName || '',
+        getEntityName(item),
         item.email || '',
         statusLabel(item.onboardingStatus || item.status),
-        item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
+        formatDateTime(item.createdAt)
       ];
     });
     const csv = [headers, ...rows]
@@ -467,28 +527,42 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 ) : filteredRecords.length === 0 ? (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-slate-400">No records found for selected filters.</td></tr>
                 ) : filteredRecords.map((item, index) => {
-                  const profile = item.profile || {};
                   const status = item.onboardingStatus || item.status || 'pending';
+                  const entityName = getEntityName(item);
+                  const entityLocation = getEntityLocation(item);
+                  const entitySubtitle = getEntitySubtitle(item);
                   return (
                     <tr key={`${item.role}-${item.id || item._id}`} className="hover:bg-slate-50/80">
                       <td className="px-3 py-4 text-xs font-bold text-slate-500">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
                       <td className="px-3 py-4">
-                        <p className="truncate text-sm font-black text-slate-900" title={item.name || 'N/A'}>{item.name || 'N/A'}</p>
+                        <p className="truncate text-sm font-black text-slate-900" title={item.name || '—'}>{item.name || '—'}</p>
                         <p className="break-all text-[11px] font-semibold text-slate-500">{item.email || 'No email'}</p>
                       </td>
                       <td className="px-3 py-4 text-xs font-black uppercase tracking-wide text-[#12335f]">{item.role}</td>
                       <td className="px-3 py-4">
-                        <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-slate-900" title={profile.businessName || profile.organizationName || profile.officeZoneName || 'N/A'}>
-                          {profile.businessName || profile.organizationName || profile.officeZoneName || 'N/A'}
-                        </p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{profile.state || profile.city || 'Location pending'}</p>
+                        {entityName ? (
+                          <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-slate-900" title={entityName}>
+                            {entityName}
+                          </p>
+                        ) : (
+                          <p className="text-sm font-semibold italic text-slate-400">
+                            Onboarding in progress
+                          </p>
+                        )}
+                        {entityLocation ? (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{entityLocation}</p>
+                        ) : entitySubtitle ? (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{entitySubtitle}</p>
+                        ) : null}
                       </td>
-                      <td className="px-3 py-4">
-                        <span className={cn('inline-flex max-w-[150px] rounded-full border px-2.5 py-1 text-center text-[10px] font-black uppercase leading-tight tracking-wide', statusTone(status))}>
+                      <td className="px-3 py-4 text-left">
+                        <span className={cn('inline-flex max-w-[170px] rounded-full border px-2.5 py-1 text-left text-[10px] font-black uppercase leading-tight tracking-wide', statusTone(status))}>
                           {statusLabel(status)}
                         </span>
                       </td>
-                      <td className="px-3 py-4 text-xs font-bold text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</td>
+                      <td className="px-3 py-4 text-xs font-bold text-slate-600">
+                        {formatDateTime(item.createdAt)}
+                      </td>
                       <td className="px-3 py-4">
                         <Link href="/admin/onboarding" className="text-xs font-black uppercase tracking-wide text-[#12335f] hover:text-[#12335f]">
                           Open Review

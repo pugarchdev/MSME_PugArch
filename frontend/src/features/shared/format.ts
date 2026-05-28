@@ -22,12 +22,14 @@ export const formatDate = (value: unknown): string => {
 export const formatDateTime = (value: unknown): string => {
   const d = safeDate(value);
   if (!d) return '—';
-  // 24 May 2026, 14:32
+  // 24 May 2026, 02:32 PM — 12-hour format with AM/PM is the standard the
+  // procurement portal uses on every page (admin queues, notifications,
+  // audit panels, etc.). Keep this in one place so the format stays consistent.
   return `${d.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric'
-  })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+  })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
 };
 
 /** Distance from now in friendly form: "5 minutes ago", "2 days ago". */

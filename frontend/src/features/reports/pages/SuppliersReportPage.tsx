@@ -4,7 +4,8 @@
  * Route: /admin/reports/suppliers
  */
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Package, RefreshCw, Star, Store, Wrench } from 'lucide-react';
+import { Package, RefreshCw, Star, Store, Wrench } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { InlineError } from '../../shared/FeatureStates';
 import { getApi } from '../../shared/apiClient';

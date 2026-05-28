@@ -15,16 +15,14 @@ export const useComplianceRules = (
 ) =>
     useQuery({
         queryKey: [...KEY_BASE, 'list', params] as const,
-        queryFn: () => fetchComplianceRules(params),
-        staleTime: 60_000
+        queryFn: () => fetchComplianceRules(params)
     });
 
 export const useRuleViolations = (id: number | undefined, page = 1, pageSize = 10) =>
     useQuery({
         queryKey: [...KEY_BASE, 'violations', id || 0, page, pageSize] as const,
         queryFn: () => fetchRuleViolations(id as number, page, pageSize),
-        enabled: !!id && id > 0,
-        staleTime: 30_000
+        enabled: !!id && id > 0
     });
 
 const invalidateAll = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY_BASE });

@@ -29,37 +29,32 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const useActiveCart = () =>
     useQuery({
         queryKey: [...KEY, 'active'] as const,
-        queryFn: fetchActiveCart,
-        staleTime: 10_000
+        queryFn: fetchActiveCart
     });
 
 export const useCartHistory = () =>
     useQuery({
         queryKey: [...KEY, 'history'] as const,
-        queryFn: fetchCartHistory,
-        staleTime: 30_000
+        queryFn: fetchCartHistory
     });
 
 export const useCartDetail = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchCartById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!id && id > 0
     });
 
 export const usePendingApprovals = () =>
     useQuery({
         queryKey: APPROVAL_KEY,
-        queryFn: fetchPendingApprovals,
-        staleTime: 15_000
+        queryFn: fetchPendingApprovals
     });
 
 export const usePendingTechReview = () =>
     useQuery({
         queryKey: TECH_KEY,
-        queryFn: fetchPendingTechReview,
-        staleTime: 15_000
+        queryFn: fetchPendingTechReview
     });
 
 export const useAddToCart = () => {

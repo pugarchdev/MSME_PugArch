@@ -24,23 +24,20 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
 export const usePendingApprovals = () =>
     useQuery({
         queryKey: PENDING_KEY,
-        queryFn: fetchPendingApprovals,
-        staleTime: 15_000
+        queryFn: fetchPendingApprovals
     });
 
 export const useApprovalHistory = () =>
     useQuery({
         queryKey: HISTORY_KEY,
-        queryFn: fetchApprovalHistory,
-        staleTime: 30_000
+        queryFn: fetchApprovalHistory
     });
 
 export const useApprovalTrail = (type: ApprovalEntityType | undefined, id: number | undefined) =>
     useQuery({
         queryKey: [...KEY, 'trail', type, id] as const,
         queryFn: () => fetchApprovalTrail(type as ApprovalEntityType, id as number),
-        enabled: !!type && !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!type && !!id && id > 0
     });
 
 export const useApproveApproval = () => {

@@ -5,9 +5,8 @@
  */
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-    ArrowLeft, CheckCircle2, Clock, FileText, Loader2, Package, Send, ShieldCheck, X, XCircle
-} from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, FileText, Package, Send, ShieldCheck, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';

@@ -1,31 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  MapPin,
-  Star,
-  Building2,
-  ChevronDown,
-  CheckCircle2,
-  X,
-  Phone,
-  Mail,
-  Globe,
-  Briefcase,
-  FileText,
-  Send,
-  Loader2,
-  Info,
-  ShieldCheck,
-  Clock,
-  Upload,
-  Paperclip,
-  LayoutGrid,
-  List,
-  Filter,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown
-} from 'lucide-react';
+import { Search, MapPin, Star, Building2, ChevronDown, CheckCircle2, X, Phone, Mail, Globe, Briefcase, FileText, Send, Info, ShieldCheck, Clock, Upload, Paperclip, LayoutGrid, List, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';

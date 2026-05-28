@@ -9,16 +9,14 @@ export const useFraudAlerts = (
 ) =>
     useQuery({
         queryKey: [...KEY_BASE, 'list', params] as const,
-        queryFn: () => fetchFraudAlerts(params),
-        staleTime: 30_000
+        queryFn: () => fetchFraudAlerts(params)
     });
 
 export const useFraudAlert = (id: number | undefined) =>
     useQuery({
         queryKey: [...KEY_BASE, 'detail', id || 0] as const,
         queryFn: () => fetchFraudAlertById(id as number),
-        enabled: !!id && id > 0,
-        staleTime: 15_000
+        enabled: !!id && id > 0
     });
 
 export const useUpdateFraudAlert = () => {

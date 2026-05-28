@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
 import { ShieldCheck, Mail, Key, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 
 const generateSecureCaptchaString = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -210,7 +211,7 @@ export default function Login() {
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                    <Loader2 className="h-4 w-4" />
                     Authenticating...
                   </span>
                 ) : twoFactorPending ? 'Verify Code' : 'Sign In Now'}

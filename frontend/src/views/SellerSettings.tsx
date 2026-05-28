@@ -6,7 +6,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { ShieldCheck, Mail, Lock, UserX, Info, Loader2, AlertTriangle, PlayCircle } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, UserX, Info, AlertTriangle, PlayCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { GeMSettingsSidebar } from '../components/GeMSettingsSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
 

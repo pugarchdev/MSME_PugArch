@@ -4,7 +4,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Loader2, XCircle, Building2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Building2 } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../hooks/useAuth';
 import { postApi } from '../../shared/apiClient';

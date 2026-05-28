@@ -572,15 +572,30 @@ export default function AdminOnboarding() {
   };
 
   const getDisplayText = (value: unknown, fallback: string) => {
-    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean") return String(value);
     return fallback;
   };
-  const getEntityName = (item: any) =>
-    getDisplayText(
-      item.profile?.businessName || item.profile?.organizationName,
-      "N/A",
-    );
+  // Pull the registered entity name from whichever profile the user has.
+  // Returns empty string if onboarding hasn't started yet, so the table can
+  // render a clear "Onboarding in progress" placeholder instead of "N/A".
+  const getEntityName = (item: any): string => {
+    const profile = item?.profile || {};
+    const candidate = profile.businessName
+      || profile.organizationName
+      || profile.officeZoneName
+      || (typeof item?.organization === "object" ? item.organization?.legalName || item.organization?.name : "");
+    return typeof candidate === "string" ? candidate.trim() : "";
+  };
+  // Combine city + state when present. Empty string when neither exists, so
+  // the caller can hide the row instead of printing "STATE N/A".
+  const getEntityLocation = (item: any): string => {
+    const profile = item?.profile || {};
+    const parts = [profile.city, profile.state]
+      .filter((part) => typeof part === "string" && part.trim().length > 0)
+      .map((part) => String(part).trim());
+    return parts.join(", ");
+  };
   const getPrimaryCategory = (item: any) => {
     const category =
       item.role === "buyer"
@@ -1210,19 +1225,26 @@ export default function AdminOnboarding() {
                                 </button>
                               </TableCell>
                               <TableCell className="px-6 py-8">
-                                <div className="font-bold text-slate-600 text-xs underline decoration-indigo-200 underline-offset-4">
-                                  {getEntityName(item)}
-                                </div>
-                                <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.profile?.state || "State N/A"}
-                                </div>
+                                {getEntityName(item) ? (
+                                  <div className="font-bold text-slate-600 text-xs underline decoration-indigo-200 underline-offset-4 break-words">
+                                    {getEntityName(item)}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs font-semibold italic text-slate-400">
+                                    Onboarding in progress
+                                  </div>
+                                )}
+                                {getEntityLocation(item) && (
+                                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    {getEntityLocation(item)}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="space-y-1">
                                   <div className="text-[10px] font-black text-indigo-600 uppercase">
                                     {item.role === "buyer"
-                                      ? item.profile?.annualBudget ||
-                                      "Budget N/A"
+                                      ? getDisplayText(item.profile?.annualBudget, "Budget pending")
                                       : getPrimaryCategory(item)}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
@@ -1322,7 +1344,9 @@ export default function AdminOnboarding() {
                                     {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                                   </div>
                                   <div className="mt-1 text-[11px] font-semibold text-slate-600 underline decoration-indigo-200 underline-offset-2 text-wrap-anywhere">
-                                    {getEntityName(item)}
+                                    {getEntityName(item) || (
+                                      <span className="font-medium italic text-slate-400 no-underline">Onboarding in progress</span>
+                                    )}
                                   </div>
                                 </div>
                               </button>
@@ -1331,14 +1355,14 @@ export default function AdminOnboarding() {
 
                             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                               <div>
-                                <p className="text-slate-400">State</p>
-                                <p className="text-slate-700">{item.profile?.state || "—"}</p>
+                                <p className="text-slate-400">Location</p>
+                                <p className="text-slate-700">{getEntityLocation(item) || "—"}</p>
                               </div>
                               <div>
                                 <p className="text-slate-400">Category</p>
                                 <p className="text-slate-700 truncate">
                                   {item.role === "buyer"
-                                    ? item.profile?.annualBudget || "Budget N/A"
+                                    ? getDisplayText(item.profile?.annualBudget, "Budget pending")
                                     : getPrimaryCategory(item)}
                                 </p>
                               </div>
@@ -1408,12 +1432,20 @@ export default function AdminOnboarding() {
                                 <div className="font-bold text-slate-800 text-xs tracking-tight hover:text-[#12335f] hover:underline decoration-[#f9a825] underline-offset-2 transition-colors">
                                   {item.name}
                                 </div>
-                                <div className="font-bold text-slate-500 text-[10px] underline decoration-indigo-200 underline-offset-2">
-                                  {getEntityName(item)}
-                                </div>
-                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.profile?.state || "State N/A"}
-                                </div>
+                                {getEntityName(item) ? (
+                                  <div className="font-bold text-slate-500 text-[10px] underline decoration-indigo-200 underline-offset-2">
+                                    {getEntityName(item)}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] font-semibold italic text-slate-400">
+                                    Onboarding in progress
+                                  </div>
+                                )}
+                                {getEntityLocation(item) && (
+                                  <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                                    {getEntityLocation(item)}
+                                  </div>
+                                )}
                               </button>
                             </div>
                             {getStatusBadge(item.onboardingStatus)}
@@ -1423,7 +1455,7 @@ export default function AdminOnboarding() {
                             <div className="space-y-2">
                               <div className="text-[10px] font-black text-indigo-600 uppercase">
                                 {item.role === "buyer"
-                                  ? item.profile?.annualBudget || "Budget N/A"
+                                  ? getDisplayText(item.profile?.annualBudget, "Budget pending")
                                   : getPrimaryCategory(item)}
                               </div>
                               <div className="text-[10px] font-bold uppercase text-slate-400">

@@ -6,7 +6,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Eye, Loader2, Plus, RefreshCw, ShoppingCart, Trash2, Truck, X } from 'lucide-react';
+import { Eye, Plus, RefreshCw, ShoppingCart, Trash2, Truck, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';

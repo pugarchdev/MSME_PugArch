@@ -32,24 +32,21 @@ export const useTechnicalEvaluation = (tenderId: number | undefined) =>
     useQuery({
         queryKey: [...KEY, tenderId || 0, 'technical'] as const,
         queryFn: () => fetchTechnicalEvaluation(tenderId as number),
-        enabled: !!tenderId,
-        staleTime: 10_000
+        enabled: !!tenderId
     });
 
 export const useFinancialBids = (tenderId: number | undefined, enabled = true) =>
     useQuery({
         queryKey: [...KEY, tenderId || 0, 'financial'] as const,
         queryFn: () => fetchFinancialBids(tenderId as number),
-        enabled: !!tenderId && enabled,
-        staleTime: 10_000
+        enabled: !!tenderId && enabled
     });
 
 export const useRanking = (tenderId: number | undefined, enabled = true) =>
     useQuery({
         queryKey: [...KEY, tenderId || 0, 'ranking'] as const,
         queryFn: () => fetchRanking(tenderId as number),
-        enabled: !!tenderId && enabled,
-        staleTime: 10_000
+        enabled: !!tenderId && enabled
     });
 
 export const useComparativeStatement = (tenderId: number | undefined) =>

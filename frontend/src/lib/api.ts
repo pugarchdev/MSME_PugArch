@@ -13,7 +13,17 @@ const getBaseUrl = () => {
 };
 
 const BASE_URL = getBaseUrl().replace(/\/$/, '');
-const GET_CACHE_TTL = 5 * 60_000;
+// GET responses are kept in memory and used as instant render data when the
+// user navigates back to a page they have already visited. Background refresh
+// (see `shouldCache` block in api.fetch) keeps them up to date so we can pick
+// a comfortably long TTL — the old 5-minute window meant tab-switching back
+// after a coffee break would re-show the loading spinner.
+const GET_CACHE_TTL = 15 * 60_000;
+// Stale entries past their TTL are still useful: they're rendered instantly
+// while we kick off a background fetch, the same pattern as React Query's
+// staleTime/cacheTime separation. This is what makes the portal feel
+// "loaded once per session" rather than refetching on every navigation.
+const GET_CACHE_STALE_LIMIT = 60 * 60_000;
 
 type CachedResponse = {
   body: any;
@@ -90,6 +100,11 @@ const responseFromCache = (entry: CachedResponse) => new Response(JSON.stringify
 });
 
 const isCacheFresh = (entry?: CachedResponse) => Boolean(entry && Date.now() - entry.timestamp < GET_CACHE_TTL);
+// "Usable" means we can render it instantly; if it's older than fresh we
+// still serve it but kick off a refresh in the background (stale-while-
+// revalidate). This is what eliminates the loading spinner when navigating
+// between pages within the same session.
+const isCacheUsable = (entry?: CachedResponse) => Boolean(entry && Date.now() - entry.timestamp < GET_CACHE_STALE_LIMIT);
 const refreshingKeys = new Set<string>();
 const shouldDispatchUnauthorized = (endpoint: string) =>
   ![
@@ -131,6 +146,33 @@ const clearApiCache = (matcher?: string) => {
   }
 };
 
+/**
+ * Convert a mutation endpoint into the GET-cache prefix that should be
+ * invalidated. The goal: when a user marks a notification as read at
+ * `/api/notifications/123/read`, only invalidate cached responses under
+ * `/api/notifications`, not every other cached page.
+ *
+ * Heuristic: take the path up to (but not including) the first numeric
+ * segment. If there are no numeric segments, use the path verbatim. This
+ * works cleanly for REST-style endpoints used across this portal:
+ *   /api/notifications/123/read         -> /api/notifications
+ *   /api/admin/onboarding/45/status     -> /api/admin/onboarding
+ *   /api/seller/onboarding              -> /api/seller/onboarding
+ *   /api/auth/login                     -> /api/auth/login
+ */
+const invalidatePrefixFor = (endpoint: string) => {
+  // Strip query string before splitting; we never key cache by it anyway.
+  const path = endpoint.split('?')[0];
+  const segments = path.split('/');
+  const truncated: string[] = [];
+  for (const segment of segments) {
+    if (segment && /^\d+$/.test(segment)) break;
+    truncated.push(segment);
+  }
+  const prefix = truncated.join('/') || path;
+  clearApiCache(prefix);
+};
+
 export const api = {
   fetch: (endpoint: string, options: RequestInit & { skipCache?: boolean } = {}) => {
     const url = resolveUrl(endpoint);
@@ -145,8 +187,13 @@ export const api = {
 
     if (shouldCache) {
       const cached = getCache.get(key);
-      if (isCacheFresh(cached)) {
-        if (!refreshingKeys.has(key)) {
+      // Instant render path: any cache entry younger than GET_CACHE_STALE_LIMIT
+      // is rendered immediately. If it's still within the fresh TTL we don't
+      // bother refreshing; if it's stale we fire a background refresh so the
+      // UI stays current without the user seeing a spinner.
+      if (isCacheUsable(cached)) {
+        const isStale = !isCacheFresh(cached);
+        if (isStale && !refreshingKeys.has(key)) {
           refreshingKeys.add(key);
           fetch(url, {
             credentials: 'include',
@@ -235,7 +282,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }).then((response) => {
-      if (response.ok) clearApiCache();
+      // Only invalidate the resource that just mutated, not every cached
+      // page. Wiping the entire cache is what was making the dashboard look
+      // like it reloads on every navigation: a single click that POSTs
+      // (e.g. marking a notification read) used to drop every other
+      // unrelated GET from cache.
+      if (response.ok) invalidatePrefixFor(endpoint);
       return response;
     }),
 
@@ -245,19 +297,22 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(body)
     }).then((response) => {
-      if (response.ok) clearApiCache();
+      if (response.ok) invalidatePrefixFor(endpoint);
       return response;
     }),
 
   delete: (endpoint: string, options: RequestInit = {}) =>
     api.fetch(endpoint, { ...options, method: 'DELETE' }).then((response) => {
-      if (response.ok) clearApiCache();
+      if (response.ok) invalidatePrefixFor(endpoint);
       return response;
     }),
 
   peek: (endpoint: string, options: RequestInit = {}) => {
     const cached = getCache.get(cacheKey(endpoint, options));
-    return isCacheFresh(cached) ? cached?.body : null;
+    // peek() is what page components call before render to seed initial
+    // state. Use the same stale-while-revalidate window as the fetch path
+    // so revisited pages render instantly even after the fresh TTL.
+    return isCacheUsable(cached) ? cached?.body : null;
   },
 
   invalidate: clearApiCache,

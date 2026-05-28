@@ -1,4 +1,5 @@
-import { AlertTriangle, Inbox, Loader2, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Inbox, type LucideIcon } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../components/ui/button';
 
 export function LoadingState({ label = 'Loading records...' }: { label?: string }) {

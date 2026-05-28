@@ -10,10 +10,8 @@
  *   DISPATCHED         → Update Status (in-transit / out-for-delivery / delivered)
  */
 import { useState } from 'react';
-import {
-    AlertCircle, CheckCircle2, Clock, FileText, Loader2, Package, RefreshCw,
-    Send, Truck, Upload, X, XCircle
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, FileText, Package, RefreshCw, Send, Truck, Upload, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

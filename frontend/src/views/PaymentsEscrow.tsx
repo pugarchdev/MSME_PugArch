@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CreditCard, Landmark, Loader2, LockKeyhole, RefreshCw, ShieldCheck, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { CheckCircle2, CreditCard, Landmark, LockKeyhole, RefreshCw, ShieldCheck, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';

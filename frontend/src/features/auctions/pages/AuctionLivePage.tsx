@@ -8,10 +8,8 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    AlertTriangle, ArrowLeft, Award, CheckCircle2, Clock, Gavel, History,
-    Loader2, RefreshCw, Send, TrendingDown
-} from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Award, CheckCircle2, Clock, Gavel, History, RefreshCw, Send, TrendingDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';

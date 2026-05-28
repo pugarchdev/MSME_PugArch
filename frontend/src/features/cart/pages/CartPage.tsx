@@ -8,22 +8,8 @@
  * If cart is in another state (submitted/approved/rejected), shows status with timeline.
  */
 import { useMemo, useState } from 'react';
-import {
-    AlertCircle,
-    CheckCircle2,
-    Clock,
-    History,
-    Loader2,
-    Minus,
-    Plus,
-    RefreshCw,
-    Send,
-    ShoppingCart,
-    Store,
-    Trash2,
-    X,
-    XCircle
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, History, Minus, Plus, RefreshCw, Send, ShoppingCart, Store, Trash2, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

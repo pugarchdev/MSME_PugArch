@@ -64,7 +64,6 @@ export default function RoleAwareActionCards() {
         queryKey: ['dashboard', 'summary'] as const,
         queryFn: () => getApi<DashboardSummary>('/api/dashboard/summary').catch(() => null),
         enabled: !!user && user.role !== 'admin',
-        staleTime: 60_000,
         // Show whatever we last cached immediately so KPI tiles never flash
         // empty after navigation. React Query revalidates in the background.
         placeholderData: (prev) => prev,

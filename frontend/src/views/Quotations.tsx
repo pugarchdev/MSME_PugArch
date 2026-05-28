@@ -25,6 +25,7 @@ import {
   Paperclip,
   Upload
 } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -220,7 +221,7 @@ const getQuotePricing = (quote: Quotation) => {
   const totalAmount = Number(quote.totalAmount ?? (subtotal + taxAmount - discountAmount));
   return { subtotal, taxRate, taxAmount, discountAmount, totalAmount };
 };
-const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', hour12: true }) : '-';
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
 const getQuoteUpdatedAt = (q: Quotation) => (q as any).updatedAt || (q as any).lastModified;
@@ -906,7 +907,9 @@ export default function Quotations() {
         {loading && quotes.length === 0 ? (
           <div className="flex min-h-[300px] items-center justify-center rounded-lg border border-slate-200 bg-white">
             <div className="space-y-3 text-center">
-              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-[#12335f] border-t-transparent" />
+              <div className="flex justify-center">
+                <Loader2 className="h-9 w-9" />
+              </div>
               <p className="text-sm font-semibold text-slate-600">Loading bid records...</p>
             </div>
           </div>

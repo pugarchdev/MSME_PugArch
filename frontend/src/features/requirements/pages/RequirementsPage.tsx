@@ -8,17 +8,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import {
-    ClipboardCheck,
-    Eye,
-    FileText,
-    Loader2,
-    Plus,
-    RefreshCw,
-    Send,
-    Trash2,
-    X
-} from 'lucide-react';
+import { ClipboardCheck, Eye, FileText, Plus, RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';

@@ -50,11 +50,10 @@ export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
       const result = await getApi<T>(endpoint, false);
       return (isArray ? (normalizeList(result) as T) : (result as T));
     },
-    // Stale data is shown immediately; revalidation happens in the background.
-    // The React Query cache itself preserves last-known-good data across
-    // component unmounts, so navigation back to a page is instant.
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    // Inherit the global staleTime/gcTime defaults from QueryClient. Those
+    // are tuned (15 min stale, 60 min gc) so revisiting a feature page
+    // within a session is instant. Hardcoding shorter windows here would
+    // override that and reintroduce the spinner-on-back-nav behavior.
     retry: 2
   });
 
@@ -121,8 +120,9 @@ export const usePaginatedFeatureQuery = <T,>(
       const body = await getApi<unknown>(requestEndpoint, false);
       return normalizePaginated<T>(body);
     },
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    // Inherit global staleTime/gcTime so paginated lists stay cached for
+    // the session. placeholderData keeps the previous page visible while
+    // a new page loads, so pagination doesn't flash a blank state.
     placeholderData: previous => previous,
     retry: 2
   });

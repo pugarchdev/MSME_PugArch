@@ -26,6 +26,7 @@ import {
   Plus,
   ShoppingBag
 } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { MSME_TYPES } from '../constants/dropdowns';
@@ -406,7 +407,7 @@ export default function BuyerProfile() {
   if (loading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#12335f] border-t-transparent shadow-xl shadow-blue-500/20"></div>
+        <Loader2 className="h-10 w-10 shadow-xl shadow-blue-500/20" />
       </div>
     );
   }

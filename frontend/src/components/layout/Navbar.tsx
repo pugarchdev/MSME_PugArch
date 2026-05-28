@@ -147,7 +147,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer', 'seller'] },
     { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer', 'seller'] },
     { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
-    
+
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
@@ -185,66 +185,77 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
         ref={sidebarRef}
         onMouseEnter={() => handleHover(true)}
         className={cn(
-          "w-64 bg-gradient-to-b from-[#1e293b] to-[#0f172a] text-white flex flex-col shrink-0 h-full fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out lg:translate-x-0 border-r border-slate-800",
+          "w-64 gov-sidebar-surface text-white flex flex-col shrink-0 h-full fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out lg:translate-x-0 border-r border-white/5 shadow-xl shadow-slate-900/10",
           isActuallyCollapsed ? "lg:w-20" : "w-64",
           !isActuallyCollapsed && "lg:w-64",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}>
+        {/* Tricolor strip — official portal cue */}
+        <div className="brand-tricolor-strip" />
         <div className={cn("h-14 px-3 border-b border-white/10 flex items-center", isActuallyCollapsed ? "justify-center" : "justify-between")}>
           <div
             className={cn("flex items-center gap-3 min-w-0 select-none", isActuallyCollapsed && "lg:justify-center")}
             title="MSME Portal"
           >
-            <div className="w-11 h-11 bg-white rounded-lg flex items-center justify-center overflow-hidden shadow-sm border border-white/10 p-1">
+            <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/10 p-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
-            <span className={cn("font-bold tracking-tight text-base truncate", isActuallyCollapsed && "lg:hidden")}>MSME Portal</span>
+            <div className={cn("flex flex-col leading-tight min-w-0", isActuallyCollapsed && "lg:hidden")}>
+              <span className="font-bold tracking-tight text-base truncate text-white">MSME Portal</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#c8a45c] truncate">Govt. of India</span>
+            </div>
           </div>
-          <button onClick={onClose} className="lg:hidden p-2 text-blue-100 hover:text-white" aria-label="Close sidebar">
+          <button onClick={onClose} className="lg:hidden p-2 text-white/70 hover:text-white" aria-label="Close sidebar">
             <X className="h-5 w-5" />
           </button>
 
         </div>
 
-        <nav className={cn("flex-1 overflow-y-auto", isActuallyCollapsed ? "p-2 space-y-2" : "p-3 space-y-1")}>
-          <div className={cn("text-blue-200/70 text-[10px] font-bold uppercase tracking-widest px-3 mb-2", isActuallyCollapsed && "lg:hidden")}>Navigation</div>
-          {filteredNav.map((item) => (
-            <Link
-              key={item.label}
-              href={item.path}
-              onClick={onClose}
-              title={isActuallyCollapsed ? item.label : undefined}
-              className={cn("flex items-center gap-3 rounded-md transition-all duration-200 group",
-                isActuallyCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
-                pathname === item.path
-                  ? "bg-white text-[#1d4ed8] shadow-sm"
-                  : "text-blue-50/80 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", pathname === item.path ? "text-[#1d4ed8]" : "text-blue-100")} />
-              <span className={cn("text-sm font-medium truncate", isActuallyCollapsed && "lg:hidden")}>{item.label}</span>
-              {pathname === item.path && <ChevronRight className={cn("ml-auto h-3 w-3 opacity-60", isActuallyCollapsed && "lg:hidden")} />}
-            </Link>
-          ))}
+        <nav className={cn("flex-1 overflow-y-auto", isActuallyCollapsed ? "p-2 space-y-1" : "p-3 space-y-1")}>
+          <div className={cn("text-white/40 text-[10px] font-bold uppercase tracking-[0.18em] px-3 mb-2", isActuallyCollapsed && "lg:hidden")}>Navigation</div>
+          {filteredNav.map((item) => {
+            const isActive = pathname === item.path;
+            return (
+              <Link
+                key={item.label}
+                href={item.path}
+                onClick={onClose}
+                title={isActuallyCollapsed ? item.label : undefined}
+                className={cn("relative flex items-center gap-3 rounded-md transition-all duration-200 group",
+                  isActuallyCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
+                  isActive
+                    ? "bg-white/10 text-white"
+                    : "text-white/70 hover:bg-white/5 hover:text-white"
+                )}
+              >
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r bg-[#c8a45c]" aria-hidden="true" />
+                )}
+                <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", isActive ? "text-[#c8a45c]" : "text-white/60 group-hover:text-white")} />
+                <span className={cn("text-sm font-medium truncate", isActuallyCollapsed && "lg:hidden")}>{item.label}</span>
+                {isActive && <ChevronRight className={cn("ml-auto h-3 w-3 text-[#c8a45c]", isActuallyCollapsed && "lg:hidden")} />}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className={cn("border-t border-white/10 bg-[#0f172a]/60", isActuallyCollapsed ? "p-2" : "p-3")}>
+        <div className={cn("border-t border-white/10 bg-black/20", isActuallyCollapsed ? "p-2" : "p-3")}>
           <Link
             href={pathname === '/profile' ? '/dashboard' : '/profile'}
             onClick={onClose}
             className={cn(
               "flex items-center gap-3 px-2 mb-3 py-1.5 rounded-md hover:bg-white/10 transition-all duration-200",
               isActuallyCollapsed && "lg:justify-center lg:px-0",
-              pathname === '/profile' && "bg-white/10 ring-1 ring-white/30"
+              pathname === '/profile' && "bg-white/10 ring-1 ring-[#c8a45c]/40"
             )}
           >
-            <div className="w-8 h-8 rounded-full bg-[#f9a825] flex items-center justify-center text-xs font-bold text-[#12335f] shadow-inner">
+            <div className="w-8 h-8 rounded-full bg-[#c8a45c] flex items-center justify-center text-xs font-bold text-[#07172e] shadow-inner">
               {user.name.charAt(0)}
             </div>
             <div className={cn("flex flex-col min-w-0", isActuallyCollapsed && "lg:hidden")}>
-              <span className="text-sm font-medium truncate">{user.name}</span>
-              <span className="text-[10px] text-blue-100/70 uppercase tracking-wide font-bold">{user.role} Account</span>
+              <span className="text-sm font-medium truncate text-white">{user.name}</span>
+              <span className="text-[10px] text-white/60 uppercase tracking-wide font-bold">{user.role} Account</span>
             </div>
           </Link>
           <Button
@@ -252,7 +263,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
             size="sm"
             onClick={handleLogout}
             title="Logout"
-            className={cn("w-full bg-red/300 border-white/20 text-white hover:bg-white hover:text-red-500 py-2", isActuallyCollapsed && "lg:px-0")}
+            className={cn("w-full bg-transparent border-white/20 text-white hover:bg-white hover:text-[#0b2447] py-2", isActuallyCollapsed && "lg:px-0")}
           >
             <LogOut className={cn("h-4 w-4", !isActuallyCollapsed && "mr-2")} />
             <span className={cn(isActuallyCollapsed && "lg:hidden")}>Logout</span>
@@ -439,30 +450,31 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   };
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 sticky top-0 z-40 transition-all duration-300">
-      <div className="h-full px-4 flex items-center justify-between">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 transition-all duration-300">
+      <div className="brand-tricolor-strip" />
+      <div className="h-14 px-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
             onClick={onMenuClick}
-            className="p-2 -ml-2 text-slate-500 hover:text-[#1d4ed8] lg:hidden"
+            className="p-2 -ml-2 text-slate-500 hover:text-[#0b2447] lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-6 w-6" />
           </button>
           <button
             onClick={onSidebarToggle}
-            className="hidden lg:flex p-2 -ml-2 text-slate-400 hover:text-[#1d4ed8] hover:bg-slate-50 rounded-lg transition-colors"
+            className="hidden lg:flex p-2 -ml-2 text-slate-400 hover:text-[#0b2447] hover:bg-slate-50 rounded-lg transition-colors"
             title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
           </button>
 
           {/* <div className="hidden md:flex relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#1d4ed8] transition-colors" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#0b2447] transition-colors" />
             <input 
               type="text" 
               placeholder="Quick search..."
-              className="w-64 h-9 pl-9 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/10 focus:border-[#1d4ed8] transition-all bg-slate-50/50"
+              className="w-64 h-9 pl-9 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#0b2447]/10 focus:border-[#0b2447] transition-all bg-slate-50/50"
             />
           </div> */}
         </div>
@@ -473,7 +485,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
               onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
               className={cn(
                 "p-2 rounded-lg transition-all relative",
-                isNotificationsOpen ? "bg-slate-100 text-[#1d4ed8]" : "text-slate-500 hover:bg-slate-50 hover:text-[#1d4ed8]"
+                isNotificationsOpen ? "bg-slate-100 text-[#0b2447]" : "text-slate-500 hover:bg-slate-50 hover:text-[#0b2447]"
               )}
             >
               <Bell className="h-5 w-5" />
@@ -483,19 +495,19 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
             </button>
 
             {isNotificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[#1d4ed8]">Notifications</h3>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#0b2447]">Notifications</h3>
                   <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
-                      <Badge variant="secondary" className="bg-white text-[#1d4ed8] border-slate-200 font-bold text-[10px]">
+                      <Badge variant="secondary" className="bg-white text-[#0b2447] border-slate-200 font-bold text-[10px]">
                         {unreadCount} NEW
                       </Badge>
                     )}
                     {unreadCount > 0 && (
                       <button
                         onClick={markAllNotificationsAsRead}
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wide text-slate-500 transition-colors hover:text-[#1d4ed8]"
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wide text-slate-500 transition-colors hover:text-[#0b2447]"
                         title="Mark all as read"
                       >
                         <CheckSquare className="h-3.5 w-3.5" />
@@ -517,13 +529,13 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                           onClick={() => openNotification(item)}
                           className={cn(
                             "w-full p-4 text-left border-b border-slate-100 transition-all hover:bg-slate-50 group",
-                            !item.isRead ? "bg-blue-50/30" : "opacity-75"
+                            !item.isRead ? "bg-slate-50" : "opacity-75"
                           )}
                         >
                           <div className="flex items-start gap-3">
                             <div className={cn(
-                              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm",
-                              isWarning ? "text-red-500" : isSuccess ? "text-emerald-600" : "text-[#1d4ed8]"
+                              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white shadow-sm border border-slate-100",
+                              isWarning ? "text-red-500" : isSuccess ? "text-emerald-600" : "text-[#0b2447]"
                             )}>
                               <Icon className="h-4 w-4" />
                             </div>
@@ -531,7 +543,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                               <div className="flex items-start justify-between gap-3">
                                 <p className={cn(
                                   "text-[10px] font-black uppercase tracking-widest",
-                                  isWarning ? "text-red-600" : isSuccess ? "text-emerald-700" : "text-[#1d4ed8]"
+                                  isWarning ? "text-red-600" : isSuccess ? "text-emerald-700" : "text-[#0b2447]"
                                 )}>{item.title}</p>
                                 {!item.isRead && (
                                   <span
@@ -579,7 +591,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                       router.push('/notifications');
                       setIsNotificationsOpen(false);
                     }}
-                    className="w-full py-3 bg-slate-50 border-t border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                    className="w-full py-3 bg-slate-50 border-t border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#0b2447] transition-colors"
                   >
                     View All Notifications
                   </button>
@@ -595,12 +607,12 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
               onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
               className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors group text-left"
             >
-              <div className="h-8 w-8 rounded-full bg-[#394566] flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-white ring-offset-1 group-hover:ring-offset-2 transition-all">
+              <div className="h-8 w-8 rounded-full bg-[#0b2447] flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-white ring-offset-1 group-hover:ring-offset-2 transition-all">
                 {user?.name?.charAt(0) || 'U'}
               </div>
               <div className="hidden sm:flex flex-col text-left">
-                <span className="text-xs font-bold text-blue-900 truncate max-w-[100px]">{user?.name}</span>
-                <span className="text-[9px] font-black text-[#1d4ed8] uppercase tracking-widest opacity-60 flex items-center gap-1">
+                <span className="text-xs font-bold text-slate-900 truncate max-w-[100px]">{user?.name}</span>
+                <span className="text-[9px] font-black text-[#0b2447] uppercase tracking-widest opacity-70 flex items-center gap-1">
                   {user?.role}
                   <ChevronDown className="h-2.5 w-2.5 transition-transform duration-200" style={{ transform: isProfileDropdownOpen ? 'rotate(180deg)' : 'none' }} />
                 </span>
@@ -608,13 +620,13 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
             </button>
 
             {isProfileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-50">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-50">
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
                     router.push('/profile');
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#1d4ed8] transition-colors flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#0b2447] transition-colors flex items-center gap-2"
                 >
                   <UserIcon className="h-4 w-4 text-slate-400" />
                   My Profile
@@ -642,7 +654,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 const Badge = ({ children, className, variant }: any) => (
   <span className={cn(
     "px-2 py-0.5 rounded text-[10px] font-bold",
-    variant === 'secondary' ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-600",
+    variant === 'secondary' ? "bg-slate-100 text-slate-600" : "bg-[#0b2447]/10 text-[#0b2447]",
     className
   )}>
     {children}

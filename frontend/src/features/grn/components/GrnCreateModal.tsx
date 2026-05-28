@@ -2,7 +2,8 @@
  * GrnCreateModal — pick a PO, then enter line item receive/accept/reject quantities.
  */
 import { useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { getApi } from '../../shared/apiClient';

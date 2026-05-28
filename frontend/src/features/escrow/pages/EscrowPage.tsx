@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Eye, Landmark, Loader2, LockKeyhole, RefreshCw, Receipt, Search, ShieldAlert, X, Filter, LayoutGrid, List } from 'lucide-react';
+import { CheckCircle2, Clock3, Eye, Landmark, LockKeyhole, RefreshCw, Receipt, Search, ShieldAlert, X, Filter, LayoutGrid, List } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -80,7 +81,7 @@ export default function EscrowPage() {
       if (query.trim()) params.set('q', query.trim());
       if (status) params.set('status', status);
       if (fundingFilter) params.set('funding', fundingFilter);
-      const res = await api.fetch(`/api/escrow?${params.toString()}`, { method: 'GET', headers, skipCache: true });
+      const res = await api.fetch(`/api/escrow?${params.toString()}`, { method: 'GET', headers });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message || 'Unable to load escrow accounts');
       setEscrows(body.escrowAccounts || body.data?.escrowAccounts || body.data || []);

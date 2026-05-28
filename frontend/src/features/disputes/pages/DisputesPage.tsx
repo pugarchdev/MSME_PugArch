@@ -8,10 +8,8 @@
  *   - Detail: thread + evidence + status updater (admin)
  */
 import { useState } from 'react';
-import {
-    AlertTriangle, ArrowLeft, CheckCircle2, FileText, Loader2, Plus, RefreshCw,
-    Send, Shield, X, XCircle
-} from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Plus, RefreshCw, Send, Shield, X, XCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';

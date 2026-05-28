@@ -61,6 +61,8 @@ export type CatalogueItemDto = {
   description?: string;
   price?: number | string;
   basePrice?: number | string;
+  taxRate?: number | string;
+  discount?: number | string;
   currency?: string;
   status?: string;
   categoryId?: number | null;

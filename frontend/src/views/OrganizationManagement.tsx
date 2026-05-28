@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '../hooks/useDebounce';
 import {
   Building2,
   Search,
@@ -55,11 +57,10 @@ interface Organization {
 export default function OrganizationManagement() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
   const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
+  const queryClient = useQueryClient();
 
-  const [orgs, setOrgs] = useState<Organization[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 400);
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(10);
@@ -100,6 +101,46 @@ export default function OrganizationManagement() {
     );
   };
 
+  // Modal / Detail States
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  const [isFeatureModalOpen, setIsFeatureModalOpen] = useState(false);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
+
+  // Form states
+  const [blacklistReason, setBlacklistReason] = useState('');
+  const [selectedVerifyStatus, setSelectedVerifyStatus] = useState<Organization['verificationStatus']>('VERIFIED');
+  const [featuresState, setFeaturesState] = useState({
+    products: false,
+    services: false,
+    marketplace: false,
+    catalog: false
+  });
+  const [savingAction, setSavingAction] = useState(false);
+
+  const { data, isLoading: loading, refetch } = useQuery({
+    queryKey: ['organizations', page, pageSize, statusFilter, debouncedSearch],
+    queryFn: async () => {
+      let url = `/api/admin/organizations?skip=${(page - 1) * pageSize}&take=${pageSize}`;
+      if (debouncedSearch) url += `&q=${encodeURIComponent(debouncedSearch)}`;
+      if (statusFilter !== 'all') url += `&status=${encodeURIComponent(statusFilter)}`;
+
+      const res = await api.fetch(url, { ...authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch organizations');
+      const payload = await res.json();
+      return payload?.data || payload || {};
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const orgs = useMemo(() => {
+    const dataOrgs = data?.organizations || data?.records || [];
+    return Array.isArray(dataOrgs) ? dataOrgs : [];
+  }, [data]);
+
+  const total = data?.total ?? orgs.length;
+
   const sortedOrgs = useMemo(() => {
     return [...orgs].sort((a, b) => {
       const direction = sortDirection === 'asc' ? 1 : -1;
@@ -123,55 +164,10 @@ export default function OrganizationManagement() {
     });
   }, [orgs, sortKey, sortDirection]);
 
-  // Modal / Detail States
-  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
-  const [isFeatureModalOpen, setIsFeatureModalOpen] = useState(false);
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
-
-  // Form states
-  const [blacklistReason, setBlacklistReason] = useState('');
-  const [selectedVerifyStatus, setSelectedVerifyStatus] = useState<Organization['verificationStatus']>('VERIFIED');
-  const [featuresState, setFeaturesState] = useState({
-    products: false,
-    services: false,
-    marketplace: false,
-    catalog: false
-  });
-  const [savingAction, setSavingAction] = useState(false);
-
-  const fetchOrgs = async () => {
-    setLoading(true);
-    try {
-      let url = `/api/admin/organizations?skip=${(page - 1) * pageSize}&take=${pageSize}`;
-      if (searchQuery) url += `&q=${encodeURIComponent(searchQuery)}`;
-      if (statusFilter !== 'all') url += `&status=${encodeURIComponent(statusFilter)}`;
-
-      const res = await api.fetch(url, { ...authHeaders });
-      if (res.ok) {
-        const payload = await res.json();
-        const data = payload?.data || payload || {};
-        const organizations = Array.isArray(data.organizations)
-          ? data.organizations
-          : Array.isArray(data.records)
-            ? data.records
-            : [];
-        setOrgs(organizations);
-        setTotal(typeof data.total === "number" ? data.total : organizations.length);
-      } else {
-        toast.error('Failed to load organization records.');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('An error occurred while loading organizations.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Reset page when filter/search changes
   useEffect(() => {
-    fetchOrgs();
-  }, [token, statusFilter, page, pageSize]);
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
 
   const setPageSize = (nextPageSize: number) => {
     setPageSizeState(nextPageSize);
@@ -180,8 +176,6 @@ export default function OrganizationManagement() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setPage(1);
-    fetchOrgs();
   };
 
   const handleOpenFeatureModal = (org: Organization) => {
@@ -202,7 +196,7 @@ export default function OrganizationManagement() {
       const res = await api.put(`/api/admin/organizations/${selectedOrg.id}/features`, featuresState, authHeaders);
       if (res.ok) {
         toast.success('Organization application features updated.');
-        setOrgs(prev => prev.map(o => o.id === selectedOrg.id ? { ...o, features: { ...featuresState } } : o));
+        queryClient.invalidateQueries({ queryKey: ['organizations'] });
         setIsFeatureModalOpen(false);
       } else {
         toast.error('Failed to save organization features.');
@@ -229,10 +223,8 @@ export default function OrganizationManagement() {
         verificationStatus: selectedVerifyStatus
       }, authHeaders);
       if (res.ok) {
-        const payload = await res.json();
-        const updated = payload?.data || payload || {};
         toast.success(`Organization status updated to: ${selectedVerifyStatus}`);
-        setOrgs(prev => prev.map(o => o.id === selectedOrg.id ? { ...o, ...updated } : o));
+        queryClient.invalidateQueries({ queryKey: ['organizations'] });
         setIsVerifyModalOpen(false);
       } else {
         toast.error('Failed to save verification status.');
@@ -260,10 +252,8 @@ export default function OrganizationManagement() {
         blacklistReason: isBlacklisting ? blacklistReason : ''
       }, authHeaders);
       if (res.ok) {
-        const payload = await res.json();
-        const updated = payload?.data || payload || {};
         toast.success(isBlacklisting ? 'Organization access restricted.' : 'Organization access restriction cleared.');
-        setOrgs(prev => prev.map(o => o.id === selectedOrg.id ? { ...o, ...updated } : o));
+        queryClient.invalidateQueries({ queryKey: ['organizations'] });
         setIsBlacklistModalOpen(false);
       } else {
         toast.error('Failed to change restriction status.');
@@ -307,7 +297,7 @@ export default function OrganizationManagement() {
             {/* Standardised list/grid view toggle (dark theme on navy banner) */}
             <ViewModeToggle value={viewMode} onChange={setViewMode} theme="dark" />
             <Button
-              onClick={fetchOrgs}
+              onClick={() => refetch()}
               variant="outline"
               className="border-white/20 hover:border-white/50 hover:text-white text-black hover:bg-white/30 shrink-0 gap-2 text-xs font-bold uppercase tracking-wider h-10"
             >

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -34,13 +35,13 @@ const sectionConfig = {
   procurement: {
     label: 'Procurement & Compliance Desk',
     eyebrow: 'Stakeholder Governance',
-    description: 'Monitor procurement readiness, compliance risk, review queues, and approved buyer-seller capacity from one desk.',
+    description: 'Monitor procurement readiness, risks, reviews, and buyer-seller capacity in one place.',
     icon: ClipboardCheck
   },
   compliance: {
     label: 'Procurement & Compliance Desk',
     eyebrow: 'Stakeholder Governance',
-    description: 'Monitor procurement readiness, compliance risk, review queues, and approved buyer-seller capacity from one desk.',
+    description: 'Monitor procurement readiness, risks, reviews, and buyer-seller capacity in one place.',
     icon: ClipboardCheck
   },
   reports: {
@@ -104,35 +105,13 @@ const getApprovalProgress = (item: any) => {
 };
 
 export default function AdminOperations({ section }: AdminOperationsProps) {
-  const token = localStorage.getItem('token') || '';
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
   const authOptions = { headers: { Authorization: `Bearer ${token}` } };
 
-  // Seed initial state from the in-memory cache so revisits within the session
-  // render instantly (the api client refreshes in the background). The cache
-  // key is the URL + auth header, so this only hits when the same params were
-  // requested before. We use a sensible default page (page=1, pageSize=20,
-  // no filters) which matches the first render below.
-  const initialParams = new URLSearchParams();
-  initialParams.set('skip', '0');
-  initialParams.set('take', '20');
-  const initialOnboardingPath = `/api/admin/onboarding?${initialParams.toString()}`;
-  const initialStatsPath = section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement';
-  const cachedOnboardingRaw = api.peek(initialOnboardingPath, authOptions);
-  const cachedOnboarding = cachedOnboardingRaw?.data ?? cachedOnboardingRaw;
-  const cachedStatsRaw = api.peek(initialStatsPath, authOptions);
-  const cachedStats = cachedStatsRaw?.data ?? cachedStatsRaw;
-
-  const [data, setData] = useState<{ sellers: any[]; buyers: any[] }>(
-    cachedOnboarding && (Array.isArray(cachedOnboarding) || cachedOnboarding.sellers || cachedOnboarding.buyers)
-      ? Array.isArray(cachedOnboarding)
-        ? { sellers: cachedOnboarding.filter((item: any) => item.role === 'seller'), buyers: cachedOnboarding.filter((item: any) => item.role === 'buyer') }
-        : { sellers: cachedOnboarding.sellers || [], buyers: cachedOnboarding.buyers || [] }
-      : { sellers: [], buyers: [] }
-  );
-  const [stats, setStats] = useState<any>(cachedStats || null);
-  const [summary, setSummary] = useState<any>(cachedOnboarding?.summary || null);
-  const [totalRecords, setTotalRecords] = useState(Number(cachedOnboarding?.total ?? 0));
-  const [loading, setLoading] = useState(!cachedOnboarding);
+  const [data, setData] = useState<{ sellers: any[]; buyers: any[] }>({ sellers: [], buyers: [] });
+  const [stats, setStats] = useState<any>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -162,52 +141,58 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
     setPage(1);
   }, [roleFilter, statusFilter]);
 
-  useEffect(() => {
-    const fetchAdminData = async () => {
+  // 1. Fetch onboarding paged list
+  const { data: onboardingData, isLoading: isOnboardingLoading } = useQuery({
+    queryKey: ['adminOnboardingPagedList', section, page, pageSize, debouncedSearchTerm, roleFilter, statusFilter],
+    queryFn: async () => {
       const params = new URLSearchParams();
       params.set('skip', String((page - 1) * pageSize));
       params.set('take', String(pageSize));
       if (debouncedSearchTerm.trim()) params.set('q', debouncedSearchTerm.trim());
       if (roleFilter !== 'all') params.set('role', roleFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      const onboardingPath = `/api/admin/onboarding?${params.toString()}`;
-      const statsPath = section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement';
+      const res = await api.fetch(`/api/admin/onboarding?${params.toString()}`, authOptions);
+      if (!res.ok) throw new Error('Failed to load onboarding records');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
 
-      // Only show the loading spinner when we genuinely have nothing to
-      // render. If the api client already has a cached response for this
-      // exact URL+auth combo, the fetch resolves synchronously below and a
-      // background refresh happens — no spinner needed. Without this the
-      // page flickered "Loading admin records..." every time you navigated
-      // back, even when the cache had data ready.
-      const hasCached = Boolean(api.peek(onboardingPath, authOptions));
-      if (!hasCached) setLoading(true);
+  // 2. Fetch stats (shared stats query key ['adminStats'] if reports section)
+  const statsQueryKey = section === 'reports' ? ['adminStats'] : ['adminStatsProcurement'];
+  const { data: statsData, isLoading: isStatsLoading } = useQuery({
+    queryKey: statsQueryKey,
+    queryFn: async () => {
+      const statsPath = section === 'reports' ? '/api/admin/reports/summary?kpiOnly=true' : '/api/admin/reports/procurement';
+      const res = await api.fetch(statsPath, authOptions);
+      if (!res.ok) throw new Error('Failed to load operations stats');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
 
-      try {
-        const [onboardingRes, statsRes] = await Promise.all([
-          api.fetch(onboardingPath, authOptions),
-          api.fetch(statsPath, authOptions)
-        ]);
-        if (onboardingRes.ok) {
-          const body = await onboardingRes.json();
-          const users = body?.data ?? body;
-          setTotalRecords(Number(users?.total ?? 0));
-          setSummary(users?.summary || null);
-          setData(Array.isArray(users)
-            ? { sellers: users.filter((item: any) => item.role === 'seller'), buyers: users.filter((item: any) => item.role === 'buyer') }
-            : { sellers: users?.sellers || [], buyers: users?.buyers || [] });
-        }
-        if (statsRes.ok) {
-          const body = await statsRes.json();
-          setStats(body?.data ?? body);
-        }
-      } catch (err) {
-        toast.error('Unable to load admin dashboard records');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAdminData();
-  }, [token, section, debouncedSearchTerm, roleFilter, statusFilter, page, pageSize]);
+  const loading = isOnboardingLoading || isStatsLoading;
+
+  useEffect(() => {
+    if (onboardingData) {
+      const users = onboardingData;
+      setTotalRecords(Number(users?.total ?? 0));
+      setSummary(users?.summary || null);
+      setData(Array.isArray(users)
+        ? { sellers: users.filter((item: any) => item.role === 'seller'), buyers: users.filter((item: any) => item.role === 'buyer') }
+        : { sellers: users?.sellers || [], buyers: users?.buyers || [] });
+    }
+  }, [onboardingData]);
+
+  useEffect(() => {
+    if (statsData) {
+      setStats(statsData);
+    }
+  }, [statsData]);
 
   const records = useMemo(() => {
     const rows = [
@@ -412,7 +397,11 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tile.label}</p>
-                <p className="mt-2 text-3xl font-black text-slate-950">{tile.value ?? 0}</p>
+                {isStatsLoading ? (
+                  <div className="h-9 w-16 animate-pulse rounded bg-slate-100 mt-2 mb-1" />
+                ) : (
+                  <p className="mt-2 text-3xl font-black text-slate-950">{tile.value ?? 0}</p>
+                )}
                 <p className="mt-1 text-xs font-semibold text-slate-500">{tile.helper}</p>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-50 text-[#12335f]">
@@ -523,7 +512,23 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-slate-400">Loading admin records...</td></tr>
+                  [1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i} className="animate-pulse border-b border-slate-50">
+                      <td className="px-3 py-4"><div className="h-4 w-8 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4">
+                        <div className="h-4 w-24 bg-slate-100 rounded mb-2" />
+                        <div className="h-3.5 w-32 bg-slate-100 rounded" />
+                      </td>
+                      <td className="px-3 py-4"><div className="h-4 w-12 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4">
+                        <div className="h-4 w-36 bg-slate-100 rounded mb-2" />
+                        <div className="h-3 w-16 bg-slate-100 rounded" />
+                      </td>
+                      <td className="px-3 py-4"><div className="h-6 w-20 bg-slate-100 rounded-full" /></td>
+                      <td className="px-3 py-4"><div className="h-4 w-20 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4"><div className="h-4 w-16 bg-slate-100 rounded" /></td>
+                    </tr>
+                  ))
                 ) : filteredRecords.length === 0 ? (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-slate-400">No records found for selected filters.</td></tr>
                 ) : filteredRecords.map((item, index) => {

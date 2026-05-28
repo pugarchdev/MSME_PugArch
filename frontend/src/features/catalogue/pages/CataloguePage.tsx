@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
@@ -35,6 +36,8 @@ const blankForm = {
   name: '',
   description: '',
   price: '',
+  taxRate: '0.00',
+  discount: '0.00',
   hsnCode: '',
   unitOfMeasure: '',
   itemCondition: '',
@@ -211,6 +214,7 @@ const isProcurementApproved = (status?: string) =>
 
 export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode }) {
   const { user } = useAuth();
+  const router = useRouter();
   const [products, setProducts] = useState<CatalogueRecord[]>([]);
   const [services, setServices] = useState<CatalogueRecord[]>([]);
   const [categoryList, setCategoryList] = useState<CategoryDto[]>([]);
@@ -465,11 +469,12 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const openEditForm = (item: CatalogueRecord) => {
     setEditingItem(item);
     setFormKind(item.itemKind);
-    setShowForm(true);
     setForm({
       name: item.name || '',
       description: item.description || '',
       price: item.price === null || item.price === undefined ? '' : String(item.price),
+      taxRate: item.taxRate === null || item.taxRate === undefined ? '0.00' : String(item.taxRate),
+      discount: item.discount === null || item.discount === undefined ? '0.00' : String(item.discount),
       hsnCode: item.hsnCode || '',
       unitOfMeasure: item.unitOfMeasure || '',
       itemCondition: item.itemCondition || '',
@@ -480,8 +485,16 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       categoryId: String(item.categoryId || '')
     });
     const media = catalogueMedia(item);
-    setUploadedImages(media.filter(file => file.kind === 'image').map(mediaToUploadedAsset));
-    setUploadedDocuments(media.filter(file => file.kind === 'document').map(mediaToUploadedAsset));
+    const mediaToAsset = (m: any) => ({
+      id: m.fileId,
+      fileId: m.fileId,
+      fileAssetId: m.fileId,
+      originalName: m.originalName || m.label,
+      mimeType: m.mimeType
+    });
+    setUploadedImages(media.filter(file => file.kind === 'image').map(mediaToAsset));
+    setUploadedDocuments(media.filter(file => file.kind === 'document').map(mediaToAsset));
+    setShowForm(true);
   };
 
   const openSellerProfile = async (seller: CatalogueRecord['seller']) => {
@@ -574,12 +587,16 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         ...(formKind === 'product'
           ? {
             price: form.price ? Number(form.price) : undefined,
+            taxRate: form.taxRate ? Number(form.taxRate) : 0,
+            discount: form.discount ? Number(form.discount) : 0,
             hsnCode: form.hsnCode.trim() || undefined,
             unitOfMeasure: form.unitOfMeasure.trim() || undefined,
             itemCondition: form.itemCondition.trim() || undefined
           }
           : {
             basePrice: form.basePrice ? Number(form.basePrice) : undefined,
+            taxRate: form.taxRate ? Number(form.taxRate) : 0,
+            discount: form.discount ? Number(form.discount) : 0,
             pricingModel: form.pricingModel,
             serviceArea: form.serviceArea.trim() || undefined
           })
@@ -638,10 +655,10 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           {mode === 'seller' && (
             <>
               <Button disabled={!sellerApproved} onClick={() => openCreateForm('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <PackagePlus className="mr-2 h-4 w-4" />Product
+                <PackagePlus className="mr-2 h-4 w-4" /> Add Product
               </Button>
-              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} variant="outline" className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <Wrench className="mr-2 h-4 w-4" />Service
+              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
+                <Wrench className="mr-2 h-4 w-4" />Add Service
               </Button>
             </>
           )}
@@ -1076,200 +1093,262 @@ function CatalogueForm({
   onChange: (field: keyof typeof blankForm, value: string) => void;
   onPreviewDocument: (preview: DocumentPreview) => void;
 }) {
+  const rawPrice = kind === 'product' ? toNumber(form.price) : toNumber(form.basePrice);
+  const taxPercent = toNumber(form.taxRate);
+  const discountPercent = toNumber(form.discount);
+
+  const subtotal = rawPrice;
+  const discountAmount = subtotal * (discountPercent / 100);
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = taxableAmount * (taxPercent / 100);
+  const finalTotal = taxableAmount + taxAmount;
+
   return (
-    <Card className="border-emerald-100 bg-emerald-50/15 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/10">
-      <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 pb-3">
-        <CardTitle className="text-sm font-black text-neutral-900 font-sans tracking-tight">
-          {isEdit ? `Edit ${kind === 'product' ? 'Product' : 'Service'}` : `Add New ${kind === 'product' ? 'Product' : 'Service'}`}
-        </CardTitle>
-        <Badge className={kind === 'product' ? 'bg-[#059669] text-white hover:bg-[#059669]' : 'bg-emerald-600 text-white hover:bg-emerald-600'}>
-          {kind}
-        </Badge>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-2">
-          <Input label={`${kind === 'product' ? 'Product' : 'Service'} Name`} value={form.name} onChange={event => onChange('name', event.target.value)} required placeholder="e.g. Structural Steel Beams, IT Advisory Services" className="bg-white" />
-          <Select label="Visibility Status" value={form.status} onChange={event => onChange('status', event.target.value)} className="bg-white">
-            <option value="ACTIVE">Active</option>
-            <option value="DRAFT">Draft</option>
-            <option value="INACTIVE">Inactive</option>
-          </Select>
-          <Select label="Category" value={form.categoryId} onChange={event => onChange('categoryId', event.target.value)} className="bg-white">
-            <option value="">Select Category</option>
-            {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
-          </Select>
-          {kind === 'product' ? (
-            <>
-              <Input label="Price (INR)" type="number" min="0" value={form.price} onChange={event => onChange('price', event.target.value)} placeholder="0.00" className="bg-white" />
-              <Select label="Unit Of Measure" value={form.unitOfMeasure} onChange={event => onChange('unitOfMeasure', event.target.value)} className="bg-white">
-                <option value="">Select Unit</option>
-                {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-              </Select>
-              <Select label="Item Condition" value={form.itemCondition} onChange={event => onChange('itemCondition', event.target.value)} className="bg-white">
-                <option value="">Select Condition</option>
-                {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </Select>
-              <Input label="HSN Code" value={form.hsnCode} onChange={event => onChange('hsnCode', event.target.value)} placeholder="8-digit HSN code" className="bg-white" />
-            </>
-          ) : (
-            <>
-              <Input label="Base Price (INR)" type="number" min="0" value={form.basePrice} onChange={event => onChange('basePrice', event.target.value)} placeholder="0.00" className="bg-white" />
-              <Select label="Pricing Model" value={form.pricingModel} onChange={event => onChange('pricingModel', event.target.value)} className="bg-white">
-                <option value="FIXED">Fixed</option>
-                <option value="HOURLY">Hourly</option>
-                <option value="DAILY">Daily</option>
-                <option value="MONTHLY">Monthly</option>
-                <option value="PER_PROJECT">Per Project</option>
-                <option value="CUSTOM">Custom</option>
-              </Select>
-              <Input label="Service Area" value={form.serviceArea} onChange={event => onChange('serviceArea', event.target.value)} placeholder="e.g. Delhi NCR, Pan-India" className="bg-white" />
-            </>
-          )}
-          <div className="lg:col-span-2">
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
-            <textarea value={form.description} onChange={event => onChange('description', event.target.value)} rows={3} placeholder="Provide descriptive details, technical specifications, and delivery terms..." className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20" />
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:p-4 animate-in fade-in duration-200">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-2xl sm:border sm:border-slate-200">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm', kind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
+              {kind === 'product' ? <PackageSearch className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#059669]">
+                {isEdit ? 'Edit Item' : 'New Listing'}
+              </p>
+              <h2 className="truncate text-base font-black leading-tight text-neutral-950 sm:text-lg">
+                {isEdit ? `Modify ${kind === 'product' ? 'Product' : 'Service'}` : `Add New ${kind === 'product' ? 'Product' : 'Service'}`}
+              </h2>
+            </div>
           </div>
+          <button onClick={onCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 border-t border-slate-250/80 pt-3">
-            {/* Image upload section */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Product/Service Images (Optional)
-              </label>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-2">
+            <Input label={`${kind === 'product' ? 'Product' : 'Service'} Name`} value={form.name} onChange={event => onChange('name', event.target.value)} required placeholder="e.g. Structural Steel Beams, IT Advisory Services" className="bg-white" />
+            <Select label="Visibility Status" value={form.status} onChange={event => onChange('status', event.target.value)} className="bg-white">
+              <option value="ACTIVE">Active</option>
+              <option value="DRAFT">Draft</option>
+              <option value="INACTIVE">Inactive</option>
+            </Select>
+            <Select label="Category" value={form.categoryId} onChange={event => onChange('categoryId', event.target.value)} className="bg-white">
+              <option value="">Select Category</option>
+              {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
+            </Select>
+            {kind === 'product' ? (
+              <>
+                <Input label="Price (INR)" type="number" min="0" value={form.price} onChange={event => onChange('price', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Tax Rate (%)" type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={event => onChange('taxRate', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Discount (%)" type="number" min="0" max="100" step="0.01" value={form.discount} onChange={event => onChange('discount', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Select label="Unit Of Measure" value={form.unitOfMeasure} onChange={event => onChange('unitOfMeasure', event.target.value)} className="bg-white">
+                  <option value="">Select Unit</option>
+                  {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                </Select>
+                <Select label="Item Condition" value={form.itemCondition} onChange={event => onChange('itemCondition', event.target.value)} className="bg-white">
+                  <option value="">Select Condition</option>
+                  {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </Select>
+                <Input label="HSN Code" value={form.hsnCode} onChange={event => onChange('hsnCode', event.target.value)} placeholder="8-digit HSN code" className="bg-white" />
+              </>
+            ) : (
+              <>
+                <Input label="Base Price (INR)" type="number" min="0" value={form.basePrice} onChange={event => onChange('basePrice', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Tax Rate (%)" type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={event => onChange('taxRate', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Discount (%)" type="number" min="0" max="100" step="0.01" value={form.discount} onChange={event => onChange('discount', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Select label="Pricing Model" value={form.pricingModel} onChange={event => onChange('pricingModel', event.target.value)} className="bg-white">
+                  <option value="FIXED">Fixed</option>
+                  <option value="HOURLY">Hourly</option>
+                  <option value="DAILY">Daily</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="PER_PROJECT">Per Project</option>
+                  <option value="CUSTOM">Custom</option>
+                </Select>
+                <Input label="Service Area" value={form.serviceArea} onChange={event => onChange('serviceArea', event.target.value)} placeholder="e.g. Delhi NCR, Pan-India" className="bg-white" />
+              </>
+            )}
+            <div className="lg:col-span-2">
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
+              <textarea value={form.description} onChange={event => onChange('description', event.target.value)} rows={3} placeholder="Provide descriptive details, technical specifications, and delivery terms..." className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20" />
+            </div>
 
-              {uploadedImages.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {uploadedImages.map(img => (
-                    <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
-                      <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              onPreviewDocument(await getFileAssetPreview({
-                                id: img.id,
-                                fileId: img.id,
-                                url: img.localUrl || getCatalogueImageUrl(img.id),
-                                originalName: img.originalName,
-                                mimeType: img.mimeType || 'image/png'
-                              }, img.originalName));
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : 'Unable to view image');
-                            }
-                          }}
-                          className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
-                          title="View image"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFile(img.id, 'image')}
-                          className="p-1.5 rounded bg-red-955 hover:bg-red-900 transition-colors cursor-pointer"
-                          title="Delete image"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Real-time Quotation Total Preview */}
+            <div className="lg:col-span-2 rounded-xl border border-emerald-100 bg-emerald-50/10 p-4 font-sans">
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 mb-3 flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                Quotation Total Summary
+              </h4>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Subtotal</p>
+                  <p className="text-sm font-black text-slate-900">{formatCurrency(subtotal)}</p>
                 </div>
-              )}
-
-              <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
-                <Upload className="h-5 w-5 text-slate-400 mb-1" />
-                <span className="text-[10px] font-bold text-slate-500">Click to Upload Image</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={uploading}
-                  onChange={(e) => onFileUpload(e, 'image')}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Document upload section */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Specification Documents (Optional)
-              </label>
-
-              {uploadedDocuments.length > 0 && (
-                <div className="space-y-1.5 mb-2">
-                  {uploadedDocuments.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <FileText className="h-3.5 w-3.5 text-[#059669] shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              onPreviewDocument(await getFileAssetPreview({
-                                id: doc.id,
-                                fileId: doc.id,
-                                url: doc.localUrl || getCatalogueImageUrl(doc.id),
-                                originalName: doc.originalName,
-                                mimeType: doc.mimeType
-                              }, doc.originalName));
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : 'Unable to view document');
-                            }
-                          }}
-                          className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
-                          title="View document"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFile(doc.id, 'document')}
-                          className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Discount ({discountPercent}%)</p>
+                  <p className="text-sm font-black text-red-650">-{formatCurrency(discountAmount)}</p>
                 </div>
-              )}
-
-              <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
-                <FileUp className="h-5 w-5 text-slate-400 mb-1" />
-                <span className="text-[10px] font-bold text-slate-500">Click to Upload Document</span>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                  multiple
-                  disabled={uploading}
-                  onChange={(e) => onFileUpload(e, 'document')}
-                  className="hidden"
-                />
-              </label>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Taxable Amt</p>
+                  <p className="text-sm font-black text-slate-900">{formatCurrency(taxableAmount)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tax ({taxPercent}%)</p>
+                  <p className="text-sm font-black text-slate-950">+{formatCurrency(taxAmount)}</p>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Total</p>
+                  <p className="text-[10px] font-semibold text-slate-500">Estimated cost inclusive of tax & discount</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-black text-emerald-700">{formatCurrency(finalTotal)}</p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {uploading && (
-            <div className="lg:col-span-2 flex items-center justify-center gap-2 py-2 text-xs text-[#059669] font-bold bg-emerald-50 rounded-lg">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Uploading catalogue assets...</span>
+            <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 border-t border-slate-250/80 pt-3">
+              {/* Image upload section */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Product/Service Images (Optional)
+                </label>
+
+                {uploadedImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {uploadedImages.map(img => (
+                      <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
+                        <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                onPreviewDocument(await getFileAssetPreview({
+                                  id: img.id,
+                                  fileId: img.id,
+                                  url: img.localUrl || getCatalogueImageUrl(img.id),
+                                  originalName: img.originalName,
+                                  mimeType: img.mimeType || 'image/png'
+                                }, img.originalName));
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Unable to view image');
+                              }
+                            }}
+                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                            title="View image"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveFile(img.id, 'image')}
+                            className="p-1.5 rounded bg-red-955 hover:bg-red-900 transition-colors cursor-pointer"
+                            title="Delete image"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
+                  <Upload className="h-5 w-5 text-slate-400 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={uploading}
+                    onChange={(e) => onFileUpload(e, 'image')}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Document upload section */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Specification Documents (Optional)
+                </label>
+
+                {uploadedDocuments.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {uploadedDocuments.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileText className="h-3.5 w-3.5 text-[#059669] shrink-0" />
+                          <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                onPreviewDocument(await getFileAssetPreview({
+                                  id: doc.id,
+                                  fileId: doc.id,
+                                  url: doc.localUrl || getCatalogueImageUrl(doc.id),
+                                  originalName: doc.originalName,
+                                  mimeType: doc.mimeType
+                                }, doc.originalName));
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Unable to view document');
+                              }
+                            }}
+                            className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
+                            title="View document"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveFile(doc.id, 'document')}
+                            className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
+                  <FileUp className="h-5 w-5 text-slate-400 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Document</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                    multiple
+                    disabled={uploading}
+                    onChange={(e) => onFileUpload(e, 'document')}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
-          )}
 
-          <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 lg:col-span-2">
-            <Button type="button" variant="outline" onClick={onCancel} className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">Cancel</Button>
-            <Button type="submit" disabled={saving || uploading} className={cn("h-9 rounded-lg text-xs font-black uppercase tracking-wider text-white", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />{saving ? 'Saving...' : isEdit ? `Save Changes` : `Create ${kind}`}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            {uploading && (
+              <div className="lg:col-span-2 flex items-center justify-center gap-2 py-2 text-xs text-[#059669] font-bold bg-emerald-50 rounded-lg">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Uploading catalogue assets...</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 lg:col-span-2">
+              <Button type="button" variant="outline" onClick={onCancel} className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">Cancel</Button>
+              <Button type="submit" disabled={saving || uploading} className={cn("h-9 rounded-lg text-xs font-black uppercase tracking-wider text-white", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />{saving ? 'Saving...' : isEdit ? `Save Changes` : `Create ${kind}`}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1832,6 +1911,53 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
                   {item.description || 'No description provided.'}
                 </p>
               </section>
+
+              {/* Pricing & Taxation Breakdown */}
+              {(() => {
+                const taxPercent = toNumber(item.taxRate || 0);
+                const discountPercent = toNumber(item.discount || 0);
+                const subtotal = value;
+                const discountAmount = subtotal * (discountPercent / 100);
+                const taxableAmount = Math.max(0, subtotal - discountAmount);
+                const taxAmount = taxableAmount * (taxPercent / 100);
+                const finalTotal = taxableAmount + taxAmount;
+
+                return (
+                  <section className="rounded-xl border border-emerald-100 bg-emerald-50/10 p-4 font-sans">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800 mb-3 flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                      Pricing & Quotation Breakdown
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Base Price</p>
+                        <p className="text-sm font-black text-slate-900">{hasPrice ? formatCurrency(subtotal) : 'Price on Request'}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-550">Discount ({discountPercent}%)</p>
+                        <p className="text-sm font-black text-red-650">-{formatCurrency(discountAmount)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Taxable Amt</p>
+                        <p className="text-sm font-black text-slate-900">{formatCurrency(taxableAmount)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Tax ({taxPercent}%)</p>
+                        <p className="text-sm font-black text-slate-950">+{formatCurrency(taxAmount)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Quotation Total</p>
+                        <p className="text-[9px] font-semibold text-slate-500">Estimated cost inclusive of tax & discount</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-emerald-700">{hasPrice ? formatCurrency(finalTotal) : 'Price on Request'}</p>
+                      </div>
+                    </div>
+                  </section>
+                );
+              })()}
 
               <section className="grid grid-cols-2 gap-2">
                 {metaTiles.map(tile => (

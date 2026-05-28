@@ -21,6 +21,7 @@ const AdminOnboarding = lazy(() => import('./views/AdminOnboarding'));
 const AdminOperations = lazy(() => import('./views/AdminOperations'));
 const SellerRegistrationFlow = lazy(() => import('./views/SellerRegistrationFlow'));
 const BuyerRegistrationFlow = lazy(() => import('./views/BuyerRegistrationFlow'));
+const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
 const Tenders = lazy(() => import('./views/Tenders'));
 const Vendors = lazy(() => import('./views/Vendors'));
@@ -36,6 +37,7 @@ const CreateQuotation = lazy(() => import('./views/CreateQuotation'));
 const SellerSettings = lazy(() => import('./views/SellerSettings'));
 const Profile = lazy(() => import('./views/Profile'));
 const CataloguePage = lazy(() => import('./features/catalogue/pages/CataloguePage'));
+const CatalogueFormPage = lazy(() => import('./features/catalogue/pages/CatalogueFormPage'));
 const GenericFeaturePage = lazy(() => import('./features/shared/GenericFeaturePage'));
 const PaymentHistoryPage = lazy(() => import('./features/payments/pages/PaymentHistoryPage'));
 const EscrowPage = lazy(() => import('./features/escrow/pages/EscrowPage'));
@@ -144,7 +146,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/seller/register', '/buyer/register', '/admin/register'].includes(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register'].includes(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -195,6 +197,7 @@ export default function App() {
     if (pathname === '/') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Home />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Login />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <ForgotPassword />;
+    if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
     if (pathname === '/admin/register') return <Register type="admin" />;
@@ -202,10 +205,10 @@ export default function App() {
     if (pathname === '/dashboard') return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
-    if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="New Product" eyebrow="Seller Marketplace" description="Create products through the seller product API." endpoint="/api/seller/products" />;
-    if (/^\/seller\/products\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="Edit Product" eyebrow="Seller Marketplace" description="Review and update seller product details." endpoint="/api/seller/products" />;
-    if (pathname === '/seller/services/new' && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="New Service" eyebrow="Seller Marketplace" description="Create services through the seller service API." endpoint="/api/seller/services" />;
-    if (/^\/seller\/services\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <GenericFeaturePage title="Edit Service" eyebrow="Seller Marketplace" description="Review and update seller service details." endpoint="/api/seller/services" />;
+    if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
+    if (/^\/seller\/products\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
+    if (pathname === '/seller/services/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
+    if (/^\/seller\/services\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
     if (pathname === '/seller/orders' && roleOk(user.role, ['seller'])) return <PurchaseOrders />;
     if (pathname === '/seller/delivery' && roleOk(user.role, ['seller'])) return <ParcelTracking />;
     if (pathname === '/seller/delivery-management' && roleOk(user.role, ['seller'])) return <SellerDeliveryManagementPage />;
@@ -301,7 +304,7 @@ export default function App() {
     return <Redirect to="/dashboard" />;
   };
 
-  const fixedAuthRoutes = ['/', '/login', '/forgot-password', '/seller/register', '/buyer/register', '/admin/register'];
+  const fixedAuthRoutes = ['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register'];
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname);
 
   return (

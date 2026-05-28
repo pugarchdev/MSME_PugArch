@@ -736,5 +736,176 @@ export const authController = {
     } catch (err: any) {
       handleSecureRouteError(res, err);
     }
+  },
+
+  switchRole: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = Number(req.user?.id);
+      const { role } = req.body;
+      if (role !== 'buyer' && role !== 'seller') {
+        return res.status(400).json({ message: 'Invalid role request. Must be buyer or seller.' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { buyerProfile: true, sellerProfile: true }
+      });
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      // Must have both profiles (or isDualRole true) to switch
+      if (!user.isDualRole && (!user.buyerProfile || !user.sellerProfile)) {
+        return res.status(400).json({ message: 'Dual-role profile has not been activated yet.' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { role: role as Role }
+      });
+
+      const tokens = issueAuthResponse(updatedUser);
+      await auditLog({
+        actorUserId: userId,
+        actorRole: user.role,
+        action: 'auth.role_switch',
+        entityType: 'user',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { fromRole: user.role, toRole: role }
+      });
+
+      res.json({
+        success: true,
+        ...tokens,
+        user: toSafeUser(updatedUser)
+      });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  activateDualRole: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = Number(req.user?.id);
+      const { roleToActivate, profileData } = req.body;
+
+      if (roleToActivate !== 'buyer' && roleToActivate !== 'seller') {
+        return res.status(400).json({ message: 'Invalid role activation request.' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { buyerProfile: true, sellerProfile: true }
+      });
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      const mobile = profileData.mobile || user.mobile || '';
+
+      if (roleToActivate === 'buyer') {
+        if (user.buyerProfile) {
+          return res.status(400).json({ message: 'Buyer profile is already active.' });
+        }
+
+        // Validate or check mobile uniqueness if mobile is provided and changed
+        if (mobile && mobile !== user.mobile) {
+          const existingMobile = await prisma.user.findFirst({
+            where: { mobile: String(mobile).trim(), id: { not: userId } },
+            select: { id: true }
+          });
+          if (existingMobile) return res.status(409).json({ message: 'Mobile number already in use by another account.' });
+        }
+
+        // Create Buyer Profile record
+        await prisma.buyerProfile.create({
+          data: {
+            userId: user.id,
+            organizationId: user.organizationId,
+            organizationName: profileData.organizationName || profileData.businessName || user.name,
+            businessType: profileData.businessType || 'Private Limited Company',
+            industry: profileData.industry || 'Other',
+            cin: profileData.cin || null,
+            pan: profileData.pan || null,
+            gst: profileData.gst || null,
+            website: profileData.website || null,
+            state: profileData.state || null,
+            district: profileData.district || null,
+            officeZoneName: profileData.officeZoneName || null,
+            representativeName: profileData.representativeName || user.name,
+            email: profileData.email || user.email,
+            mobile: mobile,
+            aadhaarVerified: profileData.aadhaarVerified ?? false,
+            documents: profileData.documents || {},
+            termsAccepted: true,
+            declarationAccepted: true
+          }
+        });
+
+      } else { // seller
+        if (user.sellerProfile) {
+          return res.status(400).json({ message: 'Seller profile is already active.' });
+        }
+
+        const pan = profileData.pan ? String(profileData.pan).toUpperCase().trim() : '';
+        if (!pan) {
+          return res.status(400).json({ message: 'Business PAN is required to activate seller profile.' });
+        }
+
+        // Check PAN uniqueness
+        const duplicatePan = await prisma.sellerProfile.findFirst({
+          where: {
+            userId: { not: userId },
+            pan: pan
+          },
+          select: { userId: true }
+        });
+        if (duplicatePan) {
+          return res.status(409).json({ message: 'This PAN is already associated with another seller account.' });
+        }
+
+        // Create Seller Profile record
+        await prisma.sellerProfile.create({
+          data: {
+            userId: user.id,
+            organizationId: user.organizationId,
+            pan: pan,
+            nameAsInPan: profileData.nameAsInPan || user.name,
+            businessName: profileData.businessName || user.name,
+            organizationType: profileData.organizationType || 'Proprietorship',
+            mobile: mobile,
+            termsAccepted: true,
+            documents: profileData.documents || {}
+          }
+        });
+      }
+
+      // Mark the user as dual role and switch their active role to the newly activated one
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          isDualRole: true,
+          role: roleToActivate as Role
+        }
+      });
+
+      const tokens = issueAuthResponse(updatedUser);
+      await auditLog({
+        actorUserId: userId,
+        actorRole: user.role,
+        action: 'auth.activate_dual_role',
+        entityType: 'user',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { activatedRole: roleToActivate }
+      });
+
+      res.json({
+        success: true,
+        ...tokens,
+        user: toSafeUser(updatedUser)
+      });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
   }
 };

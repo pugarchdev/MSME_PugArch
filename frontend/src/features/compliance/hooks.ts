@@ -15,7 +15,11 @@ export const useComplianceRules = (
 ) =>
     useQuery({
         queryKey: [...KEY_BASE, 'list', params] as const,
-        queryFn: () => fetchComplianceRules(params)
+        queryFn: () => fetchComplianceRules(params),
+        // Keep showing the previous filter's results while the next fetch
+        // is in flight. Without this, every KPI tile click clears the table
+        // and shows a skeleton, which feels like a full reload.
+        placeholderData: previous => previous
     });
 
 export const useRuleViolations = (id: number | undefined, page = 1, pageSize = 10) =>

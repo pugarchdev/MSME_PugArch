@@ -2523,9 +2523,13 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
         select: { userId: true }
       });
       if (duplicatePan) {
-        await flagDuplicateSellerIdentifiers({ userId, pan: panToUse });
-        await markUserForManualReview(userId);
-        return res.status(409).json({ message: 'PAN is already associated with another seller account. Application moved to compliance review.' });
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, pan: panToUse });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'PAN is already associated with another seller account. Application moved to compliance review.' });
+        }
       }
     }
 
@@ -2610,9 +2614,13 @@ app.post('/api/seller/profile/offices', authenticate, authorize('seller'), async
         select: { sellerProfile: { select: { userId: true } } }
       });
       if (duplicateGst) {
-        await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
-        await markUserForManualReview(userId);
-        return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        }
       }
     }
 

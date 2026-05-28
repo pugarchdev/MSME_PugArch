@@ -309,6 +309,7 @@ model Organization {
   procurementApprovals         ProcurementApproval[]
   grns                         GoodsReceiptNote[]
 
+  @@index([organizationName])
   @@index([gstin])
   @@index([panNumber])
   @@index([udyamNumber])
@@ -478,6 +479,8 @@ model Product {
   modelNumber        String?
   unitOfMeasure      String?
   price              Decimal?               @db.Decimal(18, 2)
+  taxRate            Decimal?               @db.Decimal(5, 2) @default(0.00)
+  discount           Decimal?               @db.Decimal(5, 2) @default(0.00)
   currency           String                 @default("INR")
   status             ProductStatus          @default(DRAFT)
   isMsmeMade         Boolean                @default(false)
@@ -541,6 +544,8 @@ model Service {
   description    String?
   pricingModel   PricingModel    @default(CUSTOM)
   basePrice      Decimal?        @db.Decimal(18, 2)
+  taxRate        Decimal?        @db.Decimal(5, 2) @default(0.00)
+  discount       Decimal?        @db.Decimal(5, 2) @default(0.00)
   currency       String          @default("INR")
   serviceArea    String?
   status         ProductStatus   @default(DRAFT)

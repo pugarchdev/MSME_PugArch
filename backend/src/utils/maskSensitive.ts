@@ -12,6 +12,19 @@ const sensitiveKeys = new Set([
   'ifsc'
 ]);
 
+// Some JSON columns legitimately use property names that collide with
+// PII regexes (e.g. the per-section approval map stored on User.sectionStatus
+// has a `pan` key whose value is a workflow status like `"approved"` /
+// `"rejected"` — not an actual PAN number). Walking those subtrees with the
+// masker would corrupt the values (`"approved"` -> `"****OVED"`), which then
+// breaks downstream equality checks like `sectionStatus.pan === "approved"`
+// on the admin scrutiny screen. Treat the whole subtree as opaque so the
+// admin UI sees the persisted status verbatim.
+const passthroughKeys = new Set([
+  'sectionStatus',
+  'sectionRejectionReasons'
+]);
+
 export const maskValue = (value: unknown, visibleSuffix = 4) => {
   const text = String(value ?? '');
   if (text.length <= visibleSuffix) return '*'.repeat(text.length);
@@ -45,7 +58,9 @@ export const maskSensitive = <T>(input: T): T => {
   if (Array.isArray(input)) return input.map(item => maskSensitive(item)) as T;
 
   return Object.entries(input as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    if (/^pan$|panNumber/i.test(key)) {
+    if (passthroughKeys.has(key)) {
+      acc[key] = value;
+    } else if (/^pan$|panNumber/i.test(key)) {
       acc[key] = value ? maskPAN(value) : value;
     } else if (/^gst$|gstNumber|gstin/i.test(key)) {
       acc[key] = value ? maskGST(value) : value;

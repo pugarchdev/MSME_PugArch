@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../lib/api";
 import { formatDate, formatDateTime } from "../features/shared/format";
 import { Button } from "../components/ui/button";
@@ -92,16 +94,19 @@ const getSellerOnboardingDocuments = (profile: any) => {
 };
 
 export default function AdminOnboarding() {
+  const queryClient = useQueryClient();
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
+  const authHeaders = { Authorization: `Bearer ${token}` };
   const authOptions = {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: { Authorization: `Bearer ${token}` },
   };
-  const cachedRaw = api.peek("/api/admin/onboarding", authOptions);
-  const cachedData = cachedRaw?.data ?? cachedRaw;
-  const [sellers, setSellers] = useState<any[]>(cachedData?.sellers || []);
-  const [buyers, setBuyers] = useState<any[]>(cachedData?.buyers || []);
+
+  const [sellers, setSellers] = useState<any[]>([]);
+  const [buyers, setBuyers] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("sellers");
-  const [isLoading, setIsLoading] = useState(!cachedData);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [progressFilter, setProgressFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
@@ -125,6 +130,41 @@ export default function AdminOnboarding() {
   // View / Toolbar UI state
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // 1. Fetch KPI stats (shares key and cache with dashboard/MISReports)
+  const { data: adminStats, isLoading: isAdminStatsLoading } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/admin/reports/summary?kpiOnly=true', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  // 2. Fetch registrations list query
+  const { data: onboardingData, isLoading: isOnboardingLoading } = useQuery({
+    queryKey: ['adminOnboardingList'],
+    queryFn: async () => {
+      const res = await api.fetch("/api/admin/onboarding", authOptions);
+      if (!res.ok) throw new Error("Failed to load onboarding records");
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const isLoading = isOnboardingLoading;
+
+  useEffect(() => {
+    if (onboardingData) {
+      setSellers(Array.isArray(onboardingData.sellers) ? onboardingData.sellers : []);
+      setBuyers(Array.isArray(onboardingData.buyers) ? onboardingData.buyers : []);
+    }
+  }, [onboardingData]);
 
   /**
    * Open the scrutiny modal with the lightweight list row for instant feedback,
@@ -153,25 +193,6 @@ export default function AdminOnboarding() {
       // Modal already shows the lightweight row; silent failure is fine.
     }
   };
-
-  const fetchData = async () => {
-    if (!cachedData) setIsLoading(true);
-    try {
-      const res = await api.fetch("/api/admin/onboarding", authOptions);
-      const payload = await res.json();
-      const data = payload?.data || payload || {};
-      setSellers(Array.isArray(data.sellers) ? data.sellers : []);
-      setBuyers(Array.isArray(data.buyers) ? data.buyers : []);
-    } catch (err) {
-      toast.error("Failed to load registrations");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -279,7 +300,8 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`Complete application ${status}`);
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
+        queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
         toast.error("Failed to update status");
         // Revert to original state
@@ -409,7 +431,8 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`${section} status updated to ${status}`);
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
+        queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
         const errBody = await res.json().catch(() => ({} as any));
         toast.error(errBody?.message || errBody?.error || "Failed to update section status");
@@ -619,7 +642,7 @@ export default function AdminOnboarding() {
     );
 
   const filterData = (data: any[]) => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
     return data
       .filter((item) => {
         const name = (item.name || "").toLowerCase();
@@ -943,9 +966,13 @@ export default function AdminOnboarding() {
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                             {stat.label}
                           </p>
-                          <p className="text-2xl font-black text-slate-900 tracking-tighter">
-                            {stat.value}
-                          </p>
+                          {isLoading ? (
+                            <div className="h-8 w-16 animate-pulse rounded bg-slate-100 mt-1 mb-1" />
+                          ) : (
+                            <p className="text-2xl font-black text-slate-900 tracking-tighter">
+                              {stat.value}
+                            </p>
+                          )}
                           <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                             {stat.sub}
                           </p>
@@ -1165,8 +1192,17 @@ export default function AdminOnboarding() {
                 </div>
 
                 {isLoading ? (
-                  <div className="py-20 text-center text-slate-400 animate-pulse">
-                    Scanning database registrations...
+                  <div className="p-6 space-y-4">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex items-center justify-between py-4 border-b border-slate-50 animate-pulse">
+                        <div className="h-4 w-8 bg-slate-100 rounded" />
+                        <div className="h-4 w-1/4 bg-slate-100 rounded" />
+                        <div className="h-4 w-1/4 bg-slate-100 rounded" />
+                        <div className="h-4.5 w-20 bg-slate-100 rounded" />
+                        <div className="h-4 w-16 bg-slate-100 rounded" />
+                        <div className="h-4 w-12 bg-slate-100 rounded" />
+                      </div>
+                    ))}
                   </div>
                 ) : currentData.length === 0 ? (
                   <div className="py-20 text-center text-slate-400 border-2 border-dashed border-slate-100 m-6 rounded-2xl">

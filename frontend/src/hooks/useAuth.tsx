@@ -7,6 +7,7 @@ interface User {
   email: string;
   mobile?: string;
   role: 'seller' | 'buyer' | 'admin';
+  isDualRole?: boolean;
   registrationStatus?: 'incomplete' | 'completed';
   onboardingStatus: 'pending' | 'pending_validation' | 'under_compliance_review' | 'resubmission_required' | 'approved_for_procurement' | 'approved' | 'rejected';
   status?: string;

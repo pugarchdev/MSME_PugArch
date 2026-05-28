@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { api, unwrapApiData } from '../lib/api';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,82 +9,65 @@ import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, Shie
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import RoleAwareActionCards from '../features/dashboard/components/RoleAwareActionCards';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 
 
 export default function Dashboard() {
   const { user, token, logout, refreshUser } = useAuth();
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const cachedMe = token ? api.peek('/api/auth/me', { headers: authHeaders }) : null;
-  const cachedNotifications = token ? api.peek('/api/notifications', { headers: authHeaders }) : null;
-  const cachedAdminStats = token ? api.peek('/api/admin/reports/summary', { headers: authHeaders }) : null;
-  const [profile, setProfile] = useState<any>(cachedMe?.profile || null);
-  const [isLoading, setIsLoading] = useState(!cachedMe);
-  const [adminStats, setAdminStats] = useState<any>(cachedAdminStats || null);
-  const cachedNotificationItems = unwrapApiData<any[]>(cachedNotifications);
-  const [notifications, setNotifications] = useState<any[]>(Array.isArray(cachedNotificationItems) ? cachedNotificationItems : []);
+  const queryClient = useQueryClient();
   const router = useRouter();
 
   const [gstInput, setGstInput] = useState('');
   const [isSubmittingGst, setIsSubmittingGst] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchData = useCallback(async () => {
-    if (!token) {
-      setIsLoading(false);
-      router.replace('/');
-      return;
-    }
-
-    const headers = { Authorization: `Bearer ${token}` };
-
-    // Fire all three requests in parallel rather than sequentially. The
-    // sequential version was costing 3x the latency of the slowest one - on a
-    // cold Neon serverless DB that's the difference between 9s and 3s.
-    const profilePromise = api.fetch('/api/auth/me', { headers })
-      .then(async res => ({ res, data: res.ok ? await res.json() : null }))
-      .catch(() => ({ res: null as any, data: null as any }));
-
-    const notifPromise = api.fetch('/api/notifications', { headers })
-      .then(async res => (res.ok ? unwrapApiData<any[]>(await res.json()) : null))
-      .catch(() => null);
-
-    // Admin stats are only useful for admins. We don't know the role until
-    // /api/auth/me returns, so we kick off this request only after we have
-    // confirmation. To keep latency low we still don't block the dashboard
-    // render on it - it fills in when ready.
-    const adminStatsPromise = (user?.role === 'admin')
-      ? api.fetch('/api/admin/reports/summary', { headers })
-        .then(async res => (res.ok ? await res.json() : null))
-        .catch(() => null)
-      : Promise.resolve(null);
-
-    try {
-      const [{ res: profileRes, data: profileData }, notifItems, statsData] = await Promise.all([
-        profilePromise,
-        notifPromise,
-        adminStatsPromise
-      ]);
-
-      if (profileRes && profileRes.status === 401) {
-        logout();
-        router.replace('/');
-        return;
+  // 1. Profile Query
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/auth/me', { headers: authHeaders });
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout();
+          router.replace('/');
+        }
+        throw new Error('Failed to fetch profile');
       }
-      if (profileData) setProfile(profileData.profile);
-      if (Array.isArray(notifItems)) setNotifications(notifItems);
-      if (statsData) setAdminStats(statsData?.data ?? statsData);
-    } catch {
-      // Errors on individual fetches are already handled above; this only
-      // catches Promise.all's own rare failure modes.
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token, router, logout, user?.role]);
+      return res.json();
+    },
+    enabled: !!token,
+    staleTime: 10 * 60_000,
+  });
+  const profile = profileData?.profile || null;
 
-  const hasGst = user?.role === 'seller'
-    ? (user?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.offices?.some((o: any) => o.gstNumber))
-    : (!!user?.buyerProfile?.gst || !!profile?.buyerProfile?.gst || !!profile?.gst);
+  // 2. Notifications Query
+  const { data: notificationsData, isLoading: isNotifLoading } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/notifications', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch notifications');
+      const json = await res.json();
+      return unwrapApiData<any[]>(json) || [];
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+  const notifications = notificationsData || [];
+
+  // 3. Admin Stats Query (KPI Cards)
+  const { data: adminStats, isLoading: isAdminStatsLoading } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/admin/reports/summary?kpiOnly=true', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token && user?.role === 'admin',
+    staleTime: 5 * 60_000,
+  });
 
   const handleGstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +92,7 @@ export default function Dashboard() {
       }
       toast.success("GSTIN verified and saved successfully!");
       await refreshUser();
-      await fetchData();
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
     } catch (err: any) {
       setErrorMsg(err.message || "Something went wrong.");
       toast.error(err.message || "Verification failed.");
@@ -119,30 +102,23 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
     if (!token) return;
-    const refreshNotifications = async () => {
-      try {
-        const res = await api.fetch('/api/notifications', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const items = unwrapApiData<any[]>(data);
-          setNotifications(Array.isArray(items) ? items : []);
-        }
-      } catch {
-        setNotifications([]);
-      }
+    const refreshNotifications = () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     };
     window.addEventListener('notifications:updated', refreshNotifications);
     return () => window.removeEventListener('notifications:updated', refreshNotifications);
-  }, [token]);
+  }, [token, queryClient]);
 
-  if (isLoading) return <div className="flex h-screen items-center justify-center px-4 text-center font-black text-[#12335f] animate-pulse text-xl">Loading JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...</div>;
+  useEffect(() => {
+    if (!token) {
+      router.replace('/');
+    }
+  }, [token, router]);
+
+  const hasGst = user?.role === 'seller'
+    ? (user?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.offices?.some((o: any) => o.gstNumber))
+    : (!!user?.buyerProfile?.gst || !!profile?.buyerProfile?.gst || !!profile?.gst);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -244,7 +220,11 @@ export default function Dashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">{stat.label}</div>
-                  <div className="text-3xl font-extrabold tracking-tight text-slate-900">{stat.value ?? '0'}</div>
+                  {isAdminStatsLoading ? (
+                    <div className="h-9 w-16 animate-pulse rounded bg-slate-100 mt-1" />
+                  ) : (
+                    <div className="text-3xl font-extrabold tracking-tight text-slate-900">{stat.value ?? '0'}</div>
+                  )}
                   <p className="mt-1 text-xs font-semibold text-slate-500">{stat.helper}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', stat.tone)}>
@@ -484,29 +464,42 @@ export default function Dashboard() {
 
           <div className="space-y-4">
             {/* Dynamic Notifications */}
-            {Array.isArray(notifications) && notifications.map((notif) => (
-              <div
-                key={notif.id}
-                className={cn(
-                  "p-5 rounded-[2rem] border transition-all duration-300 animate-in slide-in-from-right-4",
-                  notif.isRead
-                    ? "bg-white border-slate-100 opacity-60"
-                    : "bg-indigo-50/50 border-indigo-100 shadow-sm"
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={cn(
-                    "h-8 w-8 rounded-xl flex items-center justify-center",
-                    notif.type === 'quote_request' ? "bg-slate-100 text-[#12335f]" : "bg-blue-100 text-[#12335f]"
-                  )}>
-                    {notif.type === 'quote_request' ? <FileText className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+            {isNotifLoading && notifications.length === 0 ? (
+              [1, 2, 3].map(i => (
+                <div key={i} className="p-5 rounded-[2rem] border border-slate-100 bg-white space-y-3 animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-xl bg-slate-100" />
+                    <div className="h-3 w-24 bg-slate-100 rounded" />
                   </div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{notif.title}</p>
+                  <div className="h-3 w-full bg-slate-100 rounded" />
+                  <div className="h-2.5 w-1/3 bg-slate-100 rounded mt-2" />
                 </div>
-                <p className="text-xs font-bold text-slate-800  leading-relaxed">{notif.message}</p>
-                <p className="text-[9px] font-black text-slate-400 uppercase mt-3 ">{new Date(notif.createdAt).toLocaleString()}</p>
-              </div>
-            ))}
+              ))
+            ) : (
+              Array.isArray(notifications) && notifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  className={cn(
+                    "p-5 rounded-[2rem] border transition-all duration-300 animate-in slide-in-from-right-4",
+                    notif.isRead
+                      ? "bg-white border-slate-100 opacity-60"
+                      : "bg-indigo-50/50 border-indigo-100 shadow-sm"
+                  )}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={cn(
+                      "h-8 w-8 rounded-xl flex items-center justify-center",
+                      notif.type === 'quote_request' ? "bg-slate-100 text-[#12335f]" : "bg-blue-100 text-[#12335f]"
+                    )}>
+                      {notif.type === 'quote_request' ? <FileText className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                    </div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{notif.title}</p>
+                  </div>
+                  <p className="text-xs font-bold text-slate-800  leading-relaxed">{notif.message}</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase mt-3 ">{new Date(notif.createdAt).toLocaleString()}</p>
+                </div>
+              ))
+            )}
 
             {user?.adminFeedback && (
               <div className="bg-amber-50 border border-amber-100 p-6 rounded-3xl space-y-3 animate-in slide-in-from-right-4 duration-500">

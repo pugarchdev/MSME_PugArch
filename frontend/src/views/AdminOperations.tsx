@@ -8,11 +8,14 @@ import {
   ArrowUp,
   ArrowUpDown,
   BarChart3,
+  Briefcase,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   Download,
   FileSearch,
   Filter,
+  MapPin,
   Search,
   ShieldCheck,
   Users
@@ -21,8 +24,10 @@ import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Pagination } from '../features/shared/Pagination';
-import { formatDateTime } from '../features/shared/format';
+import { formatDate, formatDateTime } from '../features/shared/format';
 import { cn } from '../lib/utils';
+import { useResponsiveViewMode } from '../features/shared/hooks';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 
 type AdminSection = 'procurement' | 'compliance' | 'reports';
 type SortKey = 'name' | 'role' | 'status' | 'date' | 'entity';
@@ -121,6 +126,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const config = sectionConfig[section];
   const SectionIcon = config.icon;
 
@@ -463,6 +469,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                       <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
                     ))}
                   </select>
+                  <ViewModeToggle value={viewMode} onChange={setViewMode} />
                 </div>
 
                 {/* Mobile filters toggle */}
@@ -497,7 +504,11 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Table list view for Desktop */}
+          <div className={cn(
+            "overflow-x-auto",
+            viewMode === "list" ? "hidden md:block" : "hidden"
+          )}>
             <table className="w-full min-w-[760px] table-fixed text-left">
               <thead className="bg-slate-50">
                 <tr className="border-b border-slate-200">
@@ -578,6 +589,338 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Desktop Grid view */}
+          {viewMode === "grid" && (
+            <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+              {loading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center pb-3 border-b border-slate-50">
+                      <div className="h-4 w-12 bg-slate-100 rounded" />
+                      <div className="h-6 w-20 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 bg-slate-100 rounded-xl" />
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 w-24 bg-slate-100 rounded" />
+                        <div className="h-3 w-32 bg-slate-100 rounded" />
+                      </div>
+                    </div>
+                    <div className="h-12 bg-slate-50 rounded-xl" />
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50">
+                      <div className="h-8 bg-slate-100 rounded" />
+                      <div className="h-8 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                ))
+              ) : filteredRecords.length === 0 ? (
+                <div className="col-span-full py-20 text-center text-sm font-bold text-slate-400">No records found for selected filters.</div>
+              ) : filteredRecords.map((item, index) => {
+                const status = getRecordStatus(item);
+                const entityName = getEntityName(item);
+                const entityLocation = getEntityLocation(item);
+                const entitySubtitle = getEntitySubtitle(item);
+                const progress = getApprovalProgress(item);
+
+                const getAvatarGradient = (statusStr: string) => {
+                  switch (statusStr) {
+                    case "approved_for_procurement":
+                      return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                    case "rejected":
+                      return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                    case "resubmission_required":
+                      return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                    default:
+                      return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                  }
+                };
+
+                return (
+                  <div
+                    key={`grid-${item.role}-${item.id || item._id}`}
+                    className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#12335f]/25 transition-all duration-300 flex flex-col justify-between min-w-0"
+                  >
+                    <div>
+                      {/* Top Row - Meta & Badge */}
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                          {item.role}
+                          {" · #"}
+                          {String((page - 1) * pageSize + index + 1).padStart(2, "0")}
+                        </div>
+                        <div className="shrink-0">
+                          <span className={cn('inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest shadow-sm', statusTone(status))}>
+                            {statusLabel(status)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Identity - Avatar & Names */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md text-sm font-extrabold text-white transition-all duration-300 group-hover:scale-105",
+                          getAvatarGradient(status)
+                        )}>
+                          {String(item.name || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-800 text-sm tracking-tight group-hover:text-[#12335f] transition-colors line-clamp-2">
+                            {item.name}
+                          </div>
+                          <div className="break-all text-[11px] font-semibold text-slate-500">
+                            {item.email || 'No email'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Entity Info box */}
+                      <div className="mt-3 p-3 bg-slate-50 rounded-xl min-w-0">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Entity Details</p>
+                        {entityName ? (
+                          <p className="line-clamp-2 break-words text-xs font-bold leading-snug text-slate-800" title={entityName}>
+                            {entityName}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-semibold italic text-slate-400">
+                            Onboarding in progress
+                          </p>
+                        )}
+                        {entitySubtitle && (
+                          <p className="mt-1 text-[10px] font-bold text-slate-500 line-clamp-1">{entitySubtitle}</p>
+                        )}
+                      </div>
+
+                      {/* Metadata Grid */}
+                      <div className="mt-3.5 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                            <p className="text-[11px] font-semibold text-slate-700 truncate" title={entityLocation || undefined}>
+                              {entityLocation || "—"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 min-w-0">
+                          <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                            <p className="text-[11px] font-semibold text-slate-700 font-mono">
+                              {formatDate(item.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mt-4">
+                      <div className="flex justify-between items-center mb-1 text-[10px] font-bold text-slate-500">
+                        <span>Verification</span>
+                        <span>{progress}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#12335f] transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      {/* Footer - Section Dots & CTA */}
+                      <div className="mt-3.5 flex items-center justify-between gap-2">
+                        <div className="flex space-x-1">
+                          {getReviewSections(item).map((section) => {
+                            const sectionStatus = item.sectionStatus?.[section];
+                            const statusColors = {
+                              approved: "bg-emerald-500 shadow-sm shadow-emerald-500/20",
+                              rejected: "bg-red-500 shadow-sm shadow-red-500/20",
+                              pending: "bg-slate-200",
+                            };
+                            const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                            return (
+                              <div
+                                key={section}
+                                className={cn("h-1.5 w-3 rounded-full transition-all duration-300", colorClass)}
+                                title={`${section}: ${sectionStatus || "pending"}`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <Link href="/admin/onboarding" className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-800 transition-colors flex items-center gap-1">
+                          <span>REVIEW</span>
+                          <span className="transform group-hover:translate-x-0.5 transition-transform duration-200">→</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Responsive Card Grid for Mobile */}
+          <div className="md:hidden grid grid-cols-1 gap-4 p-4 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+            {loading ? (
+              [1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">
+                  <div className="flex justify-between items-center pb-2.5 border-b border-slate-50">
+                    <div className="h-3 w-10 bg-slate-100 rounded" />
+                    <div className="h-5 w-16 bg-slate-100 rounded-full" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-slate-100 rounded-xl" />
+                    <div className="space-y-1.5 flex-1">
+                      <div className="h-3.5 w-20 bg-slate-100 rounded" />
+                      <div className="h-2.5 w-28 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
+                    <div className="h-6 bg-slate-100 rounded" />
+                    <div className="h-6 bg-slate-100 rounded" />
+                  </div>
+                </div>
+              ))
+            ) : filteredRecords.length === 0 ? (
+              <div className="py-10 text-center text-sm font-bold text-slate-400">No records found.</div>
+            ) : filteredRecords.map((item, index) => {
+              const status = getRecordStatus(item);
+              const entityName = getEntityName(item);
+              const entityLocation = getEntityLocation(item);
+              const entitySubtitle = getEntitySubtitle(item);
+              const progress = getApprovalProgress(item);
+
+              const getAvatarGradient = (statusStr: string) => {
+                switch (statusStr) {
+                  case "approved_for_procurement":
+                    return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                  case "rejected":
+                    return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                  case "resubmission_required":
+                    return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                  default:
+                    return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                }
+              };
+
+              return (
+                <div
+                  key={`mobile-${item.role}-${item.id || item._id}`}
+                  className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50 transition-all flex flex-col justify-between min-w-0"
+                >
+                  <Link href="/admin/onboarding" className="block text-left min-w-0 flex-1">
+                    {/* Top Row - Meta & Badge */}
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+                      <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">
+                        {item.role}
+                        {" · #"}
+                        {String((page - 1) * pageSize + index + 1).padStart(2, "0")}
+                      </div>
+                      <div className="shrink-0 scale-90 origin-right">
+                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-widest shadow-sm', statusTone(status))}>
+                          {statusLabel(status)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Identity - Avatar & Names */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md text-xs font-extrabold text-white",
+                        getAvatarGradient(status)
+                      )}>
+                        {String(item.name || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800 text-xs tracking-tight line-clamp-2">
+                          {item.name}
+                        </div>
+                        <div className="break-all text-[10px] font-semibold text-slate-500">
+                          {item.email || 'No email'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Entity Info Box */}
+                    <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl min-w-0">
+                      <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-0.5">Entity Details</p>
+                      {entityName ? (
+                        <p className="line-clamp-2 break-words text-[11px] font-bold leading-snug text-slate-800">
+                          {entityName}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] font-semibold italic text-slate-400">
+                          Onboarding in progress
+                        </p>
+                      )}
+                      {entitySubtitle && (
+                        <p className="mt-0.5 text-[9px] font-bold text-slate-500 line-clamp-1">{entitySubtitle}</p>
+                      )}
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="mt-3 grid grid-cols-2 gap-x-2.5 gap-y-1.5 border-t border-slate-100 pt-2.5">
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                          <p className="text-[10px] font-semibold text-slate-700 truncate">
+                            {entityLocation || "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <Clock className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                          <p className="text-[10px] font-semibold text-slate-700 font-mono">
+                            {formatDate(item.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mt-3">
+                      <div className="h-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#12335f]"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      {/* Footer - Section Dots & CTA */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex space-x-0.5">
+                          {getReviewSections(item).map((section) => {
+                            const sectionStatus = item.sectionStatus?.[section];
+                            const statusColors = {
+                              approved: "bg-emerald-500",
+                              rejected: "bg-red-500",
+                              pending: "bg-slate-200",
+                            };
+                            const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                            return (
+                              <div
+                                key={section}
+                                className={cn("h-1 w-2 rounded-full", colorClass)}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="text-[9px] font-black text-indigo-600 uppercase flex items-center gap-0.5">
+                          <span>REVIEW</span>
+                          <span>→</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
           </div>
           {!loading && totalRecords > 0 && (
             <Pagination page={page} pageSize={pageSize} total={totalRecords} onPageChange={setPage} onPageSizeChange={setPageSize} />

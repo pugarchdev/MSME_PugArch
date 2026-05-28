@@ -21,6 +21,8 @@ const blankForm = {
   name: '',
   description: '',
   price: '',
+  taxRate: '0.00',
+  discount: '0.00',
   hsnCode: '',
   unitOfMeasure: '',
   itemCondition: '',
@@ -212,6 +214,8 @@ export default function CatalogueFormPage() {
               name: item.name || '',
               description: item.description || '',
               price: item.price === null || item.price === undefined ? '' : String(item.price),
+              taxRate: item.taxRate === null || item.taxRate === undefined ? '0.00' : String(item.taxRate),
+              discount: item.discount === null || item.discount === undefined ? '0.00' : String(item.discount),
               hsnCode: item.hsnCode || '',
               unitOfMeasure: item.unitOfMeasure || '',
               itemCondition: item.itemCondition || '',
@@ -298,7 +302,7 @@ export default function CatalogueFormPage() {
     try {
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || undefined,
+        description: form.description.trim() || null,
         categoryId: form.categoryId ? Number(form.categoryId) : null,
         status: form.status,
         currency: 'INR',
@@ -306,15 +310,19 @@ export default function CatalogueFormPage() {
         documentIds: uploadedAssetIds(uploadedDocuments),
         ...(kind === 'product'
           ? {
-            price: form.price ? Number(form.price) : undefined,
-            hsnCode: form.hsnCode.trim() || undefined,
-            unitOfMeasure: form.unitOfMeasure.trim() || undefined,
-            itemCondition: form.itemCondition.trim() || undefined
+            price: form.price ? Number(form.price) : null,
+            taxRate: form.taxRate ? Number(form.taxRate) : 0,
+            discount: form.discount ? Number(form.discount) : 0,
+            hsnCode: form.hsnCode.trim() || null,
+            unitOfMeasure: form.unitOfMeasure.trim() || null,
+            itemCondition: form.itemCondition.trim() || null
           }
           : {
-            basePrice: form.basePrice ? Number(form.basePrice) : undefined,
+            basePrice: form.basePrice ? Number(form.basePrice) : null,
+            taxRate: form.taxRate ? Number(form.taxRate) : 0,
+            discount: form.discount ? Number(form.discount) : 0,
             pricingModel: form.pricingModel,
-            serviceArea: form.serviceArea.trim() || undefined
+            serviceArea: form.serviceArea.trim() || null
           })
       };
 
@@ -426,6 +434,28 @@ export default function CatalogueFormPage() {
                   placeholder="0.00"
                   className="bg-white"
                 />
+                <Input
+                  label="Tax Rate (%)"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.taxRate}
+                  onChange={event => updateForm('taxRate', event.target.value)}
+                  placeholder="0.00"
+                  className="bg-white"
+                />
+                <Input
+                  label="Discount (%)"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.discount}
+                  onChange={event => updateForm('discount', event.target.value)}
+                  placeholder="0.00"
+                  className="bg-white"
+                />
                 <Select
                   label="Unit Of Measure"
                   value={form.unitOfMeasure}
@@ -460,6 +490,28 @@ export default function CatalogueFormPage() {
                   min="0"
                   value={form.basePrice}
                   onChange={event => updateForm('basePrice', event.target.value)}
+                  placeholder="0.00"
+                  className="bg-white"
+                />
+                <Input
+                  label="Tax Rate (%)"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.taxRate}
+                  onChange={event => updateForm('taxRate', event.target.value)}
+                  placeholder="0.00"
+                  className="bg-white"
+                />
+                <Input
+                  label="Discount (%)"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.discount}
+                  onChange={event => updateForm('discount', event.target.value)}
                   placeholder="0.00"
                   className="bg-white"
                 />

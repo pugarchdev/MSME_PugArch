@@ -1009,8 +1009,9 @@ const validateSellerBankPayload = (body: any) => {
   else if (values.holderName.length < 2) errors.holderName = 'Account holder name must be at least 2 characters';
   else if (!holderRegex.test(values.holderName)) errors.holderName = 'Account holder name contains invalid characters';
 
+  const isMaskedAccount = /^\*+\d+$/.test(values.accountNumber);
   if (!values.accountNumber) errors.accountNumber = 'Bank account number is required';
-  else if (!accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits';
+  else if (!isMaskedAccount && !accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits';
 
   return { values, errors, isValid: Object.keys(errors).length === 0 };
 };
@@ -2509,7 +2510,10 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
       mobile: rawData.mobile,
       dob: (rawData.dob && !isNaN(Date.parse(rawData.dob))) ? new Date(rawData.dob) : null,
       roleInOrg: rawData.roleInOrg,
-      termsAccepted: rawData.agreeTerms ?? false
+      termsAccepted: rawData.agreeTerms ?? false,
+      msmeType: rawData.msmeType || null,
+      vendorType: rawData.vendorType || null,
+      registrationTypes: Array.isArray(rawData.registrationTypes) ? rawData.registrationTypes : []
     };
 
     const isPanChanging = panToUse && (!existingProfile || (existingProfile.pan !== panToUse && !isPanMasked));
@@ -2633,6 +2637,73 @@ app.post('/api/seller/profile/offices', authenticate, authorize('seller'), async
       }
     });
     res.json({ success: true, office: maskSensitive(office) });
+  } catch (err: any) {
+    handleSecureRouteError(res, err);
+  }
+});
+
+app.put('/api/seller/profile/offices/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const editCheck = await ensureOnboardingEditable(userId);
+    if (!editCheck.editable) return res.status(editCheck.status || 403).json({ message: editCheck.message });
+    const officeId = Number(req.params.id);
+    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+
+    const office = await prisma.sellerOffice.findFirst({
+      where: { id: officeId, sellerProfileId: profile.id }
+    });
+    if (!office) return res.status(404).json({ message: 'Office not found' });
+
+    const gstNumber = normalizeSpaces(req.body?.gstNumber).toUpperCase();
+    const officeErrors: Record<string, string> = {};
+    if (!normalizeSpaces(req.body?.name)) officeErrors.name = 'Office name is required.';
+    if (!normalizeSpaces(req.body?.type)) officeErrors.type = 'Office type is required.';
+    if (!onboardingPatterns.pincode.test(normalizeSpaces(req.body?.pincode))) officeErrors.pincode = 'PIN code must be a valid 6 digit Indian PIN.';
+    if (!normalizeSpaces(req.body?.state)) officeErrors.state = 'State is required.';
+    if (!normalizeSpaces(req.body?.city)) officeErrors.city = 'City is required.';
+    if (normalizeSpaces(req.body?.address).length < 10) officeErrors.address = 'Complete office address is required.';
+    if (gstNumber && !onboardingPatterns.gst.test(gstNumber)) officeErrors.gstNumber = 'GSTIN must follow valid 15 character format.';
+    if (Object.keys(officeErrors).length > 0) {
+      return res.status(400).json({ message: Object.values(officeErrors)[0], errors: officeErrors });
+    }
+    if (gstNumber) {
+      const duplicateGst = await prisma.sellerOffice.findFirst({
+        where: {
+          gstNumber,
+          id: { not: officeId },
+          sellerProfile: { userId: { not: userId } }
+        },
+        select: { sellerProfile: { select: { userId: true } } }
+      });
+      if (duplicateGst) {
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        }
+      }
+    }
+
+    const updatedOffice = await prisma.sellerOffice.update({
+      where: { id: officeId },
+      data: {
+        name: req.body.name,
+        type: req.body.type,
+        pincode: req.body.pincode,
+        state: req.body.state,
+        city: req.body.city,
+        address: req.body.address,
+        contactNumber: req.body.contactNumber,
+        gstNumber: gstNumber || req.body?.gstNumber || null,
+        ...sensitiveProfileFields({ gstNumber }),
+        isMandatory: req.body.type === 'Registered'
+      }
+    });
+    res.json({ success: true, office: maskSensitive(updatedOffice) });
   } catch (err: any) {
     handleSecureRouteError(res, err);
   }
@@ -2957,6 +3028,112 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
   }
 });
 
+
+app.put('/api/seller/profile/bank/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const editCheck = await ensureOnboardingEditable(userId);
+    if (!editCheck.editable) return res.status(editCheck.status || 403).json({ message: editCheck.message });
+    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+
+    const bankId = Number(req.params.id);
+    const existingBank = await prisma.sellerBankAccount.findFirst({
+      where: { id: bankId, sellerProfileId: profile.id }
+    });
+    if (!existingBank) return res.status(404).json({ message: 'Bank account not found' });
+
+    const validation = validateSellerBankPayload(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({ message: 'Invalid bank account details', errors: validation.errors });
+    }
+
+    const existingAccounts = await prisma.sellerBankAccount.findMany({
+      where: { sellerProfileId: profile.id },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const isMaskedAccount = /^\*+\d+$/.test(validation.values.accountNumber);
+    let sensitiveFields: any = {};
+    if (isMaskedAccount) {
+      sensitiveFields = {
+        accountNumberMasked: existingBank.accountNumberMasked,
+        accountNumberHash: existingBank.accountNumberHash,
+        bankFingerprint: existingBank.bankFingerprint
+      };
+    } else {
+      // Check duplicate on same profile
+      const duplicate = existingAccounts.find(bank =>
+        bank.id !== bankId &&
+        bank.ifsc.toUpperCase() === validation.values.ifsc &&
+        (bank.bankFingerprint === createHashFingerprint(`${validation.values.ifsc}:${validation.values.accountNumber}`, 'bank') ||
+          bank.accountNumberHash === createHashFingerprint(`${validation.values.ifsc}:${validation.values.accountNumber}`, 'bank') ||
+          bank.accountNumber === validation.values.accountNumber)
+      );
+      if (duplicate) {
+        return res.status(409).json({ message: 'This bank account is already added for this seller profile' });
+      }
+
+      // Check duplicate across other profiles
+      const duplicateExternalBank = await flagDuplicateBankAccount({
+        userId,
+        sellerProfileId: profile.id,
+        ifsc: validation.values.ifsc,
+        accountNumber: validation.values.accountNumber
+      });
+      if (duplicateExternalBank) {
+        await markUserForManualReview(userId);
+        return res.status(409).json({ message: 'This bank account is already linked to another seller. Application moved to compliance review.' });
+      }
+
+      sensitiveFields = sensitiveProfileFields({
+        ifsc: validation.values.ifsc,
+        accountNumber: validation.values.accountNumber
+      });
+    }
+
+    const shouldBePrimary = existingAccounts.length <= 1 || validation.values.isPrimary;
+    const bank = await prisma.$transaction(async (tx) => {
+      if (shouldBePrimary) {
+        await tx.sellerBankAccount.updateMany({
+          where: { sellerProfileId: profile.id, id: { not: bankId } },
+          data: { isPrimary: false }
+        });
+      }
+      return tx.sellerBankAccount.update({
+        where: { id: bankId },
+        data: {
+          ifsc: validation.values.ifsc,
+          bankName: validation.values.bankName,
+          bankAddress: validation.values.bankAddress,
+          holderName: validation.values.holderName,
+          ...sensitiveFields,
+          isPrimary: shouldBePrimary
+        }
+      });
+    });
+
+    const bankAccounts = await prisma.sellerBankAccount.findMany({
+      where: { sellerProfileId: profile.id },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }]
+    });
+
+    await auditLog({
+      actorUserId: userId,
+      actorRole: req.user?.role,
+      action: 'sensitive_data.updated',
+      entityType: 'sellerBankAccount',
+      entityId: bank.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { fields: ['accountNumberMasked', 'accountNumberHash'] }
+    });
+
+    res.json({ success: true, bank: maskSensitive(bank), bankAccounts: maskSensitive(bankAccounts) });
+  } catch (err: any) {
+    handleSecureRouteError(res, err);
+  }
+});
 
 app.delete('/api/seller/profile/bank/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
   try {

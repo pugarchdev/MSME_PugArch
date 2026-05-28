@@ -197,7 +197,7 @@ const listProfileBackedOrganizations = async (query: { q?: string; status?: stri
   const buyerRows = buyers.map((profile: any) => ({
     id: `buyer-profile-${profile.id}`,
     source: 'buyerProfile',
-    organizationName: profile.organizationName || profile.user?.name || 'Buyer Organization',
+    organizationName: profile.organizationName || profile.nameAsInPan || profile.user?.name || 'Buyer Organization',
     organizationType: profile.organizationTypeEnum || 'GOVERNMENT',
     gstin: profile.gst,
     panNumber: profile.pan,
@@ -377,18 +377,19 @@ const assertPurchaseOrderAccess = async (req: AuthRequest, purchaseOrderId: numb
 
 const productBody = z.object({
   name: z.string().trim().min(2).max(200),
-  description: z.string().trim().max(4000).optional(),
-  categoryId: z.coerce.number().int().positive().optional(),
-  sku: z.string().trim().max(80).optional(),
-  hsnCode: z.string().trim().max(30).optional(),
-  brand: z.string().trim().max(120).optional(),
-  modelNumber: z.string().trim().max(120).optional(),
-  unitOfMeasure: z.string().trim().max(40).optional(),
-  price: z.coerce.number().nonnegative().optional(),
-  taxRate: z.coerce.number().min(0).max(100).optional(),
-  discount: z.coerce.number().min(0).max(100).optional(),
+  description: z.string().trim().max(4000).nullable().optional(),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  sku: z.string().trim().max(80).nullable().optional(),
+  hsnCode: z.string().trim().max(30).nullable().optional(),
+  brand: z.string().trim().max(120).nullable().optional(),
+  modelNumber: z.string().trim().max(120).nullable().optional(),
+  unitOfMeasure: z.string().trim().max(40).nullable().optional(),
+  price: z.coerce.number().nonnegative().nullable().optional(),
+  taxRate: z.coerce.number().min(0).max(100).nullable().optional(),
+  discount: z.coerce.number().min(0).max(100).nullable().optional(),
   currency: z.string().trim().length(3).default('INR').optional(),
   isMsmeMade: z.coerce.boolean().optional(),
+  itemCondition: z.string().trim().nullable().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED']).optional(),
   imageIds: z.array(z.coerce.number().int()).optional(),
   documentIds: z.array(z.coerce.number().int()).optional()
@@ -396,14 +397,14 @@ const productBody = z.object({
 
 const serviceBody = z.object({
   name: z.string().trim().min(2).max(200),
-  description: z.string().trim().max(4000).optional(),
-  categoryId: z.coerce.number().int().positive().optional(),
+  description: z.string().trim().max(4000).nullable().optional(),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
   pricingModel: z.enum(['FIXED', 'HOURLY', 'DAILY', 'MONTHLY', 'PER_PROJECT', 'CUSTOM']).optional(),
-  basePrice: z.coerce.number().nonnegative().optional(),
-  taxRate: z.coerce.number().min(0).max(100).optional(),
-  discount: z.coerce.number().min(0).max(100).optional(),
+  basePrice: z.coerce.number().nonnegative().nullable().optional(),
+  taxRate: z.coerce.number().min(0).max(100).nullable().optional(),
+  discount: z.coerce.number().min(0).max(100).nullable().optional(),
   currency: z.string().trim().length(3).default('INR').optional(),
-  serviceArea: z.string().trim().max(300).optional(),
+  serviceArea: z.string().trim().max(300).nullable().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED']).optional(),
   imageIds: z.array(z.coerce.number().int()).optional(),
   documentIds: z.array(z.coerce.number().int()).optional()
@@ -1473,18 +1474,30 @@ async function verifyGstinInternal(gstin: string) {
 async function upsertOrganizationFromGst(
   gstResult: any,
   normalizedGstin: string,
-  role: string
+  role: string,
+  user?: any
 ) {
   // Try to find an existing Organization by the same GSTIN
   let org = await db.organization.findFirst({
     where: { gstin: normalizedGstin }
   });
 
+  let fallbackName = 'Verified Organization';
+  if (user) {
+    if (role === 'seller' && user.sellerProfile) {
+      fallbackName = user.sellerProfile.businessName || user.sellerProfile.nameAsInPan || user.name || fallbackName;
+    } else if (role === 'buyer' && user.buyerProfile) {
+      fallbackName = user.buyerProfile.organizationName || user.buyerProfile.nameAsInPan || user.name || fallbackName;
+    } else {
+      fallbackName = user.name || fallbackName;
+    }
+  }
+
   if (!org) {
     const orgType = role === 'buyer' ? 'GOVERNMENT' : 'MSME';
     org = await db.organization.create({
       data: {
-        organizationName: gstResult.legalName || gstResult.tradeName || 'Verified Organization',
+        organizationName: gstResult.legalName || gstResult.tradeName || fallbackName,
         organizationType: orgType as any,
         gstin: normalizedGstin,
         panNumber: gstResult.pan || null,
@@ -1502,7 +1515,7 @@ async function upsertOrganizationFromGst(
     await db.organization.update({
       where: { id: org.id },
       data: {
-        organizationName: gstResult.legalName || gstResult.tradeName || org.organizationName,
+        organizationName: gstResult.legalName || gstResult.tradeName || (org.organizationName === 'Verified Organization' ? fallbackName : org.organizationName),
         panNumber: gstResult.pan || org.panNumber,
         state: gstResult.state || org.state,
         city: gstResult.city || org.city,
@@ -1617,7 +1630,7 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     }
 
     // ── Auto-create/link Organization for seller ──
-    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'seller');
+    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'seller', user);
     await db.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
     await db.sellerProfile.update({ where: { id: sellerProfile.id }, data: { organizationId: org.id } });
     // Create the OrgMembership so the user can use cart / approvals / GRN flows.
@@ -1656,7 +1669,7 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     }
 
     // ── Auto-create/link Organization for buyer ──
-    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'buyer');
+    const org = await upsertOrganizationFromGst(gstResult, normalizedGstin, 'buyer', user);
     await db.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
     const bpRecord = await db.buyerProfile.findUnique({ where: { userId: user.id } });
     if (bpRecord) {
@@ -3836,7 +3849,16 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
     where.OR = [
       { organizationName: { contains: query.q, mode: 'insensitive' } },
       { gstin: { contains: query.q, mode: 'insensitive' } },
-      { panNumber: { contains: query.q, mode: 'insensitive' } }
+      { panNumber: { contains: query.q, mode: 'insensitive' } },
+      { buyerProfiles: { some: { OR: [
+        { organizationName: { contains: query.q, mode: 'insensitive' } },
+        { nameAsInPan: { contains: query.q, mode: 'insensitive' } }
+      ] } } },
+      { sellerProfiles: { some: { OR: [
+        { businessName: { contains: query.q, mode: 'insensitive' } },
+        { nameAsInPan: { contains: query.q, mode: 'insensitive' } }
+      ] } } },
+      { users: { some: { name: { contains: query.q, mode: 'insensitive' } } } }
     ];
   }
   if (query.status) where.verificationStatus = query.status;
@@ -3857,6 +3879,25 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
       verificationStatus: true,
       isBlacklisted: true,
       blacklistReason: true,
+      buyerProfiles: {
+        select: {
+          organizationName: true,
+          nameAsInPan: true,
+          user: { select: { name: true } }
+        }
+      },
+      sellerProfiles: {
+        select: {
+          businessName: true,
+          nameAsInPan: true,
+          user: { select: { name: true } }
+        }
+      },
+      users: {
+        select: {
+          name: true
+        }
+      },
       _count: {
         select: {
           users: true,
@@ -3871,10 +3912,34 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
   });
 
   const { orgFeaturesService } = await import('../services/org-features.service.js');
-  const orgsWithFeatures = organizations.map((org: any) => ({
-    ...org,
-    features: orgFeaturesService.getForOrg(org.id)
-  }));
+  const orgsWithFeatures = organizations.map((org: any) => {
+    let resolvedName = org.organizationName;
+    if (
+      !resolvedName ||
+      resolvedName === 'Verified Organization' ||
+      resolvedName === 'Buyer Organization' ||
+      resolvedName === 'Seller Organization'
+    ) {
+      const seller = org.sellerProfiles?.[0];
+      const buyer = org.buyerProfiles?.[0];
+      const user = org.users?.[0];
+
+      if (seller) {
+        resolvedName = seller.businessName || seller.nameAsInPan || seller.user?.name || user?.name || resolvedName;
+      } else if (buyer) {
+        resolvedName = buyer.organizationName || buyer.nameAsInPan || buyer.user?.name || user?.name || resolvedName;
+      } else if (user) {
+        resolvedName = user.name || resolvedName;
+      }
+    }
+
+    const { buyerProfiles, sellerProfiles, users, ...orgRest } = org;
+    return {
+      ...orgRest,
+      organizationName: resolvedName || 'Verified Organization',
+      features: orgFeaturesService.getForOrg(org.id)
+    };
+  });
 
   ok(res, { organizations: orgsWithFeatures, total });
 }));
@@ -3885,8 +3950,8 @@ router.get('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
     where: { id },
     include: {
       users: { select: { id: true, name: true, email: true, role: true, onboardingStatus: true, accountStatus: true } },
-      buyerProfiles: { select: { id: true, organizationName: true, userId: true } },
-      sellerProfiles: { select: { id: true, businessName: true, userId: true } },
+      buyerProfiles: { select: { id: true, organizationName: true, userId: true, nameAsInPan: true } },
+      sellerProfiles: { select: { id: true, businessName: true, userId: true, nameAsInPan: true } },
       _count: { select: { products: true, services: true, tenders: true, requirements: true } }
     }
   });
@@ -3894,8 +3959,30 @@ router.get('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
 
   // Inject features dynamically
   const { orgFeaturesService } = await import('../services/org-features.service.js');
+
+  let resolvedName = org.organizationName;
+  if (
+    !resolvedName ||
+    resolvedName === 'Verified Organization' ||
+    resolvedName === 'Buyer Organization' ||
+    resolvedName === 'Seller Organization'
+  ) {
+    const seller = org.sellerProfiles?.[0];
+    const buyer = org.buyerProfiles?.[0];
+    const user = org.users?.[0];
+
+    if (seller) {
+      resolvedName = seller.businessName || seller.nameAsInPan || seller.user?.name || user?.name || resolvedName;
+    } else if (buyer) {
+      resolvedName = buyer.organizationName || buyer.nameAsInPan || buyer.user?.name || user?.name || resolvedName;
+    } else if (user) {
+      resolvedName = user.name || resolvedName;
+    }
+  }
+
   const orgWithFeatures = {
     ...org,
+    organizationName: resolvedName || 'Verified Organization',
     features: orgFeaturesService.getForOrg(org.id)
   };
 
@@ -3910,7 +3997,15 @@ router.put('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
     blacklistReason: z.string().trim().max(1000).optional()
   }).partial(), req.body);
 
-  const org = await db.organization.update({ where: { id }, data: body });
+  const org = await db.organization.update({
+    where: { id },
+    data: body,
+    include: {
+      buyerProfiles: { select: { organizationName: true, nameAsInPan: true } },
+      sellerProfiles: { select: { businessName: true, nameAsInPan: true } },
+      users: { select: { name: true } }
+    }
+  });
   await auditWrite(req, 'organization.updated', 'organization', id, body);
 
   // Notify org users about status changes
@@ -3936,7 +4031,29 @@ router.put('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
   const { orgFeaturesService } = await import('../services/org-features.service.js');
   const features = orgFeaturesService.getForOrg(org.id);
 
-  ok(res, { ...org, features });
+  let resolvedName = org.organizationName;
+  if (
+    !resolvedName ||
+    resolvedName === 'Verified Organization' ||
+    resolvedName === 'Buyer Organization' ||
+    resolvedName === 'Seller Organization'
+  ) {
+    const seller = org.sellerProfiles?.[0];
+    const buyer = org.buyerProfiles?.[0];
+    const user = org.users?.[0];
+
+    if (seller) {
+      resolvedName = seller.businessName || seller.nameAsInPan || seller.user?.name || user?.name || resolvedName;
+    } else if (buyer) {
+      resolvedName = buyer.organizationName || buyer.nameAsInPan || buyer.user?.name || user?.name || resolvedName;
+    } else if (user) {
+      resolvedName = user.name || resolvedName;
+    }
+  }
+
+  const { buyerProfiles, sellerProfiles, users, ...orgRest } = org;
+
+  ok(res, { ...orgRest, organizationName: resolvedName || 'Verified Organization', features });
 }));
 
 router.put('/admin/organizations/:id/features', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {

@@ -578,7 +578,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     try {
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || undefined,
+        description: form.description.trim() || null,
         categoryId: form.categoryId ? Number(form.categoryId) : null,
         status: form.status,
         currency: 'INR',
@@ -586,19 +586,19 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         documentIds: uploadedAssetIds(uploadedDocuments),
         ...(formKind === 'product'
           ? {
-            price: form.price ? Number(form.price) : undefined,
+            price: form.price ? Number(form.price) : null,
             taxRate: form.taxRate ? Number(form.taxRate) : 0,
             discount: form.discount ? Number(form.discount) : 0,
-            hsnCode: form.hsnCode.trim() || undefined,
-            unitOfMeasure: form.unitOfMeasure.trim() || undefined,
-            itemCondition: form.itemCondition.trim() || undefined
+            hsnCode: form.hsnCode.trim() || null,
+            unitOfMeasure: form.unitOfMeasure.trim() || null,
+            itemCondition: form.itemCondition.trim() || null
           }
           : {
-            basePrice: form.basePrice ? Number(form.basePrice) : undefined,
+            basePrice: form.basePrice ? Number(form.basePrice) : null,
             taxRate: form.taxRate ? Number(form.taxRate) : 0,
             discount: form.discount ? Number(form.discount) : 0,
             pricingModel: form.pricingModel,
-            serviceArea: form.serviceArea.trim() || undefined
+            serviceArea: form.serviceArea.trim() || null
           })
       };
 
@@ -1448,7 +1448,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                   )}
                   {item.itemKind === 'product' && item.itemCondition && (
                     <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] uppercase font-black tracking-wider">
-                      {item.itemCondition.replace(/_/g, ' ')}
+                      {ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')}
                     </span>
                   )}
                   {item.itemKind === 'service' && item.pricingModel && (
@@ -1800,7 +1800,7 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
       { label: 'Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
       { label: 'Unit of Measure', value: item.unitOfMeasure || 'Not specified' },
       { label: 'HSN Code', value: item.hsnCode || 'Not specified' },
-      { label: 'Condition', value: item.itemCondition ? item.itemCondition.replace(/_/g, ' ') : 'Not specified' }
+      { label: 'Condition', value: item.itemCondition ? (ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')) : 'Not specified' }
     ]
     : [
       { label: 'Base Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
@@ -1948,7 +1948,7 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
                     </div>
                     <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Quotation Total</p>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Total</p>
                         <p className="text-[9px] font-semibold text-slate-500">Estimated cost inclusive of tax & discount</p>
                       </div>
                       <div className="text-right">
@@ -2243,10 +2243,10 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
                     <span className="text-slate-700">{item.unitOfMeasure}</span>
                   </div>
                 )}
-                {item.itemCondition && (
+                 {item.itemCondition && (
                   <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase">
                     <span>Condition</span>
-                    <span className="text-slate-700">{item.itemCondition.replace(/_/g, ' ')}</span>
+                    <span className="text-slate-700">{ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')}</span>
                   </div>
                 )}
                 {item.seller && (

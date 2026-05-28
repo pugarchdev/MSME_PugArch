@@ -19,6 +19,7 @@
     "test:delivery": "node --test tests/delivery.test.mjs",
     "audit:deps": "npm audit --workspace=backend --audit-level=high",
     "backfill:org-membership": "tsx scripts/backfill-org-membership.ts",
+    "attach-user-to-org": "tsx scripts/attach-user-to-org.ts",
     "security:check": "npm run typecheck && npm run prisma:validate && npm run lint:security && npm run test:security && npm run audit:deps"
   },
   "dependencies": {

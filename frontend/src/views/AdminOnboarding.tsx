@@ -93,6 +93,34 @@ const getSellerOnboardingDocuments = (profile: any) => {
   return { sellerDocuments, legacyDocuments };
 };
 
+const MSME_TYPE_LABELS: Record<string, string> = {
+  MSME: 'MSME',
+  NON_MSME: 'Non-MSME',
+  LOCAL_MSME: 'Local MSME',
+  ANCILLARY_UNIT: 'Ancillary Unit',
+  STARTUP_MSME: 'Startup MSME'
+};
+
+const VENDOR_TYPE_LABELS: Record<string, string> = {
+  MANUFACTURER: 'Manufacturer',
+  TRADER: 'Trader',
+  DISTRIBUTOR: 'Distributor',
+  DEALER: 'Dealer',
+  SERVICE_PROVIDER: 'Service Provider',
+  CONTRACTOR: 'Contractor',
+  OEM: 'OEM',
+  RETAIL_SUPPLIER: 'Retail Supplier',
+  WHOLESALER: 'Wholesaler'
+};
+
+const REGISTRATION_TYPE_LABELS: Record<string, string> = {
+  GST_REGISTERED: 'GST Registered',
+  UDYAM_REGISTERED: 'UDYAM Registered',
+  NSIC_REGISTERED: 'NSIC Registered',
+  ISO_CERTIFIED: 'ISO Certified',
+  PAN_AVAILABLE: 'PAN Available'
+};
+
 export default function AdminOnboarding() {
   const queryClient = useQueryClient();
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
@@ -289,8 +317,9 @@ export default function AdminOnboarding() {
 
     // 4. Make the backend API request
     try {
+      const numericId = Number(userId) || selectedItem?.id;
       const res = await api.post(
-        `/api/admin/onboarding/${userId}/status`,
+        `/api/admin/onboarding/${numericId}/status`,
         { onboardingStatus: status, adminFeedback: reason || undefined },
         {
           headers: {
@@ -303,7 +332,12 @@ export default function AdminOnboarding() {
         queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
         queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
-        toast.error("Failed to update status");
+        const errBody = await res.json().catch(() => ({} as any));
+        const detail = errBody?.message || errBody?.error || `HTTP ${res.status}`;
+        toast.error(`Failed to update status: ${detail}`);
+        if (typeof window !== 'undefined') {
+          console.error('[AdminOnboarding] status update failed', { status: res.status, body: errBody });
+        }
         // Revert to original state
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
@@ -311,6 +345,7 @@ export default function AdminOnboarding() {
       }
     } catch (err) {
       toast.error("Network error");
+      console.error('[AdminOnboarding] status network error', err);
       // Revert to original state
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
@@ -417,8 +452,13 @@ export default function AdminOnboarding() {
       for (const k of sectionKeys) {
         cleanSectionStatus[k] = String(updatedSectionStatus[k as keyof typeof updatedSectionStatus] || "pending");
       }
+      // Coerce userId to a number for the URL — backend's idParams uses
+      // z.coerce.number().int().positive() but we send what we have. Use the
+      // fallback to selectedItem.id (numeric) so even if _id was a string we
+      // still hit the right route.
+      const numericId = Number(userId) || selectedItem?.id;
       const res = await api.post(
-        `/api/admin/onboarding/${userId}/section-status`,
+        `/api/admin/onboarding/${numericId}/section-status`,
         {
           sectionStatus: cleanSectionStatus,
           sectionRejectionReasons: updatedRejectionReasons,
@@ -434,8 +474,17 @@ export default function AdminOnboarding() {
         queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
         queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
+        // Try to surface the actual server message so reviewers know what
+        // went wrong instead of seeing the generic "failed to update".
         const errBody = await res.json().catch(() => ({} as any));
-        toast.error(errBody?.message || errBody?.error || "Failed to update section status");
+        const detail = errBody?.message || errBody?.error || `HTTP ${res.status}`;
+        toast.error(`Failed to update section status: ${detail}`);
+        if (typeof window !== 'undefined') {
+          // Helpful for debugging — server-side validation errors (zod) ship
+          // their `errors` array under `errors`. Logging it makes diagnosis
+          // a one-line job in the browser console.
+          console.error('[AdminOnboarding] section-status update failed', { status: res.status, body: errBody });
+        }
         // Revert to original state
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
@@ -443,6 +492,7 @@ export default function AdminOnboarding() {
       }
     } catch (err) {
       toast.error("Network error");
+      console.error('[AdminOnboarding] section-status network error', err);
       // Revert to original state
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
@@ -1046,25 +1096,26 @@ export default function AdminOnboarding() {
                     criteria.
                   </p>
 
-                  {/* Toolbar: search + filters + reset + view toggles. On mobile,
-                      filters collapse into a drawer toggled by the Filters button. */}
-                  <div className="flex items-stretch gap-2">
-                    {/* Search box: takes ~80% on desktop */}
-                    <div className="relative flex-1 min-w-0">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input
-                        placeholder="Search by company, PAN, GST, state, or applicant name..."
-                        className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Desktop filters inline */}
-                    <div className="hidden md:flex items-stretch gap-2">
+                  {/* Toolbar — desktop: [search 80%] [status] [progress] [sort] [reset] [view-toggle].
+                      Mobile: only [search] + [filters button]; tapping the button reveals a drawer
+                      with every filter and a Reset Filters action. */}
+                  <div className="space-y-3">
+                    {/* Desktop layout: single row with search ~80% width */}
+                    <div className="hidden md:grid items-stretch gap-2 md:grid-cols-[minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+                      <div className="relative min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          placeholder="Search by company, PAN, GST, state, or applicant name..."
+                          className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          aria-label="Search applications"
+                        />
+                      </div>
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
+                        aria-label="Status filter"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Status</option>
@@ -1076,6 +1127,7 @@ export default function AdminOnboarding() {
                       <select
                         value={progressFilter}
                         onChange={(e) => setProgressFilter(e.target.value)}
+                        aria-label="Progress filter"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Progress</option>
@@ -1086,6 +1138,7 @@ export default function AdminOnboarding() {
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="newest">Newest First</option>
@@ -1093,43 +1146,62 @@ export default function AdminOnboarding() {
                         <option value="progress">Progress High</option>
                         <option value="entity">Entity A-Z</option>
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setProgressFilter("all");
+                          setSortBy("newest");
+                        }}
+                        className="h-11 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] shrink-0"
+                        title="Reset filters"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        <span className="hidden lg:inline">Reset</span>
+                      </button>
+                      {/* List / Grid view toggle sits to the RIGHT of Reset on desktop */}
+                      <div className="inline-flex shrink-0">
+                        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                      </div>
                     </div>
 
-                    {/* Mobile filters toggle */}
-                    <button
-                      type="button"
-                      onClick={() => setShowMobileFilters((v) => !v)}
-                      className="md:hidden h-11 px-3 rounded-xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] inline-flex items-center gap-1.5 shrink-0"
-                      aria-expanded={showMobileFilters}
-                      aria-controls="admin-onboarding-mobile-filters"
-                    >
-                      <Filter className="h-3.5 w-3.5" />
-                      Filters
-                    </button>
-
-                    {/* Reset */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchTerm("");
-                        setStatusFilter("all");
-                        setProgressFilter("all");
-                        setSortBy("newest");
-                      }}
-                      className="hidden md:inline-flex h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] shrink-0"
-                      title="Reset filters"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      <span className="hidden lg:inline">Reset</span>
-                    </button>
-
-                    {/* Standardised list/grid toggle (hidden on mobile - use cards) */}
-                    <div className="hidden md:inline-flex shrink-0">
-                      <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                    {/* Mobile layout: search on top, single Filters button below */}
+                    <div className="md:hidden space-y-2">
+                      <div className="relative min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          placeholder="Search applications..."
+                          className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          aria-label="Search applications"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowMobileFilters((v) => !v)}
+                        aria-expanded={showMobileFilters}
+                        aria-controls="admin-onboarding-mobile-filters"
+                        className={cn(
+                          "h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 text-[11px] font-black uppercase tracking-wide transition",
+                          showMobileFilters
+                            ? "border-[#12335f] text-[#12335f]"
+                            : "border-slate-200 text-slate-600 hover:border-[#12335f]/40 hover:text-[#12335f]"
+                        )}
+                      >
+                        <Filter className="h-3.5 w-3.5" />
+                        Filters
+                        {(statusFilter !== "all" || progressFilter !== "all" || sortBy !== "newest") && (
+                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#12335f] px-1.5 text-[9px] font-black text-white">
+                            {[statusFilter !== "all", progressFilter !== "all", sortBy !== "newest"].filter(Boolean).length}
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Mobile filters drawer */}
+                  {/* Mobile filters drawer — only renders on mobile */}
                   {showMobileFilters && (
                     <div
                       id="admin-onboarding-mobile-filters"
@@ -1138,6 +1210,7 @@ export default function AdminOnboarding() {
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
+                        aria-label="Status filter"
                         className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Status</option>
@@ -1149,6 +1222,7 @@ export default function AdminOnboarding() {
                       <select
                         value={progressFilter}
                         onChange={(e) => setProgressFilter(e.target.value)}
+                        aria-label="Progress filter"
                         className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Progress</option>
@@ -1159,6 +1233,7 @@ export default function AdminOnboarding() {
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort"
                         className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="newest">Newest First</option>
@@ -1250,10 +1325,12 @@ export default function AdminOnboarding() {
                                     e.stopPropagation();
                                     void openItemForReview(item);
                                   }}
-                                  className="block text-left group/name"
+                                  className="block text-left group/name cursor-pointer"
+                                  title="Click to view full personal details"
                                 >
-                                  <div className="font-bold text-slate-800 text-xs tracking-tight group-hover/name:text-[#12335f] group-hover/name:underline decoration-[#f9a825] underline-offset-2 transition-colors">
-                                    {item.name}
+                                  <div className="font-bold text-slate-800 text-xs tracking-tight group-hover/name:text-[#12335f] group-hover/name:underline decoration-[#f9a825] underline-offset-2 transition-colors flex items-center gap-1.5">
+                                    <span className="text-wrap-anywhere">{item.name}</span>
+                                    <Eye className="h-3 w-3 opacity-0 group-hover/name:opacity-100 text-[#12335f] transition-opacity shrink-0" />
                                   </div>
                                   <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                                     {item.role || activeTab.replace(/s$/, "")}
@@ -1420,7 +1497,7 @@ export default function AdminOnboarding() {
                                       </p>
                                     </div>
                                   </div>
-                                  
+
                                   <div className="flex items-start gap-2 min-w-0">
                                     <Briefcase className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
                                     <div className="min-w-0">
@@ -1438,7 +1515,7 @@ export default function AdminOnboarding() {
                                     <div className="min-w-0">
                                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
                                       <p className="text-[11px] font-semibold text-slate-700 font-mono">
-                                        {formatDate(item.createdAt)}
+                                        {formatDateTime(item.createdAt)}
                                       </p>
                                     </div>
                                   </div>
@@ -1580,7 +1657,7 @@ export default function AdminOnboarding() {
                                   <div className="min-w-0">
                                     <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
                                     <p className="text-[10px] font-semibold text-slate-700 font-mono">
-                                      {formatDate(item.createdAt)}
+                                      {formatDateTime(item.createdAt)}
                                     </p>
                                   </div>
                                 </div>
@@ -1927,30 +2004,8 @@ export default function AdminOnboarding() {
                             value={selectedItem.profile?.gst}
                           />
                           <InfoItem
-                            label="Udyam Number"
-                            value={selectedItem.registrationDetails?.udyamNumber || "N/A"}
-                          />
-                          <InfoItem
-                            label="Verification Method"
-                            value={selectedItem.registrationDetails?.verificationMethod?.toUpperCase() || "N/A"}
-                          />
-                          <InfoItem
                             label="Website"
                             value={selectedItem.profile?.website}
-                          />
-                          <InfoItem
-                            label="State"
-                            value={selectedItem.profile?.state}
-                            highlight
-                          />
-                          <InfoItem
-                            label="District"
-                            value={selectedItem.profile?.district}
-                            highlight
-                          />
-                          <InfoItem
-                            label="Office/Zone"
-                            value={selectedItem.profile?.officeZoneName}
                           />
                         </div>
                       </div>
@@ -2004,10 +2059,6 @@ export default function AdminOnboarding() {
                             highlight
                           />
                           <InfoItem
-                            label="Role In Organization"
-                            value={selectedItem.registrationDetails?.roleInOrg || "N/A"}
-                          />
-                          <InfoItem
                             label="Designation"
                             value={selectedItem.profile?.designation}
                           />
@@ -2027,14 +2078,6 @@ export default function AdminOnboarding() {
                           <InfoItem
                             label="Alternate Mobile"
                             value={selectedItem.profile?.alternateMobile}
-                          />
-                          <InfoItem
-                            label="Aadhaar Number (Masked)"
-                            value={selectedItem.registrationDetails?.aadhaarNumber ? selectedItem.registrationDetails.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : (selectedItem.profile?.aadhaarNumber ? selectedItem.profile.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : "N/A")}
-                          />
-                          <InfoItem
-                            label="Aadhaar Verification"
-                            value={selectedItem.registrationDetails?.isAadhaarVerified ? "VERIFIED" : (selectedItem.profile?.aadhaarVerified ? "VERIFIED" : "PENDING")}
                           />
                         </div>
                       </div>
@@ -2305,6 +2348,11 @@ export default function AdminOnboarding() {
                         </div>
                         <div className="grid md:grid-cols-2 gap-8">
                           <InfoItem
+                            label="Organisation Type"
+                            value={selectedItem.profile?.organizationType || "N/A"}
+                            highlight
+                          />
+                          <InfoItem
                             label="PAN Number"
                             value={selectedItem.profile?.pan}
                             mono
@@ -2399,10 +2447,6 @@ export default function AdminOnboarding() {
                             highlight
                           />
                           <InfoItem
-                            label="Organization Type"
-                            value={selectedItem.profile?.organizationType || selectedItem.registrationDetails?.businessType || "N/A"}
-                          />
-                          <InfoItem
                             label="Date of Incorporation"
                             value={
                               selectedItem.profile?.dateOfIncorporation
@@ -2420,14 +2464,14 @@ export default function AdminOnboarding() {
                             label="Registered Mobile"
                             value={selectedItem.profile?.mobile || selectedItem.mobile || selectedItem.profile?.offices?.[0]?.contactNumber || "N/A"}
                           />
-                          <InfoItem
+                          {/* <InfoItem
                             label="Date of Birth"
                             value={
                               selectedItem.profile?.dob
                                 ? new Date(selectedItem.profile.dob).toLocaleDateString()
                                 : (selectedItem.dob ? new Date(selectedItem.dob).toLocaleDateString() : "N/A")
                             }
-                          />
+                          /> */}
                         </div>
                       </div>
 
@@ -2491,10 +2535,6 @@ export default function AdminOnboarding() {
                             }
                           />
                           <InfoItem
-                            label="Udyam Number"
-                            value={selectedItem.registrationDetails?.udyamNumber || "N/A"}
-                          />
-                          <InfoItem
                             label="Bid Participation"
                             value={
                               selectedItem.profile?.participateInBid
@@ -2504,16 +2544,30 @@ export default function AdminOnboarding() {
                           />
                           <InfoItem
                             label="MSME Type"
-                            value={selectedItem.profile?.msmeType || "N/A"}
+                            value={
+                              selectedItem.profile?.msmeType
+                                ? (MSME_TYPE_LABELS[selectedItem.profile.msmeType] || selectedItem.profile.msmeType)
+                                : "N/A"
+                            }
                           />
                           <InfoItem
                             label="Vendor Type"
-                            value={selectedItem.profile?.vendorType || "N/A"}
+                            value={
+                              selectedItem.profile?.vendorType
+                                ? (VENDOR_TYPE_LABELS[selectedItem.profile.vendorType] || selectedItem.profile.vendorType)
+                                : "N/A"
+                            }
                           />
                           <div className="md:col-span-2">
                             <InfoItem
                               label="Registration Types / Certifications"
-                              value={selectedItem.profile?.registrationTypes?.join(", ") || "N/A"}
+                              value={
+                                Array.isArray(selectedItem.profile?.registrationTypes) && selectedItem.profile.registrationTypes.length > 0
+                                  ? selectedItem.profile.registrationTypes
+                                      .map((type: string) => REGISTRATION_TYPE_LABELS[type] || type)
+                                      .join(", ")
+                                  : "N/A"
+                              }
                             />
                           </div>
                         </div>

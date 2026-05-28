@@ -114,6 +114,7 @@ export default function SellerOnboarding() {
   const [isProfileLocked, setIsProfileLocked] = useState(shouldLockSellerProfile(cachedMe?.user));
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedMe?.user));
   const [editingOfficeId, setEditingOfficeId] = useState<number | null>(null);
+  const [editingBankId, setEditingBankId] = useState<number | null>(null);
   const [officeForm, setOfficeForm] = useState({
     name: '',
     type: 'Registered',
@@ -247,9 +248,9 @@ export default function SellerOnboarding() {
     pan: cachedProfile.pan || cachedRegDetails.pan || '',
     offices: normalizeList(cachedProfile.offices),
     bankAccounts: normalizeList(cachedProfile.bankAccounts),
-    isStartup: initialAdditionalSaved ? (cachedProfile.isStartup ?? null) : null,
-    isUdyamCertified: initialAdditionalSaved ? (cachedProfile.isUdyamCertified ?? null) : null,
-    participateInBid: initialAdditionalSaved ? (cachedProfile.participateInBid ?? null) : null,
+    isStartup: cachedProfile.isStartup ?? null,
+    isUdyamCertified: cachedProfile.isUdyamCertified ?? null,
+    participateInBid: cachedProfile.participateInBid ?? null,
     msmeType: cachedProfile.msmeType || '',
     vendorType: cachedProfile.vendorType || '',
     registrationTypes: Array.isArray(cachedProfile.registrationTypes) ? cachedProfile.registrationTypes : []
@@ -356,9 +357,9 @@ export default function SellerOnboarding() {
         pan: profile.pan || regDetails.pan || prev.pan,
         offices: normalizeList(profile.offices),
         bankAccounts: normalizeList(profile.bankAccounts).length > 0 ? normalizeList(profile.bankAccounts) : normalizeList(prev.bankAccounts),
-        isStartup: hasAdditionalCompleted ? (profile.isStartup ?? null) : null,
-        isUdyamCertified: hasAdditionalCompleted ? (profile.isUdyamCertified ?? null) : null,
-        participateInBid: hasAdditionalCompleted ? (profile.participateInBid ?? null) : null
+        isStartup: profile.isStartup ?? null,
+        isUdyamCertified: profile.isUdyamCertified ?? null,
+        participateInBid: profile.participateInBid ?? null
       }));
     } catch (err) {
       console.error(err);
@@ -715,6 +716,22 @@ export default function SellerOnboarding() {
     }
   };
 
+  const handleEditBank = (bank: any) => {
+    setEditingBankId(bank.id);
+    const accNum = bank.accountNumberMasked || bank.accountNumber || '';
+    setNewBank({
+      ifsc: bank.ifsc,
+      bankName: bank.bankName,
+      bankAddress: bank.bankAddress || '',
+      holderName: bank.holderName || '',
+      accountNumber: accNum,
+      confirmAccountNumber: accNum,
+      isPrimary: bank.isPrimary
+    });
+    setBankTab('add');
+    setBankErrors({});
+  };
+
   const handleAddBank = async (bankData: any) => {
     if (isProfileLocked) {
       toast.info(lockToastText);
@@ -722,35 +739,62 @@ export default function SellerOnboarding() {
     }
     setIsLoading(true);
     try {
-      const res = await api.post('/api/seller/profile/bank', bankData, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFormData((prev: any) => ({
-          ...prev,
-          bankAccounts: normalizeList(data.bankAccounts).length > 0 ? normalizeList(data.bankAccounts) : [...normalizeList(prev.bankAccounts).map((bank: any) => ({
-            ...bank,
-            isPrimary: data.bank?.isPrimary ? false : bank.isPrimary
-          })), data.bank]
-        }));
-        setNewBank({
-          ifsc: '',
-          bankName: '',
-          bankAddress: '',
-          holderName: '',
-          accountNumber: '',
-          confirmAccountNumber: '',
-          isPrimary: false
+      if (editingBankId) {
+        const res = await api.put(`/api/seller/profile/bank/${editingBankId}`, bankData, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         });
-        setBankErrors({});
-        toast.success('Bank account added');
+        if (res.ok) {
+          const data = await res.json();
+          setFormData((prev: any) => ({
+            ...prev,
+            bankAccounts: normalizeList(data.bankAccounts)
+          }));
+          setNewBank({
+            ifsc: '',
+            bankName: '',
+            bankAddress: '',
+            holderName: '',
+            accountNumber: '',
+            confirmAccountNumber: '',
+            isPrimary: false
+          });
+          setBankErrors({});
+          setEditingBankId(null);
+          setBankTab('manage');
+          toast.success('Bank account updated');
+        } else {
+          const data = await res.json();
+          toast.error(data.message || 'Error updating bank account');
+        }
       } else {
-        const data = await res.json();
-        toast.error(data.message || 'Error adding bank account');
+        const res = await api.post('/api/seller/profile/bank', bankData, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFormData((prev: any) => ({
+            ...prev,
+            bankAccounts: normalizeList(data.bankAccounts)
+          }));
+          setNewBank({
+            ifsc: '',
+            bankName: '',
+            bankAddress: '',
+            holderName: '',
+            accountNumber: '',
+            confirmAccountNumber: '',
+            isPrimary: false
+          });
+          setBankErrors({});
+          setBankTab('manage');
+          toast.success('Bank account added');
+        } else {
+          const data = await res.json();
+          toast.error(data.message || 'Error adding bank account');
+        }
       }
     } catch (err) {
-      toast.error('Error adding bank account');
+      toast.error(editingBankId ? 'Error updating bank account' : 'Error adding bank account');
     } finally {
       setIsLoading(false);
     }
@@ -822,14 +866,16 @@ export default function SellerOnboarding() {
     else if (values.holderName.length < 2) errors.holderName = 'Account holder name must be at least 2 characters.';
     else if (!holderRegex.test(values.holderName)) errors.holderName = 'Use only alphabets, spaces, dots, hyphens, and apostrophes.';
 
+    const isMaskedAccount = /^\*+\d+$/.test(values.accountNumber);
     if (!values.accountNumber) errors.accountNumber = 'Bank account number is required.';
-    else if (!accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits only.';
+    else if (!isMaskedAccount && !accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits only.';
 
     if (!values.confirmAccountNumber) errors.confirmAccountNumber = 'Please confirm the account number.';
     else if (values.accountNumber !== values.confirmAccountNumber) errors.confirmAccountNumber = 'Account numbers do not match.';
 
     const isDuplicate = bankAccounts.some((bank: any) =>
-      String(bank.accountNumber) === values.accountNumber &&
+      bank.id !== editingBankId &&
+      (String(bank.accountNumber) === values.accountNumber || String(bank.accountNumberMasked) === values.accountNumber) &&
       String(bank.ifsc).toUpperCase() === values.ifsc
     );
     if (isDuplicate) errors.accountNumber = 'This bank account is already added.';
@@ -1361,8 +1407,21 @@ export default function SellerOnboarding() {
                    <p className="text-sm text-gray-600">You can add multiple Bank accounts for your Business. One account must be selected as Primary account</p>
                    
                    <div className="flex border-b border-gray-200">
-                     <button onClick={() => setBankTab('manage')} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'manage' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Bank Account</button>
-                     <button onClick={() => setBankTab('add')} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Add new Bank Account</button>
+                     <button onClick={() => { setBankTab('manage'); setEditingBankId(null); }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'manage' && !editingBankId ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Bank Account</button>
+                     <button onClick={() => {
+                        setBankTab('add');
+                        setEditingBankId(null);
+                        setNewBank({
+                          ifsc: '',
+                          bankName: '',
+                          bankAddress: '',
+                          holderName: '',
+                          accountNumber: '',
+                          confirmAccountNumber: '',
+                          isPrimary: false
+                        });
+                        setBankErrors({});
+                      }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>{editingBankId ? 'Edit Bank Account' : 'Add new Bank Account'}</button>
                    </div>
 
                     {bankTab === 'manage' && (
@@ -1403,7 +1462,10 @@ export default function SellerOnboarding() {
                                          {/*  <td className="px-3 py-3 text-gray-600">-</td>*/}
                                            <td className="px-3 py-3 text-gray-600">{bank.isPrimary ? 'Yes' : 'No'}</td>
                                            <td className="px-3 py-3">
-                                              <button onClick={() => handleDeleteBank(bank.id)} className="text-red-500 hover:text-red-700 font-bold text-[10px] uppercase">Delete</button>
+                                              <div className="flex items-center gap-3">
+                                                <button onClick={() => handleEditBank(bank)} className="text-indigo-600 hover:text-indigo-800 font-bold text-[10px] uppercase">Edit</button>
+                                                <button onClick={() => handleDeleteBank(bank.id)} className="text-red-500 hover:text-red-700 font-bold text-[10px] uppercase">Delete</button>
+                                              </div>
                                            </td>
                                         </tr>
                                     ))
@@ -1504,7 +1566,7 @@ export default function SellerOnboarding() {
                         {normalizeList(formData.bankAccounts).length === 0 && <p className="text-xs font-medium text-[#12335f]">First bank account will be saved as the primary account.</p>}
                         {bankErrors.isPrimary && <p className="text-xs font-medium text-red-600">{bankErrors.isPrimary}</p>}
                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-8 pt-6 border-t border-gray-100">
-                           <p className="text-sm font-medium text-gray-800 mb-4 sm:mb-0">Complete validation to add a new bank account</p>
+                           <p className="text-sm font-medium text-gray-800 mb-4 sm:mb-0">{editingBankId ? 'Complete validation to update the bank account' : 'Complete validation to add a new bank account'}</p>
                            <Button onClick={() => {
                              const validation = validateBankForm({
                                ...newBank,
@@ -1523,9 +1585,8 @@ export default function SellerOnboarding() {
                                accountNumber: validation.values.accountNumber,
                                isPrimary: validation.values.isPrimary
                              });
-                             setBankTab('manage');
                            }} disabled={!bankValidation.isValid || isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-6 h-9 rounded transition-colors tracking-wide uppercase text-xs disabled:cursor-not-allowed disabled:opacity-50">
-                               VALIDATE & ADD
+                                {editingBankId ? 'VALIDATE & UPDATE' : 'VALIDATE & ADD'}
                            </Button>
                         </div>
                      </div>

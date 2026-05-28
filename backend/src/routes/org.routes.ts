@@ -71,6 +71,12 @@ const generateToken = () => {
 
 const ORG_ROLE_VALUES = Object.values(OrgRole);
 
+const ORGANIZATION_TYPE_VALUES = [
+    'MSME', 'PROPRIETORSHIP', 'PARTNERSHIP', 'PRIVATE_LIMITED',
+    'PUBLIC_LIMITED', 'LLP', 'TRUST', 'SOCIETY', 'STARTUP',
+    'NGO', 'EDUCATIONAL_INSTITUTION', 'GOVERNMENT', 'PSU'
+] as const;
+
 const inviteSchema = z.object({
     email: z.string().email().toLowerCase().trim(),
     orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]])
@@ -78,6 +84,15 @@ const inviteSchema = z.object({
 
 const roleUpdateSchema = z.object({
     orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]])
+});
+
+const createOrgWithoutGstSchema = z.object({
+    organizationName: z.string().min(2).max(200).trim(),
+    organizationType: z.enum(ORGANIZATION_TYPE_VALUES as unknown as [string, ...string[]]),
+    city: z.string().max(120).trim().optional(),
+    state: z.string().max(120).trim().optional(),
+    pincode: z.string().max(20).trim().optional(),
+    addressLine1: z.string().max(255).trim().optional()
 });
 
 // ─── GET /api/org/status — org approval status for banner ────────────────────
@@ -622,6 +637,95 @@ router.delete(
         });
 
         ok(res, { success: true });
+    })
+);
+
+// ─── POST /api/org/create-without-gst — self-create org without GST ──────────
+// Allows a buyer/seller user with NO organisation linked yet to create a
+// minimal Organization record (name + type + optional address) and become
+// its ORG_ADMIN. The new org is created with verificationStatus=PENDING so
+// the user has read-only access to most flows but can still use the cart
+// and other org-aware features. Platform admins approve via the onboarding
+// queue exactly like the GST-verified path.
+router.post(
+    '/org/create-without-gst',
+    authenticate,
+    authorize('buyer', 'seller'),
+    asyncRoute(async (req, res) => {
+        const body = createOrgWithoutGstSchema.parse(req.body);
+
+        const me = await prisma.user.findUnique({
+            where: { id: userId(req) },
+            select: { id: true, organizationId: true, name: true, email: true, role: true }
+        });
+        if (!me) throw new ApiError(404, 'User not found', 'USER_NOT_FOUND');
+        if (me.organizationId) {
+            throw new ApiError(409, 'You are already linked to an organisation. Leave it before creating a new one.', 'ALREADY_HAS_ORG');
+        }
+
+        // Reject duplicate names (case-insensitive) so users don't accidentally
+        // spawn parallel orgs. Stricter dedup happens during platform review.
+        const dupe = await prisma.organization.findFirst({
+            where: { organizationName: { equals: body.organizationName, mode: 'insensitive' }, deletedAt: null },
+            select: { id: true }
+        });
+        if (dupe) {
+            throw new ApiError(409, 'An organisation with this name already exists. Use a unique name or ask the existing admin to invite you.', 'ORG_NAME_TAKEN');
+        }
+
+        const org = await prisma.$transaction(async (tx) => {
+            const created = await tx.organization.create({
+                data: {
+                    organizationName: body.organizationName,
+                    organizationType: body.organizationType as any,
+                    addressLine1: body.addressLine1 || null,
+                    city: body.city || null,
+                    state: body.state || null,
+                    pincode: body.pincode || null,
+                    verificationStatus: 'PENDING' as any,
+                    organizationOnboardingStatus: 'self_created'
+                }
+            });
+            await tx.user.update({
+                where: { id: me.id },
+                data: { organizationId: created.id }
+            });
+            await tx.orgMembership.create({
+                data: {
+                    userId: me.id,
+                    organizationId: created.id,
+                    orgRole: OrgRole.ORG_ADMIN,
+                    isActive: true,
+                    invitedAt: new Date(),
+                    acceptedAt: new Date()
+                }
+            });
+            return created;
+        });
+
+        await auditLog({
+            actorUserId: me.id,
+            actorRole: req.user!.role,
+            action: 'org.created.self',
+            entityType: 'organization',
+            entityId: org.id,
+            ipAddress: req.ip,
+            metadata: {
+                organizationName: org.organizationName,
+                organizationType: org.organizationType,
+                source: 'self_created'
+            }
+        });
+
+        ok(res, {
+            organization: {
+                id: org.id,
+                organizationName: org.organizationName,
+                organizationType: org.organizationType,
+                verificationStatus: org.verificationStatus
+            },
+            orgRole: 'ORG_ADMIN'
+        }, 201);
     })
 );
 

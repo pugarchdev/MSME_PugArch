@@ -1399,7 +1399,7 @@ export default function SellerOnboarding() {
                                            <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.bankName}</td>
                                            <td className="px-3 py-3 text-gray-600 break-all font-mono">{bankAccountDisplay(bank)}</td>
                                            <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.holderName || '-'}</td>
-                                           <td className="px-3 py-3 text-gray-600">-</td>
+                                         {/*  <td className="px-3 py-3 text-gray-600">-</td>*/}
                                            <td className="px-3 py-3 text-gray-600">{bank.isPrimary ? 'Yes' : 'No'}</td>
                                            <td className="px-3 py-3">
                                               <button onClick={() => handleDeleteBank(bank.id)} className="text-red-500 hover:text-red-700 font-bold text-[10px] uppercase">Delete</button>

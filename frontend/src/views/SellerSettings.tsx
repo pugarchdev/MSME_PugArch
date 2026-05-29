@@ -445,9 +445,7 @@ export default function SellerSettings() {
               <div className="p-5 sm:p-8 space-y-6 sm:space-y-8 animate-in fade-in duration-300">
                 <h2 className="text-2xl font-bold text-gray-800">Update Aadhaar</h2>
 
-                <div className="bg-sky-50 border border-sky-100 p-4 rounded-lg text-sky-800 text-sm font-medium">
-                  On Aadhaar update, Pan Validation has to be reverified
-                </div>
+            
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8">
                   <Input label="Aadhaar Number / Virtual ID*" placeholder="Enter Aadhaar number / Virtual ID" value={aadhaarForm.number} onChange={e => setAadhaarForm({...aadhaarForm, number: e.target.value})} />

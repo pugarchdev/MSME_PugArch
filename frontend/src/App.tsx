@@ -73,6 +73,7 @@ const SuppliersReportPage = lazy(() => import('./features/reports/pages/Supplier
 const VendorStorefrontPage = lazy(() => import('./features/vendors/pages/VendorStorefrontPage'));
 const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
 const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
+const PortalDocumentation = lazy(() => import('./views/PortalDocumentation'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -203,6 +204,7 @@ export default function App() {
     if (pathname === '/admin/register') return <Register type="admin" />;
     if (!user) return null;
     if (pathname === '/dashboard') return <Dashboard />;
+    if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
     if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;

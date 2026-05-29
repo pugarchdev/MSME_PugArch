@@ -4,6 +4,8 @@
  * POST   /api/org/invite                  — ORG_ADMIN sends invite
  * GET    /api/org/invitations             — List pending invitations
  * DELETE /api/org/invitations/:id         — Cancel invitation
+ * GET    /api/org/invite/info             — (public) Look up invite by token
+ * POST   /api/org/invite/signup           — (public) Create account from invite + join org
  * POST   /api/org/accept-invite           — Accept invite by token
  * GET    /api/org/members                 — List all members
  * PUT    /api/org/members/:userId/role    — Change member OrgRole
@@ -13,7 +15,7 @@
  */
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { OrgRole } from '@prisma/client';
+import { OrgRole, Role } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requireOrgRole } from '../middleware/requireOrgRole.js';
@@ -25,6 +27,9 @@ import { notificationService } from '../services/notification.service.js';
 import { ensureOrgMembership } from '../services/org-membership.service.js';
 import { transporter } from '../services/mail.service.js';
 import { env } from '../config/env.js';
+import { hashPassword, validatePasswordStrength } from '../services/password.service.js';
+import { issueAuthResponse } from '../services/token.service.js';
+import { toSafeUser } from '../utils/routeHelpers.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
 
 const router = Router();
@@ -80,6 +85,13 @@ const ORGANIZATION_TYPE_VALUES = [
 const inviteSchema = z.object({
     email: z.string().email().toLowerCase().trim(),
     orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]])
+});
+
+const inviteSignupSchema = z.object({
+    token: z.string().min(10),
+    name: z.string().trim().min(2).max(120),
+    password: z.string().min(1),
+    mobile: z.string().trim().min(7).max(20).optional()
 });
 
 const roleUpdateSchema = z.object({
@@ -475,6 +487,174 @@ router.delete(
         });
 
         ok(res, { success: true });
+    })
+);
+
+// ─── GET /api/org/invite/info — (public) look up an invite by token ──────────
+// Lets an invited person see which organisation and role the invite is for
+// BEFORE they have an account. No auth required; only non-sensitive fields are
+// returned and the token itself is never echoed back.
+router.get(
+    '/org/invite/info',
+    asyncRoute(async (req, res) => {
+        const token = z.string().min(10).parse(req.query.token);
+
+        const invite = await prisma.orgInvitation.findUnique({
+            where: { token },
+            include: {
+                organization: { select: { organizationName: true, organizationType: true } },
+                invitedBy: { select: { name: true, role: true } }
+            }
+        });
+
+        if (!invite) throw new ApiError(404, 'Invitation not found or already used.', 'INVITE_NOT_FOUND');
+        if (invite.acceptedAt) throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.expiresAt < new Date()) throw new ApiError(410, 'This invitation has expired.', 'INVITE_EXPIRED');
+
+        // Does an account already exist for this email? Drives the frontend
+        // decision between "log in to accept" vs "create account to accept".
+        const existingUser = await prisma.user.findUnique({
+            where: { email: invite.email },
+            select: { id: true }
+        });
+
+        ok(res, {
+            email: invite.email,
+            orgRole: invite.orgRole,
+            organizationName: invite.organization.organizationName,
+            organizationType: invite.organization.organizationType,
+            invitedByName: invite.invitedBy?.name || null,
+            // The portal role (buyer/seller) the new account must be created as
+            // so it matches the inviting organisation's domain.
+            portalRole: invite.invitedBy?.role === 'buyer' ? 'buyer' : 'seller',
+            expiresAt: invite.expiresAt,
+            accountExists: Boolean(existingUser)
+        });
+    })
+);
+
+// ─── POST /api/org/invite/signup — (public) create account from an invite ────
+// One-shot path for a brand-new invitee: creates their user account, links it
+// to the inviting organisation, and creates the membership with the invited
+// OrgRole — all without forcing them through the full GST/org onboarding flow
+// (the org already exists and is owned by the inviter). Returns auth tokens so
+// the frontend can log them straight in.
+router.post(
+    '/org/invite/signup',
+    asyncRoute(async (req, res) => {
+        const body = inviteSignupSchema.parse(req.body);
+
+        const invite = await prisma.orgInvitation.findUnique({
+            where: { token: body.token },
+            include: {
+                organization: { select: { id: true, organizationName: true, verificationStatus: true } },
+                invitedBy: { select: { role: true } }
+            }
+        });
+
+        if (!invite) throw new ApiError(404, 'Invitation not found or already used.', 'INVITE_NOT_FOUND');
+        if (invite.acceptedAt) throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.expiresAt < new Date()) throw new ApiError(410, 'This invitation has expired.', 'INVITE_EXPIRED');
+
+        // If an account already exists, this is the wrong path — they should
+        // log in and accept via /api/org/accept-invite instead.
+        const existingUser = await prisma.user.findUnique({
+            where: { email: invite.email },
+            select: { id: true }
+        });
+        if (existingUser) {
+            throw new ApiError(409, 'An account already exists for this email. Please log in to accept the invitation.', 'ACCOUNT_EXISTS');
+        }
+
+        const passwordCheck = validatePasswordStrength(body.password);
+        if (!passwordCheck.ok) {
+            throw new ApiError(400, passwordCheck.errors[0] || 'Password does not meet security requirements', 'WEAK_PASSWORD');
+        }
+
+        if (body.mobile) {
+            const mobileTaken = await prisma.user.findFirst({
+                where: { mobile: body.mobile },
+                select: { id: true }
+            });
+            if (mobileTaken) throw new ApiError(409, 'Mobile number already in use. Please use unique details.', 'MOBILE_EXISTS');
+        }
+
+        // Mirror the inviting admin's portal role so the new member lives in the
+        // same domain (seller org → seller account, buyer org → buyer account).
+        const portalRole: Role = invite.invitedBy?.role === 'buyer' ? Role.buyer : Role.seller;
+        const hashedPassword = await hashPassword(body.password);
+        const now = new Date();
+
+        const user = await prisma.$transaction(async (tx) => {
+            const created = await tx.user.create({
+                data: {
+                    name: body.name,
+                    email: invite.email,
+                    password: hashedPassword,
+                    role: portalRole,
+                    mobile: body.mobile,
+                    emailVerified: true, // the invite email itself proves ownership
+                    lastPasswordChangeAt: now,
+                    registrationStatus: 'completed',
+                    // Team members inherit access from the (already-approved) org;
+                    // they don't run their own onboarding/compliance review.
+                    onboardingStatus: 'approved_for_procurement',
+                    accountStatus: 'ACTIVE',
+                    organizationId: invite.organizationId,
+                    registrationDetails: {}
+                }
+            });
+
+            await tx.orgMembership.create({
+                data: {
+                    userId: created.id,
+                    organizationId: invite.organizationId,
+                    orgRole: invite.orgRole,
+                    isActive: true,
+                    invitedById: invite.invitedById,
+                    invitedAt: invite.createdAt,
+                    acceptedAt: now
+                }
+            });
+
+            await tx.orgInvitation.update({
+                where: { id: invite.id },
+                data: { acceptedAt: now }
+            });
+
+            return created;
+        });
+
+        // Notify the inviter that the invite was accepted.
+        try {
+            await notificationService.notify(invite.invitedById, {
+                title: 'Team member joined',
+                message: `${user.email} created an account and joined ${invite.organization.organizationName} as ${invite.orgRole.replace(/_/g, ' ')}.`,
+                type: 'org_invite_accepted',
+                priority: 'medium',
+                redirectUrl: '/org/team'
+            });
+        } catch { /* non-fatal */ }
+
+        await auditLog({
+            actorUserId: user.id,
+            actorRole: user.role,
+            action: 'org.invitation.accepted_via_signup',
+            entityType: 'orgInvitation',
+            entityId: invite.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole }
+        });
+
+        const tokens = issueAuthResponse(user);
+        ok(res, {
+            ...tokens,
+            user: toSafeUser(user),
+            organizationId: invite.organizationId,
+            organizationName: invite.organization.organizationName,
+            orgRole: invite.orgRole
+        }, 201);
     })
 );
 

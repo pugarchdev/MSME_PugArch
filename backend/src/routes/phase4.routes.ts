@@ -781,6 +781,10 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
       requiredDocs.push('udyam_certificate');
     }
 
+    if (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
+      requiredDocs.push('dipp_certificate');
+    }
+
     const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gst);
     if (hasGstin) {
       requiredDocs.push('gst_certificate');
@@ -807,7 +811,8 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
         udyam_certificate: 'Udyam Certificate',
         gst_certificate: 'GST Certificate',
         aadhaar_card: 'Aadhaar of Authorized Person',
-        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)'
+        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
+        dipp_certificate: 'DIPP Certificate'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       throw new ApiError(400, `Missing required documents: ${missingLabels}. Please upload them before submitting.`, 'MISSING_MANDATORY_DOCUMENTS');

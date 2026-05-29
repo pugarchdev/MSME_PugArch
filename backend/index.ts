@@ -2922,6 +2922,10 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
       requiredDocs.push('udyam_certificate');
     }
 
+    if (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
+      requiredDocs.push('dipp_certificate');
+    }
+
     const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gst);
     if (hasGstin) {
       requiredDocs.push('gst_certificate');
@@ -2948,7 +2952,8 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
         udyam_certificate: 'Udyam Certificate',
         gst_certificate: 'GST Certificate',
         aadhaar_card: 'Aadhaar of Authorized Person',
-        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)'
+        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
+        dipp_certificate: 'DIPP Certificate'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       return res.status(400).json({ message: `Missing required documents: ${missingLabels}. Please upload them before submitting.` });

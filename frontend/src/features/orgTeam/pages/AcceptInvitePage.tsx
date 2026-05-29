@@ -1,6 +1,14 @@
 /**
  * AcceptInvitePage — handles the /invite/accept?token=xxx flow.
- * User must be logged in. If not, redirected to login with returnUrl.
+ *
+ * Decision tree:
+ *   1. No token            → error.
+ *   2. Logged in           → auto-accept via /api/org/accept-invite.
+ *   3. Logged out + account already exists for the invited email
+ *                          → send to /login?returnUrl=... to sign in & come back.
+ *   4. Logged out + no account yet
+ *                          → send to /invite/signup?token=... (dedicated
+ *                            lightweight signup that joins the existing org).
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -8,6 +16,7 @@ import { CheckCircle2, XCircle, Building2 } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../hooks/useAuth';
+import { api } from '../../../lib/api';
 import { postApi } from '../../shared/apiClient';
 
 type InviteResult = {
@@ -36,17 +45,42 @@ export default function AcceptInvitePage() {
         }
 
         if (!token || !user) {
-            // Not logged in — send to the LOGIN screen (not the marketing home
-            // page) and carry a returnUrl so we come straight back here after
-            // the user signs in or creates an account.
-            const returnUrl = encodeURIComponent(`/invite/accept?token=${inviteToken}`);
-            router.replace(`/login?returnUrl=${returnUrl}`);
+            // Not logged in. Ask the backend whether an account already exists
+            // for the invited email, then route accordingly.
+            void routeUnauthenticated();
             return;
         }
 
-        // Auto-accept on load
+        // Logged in — auto-accept.
         void acceptInvite();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inviteToken, token, user]);
+
+    const routeUnauthenticated = async () => {
+        if (!inviteToken) return;
+        setStatus('loading');
+        try {
+            const res = await api.get(`/api/org/invite/info?token=${encodeURIComponent(inviteToken)}`);
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setStatus('error');
+                setErrorMsg(body?.message || 'This invitation is no longer valid.');
+                return;
+            }
+            const info = body?.data ?? body;
+            if (info?.accountExists) {
+                // They have an account — log in and bounce straight back here.
+                const returnUrl = encodeURIComponent(`/invite/accept?token=${inviteToken}`);
+                router.replace(`/login?returnUrl=${returnUrl}`);
+            } else {
+                // Brand new invitee — dedicated signup that joins the org.
+                router.replace(`/invite/signup?token=${encodeURIComponent(inviteToken)}`);
+            }
+        } catch (err: any) {
+            setStatus('error');
+            setErrorMsg(err?.message || 'Unable to verify the invitation. Please try again.');
+        }
+    };
 
     const acceptInvite = async () => {
         if (!inviteToken) return;
@@ -68,7 +102,7 @@ export default function AcceptInvitePage() {
             <div className="flex min-h-screen items-center justify-center bg-slate-50">
                 <div className="text-center">
                     <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#12335f]" />
-                    <p className="mt-4 text-sm font-black uppercase tracking-widest text-[#12335f]">Accepting Invitation...</p>
+                    <p className="mt-4 text-sm font-black uppercase tracking-widest text-[#12335f]">Checking Invitation...</p>
                 </div>
             </div>
         );

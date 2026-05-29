@@ -55,6 +55,7 @@ const NotificationCenter = lazy(() => import('./views/NotificationCenter'));
 const MISReports = lazy(() => import('./views/MISReports'));
 const TeamManagementPage = lazy(() => import('./features/orgTeam/pages/TeamManagementPage'));
 const AcceptInvitePage = lazy(() => import('./features/orgTeam/pages/AcceptInvitePage'));
+const InviteSignupPage = lazy(() => import('./features/orgTeam/pages/InviteSignupPage'));
 const CartPage = lazy(() => import('./features/cart/pages/CartPage'));
 const CartApprovalPage = lazy(() => import('./features/cart/pages/CartApprovalPage'));
 const TechnicalReviewPage = lazy(() => import('./features/cart/pages/TechnicalReviewPage'));
@@ -147,7 +148,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register'].includes(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup'].includes(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -202,6 +203,11 @@ export default function App() {
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
     if (pathname === '/admin/register') return <Register type="admin" />;
+    // Invite routes must be reachable WITHOUT an authenticated session: a brand
+    // new invitee has no account yet. AcceptInvitePage decides whether to log
+    // in, sign up, or auto-accept; InviteSignupPage creates the account.
+    if (pathname === '/invite/accept') return <AcceptInvitePage />;
+    if (pathname === '/invite/signup') return <InviteSignupPage />;
     if (!user) return null;
     if (pathname === '/dashboard') return <Dashboard />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
@@ -270,7 +276,6 @@ export default function App() {
     if (pathname === '/admin/organizations' && roleOk(user.role, ['admin'])) return <OrganizationManagement />;
     if (pathname === '/notifications') return <NotificationCenter />;
     if (pathname === '/org/team') return <TeamManagementPage />;
-    if (pathname === '/invite/accept') return <AcceptInvitePage />;
     if (pathname === '/cart') return <CartPage />;
     if (pathname === '/cart/approvals') return <CartApprovalPage />;
     if (pathname === '/cart/technical-review') return <TechnicalReviewPage />;

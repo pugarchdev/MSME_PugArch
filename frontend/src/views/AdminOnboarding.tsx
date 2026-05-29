@@ -62,6 +62,7 @@ const SELLER_ONBOARDING_DOCUMENT_TYPES = new Set([
   "gst_certificate",
   "aadhaar_card",
   "business_registration_proof",
+  "dipp_certificate",
 ]);
 
 const getDocumentFiles = (document: any) => {

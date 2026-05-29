@@ -176,14 +176,13 @@ export default function RoleAwareActionCards() {
             show: isSeller
         },
 
-        // ─── Role-gated approval tiles (show if user has org role) ───
         {
             label: 'Approvals Pending',
             count: data.pendingApprovalsCount || 0,
             href: '/approvals',
             icon: Inbox,
             tone: 'amber',
-            show: !!(isOrgAdmin || isProcurementOfficer || isFinanceOfficer)
+            show: isBuyer && !!(isOrgAdmin || isProcurementOfficer || isFinanceOfficer)
         },
         {
             label: 'Carts to Approve',
@@ -191,7 +190,7 @@ export default function RoleAwareActionCards() {
             href: '/cart/approvals',
             icon: ClipboardCheck,
             tone: 'blue',
-            show: !!(isOrgAdmin || isFinanceOfficer)
+            show: isBuyer && !!(isOrgAdmin || isFinanceOfficer)
         },
         {
             label: 'Tech Review Queue',
@@ -199,7 +198,7 @@ export default function RoleAwareActionCards() {
             href: '/cart/technical-review',
             icon: FileText,
             tone: 'purple',
-            show: !!(isOrgAdmin || isTechnicalOfficer)
+            show: isBuyer && !!(isOrgAdmin || isTechnicalOfficer)
         }
     ];
 

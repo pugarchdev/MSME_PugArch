@@ -266,6 +266,10 @@ export default function SellerOnboarding() {
       required.push({ id: 'udyam_certificate', label: 'Udyam Certificate' });
     }
 
+    if (formData.isStartup || String(formData.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
+      required.push({ id: 'dipp_certificate', label: 'DIPP Certificate' });
+    }
+
     const hasGstin = regDetails.gstin || formData.offices?.some((o: any) => o.gst);
     if (hasGstin) {
       required.push({ id: 'gst_certificate', label: 'GST Certificate' });

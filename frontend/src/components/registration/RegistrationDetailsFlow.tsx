@@ -30,6 +30,7 @@ interface RegistrationDetailsFlowProps {
   businessType: string;
   onBack: () => void;
   role: 'buyer' | 'seller';
+  prereqSelectedDocuments?: string[];
 }
 
 const cooperativeOrganisationTypes = [
@@ -82,7 +83,7 @@ const buyerDocOptions = [
   { id: 'authLetter', label: 'Authorization Letter of Representative (Optional)' }
 ];
 
-export default function RegistrationDetailsFlow({ businessType, onBack, role }: RegistrationDetailsFlowProps) {
+export default function RegistrationDetailsFlow({ businessType, onBack, role, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(1);
   const { user, login } = useAuth();
   const router = useRouter();
@@ -145,6 +146,16 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
 
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [gstError, setGstError] = useState<string>('');
+  const [isGstVerified, setIsGstVerified] = useState(false);
+
+  const sellerRegistrationDocuments = () => {
+    const docs = new Set(prereqSelectedDocuments);
+    if (formData.gstin && isGstVerified) docs.add('gst_certificate');
+    if (formData.udyamNumber) docs.add('udyam_certificate');
+    if (formData.cin) docs.add('business_registration_proof');
+    if (businessType.toLowerCase().includes('startup')) docs.add('dipp_certificate');
+    return Array.from(docs);
+  };
 
   const fetchGstDetails = async () => {
     if (!formData.gstin || formData.gstin.length !== 15) {
@@ -176,13 +187,16 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
           state: data.state?.trim() || prev.state,
           district: data.city?.trim() || prev.district,
         }));
+        setIsGstVerified(true);
         toast.success(`GST verified: ${data.status || 'Status available'}`);
       } else {
         const err = await res.json().catch(() => ({}));
         setGstError(err?.message || 'Incorrect or invalid GST');
+        setIsGstVerified(false);
       }
     } catch (err) {
       setGstError('Verification service unavailable');
+      setIsGstVerified(false);
     } finally {
       setIsFetchingGst(false);
     }
@@ -542,7 +556,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
           mobile: formData.mobile || user.mobile || '',
           email: user.email,
           gst: formData.gstin || null,
-          documents: role === 'buyer' ? selectedDocs : undefined
+          documents: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments()
         };
         res = await api.post('/api/auth/activate-dual-role', {
           roleToActivate: role,
@@ -571,8 +585,12 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
             pan: formData.panNumber,
             roleInOrg: formData.roleInOrg,
             udyamNumber: formData.udyamNumber,
+            gstin: formData.gstin,
+            gstVerified: Boolean(formData.gstin && isGstVerified),
+            cin: formData.cin,
+            website: formData.website,
             accountName,
-            selectedDocuments: role === 'buyer' ? selectedDocs : undefined
+            selectedDocuments: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments()
           }
         };
         if (formData.mobile.trim()) payload.mobile = formData.mobile.trim();
@@ -762,6 +780,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                             value={formData.gstin}
                             onChange={(e) => {
                               setFormData({ ...formData, gstin: e.target.value.toUpperCase() });
+                              setIsGstVerified(false);
                               setGstError('');
                             }}
                             error={gstError}
@@ -859,6 +878,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role }: 
                                 value={formData.gstin}
                                 onChange={(e) => {
                                   setFormData({ ...formData, gstin: e.target.value.toUpperCase() });
+                                  setIsGstVerified(false);
                                   setGstError('');
                                 }}
                                 error={gstError}

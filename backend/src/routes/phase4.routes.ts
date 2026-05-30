@@ -833,28 +833,36 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
 
     const requiredDocs: string[] = ['pan_copy', 'bank_passbook', 'address_proof'];
     const regDetails = (user.registrationDetails as Record<string, any>) || {};
+    const addRequiredDoc = (docType: string) => {
+      if (!requiredDocs.includes(docType)) requiredDocs.push(docType);
+    };
+    if (Array.isArray(regDetails.selectedDocuments)) {
+      for (const docType of regDetails.selectedDocuments) {
+        if (typeof docType === 'string' && docType.trim()) addRequiredDoc(docType.trim());
+      }
+    }
 
     if (profile.isUdyamCertified || regDetails.udyamNumber) {
-      requiredDocs.push('udyam_certificate');
+      addRequiredDoc('udyam_certificate');
     }
 
     if (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
-      requiredDocs.push('dipp_certificate');
+      addRequiredDoc('dipp_certificate');
     }
 
-    const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gst);
+    const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gstNumber || o.gst);
     if (hasGstin) {
-      requiredDocs.push('gst_certificate');
+      addRequiredDoc('gst_certificate');
     }
 
     if (regDetails.verificationMethod === 'Aadhaar' || regDetails.aadhaarNumber) {
-      requiredDocs.push('aadhaar_card');
+      addRequiredDoc('aadhaar_card');
     }
 
     const corporateTypes = ['Company', 'LLP', 'Partnership', 'Cooperative', 'Society', 'Trust'];
     const isCorporate = corporateTypes.some(t => String(profile.organizationType || regDetails.businessType).toLowerCase().includes(t.toLowerCase()));
     if (isCorporate && (regDetails.cinNumber || regDetails.registrationNumber || regDetails.cin)) {
-      requiredDocs.push('business_registration_proof');
+      addRequiredDoc('business_registration_proof');
     }
 
     const uploadedDocs = profile.sellerDocuments?.map((d: any) => d.documentType) || [];
@@ -869,7 +877,9 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
         gst_certificate: 'GST Certificate',
         aadhaar_card: 'Aadhaar of Authorized Person',
         business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
-        dipp_certificate: 'DIPP Certificate'
+        dipp_certificate: 'DIPP Certificate',
+        itr_3_years: 'Income Tax Returns of Last 3 Years',
+        nsic_certificate: 'NSIC Registration Certificate'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       throw new ApiError(400, `Missing required documents: ${missingLabels}. Please upload them before submitting.`, 'MISSING_MANDATORY_DOCUMENTS');

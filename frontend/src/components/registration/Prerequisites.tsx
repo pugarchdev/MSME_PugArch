@@ -100,7 +100,7 @@ const prerequisiteDocs: Record<string, { personal: string[], business: string[],
 };
 
 interface PrerequisitesProps {
-  onProceed: (type: string) => void;
+  onProceed: (type: string, selectedDocuments?: string[]) => void;
   role: 'buyer' | 'seller';
 }
 
@@ -123,6 +123,25 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
       ...docs.business
     ].every(item => checkedItems[item])
   );
+
+  const sellerDocumentForPrerequisite = (item: string) => {
+    const normalized = item.toLowerCase();
+    if (normalized.includes('income tax returns')) return 'itr_3_years';
+    if (normalized.includes('dipp')) return 'dipp_certificate';
+    if (normalized.includes('gst')) return 'gst_certificate';
+    if (normalized.includes('nsic')) return 'nsic_certificate';
+    if (normalized.includes('udyam')) return 'udyam_certificate';
+    if (normalized.includes('registered address')) return 'address_proof';
+    if (normalized.includes('bank account')) return 'bank_passbook';
+    if (normalized.includes('business pan')) return 'pan_copy';
+    return '';
+  };
+
+  const selectedSellerDocuments = () => {
+    if (isBuyer) return [];
+    const checked = [...docs.business, ...docs.optional].filter(item => checkedItems[item]);
+    return Array.from(new Set(checked.map(sellerDocumentForPrerequisite).filter(Boolean)));
+  };
 
   return (
     <div className="mx-auto w-full max-w-4xl">
@@ -211,7 +230,7 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
                   View Pre-requisites Document
                 </a>
                 <Button 
-                  onClick={() => onProceed(selectedType)}
+                  onClick={() => onProceed(selectedType, selectedSellerDocuments())}
                   disabled={!allRequiredChecked}
                   className={cn(
                     "h-12 w-full rounded-lg px-8 font-black uppercase tracking-widest transition-all md:w-auto md:px-12",

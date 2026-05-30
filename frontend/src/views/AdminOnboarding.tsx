@@ -63,6 +63,8 @@ const SELLER_ONBOARDING_DOCUMENT_TYPES = new Set([
   "aadhaar_card",
   "business_registration_proof",
   "dipp_certificate",
+  "itr_3_years",
+  "nsic_certificate",
 ]);
 
 const getDocumentFiles = (document: any) => {

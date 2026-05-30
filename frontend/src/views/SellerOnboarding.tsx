@@ -266,28 +266,46 @@ export default function SellerOnboarding() {
       { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque' },
       { id: 'address_proof', label: 'Address Proof' }
     ];
+    const selectedDocs = Array.isArray(regDetails.selectedDocuments) ? regDetails.selectedDocuments : [];
+    const selectedDocLabels: Record<string, string> = {
+      pan_copy: 'PAN Card Copy',
+      bank_passbook: 'Bank Passbook / Cancelled Cheque',
+      address_proof: 'Address Proof',
+      udyam_certificate: 'Udyam Certificate',
+      gst_certificate: 'GST Certificate',
+      aadhaar_card: 'Aadhaar of Authorized Person',
+      business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
+      dipp_certificate: 'DIPP Certificate',
+      itr_3_years: 'Income Tax Returns of Last 3 Years',
+      nsic_certificate: 'NSIC Registration Certificate'
+    };
+    const addRequired = (id: string, label = selectedDocLabels[id] || id) => {
+      if (!required.some(doc => doc.id === id)) required.push({ id, label });
+    };
+
+    selectedDocs.forEach((id: string) => addRequired(id));
 
     if (formData.isUdyamCertified || regDetails.udyamNumber) {
-      required.push({ id: 'udyam_certificate', label: 'Udyam Certificate' });
+      addRequired('udyam_certificate');
     }
 
     if (formData.isStartup || String(formData.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
-      required.push({ id: 'dipp_certificate', label: 'DIPP Certificate' });
+      addRequired('dipp_certificate');
     }
 
-    const hasGstin = regDetails.gstin || formData.offices?.some((o: any) => o.gst);
+    const hasGstin = regDetails.gstin || formData.offices?.some((o: any) => o.gstNumber || o.gst);
     if (hasGstin) {
-      required.push({ id: 'gst_certificate', label: 'GST Certificate' });
+      addRequired('gst_certificate');
     }
 
     if (regDetails.verificationMethod === 'Aadhaar' || regDetails.aadhaarNumber) {
-      required.push({ id: 'aadhaar_card', label: 'Aadhaar of Authorized Person' });
+      addRequired('aadhaar_card');
     }
 
     const corporateTypes = ['Company', 'LLP', 'Partnership', 'Cooperative', 'Society', 'Trust'];
     const isCorporate = corporateTypes.some(t => String(formData.organizationType || regDetails.businessType).toLowerCase().includes(t.toLowerCase()));
     if (isCorporate && (regDetails.cinNumber || regDetails.registrationNumber || regDetails.cin)) {
-      required.push({ id: 'business_registration_proof', label: 'Business Registration Proof (CIN/Shop Act)' });
+      addRequired('business_registration_proof');
     }
 
     return required;

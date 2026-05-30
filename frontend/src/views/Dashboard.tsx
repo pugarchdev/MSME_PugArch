@@ -121,9 +121,16 @@ export default function Dashboard() {
     }
   }, [token, router]);
 
+  const registrationGstin = String(user?.registrationDetails?.gstin || '').trim().toUpperCase();
+  const registrationGstVerified = Boolean(user?.registrationDetails?.gstVerified && validators.gstin(registrationGstin));
+  const organizationGstin = String((user?.organization as any)?.gstin || profileData?.user?.organization?.gstin || '').trim().toUpperCase();
+  const profileGstin = String(user?.buyerProfile?.gst || profile?.buyerProfile?.gst || profile?.gst || '').trim().toUpperCase();
+  const sellerOfficeHasGst = user?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
+    || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
+    || profile?.offices?.some((o: any) => o.gstNumber);
   const hasGst = user?.role === 'seller'
-    ? (user?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber) || profile?.offices?.some((o: any) => o.gstNumber))
-    : (!!user?.buyerProfile?.gst || !!profile?.buyerProfile?.gst || !!profile?.gst);
+    ? (sellerOfficeHasGst || registrationGstVerified || validators.gstin(organizationGstin))
+    : (validators.gstin(profileGstin) || registrationGstVerified || validators.gstin(organizationGstin));
 
   const getStatusIcon = (status: string) => {
     switch (status) {

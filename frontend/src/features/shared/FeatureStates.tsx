@@ -58,7 +58,6 @@ export function InlineError({ message, onRetry }: { message: string; onRetry?: (
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
         <div>
-          <p className="text-xs font-black uppercase tracking-widest text-red-900">Live data unavailable</p>
           <p className="mt-1 text-xs font-semibold text-red-700">{message}</p>
         </div>
       </div>

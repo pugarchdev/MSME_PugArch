@@ -15,7 +15,7 @@ import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
@@ -99,18 +99,12 @@ export default function RequirementsPage() {
                 </div>
             </div>
 
-            {list.isLoading && !list.data ? (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {[1, 2, 3, 4].map(i => <MetricCardSkeleton key={i} />)}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ClipboardCheck} />
-                    <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={FileText} />
-                    <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} />
-                    <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} />
-                </div>
-            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
+                <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={FileText} loading={list.isLoading && !list.data} />
+                <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} loading={list.isLoading && !list.data} />
+                <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
+            </div>
 
             <PageToolbar
                 eyebrow="Filters"
@@ -641,13 +635,15 @@ function Metric({
     value,
     hint,
     tone,
-    icon: Icon
+    icon: Icon,
+    loading
 }: {
     label: string;
     value: number;
     hint: string;
     tone: 'positive' | 'negative' | 'warning' | 'neutral';
     icon: any;
+    loading?: boolean;
 }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
@@ -660,7 +656,7 @@ function Metric({
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                    <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white', toneStyle[tone])}>

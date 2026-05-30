@@ -30,7 +30,7 @@ import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { useAuth } from '../../../hooks/useAuth';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
-import { TableSkeleton, ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { TableSkeleton, ListSkeleton } from '../../../components/ui/skeleton';
 import { Pagination } from '../../shared/Pagination';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { useResponsiveViewMode } from '../../shared/hooks';
@@ -137,20 +137,12 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         </div>
       </div>
 
-      {isInitialLoading ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
-            <MetricCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} />
-          <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} />
-          <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} />
-          <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} />
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} loading={isInitialLoading} />
+        <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} loading={isInitialLoading} />
+        <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} loading={isInitialLoading} />
+        <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} loading={isInitialLoading} />
+      </div>
 
 
       {listQuery.error && (
@@ -424,13 +416,13 @@ function GridView({ records, startIndex, page, pageSize, total, onSelect, onPage
 
 /* ---------- Small helpers ---------- */
 
-function MetricCard({ label, value, hint, icon: Icon }: { label: string; value: number; hint: string; icon: any }) {
+function MetricCard({ label, value, hint, icon: Icon, loading }: { label: string; value: number; hint: string; icon: any; loading?: boolean }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between p-4">
         <div>
           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+          <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
           <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{hint}</p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">

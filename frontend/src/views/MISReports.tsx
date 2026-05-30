@@ -261,11 +261,9 @@ function KPI({ title, value, icon: Icon, trend, trendUp, loading }: any) {
       <CardContent className="flex items-start justify-between p-4 sm:p-5">
         <div className="w-full">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-          {loading ? (
-            <div className="h-9 w-20 animate-pulse rounded bg-slate-200 mt-2" />
-          ) : (
-            <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
-          )}
+          <p className={`mt-2 text-3xl font-black ${loading ? 'text-slate-300' : 'text-slate-950'}`}>
+            {loading ? "0" : value}
+          </p>
           <div className={`mt-2 flex items-center text-[10px] font-bold ${trendUp ? 'text-emerald-600' : 'text-amber-600'}`}>
             {trendUp ? <ArrowUpRight className="mr-1 h-3 w-3" /> : <ArrowDownRight className="mr-1 h-3 w-3" />}
             {trend}

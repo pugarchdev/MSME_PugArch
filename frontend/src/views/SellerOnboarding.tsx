@@ -12,7 +12,7 @@ import { Loader2 } from '@/components/ui/loader';
 import { GeMSellerSidebar } from '../components/GeMSellerSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
 import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
-import { MSME_TYPES, VENDOR_TYPES, REGISTRATION_TYPES } from '../constants/dropdowns';
+import { MSME_TYPES, VENDOR_TYPES, REGISTRATION_TYPES, PRODUCT_CATEGORIES, PRODUCT_CATEGORY_OTHER } from '../constants/dropdowns';
 import { cn } from '../lib/utils';
 
 const toDateInputValue = (value: unknown) => {
@@ -136,7 +136,7 @@ export default function SellerOnboarding() {
 
     if (!candidate.name.trim()) errors.name = 'Office name is required.';
     if (!candidate.type || candidate.type === 'Select type of address') errors.type = 'Type of office is required.';
-    
+
     if (!candidate.pincode.trim()) errors.pincode = 'Pincode is required.';
     else if (!pincodeRegex.test(candidate.pincode.trim())) errors.pincode = 'Enter a valid 6-digit pincode.';
 
@@ -167,10 +167,27 @@ export default function SellerOnboarding() {
   });
   const [bankErrors, setBankErrors] = useState<Record<string, string>>({});
   const [additionalErrors, setAdditionalErrors] = useState<Record<string, string>>({});
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
+  const addCustomCategory = () => {
+    const trimmed = customCategory.trim();
+    if (!trimmed) return;
+    const currentCats = Array.isArray(formData.productCategories) ? formData.productCategories : [];
+    if (!currentCats.some((c: string) => c.toLowerCase() === trimmed.toLowerCase())) {
+      setFormData((prev: any) => ({ ...prev, productCategories: [...currentCats, trimmed] }));
+      setAdditionalErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.productCategories;
+        return next;
+      });
+    }
+    setCustomCategory('');
+    setShowCustomCategory(false);
+  };
   const [ownershipOtp, setOwnershipOtp] = useState('');
   const [ownershipOtpSent, setOwnershipOtpSent] = useState(false);
   const [isSendingOwnershipOtp, setIsSendingOwnershipOtp] = useState(false);
-  
+
   const [aadhaarData, setAadhaarData] = useState({ number: '', mobile: '', consent: false });
   const [emailData, setEmailData] = useState({ newEmail: '', verifyEmail: '' });
   const [regDetails, setRegDetails] = useState<any>(cachedRegDetails);
@@ -207,21 +224,21 @@ export default function SellerOnboarding() {
     nameAsInPan: '',
     dateAsInPan: '',
     panVerified: false,
-    
+
     businessName: '',
     dateOfIncorporation: '',
     detailsUpdated: false,
-    
+
     isStartup: null,
     isUdyamCertified: null,
     participateInBid: null,
-    
+
     turnoverMax3Yrs: '',
     eInvoicingExcluded: false,
-    
+
     ownershipDeclarationAccepted: false,
     ownershipVerified: false,
-    
+
     offices: [],
     bankAccounts: [],
     mobile: '',
@@ -234,7 +251,7 @@ export default function SellerOnboarding() {
   };
 
   const normalizeList = (value: unknown) => Array.isArray(value) ? value : [];
-  
+
   const initialAdditionalSaved = cachedMe?.user?.sectionStatus?.additional === 'completed' || cachedMe?.user?.sectionStatus?.additional === 'approved';
 
   const [formData, setFormData] = useState<any>({
@@ -352,14 +369,14 @@ export default function SellerOnboarding() {
         skipCache: true
       });
       const data = await res.json();
-      
+
       const regDetails = data.user?.registrationDetails || {};
       const profile = data.profile || {};
       setRegDetails(regDetails);
       setSellerDocuments(profile.sellerDocuments || []);
-      
+
       const serverCompletedSections = completedSellerSectionsFromUser(data.user);
-      
+
       const inferredSections = inferCompletedSellerSections(profile);
       setSavedSections(Array.from(new Set([...inferredSections, ...serverCompletedSections])));
       const userRecord = data.user || {};
@@ -367,7 +384,7 @@ export default function SellerOnboarding() {
       setOnboardingStatus(currentStatus || 'pending');
       setIsProfileLocked(shouldLockSellerProfile(userRecord));
       setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord));
-      
+
       const hasAdditionalCompleted = data.user?.sectionStatus?.additional === 'completed' || data.user?.sectionStatus?.additional === 'approved';
       setFormData((prev: any) => ({
         ...prev,
@@ -540,7 +557,7 @@ export default function SellerOnboarding() {
 
   const handleUploadDocument = async (documentType: string, file: File) => {
     if (isProfileLocked) return;
-    
+
     // File validation: PDF, JPG, JPEG, PNG <= 10MB
     const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
     const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
@@ -608,7 +625,7 @@ export default function SellerOnboarding() {
       toast.error("Please fix the office address details.");
       return;
     }
-    
+
     const fullAddress = [officeForm.flat, officeForm.premises, officeForm.road, officeForm.area, `Contact: ${officeForm.contact}`].filter(Boolean).join(', ');
     const officeData = {
       name: officeForm.name,
@@ -981,35 +998,35 @@ export default function SellerOnboarding() {
 
   return (
     <div className="flex flex-col md:flex-row bg-gray-50 min-h-screen">
-      <GeMSellerSidebar 
-        currentSection={currentSection} 
-        onSectionChange={handleSectionChange} 
-        sectionStatus={getSectionStatus()} 
+      <GeMSellerSidebar
+        currentSection={currentSection}
+        onSectionChange={handleSectionChange}
+        sectionStatus={getSectionStatus()}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
-      
+
       <div className="flex-1 flex flex-col min-w-0">
-        <GeMProfileHeader 
-          companyName={formData.businessName} 
-          completionPercentage={calculateCompletion()} 
-          warnings={warnings} 
+        <GeMProfileHeader
+          companyName={formData.businessName}
+          completionPercentage={calculateCompletion()}
+          warnings={warnings}
           onMenuClick={() => setIsSidebarOpen(true)}
         />
-        
+
         <div className="p-3 sm:p-4 max-w-4xl mx-auto w-full">
           <Card className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="border-b border-gray-100 bg-gray-50/50 px-5 py-3">
-               <h3 className="text-base font-bold uppercase tracking-tight text-gray-800">
-                 {currentSection.replace(/([A-Z])/g, ' $1').toUpperCase()}
-               </h3>
-               {isProfileLocked && (
-                 <p className="mt-3 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                   {lockBadgeText}
-                 </p>
-               )}
+              <h3 className="text-base font-bold uppercase tracking-tight text-gray-800">
+                {currentSection.replace(/([A-Z])/g, ' $1').toUpperCase()}
+              </h3>
+              {isProfileLocked && (
+                <p className="mt-3 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                  {lockBadgeText}
+                </p>
+              )}
             </div>
-            
+
             {isAccountSettings && (
               <div className="border-b border-gray-100 bg-white p-3 sm:p-4">
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -1044,92 +1061,92 @@ export default function SellerOnboarding() {
                       ? 'Your business profile has been approved for procurement access. The approved profile is locked to preserve the verified record.'
                       : 'Your business profile has been securely submitted to our compliance team for review. It is locked during review and you will be notified via email once verification is complete.'}
                   </p>
-                  
+
                   <div className="mt-8 p-4 bg-slate-50 border border-slate-100 rounded-xl text-left max-w-md w-full mx-auto">
-                     <div className="flex items-start gap-3">
-                        <Info className="h-5 w-5 text-[#12335f] mt-0.5 shrink-0" />
-                        <div>
-                           <p className="text-sm font-bold text-slate-900">Review Period Notice</p>
-                           <p className="text-xs font-medium text-[#12335f] mt-1">Standard processing time is 3-5 business days. You cannot modify your registration data during this period.</p>
-                        </div>
-                     </div>
+                    <div className="flex items-start gap-3">
+                      <Info className="h-5 w-5 text-[#12335f] mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Review Period Notice</p>
+                        <p className="text-xs font-medium text-[#12335f] mt-1">Standard processing time is 3-5 business days. You cannot modify your registration data during this period.</p>
+                      </div>
+                    </div>
                   </div>
-                  
+
                   <Button onClick={() => setShowSuccessOverlay(false)} className="mt-10 bg-[#12335f] hover:bg-[#0b2342] text-white px-8 font-bold tracking-wide rounded-lg uppercase text-xs h-10">
-                     Review Submission Data
+                    Review Submission Data
                   </Button>
                 </div>
               ) : (
                 <fieldset disabled={isProfileLocked && !isAccountSettings && currentSection !== 'documents'} className={`min-w-0 w-full ${(isProfileLocked && !isAccountSettings) ? 'opacity-70' : ''}`}>
-              {currentSection === 'pan' && (
-                <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Input 
-                      label="Business / Organisation Type" 
-                      name="organizationType" 
-                      value={formData.organizationType} 
-                      disabled
-                      className="bg-slate-50 border-slate-200"
-                    />
-                    <Input label="Business PAN Number" name="pan" value={formData.pan} onChange={handleChange} placeholder="ABCDE1234F" />
-                    <Input label="Name (As in PAN)" name="nameAsInPan" value={formData.nameAsInPan} onChange={handleChange} placeholder="Autofetched from PAN" />
-                    <Input label="Date (As in PAN)" name="dateAsInPan" type="date" value={formData.dateAsInPan} onChange={handleChange} />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4">
-                    <Button onClick={fetchPanDetails} disabled={isLoading} className="bg-[#12335f] hover:bg-slate-800 rounded-xl px-8 h-12 font-black uppercase text-xs  tracking-widest shadow-lg shadow-blue-100">
-                       {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Verify Business PAN'}
-                    </Button>
-                    <Button onClick={() => handleSaveSection('details')} disabled={isLoading || !formData.panVerified} className="bg-gray-900 hover:bg-black rounded-xl px-8 h-12 font-black uppercase text-xs  tracking-widest text-white">
-                       {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                       Save & Continue
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  {currentSection === 'pan' && (
+                    <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input
+                          label="Business / Organisation Type"
+                          name="organizationType"
+                          value={formData.organizationType}
+                          disabled
+                          className="bg-slate-50 border-slate-200"
+                        />
+                        <Input label="Business PAN Number" name="pan" value={formData.pan} onChange={handleChange} placeholder="ABCDE1234F" />
+                        <Input label="Name (As in PAN)" name="nameAsInPan" value={formData.nameAsInPan} onChange={handleChange} placeholder="Autofetched from PAN" />
+                        <Input label="Date (As in PAN)" name="dateAsInPan" type="date" value={formData.dateAsInPan} onChange={handleChange} />
+                      </div>
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button onClick={fetchPanDetails} disabled={isLoading} className="bg-[#12335f] hover:bg-slate-800 rounded-xl px-8 h-12 font-black uppercase text-xs  tracking-widest shadow-lg shadow-blue-100">
+                          {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Verify Business PAN'}
+                        </Button>
+                        <Button onClick={() => handleSaveSection('details')} disabled={isLoading || !formData.panVerified} className="bg-gray-900 hover:bg-black rounded-xl px-8 h-12 font-black uppercase text-xs  tracking-widest text-white">
+                          {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+                          Save & Continue
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
-              {currentSection === 'details' && (
-                <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Input 
-                      label="Business / Organisation Name" 
-                      name="businessName" 
-                      value={formData.businessName} 
-                      disabled 
-                      className="bg-slate-50 border-slate-200" 
-                    />
-                    <Input label="Date of Incorporation" name="dateOfIncorporation" type="date" value={formData.dateOfIncorporation} onChange={handleChange} />
-                    <Input
-                      label="Registered Mobile Number"
-                      name="mobile"
-                      value={formData.mobile}
-                      onChange={(event) => setFormData((prev: any) => ({ ...prev, mobile: event.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                      placeholder="Enter registered mobile number"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button onClick={() => handleSaveSection('additional')} className="bg-[#12335f] hover:bg-slate-800 rounded px-6 h-9 font-bold uppercase text-xs tracking-wide text-white">
-                       Save & Continue
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  {currentSection === 'details' && (
+                    <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input
+                          label="Business / Organisation Name"
+                          name="businessName"
+                          value={formData.businessName}
+                          disabled
+                          className="bg-slate-50 border-slate-200"
+                        />
+                        <Input label="Date of Incorporation" name="dateOfIncorporation" type="date" value={formData.dateOfIncorporation} onChange={handleChange} />
+                        <Input
+                          label="Registered Mobile Number"
+                          name="mobile"
+                          value={formData.mobile}
+                          onChange={(event) => setFormData((prev: any) => ({ ...prev, mobile: event.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                          placeholder="Enter registered mobile number"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-3 pt-2">
+                        <Button onClick={() => handleSaveSection('additional')} className="bg-[#12335f] hover:bg-slate-800 rounded px-6 h-9 font-bold uppercase text-xs tracking-wide text-white">
+                          Save & Continue
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
-              {currentSection === 'additional' && (
-                <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
-                   {[
-                     { label: 'Are you registered with DPIIT as Startup?', name: 'isStartup' },
-                     { label: 'Do you have Udyam Registration certified by MSME?', name: 'isUdyamCertified' },
-                     { label: 'Do you want to participate in Bid?', name: 'participateInBid' },
-                   ].map(item => (
-                     <div key={item.name} className="space-y-2">
-                       <div className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border font-medium text-gray-700 transition-colors ${additionalErrors[item.name] ? 'border-red-400 bg-red-50/20' : 'border-gray-100'}`}>
-                          <span className="text-sm">{item.label}</span>
-                          <div className="flex gap-4">
-                             <label className="flex items-center gap-2 cursor-pointer">
-                                <input 
-                                  type="radio" 
-                                  name={item.name} 
-                                  checked={formData[item.name] === true} 
+                  {currentSection === 'additional' && (
+                    <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
+                      {[
+                        { label: 'Are you registered with DPIIT as Startup?', name: 'isStartup' },
+                        { label: 'Do you have Udyam Registration certified by MSME?', name: 'isUdyamCertified' },
+                        { label: 'Do you want to participate in Bid?', name: 'participateInBid' },
+                      ].map(item => (
+                        <div key={item.name} className="space-y-2">
+                          <div className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border font-medium text-gray-700 transition-colors ${additionalErrors[item.name] ? 'border-red-400 bg-red-50/20' : 'border-gray-100'}`}>
+                            <span className="text-sm">{item.label}</span>
+                            <div className="flex gap-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={item.name}
+                                  checked={formData[item.name] === true}
                                   onChange={() => {
                                     setFormData((prev: any) => ({ ...prev, [item.name]: true }));
                                     setAdditionalErrors(prev => {
@@ -1137,16 +1154,16 @@ export default function SellerOnboarding() {
                                       delete next[item.name];
                                       return next;
                                     });
-                                  }} 
-                                  className="accent-[#12335f] h-4 w-4" 
+                                  }}
+                                  className="accent-[#12335f] h-4 w-4"
                                 />
                                 <span className="text-xs uppercase">Yes</span>
-                             </label>
-                             <label className="flex items-center gap-2 cursor-pointer">
-                                <input 
-                                  type="radio" 
-                                  name={item.name} 
-                                  checked={formData[item.name] === false} 
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={item.name}
+                                  checked={formData[item.name] === false}
                                   onChange={() => {
                                     setFormData((prev: any) => ({ ...prev, [item.name]: false }));
                                     setAdditionalErrors(prev => {
@@ -1154,409 +1171,453 @@ export default function SellerOnboarding() {
                                       delete next[item.name];
                                       return next;
                                     });
-                                  }} 
-                                  className="accent-[#12335f] h-4 w-4" 
+                                  }}
+                                  className="accent-[#12335f] h-4 w-4"
                                 />
                                 <span className="text-xs uppercase">No</span>
-                             </label>
+                              </label>
+                            </div>
                           </div>
-                       </div>
-                       {additionalErrors[item.name] && (
-                         <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors[item.name]}</p>
-                       )}
-                     </div>
-                   ))}
+                          {additionalErrors[item.name] && (
+                            <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors[item.name]}</p>
+                          )}
+                        </div>
+                      ))}
 
-                   {/* MSME Type */}
-                   <div className="space-y-2">
-                     <label className="block text-xs font-bold text-gray-700 mb-1">MSME Type*</label>
-                     <select
-                       value={formData.msmeType || ''}
-                       onChange={(e) => {
-                         setFormData((prev: any) => ({ ...prev, msmeType: e.target.value }));
-                         setAdditionalErrors((prev: any) => {
-                           const next = { ...prev };
-                           delete next.msmeType;
-                           return next;
-                         });
-                       }}
-                       className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.msmeType ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                     >
-                       <option value="">Select MSME Type</option>
-                       {MSME_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                     </select>
-                     {additionalErrors.msmeType && (
-                       <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.msmeType}</p>
-                     )}
-                   </div>
-
-                   {/* Vendor Type */}
-                   <div className="space-y-2">
-                     <label className="block text-xs font-bold text-gray-700 mb-1">Vendor Type*</label>
-                     <select
-                       value={formData.vendorType || ''}
-                       onChange={(e) => {
-                         setFormData((prev: any) => ({ ...prev, vendorType: e.target.value }));
-                         setAdditionalErrors((prev: any) => {
-                           const next = { ...prev };
-                           delete next.vendorType;
-                           return next;
-                         });
-                       }}
-                       className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.vendorType ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                     >
-                       <option value="">Select Vendor Type</option>
-                       {VENDOR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                     </select>
-                     {additionalErrors.vendorType && (
-                       <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.vendorType}</p>
-                     )}
-                   </div>
-
-                    {/* Product Categories (Multi-select tag list) */}
-                    <div className="space-y-2">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">Product Categories*</label>
-                      <p className="text-xs text-gray-500 font-medium mb-1.5">Select the categories of products or services you provide.</p>
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val) return;
-                          const currentCats = Array.isArray(formData.productCategories) ? formData.productCategories : [];
-                          if (!currentCats.includes(val)) {
-                            const nextCats = [...currentCats, val];
-                            setFormData((prev: any) => ({ ...prev, productCategories: nextCats }));
+                      {/* MSME Type */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-700 mb-1">MSME Type*</label>
+                        <select
+                          value={formData.msmeType || ''}
+                          onChange={(e) => {
+                            setFormData((prev: any) => ({ ...prev, msmeType: e.target.value }));
                             setAdditionalErrors((prev: any) => {
                               const next = { ...prev };
-                              delete next.productCategories;
+                              delete next.msmeType;
                               return next;
                             });
-                          }
-                        }}
-                        className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.productCategories ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                      >
-                        <option value="">Select Categories</option>
-                        {['IT Hardware', 'Software & Cloud', 'Office Supplies', 'Furniture', 'Industrial Equipment', 'Medical Supplies', 'Construction', 'Logistics', 'Consulting', 'Catering']
-                          .filter(cat => !(Array.isArray(formData.productCategories) ? formData.productCategories : []).includes(cat))
-                          .map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                      </select>
-                      {additionalErrors.productCategories && (
-                        <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.productCategories}</p>
-                      )}
+                          }}
+                          className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.msmeType ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
+                        >
+                          <option value="">Select MSME Type</option>
+                          {MSME_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                        {additionalErrors.msmeType && (
+                          <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.msmeType}</p>
+                        )}
+                      </div>
 
-                      {Array.isArray(formData.productCategories) && formData.productCategories.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {formData.productCategories.map((cat: string) => (
-                            <span key={cat} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200/50 rounded-full px-3 py-1 text-xs font-bold uppercase">
-                              {cat}
+                      {/* Vendor Type */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Vendor Type*</label>
+                        <select
+                          value={formData.vendorType || ''}
+                          onChange={(e) => {
+                            setFormData((prev: any) => ({ ...prev, vendorType: e.target.value }));
+                            setAdditionalErrors((prev: any) => {
+                              const next = { ...prev };
+                              delete next.vendorType;
+                              return next;
+                            });
+                          }}
+                          className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.vendorType ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
+                        >
+                          <option value="">Select Vendor Type</option>
+                          {VENDOR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                        {additionalErrors.vendorType && (
+                          <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.vendorType}</p>
+                        )}
+                      </div>
+
+                      {/* Product Categories (Multi-select tag list) */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Product Categories*</label>
+                        <p className="text-xs text-gray-500 font-medium mb-1.5">Select the categories of products or services you provide.</p>
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            if (val === PRODUCT_CATEGORY_OTHER) {
+                              setShowCustomCategory(true);
+                              return;
+                            }
+                            const currentCats = Array.isArray(formData.productCategories) ? formData.productCategories : [];
+                            if (!currentCats.includes(val)) {
+                              const nextCats = [...currentCats, val];
+                              setFormData((prev: any) => ({ ...prev, productCategories: nextCats }));
+                              setAdditionalErrors((prev: any) => {
+                                const next = { ...prev };
+                                delete next.productCategories;
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`w-full h-12 bg-white rounded border text-sm px-4 focus:outline-none focus:ring-1 ${additionalErrors.productCategories ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
+                        >
+                          <option value="">Select Categories</option>
+                          {PRODUCT_CATEGORIES
+                            .filter(cat => !(Array.isArray(formData.productCategories) ? formData.productCategories : []).includes(cat))
+                            .map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          <option value={PRODUCT_CATEGORY_OTHER}>Other (type your own)</option>
+                        </select>
+
+                        {showCustomCategory && (
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center mt-2">
+                            <input
+                              type="text"
+                              value={customCategory}
+                              onChange={(e) => setCustomCategory(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addCustomCategory();
+                                }
+                              }}
+                              placeholder="Type your category and press Add"
+                              className="flex-1 h-11 bg-white rounded border border-gray-300 text-sm px-4 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={addCustomCategory}
+                                className="h-11 px-4 rounded bg-[#12335f] text-white text-xs font-bold uppercase tracking-wide hover:bg-slate-800"
+                              >
+                                Add
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const nextCats = formData.productCategories.filter((c: string) => c !== cat);
-                                  setFormData((prev: any) => ({ ...prev, productCategories: nextCats }));
+                                  setCustomCategory('');
+                                  setShowCustomCategory(false);
                                 }}
-                                className="hover:text-blue-900 focus:outline-none ml-1"
+                                className="h-11 px-4 rounded border border-gray-300 text-slate-600 text-xs font-bold uppercase tracking-wide hover:bg-gray-50"
                               >
-                                <X className="h-3 w-3" />
+                                Cancel
                               </button>
-                            </span>
-                          ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {additionalErrors.productCategories && (
+                          <p className="text-xs font-semibold text-red-600 pl-1">{additionalErrors.productCategories}</p>
+                        )}
+
+                        {Array.isArray(formData.productCategories) && formData.productCategories.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {formData.productCategories.map((cat: string) => (
+                              <span key={cat} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200/50 rounded-full px-3 py-1 text-xs font-bold uppercase">
+                                {cat}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextCats = formData.productCategories.filter((c: string) => c !== cat);
+                                    setFormData((prev: any) => ({ ...prev, productCategories: nextCats }));
+                                  }}
+                                  className="hover:text-blue-900 focus:outline-none ml-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Registration Type (Multi-select Checkboxes) */}
+                      <div className="space-y-3">
+                        <label className="block text-xs font-bold text-gray-700">Registration Type / Certifications</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                          {REGISTRATION_TYPES.map((reg) => {
+                            const isChecked = Array.isArray(formData.registrationTypes) && formData.registrationTypes.includes(reg.value);
+                            return (
+                              <label key={reg.value} className="flex items-center gap-3 cursor-pointer select-none py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const currentTypes = Array.isArray(formData.registrationTypes) ? formData.registrationTypes : [];
+                                    let nextTypes;
+                                    if (e.target.checked) {
+                                      nextTypes = [...currentTypes, reg.value];
+                                    } else {
+                                      nextTypes = currentTypes.filter(t => t !== reg.value);
+                                    }
+                                    setFormData((prev: any) => ({ ...prev, registrationTypes: nextTypes }));
+                                  }}
+                                  className="accent-[#12335f] h-4 w-4 rounded border-gray-300"
+                                />
+                                <span className="text-sm text-gray-700 font-medium">{reg.label}</span>
+                              </label>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <Button onClick={() => handleSaveSection('offices')} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                          Save & Continue
+                        </Button>
+                      </div>
                     </div>
- 
-                    {/* Registration Type (Multi-select Checkboxes) */}
-                    <div className="space-y-3">
-                     <label className="block text-xs font-bold text-gray-700">Registration Type / Certifications</label>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                       {REGISTRATION_TYPES.map((reg) => {
-                         const isChecked = Array.isArray(formData.registrationTypes) && formData.registrationTypes.includes(reg.value);
-                         return (
-                           <label key={reg.value} className="flex items-center gap-3 cursor-pointer select-none py-1">
-                             <input
-                               type="checkbox"
-                               checked={isChecked}
-                               onChange={(e) => {
-                                 const currentTypes = Array.isArray(formData.registrationTypes) ? formData.registrationTypes : [];
-                                 let nextTypes;
-                                 if (e.target.checked) {
-                                   nextTypes = [...currentTypes, reg.value];
-                                 } else {
-                                   nextTypes = currentTypes.filter(t => t !== reg.value);
-                                 }
-                                 setFormData((prev: any) => ({ ...prev, registrationTypes: nextTypes }));
-                               }}
-                               className="accent-[#12335f] h-4 w-4 rounded border-gray-300"
-                             />
-                             <span className="text-sm text-gray-700 font-medium">{reg.label}</span>
-                           </label>
-                         );
-                       })}
-                     </div>
-                   </div>
+                  )}
 
-                   <div className="flex justify-end pt-2">
-                    <Button onClick={() => handleSaveSection('offices')} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                       Save & Continue
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  {currentSection === 'offices' && (
+                    <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
+                      <p className="text-sm text-gray-600">You can add multiple office locations as per their function/type for your Business</p>
 
-              {currentSection === 'offices' && (
-                <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
-                   <p className="text-sm text-gray-600">You can add multiple office locations as per their function/type for your Business</p>
-                   
-                   <div className="flex border-b border-gray-200">
-                     <button onClick={() => { setOfficeTab('manage'); setEditingOfficeId(null); }} className={`px-6 py-3 text-sm font-semibold ${officeTab === 'manage' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Offices</button>
-                     <button onClick={() => { setOfficeTab('add'); if(!editingOfficeId) resetOfficeForm(); }} className={`px-6 py-3 text-sm font-semibold ${officeTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>{editingOfficeId ? 'Edit Office' : 'Add New Office'}</button>
-                   </div>
+                      <div className="flex border-b border-gray-200">
+                        <button onClick={() => { setOfficeTab('manage'); setEditingOfficeId(null); }} className={`px-6 py-3 text-sm font-semibold ${officeTab === 'manage' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Offices</button>
+                        <button onClick={() => { setOfficeTab('add'); if (!editingOfficeId) resetOfficeForm(); }} className={`px-6 py-3 text-sm font-semibold ${officeTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>{editingOfficeId ? 'Edit Office' : 'Add New Office'}</button>
+                      </div>
 
-                    {officeTab === 'manage' && (
-                      <div className="pt-4 space-y-6 animate-in fade-in min-w-0 w-full">
-                         <p className="text-sm text-gray-700">You need to update your GSTIN for getting the order above 40 lakhs.</p>
-                         
-                         <div className="overflow-x-auto border border-gray-200 bg-white rounded-xl w-full">
+                      {officeTab === 'manage' && (
+                        <div className="pt-4 space-y-6 animate-in fade-in min-w-0 w-full">
+                          <p className="text-sm text-gray-700">You need to update your GSTIN for getting the order above 40 lakhs.</p>
+
+                          <div className="overflow-x-auto border border-gray-200 bg-white rounded-xl w-full">
                             <table className="w-full text-left text-sm min-w-[600px]">
                               <thead className="bg-gray-50 border-b border-gray-200">
-                                 <tr>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/4"><button type="button" onClick={() => setOfficeSortKey('name')} className="inline-flex items-center">Office <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/2"><button type="button" onClick={() => setOfficeSortKey('address')} className="inline-flex items-center">Address <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                   
-                                    <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
-                                 </tr>
+                                <tr>
+                                  <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
+                                  <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/4"><button type="button" onClick={() => setOfficeSortKey('name')} className="inline-flex items-center">Office <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight w-1/2"><button type="button" onClick={() => setOfficeSortKey('address')} className="inline-flex items-center">Address <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+
+                                  <th className="px-4 py-4 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
+                                </tr>
                               </thead>
                               <tbody>
-                                 {formData.offices.length === 0 ? (
-                                    <tr>
-                                       <td colSpan={5} className="py-6 px-0 text-gray-500">
-                                          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
-                                            <span className="text-xs sm:text-sm">No offices added.</span>
-                                            <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW OFFICE</button>
-                                          </div>
-                                       </td>
+                                {formData.offices.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={5} className="py-6 px-0 text-gray-500">
+                                      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
+                                        <span className="text-xs sm:text-sm">No offices added.</span>
+                                        <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW OFFICE</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  [...formData.offices].sort((a: any, b: any) => String(officeSortKey === 'address' ? a.address : officeSortKey === 'gst' ? a.gstNumber || '' : a.name || '').localeCompare(String(officeSortKey === 'address' ? b.address : officeSortKey === 'gst' ? b.gstNumber || '' : b.name || ''))).map((office: any, index: number) => (
+                                    <tr key={office.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                      <td className="px-4 py-4 font-mono text-xs font-bold text-gray-400">{String(index + 1).padStart(2, '0')}</td>
+                                      <td className="px-4 py-4 text-gray-600 break-words max-w-[180px]">
+                                        <div className="font-semibold">{office.name}</div>
+                                        <div className="text-xs text-gray-400">{office.type}</div>
+                                      </td>
+                                      <td className="px-4 py-4 text-gray-600 whitespace-normal break-words max-w-[300px]">
+                                        {office.address}, {office.city}, {office.state} - {office.pincode}
+                                      </td>
+                                      {/* <td className="px-4 py-4 text-gray-600 break-all">-</td> */}
+                                      <td className="px-4 py-4">
+                                        <button onClick={() => handleEditOffice(office)} className="text-[#12335f] hover:text-[#0b2445] font-bold text-xs uppercase mr-4">EDIT</button>
+                                        <button onClick={() => handleDeleteOffice(office.id)} className="text-red-500 hover:text-red-700 font-bold text-xs uppercase">DELETE</button>
+                                      </td>
                                     </tr>
-                                 ) : (
-                                    [...formData.offices].sort((a: any, b: any) => String(officeSortKey === 'address' ? a.address : officeSortKey === 'gst' ? a.gstNumber || '' : a.name || '').localeCompare(String(officeSortKey === 'address' ? b.address : officeSortKey === 'gst' ? b.gstNumber || '' : b.name || ''))).map((office: any, index: number) => (
-                                       <tr key={office.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors">
-                                          <td className="px-4 py-4 font-mono text-xs font-bold text-gray-400">{String(index + 1).padStart(2, '0')}</td>
-                                          <td className="px-4 py-4 text-gray-600 break-words max-w-[180px]">
-                                            <div className="font-semibold">{office.name}</div>
-                                            <div className="text-xs text-gray-400">{office.type}</div>
-                                          </td>
-                                          <td className="px-4 py-4 text-gray-600 whitespace-normal break-words max-w-[300px]">
-                                            {office.address}, {office.city}, {office.state} - {office.pincode}
-                                          </td>
-                                         {/* <td className="px-4 py-4 text-gray-600 break-all">-</td> */}
-                                          <td className="px-4 py-4">
-                                             <button onClick={() => handleEditOffice(office)} className="text-[#12335f] hover:text-[#0b2445] font-bold text-xs uppercase mr-4">EDIT</button>
-                                             <button onClick={() => handleDeleteOffice(office.id)} className="text-red-500 hover:text-red-700 font-bold text-xs uppercase">DELETE</button>
-                                          </td>
-                                       </tr>
-                                    ))
-                                 )}
+                                  ))
+                                )}
                               </tbody>
-                           </table>
-                           {formData.offices.length > 0 && (
-                             <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-t border-gray-200">
-                               <span className="text-sm text-gray-600">{formData.offices.length} of {formData.offices.length} Office Location displayed.</span>
-                               <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-xs">ADD NEW OFFICE</button>
-                             </div>
-                           )}
+                            </table>
+                            {formData.offices.length > 0 && (
+                              <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-t border-gray-200">
+                                <span className="text-sm text-gray-600">{formData.offices.length} of {formData.offices.length} Office Location displayed.</span>
+                                <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-xs">ADD NEW OFFICE</button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                     </div>
-                   )}
+                      )}
 
-                   {officeTab === 'add' && (
-                      <div className="pt-4 space-y-6 animate-in fade-in">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                      {officeTab === 'add' && (
+                        <div className="pt-4 space-y-6 animate-in fade-in">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Office Name*</label>
-                               <input value={officeForm.name} onChange={(e) => updateOfficeForm('name', e.target.value)} placeholder="Enter Office Name" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.name ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
-                               {officeErrors.name && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.name}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Office Name*</label>
+                              <input value={officeForm.name} onChange={(e) => updateOfficeForm('name', e.target.value)} placeholder="Enter Office Name" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.name ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+                              {officeErrors.name && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.name}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Type Of Office*</label>
-                               <select value={officeForm.type} onChange={(e) => updateOfficeForm('type', e.target.value)} className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white text-gray-500 ${officeErrors.type ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}>
-                                  <option value="Registered">Select type of address</option>
-                                  <option value="Registered">Registered Office</option>
-                                  <option value="Branch">Branch</option>
-                                  <option value="Warehouse">Warehouse</option>
-                               </select>
-                               {officeErrors.type && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.type}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Type Of Office*</label>
+                              <select value={officeForm.type} onChange={(e) => updateOfficeForm('type', e.target.value)} className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white text-gray-500 ${officeErrors.type ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}>
+                                <option value="Registered">Select type of address</option>
+                                <option value="Registered">Registered Office</option>
+                                <option value="Branch">Branch</option>
+                                <option value="Warehouse">Warehouse</option>
+                              </select>
+                              {officeErrors.type && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.type}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Pincode*</label>
-                               <input value={officeForm.pincode} onChange={(e) => updateOfficeForm('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6 digit pincode" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.pincode ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
-                               {officeErrors.pincode && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.pincode}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Pincode*</label>
+                              <input value={officeForm.pincode} onChange={(e) => updateOfficeForm('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6 digit pincode" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.pincode ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+                              {officeErrors.pincode && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.pincode}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">State*</label>
-                               <select 
-                                 id="new-office-state" 
-                                 value={officeForm.state}
-                                 onChange={(e) => {
-                                   const next = { ...officeForm, state: e.target.value, city: '' };
-                                   setOfficeForm(next);
-                                   setOfficeErrors(validateOfficeForm(next).errors);
-                                 }}
-                                 className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.state ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                               >
-                                 <option value="">Select State</option>
-                                 {indiaStates.map(st => (
-                                   <option key={st} value={st}>{st}</option>
-                                 ))}
-                               </select>
-                               {officeErrors.state && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.state}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">State*</label>
+                              <select
+                                id="new-office-state"
+                                value={officeForm.state}
+                                onChange={(e) => {
+                                  const next = { ...officeForm, state: e.target.value, city: '' };
+                                  setOfficeForm(next);
+                                  setOfficeErrors(validateOfficeForm(next).errors);
+                                }}
+                                className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.state ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
+                              >
+                                <option value="">Select State</option>
+                                {indiaStates.map(st => (
+                                  <option key={st} value={st}>{st}</option>
+                                ))}
+                              </select>
+                              {officeErrors.state && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.state}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Town/City/District*</label>
-                               <select 
-                                 id="new-office-city"
-                                 value={officeForm.city}
-                                 disabled={!officeForm.state}
-                                 onChange={(e) => updateOfficeForm('city', e.target.value)}
-                                 className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white disabled:opacity-60 disabled:bg-gray-50 ${officeErrors.city ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                               >
-                                 <option value="">{officeForm.state ? 'Select District' : 'Select State First'}</option>
-                                 {officeDistrictOptions.map((dist) => (
-                                   <option key={dist} value={dist}>{dist}</option>
-                                 ))}
-                               </select>
-                               {officeErrors.city && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.city}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Town/City/District*</label>
+                              <select
+                                id="new-office-city"
+                                value={officeForm.city}
+                                disabled={!officeForm.state}
+                                onChange={(e) => updateOfficeForm('city', e.target.value)}
+                                className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white disabled:opacity-60 disabled:bg-gray-50 ${officeErrors.city ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
+                              >
+                                <option value="">{officeForm.state ? 'Select District' : 'Select State First'}</option>
+                                {officeDistrictOptions.map((dist) => (
+                                  <option key={dist} value={dist}>{dist}</option>
+                                ))}
+                              </select>
+                              {officeErrors.city && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.city}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Flat/Door/Block No*</label>
-                               <input value={officeForm.flat} onChange={(e) => updateOfficeForm('flat', e.target.value)} placeholder="Enter Flat/Door/Block number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.flat ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
-                               {officeErrors.flat && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.flat}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Flat/Door/Block No*</label>
+                              <input value={officeForm.flat} onChange={(e) => updateOfficeForm('flat', e.target.value)} placeholder="Enter Flat/Door/Block number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.flat ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+                              {officeErrors.flat && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.flat}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Name of Premises/ Building/ Village</label>
-                               <input value={officeForm.premises} onChange={(e) => updateOfficeForm('premises', e.target.value)} placeholder="Enter Building/Premises/Village" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]" />
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Name of Premises/ Building/ Village</label>
+                              <input value={officeForm.premises} onChange={(e) => updateOfficeForm('premises', e.target.value)} placeholder="Enter Building/Premises/Village" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]" />
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Road/Street/Post Office</label>
-                               <input value={officeForm.road} onChange={(e) => updateOfficeForm('road', e.target.value)} placeholder="Enter Road/Street/Post Office" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]" />
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Road/Street/Post Office</label>
+                              <input value={officeForm.road} onChange={(e) => updateOfficeForm('road', e.target.value)} placeholder="Enter Road/Street/Post Office" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]" />
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Area/Locality*</label>
-                               <input value={officeForm.area} onChange={(e) => updateOfficeForm('area', e.target.value)} placeholder="Enter Area/Locality" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.area ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
-                               {officeErrors.area && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.area}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Area/Locality*</label>
+                              <input value={officeForm.area} onChange={(e) => updateOfficeForm('area', e.target.value)} placeholder="Enter Area/Locality" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.area ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+                              {officeErrors.area && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.area}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Contact Number* <span className="text-gray-400 font-normal ml-1">ⓘ</span></label>
-                               <input value={officeForm.contact} onChange={(e) => updateOfficeForm('contact', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="Enter Contact Number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.contact ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
-                              
-                               {officeErrors.contact && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.contact}</p>}
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Contact Number* <span className="text-gray-400 font-normal ml-1">ⓘ</span></label>
+                              <input value={officeForm.contact} onChange={(e) => updateOfficeForm('contact', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="Enter Contact Number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.contact ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+
+                              {officeErrors.contact && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.contact}</p>}
                             </div>
                             <div>
-                               <label className="block text-xs font-bold text-gray-700 mb-1">Office Email Address*</label>
-                               <select id="new-office-email" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f] text-gray-500">
-                                  <option value={user?.email || "registered@example.com"}>{user?.email || "registered@example.com"}</option>
-                               </select>
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Office Email Address*</label>
+                              <select id="new-office-email" className="w-full h-12 px-4 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f] text-gray-500">
+                                <option value={user?.email || "registered@example.com"}>{user?.email || "registered@example.com"}</option>
+                              </select>
                             </div>
-                         </div>
-                         <div className="flex justify-end mt-6 pt-6 border-t border-gray-100">
+                          </div>
+                          <div className="flex justify-end mt-6 pt-6 border-t border-gray-100">
                             <Button onClick={() => handleAddOffice()} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-10 h-12 rounded transition-colors uppercase tracking-widest text-xs  shadow-lg shadow-blue-100">
-                                {editingOfficeId ? 'UPDATE OFFICE' : <><Plus className="mr-2 h-4 w-4" /> ADD OFFICE</>}
+                              {editingOfficeId ? 'UPDATE OFFICE' : <><Plus className="mr-2 h-4 w-4" /> ADD OFFICE</>}
                             </Button>
-                         </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end pt-4">
+                        <Button onClick={() => {
+                          if (normalizeList(formData.offices).length === 0) {
+                            toast.error("Please add at least one office location.");
+                            return;
+                          }
+                          handleSaveSection('bank');
+                        }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                          Save & Continue
+                        </Button>
                       </div>
-                   )}
+                    </div>
+                  )}
 
-                   <div className="flex justify-end pt-4">
-                      <Button onClick={() => {
-                        if (normalizeList(formData.offices).length === 0) {
-                          toast.error("Please add at least one office location.");
-                          return;
-                        }
-                        handleSaveSection('bank');
-                      }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                         Save & Continue
-                      </Button>
-                   </div>
-                </div>
-              )}
+                  {currentSection === 'bank' && (
+                    <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
+                      <p className="text-sm text-gray-600">You can add multiple Bank accounts for your Business. One account must be selected as Primary account</p>
 
-              {currentSection === 'bank' && (
-                <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
-                   <p className="text-sm text-gray-600">You can add multiple Bank accounts for your Business. One account must be selected as Primary account</p>
-                   
-                   <div className="flex border-b border-gray-200">
-                     <button onClick={() => { setBankTab('manage'); setEditingBankId(null); }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'manage' && !editingBankId ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Bank Account</button>
-                     <button onClick={() => {
-                        setBankTab('add');
-                        setEditingBankId(null);
-                        setNewBank({
-                          ifsc: '',
-                          bankName: '',
-                          bankAddress: '',
-                          holderName: '',
-                          accountNumber: '',
-                          confirmAccountNumber: '',
-                          isPrimary: false
-                        });
-                        setBankErrors({});
-                      }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>{editingBankId ? 'Edit Bank Account' : 'Add new Bank Account'}</button>
-                   </div>
+                      <div className="flex border-b border-gray-200">
+                        <button onClick={() => { setBankTab('manage'); setEditingBankId(null); }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'manage' && !editingBankId ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Bank Account</button>
+                        <button onClick={() => {
+                          setBankTab('add');
+                          setEditingBankId(null);
+                          setNewBank({
+                            ifsc: '',
+                            bankName: '',
+                            bankAddress: '',
+                            holderName: '',
+                            accountNumber: '',
+                            confirmAccountNumber: '',
+                            isPrimary: false
+                          });
+                          setBankErrors({});
+                        }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'add' ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>{editingBankId ? 'Edit Bank Account' : 'Add new Bank Account'}</button>
+                      </div>
 
-                    {bankTab === 'manage' && (
-                      <div className="pt-4 space-y-6 animate-in fade-in min-w-0 w-full">
+                      {bankTab === 'manage' && (
+                        <div className="pt-4 space-y-6 animate-in fade-in min-w-0 w-full">
 
-                         <div className="overflow-x-auto border border-gray-200 bg-white rounded-xl w-full">
+                          <div className="overflow-x-auto border border-gray-200 bg-white rounded-xl w-full">
                             <table className="w-full text-left text-sm min-w-[640px]">
                               <thead className="bg-gray-50 border-b border-gray-200">
-                                 <tr>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('ifsc')} className="inline-flex items-center">IFSC <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('bankName')} className="inline-flex items-center">Bank Name <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('accountNumber')} className="inline-flex items-center">Bank Account Number <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('holderName')} className="inline-flex items-center">Account Holder <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     {/* <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')} className="inline-flex items-center">PFMS <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th> */}
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('primary')} className="inline-flex items-center">Primary <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
-                                     <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
-                                 </tr>
+                                <tr>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">Sr. No.</th>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('ifsc')} className="inline-flex items-center">IFSC <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('bankName')} className="inline-flex items-center">Bank Name <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('accountNumber')} className="inline-flex items-center">Bank Account Number <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('holderName')} className="inline-flex items-center">Account Holder <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  {/* <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('pfms')} className="inline-flex items-center">PFMS <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th> */}
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight"><button type="button" onClick={() => setBankSortKey('primary')} className="inline-flex items-center">Primary <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" /></button></th>
+                                  <th className="px-3 py-3 font-semibold text-gray-800 text-[10px] sm:text-xs uppercase tracking-wider whitespace-normal leading-tight">ACTION</th>
+                                </tr>
                               </thead>
                               <tbody>
-                                 {normalizeList(formData.bankAccounts).length === 0 ? (
-                                    <tr>
-                                       <td colSpan={8} className="py-6 px-0 text-gray-500">
-                                          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
-                                             <span className="text-xs sm:text-sm">No accounts added.</span>
-                                             <button onClick={() => setBankTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW BANK ACCOUNT</button>
-                                          </div>
-                                       </td>
+                                {normalizeList(formData.bankAccounts).length === 0 ? (
+                                  <tr>
+                                    <td colSpan={8} className="py-6 px-0 text-gray-500">
+                                      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
+                                        <span className="text-xs sm:text-sm">No accounts added.</span>
+                                        <button onClick={() => setBankTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW BANK ACCOUNT</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  [...normalizeList(formData.bankAccounts)].sort((a: any, b: any) => String(a[bankSortKey] ?? '').localeCompare(String(b[bankSortKey] ?? ''))).map((bank: any, index: number) => (
+                                    <tr key={bank.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors text-xs">
+                                      <td className="px-3 py-3 font-mono font-bold text-gray-400">{String(index + 1).padStart(2, '0')}</td>
+                                      <td className="px-3 py-3 text-gray-600 font-medium">{bank.ifsc}</td>
+                                      <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.bankName}</td>
+                                      <td className="px-3 py-3 text-gray-600 break-all font-mono">{bankAccountDisplay(bank)}</td>
+                                      <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.holderName || '-'}</td>
+                                      {/*  <td className="px-3 py-3 text-gray-600">-</td>*/}
+                                      <td className="px-3 py-3 text-gray-600">{bank.isPrimary ? 'Yes' : 'No'}</td>
+                                      <td className="px-3 py-3">
+                                        <div className="flex items-center gap-3">
+                                          <button onClick={() => handleEditBank(bank)} className="text-indigo-600 hover:text-indigo-800 font-bold text-[10px] uppercase">Edit</button>
+                                          <button onClick={() => handleDeleteBank(bank.id)} className="text-red-500 hover:text-red-700 font-bold text-[10px] uppercase">Delete</button>
+                                        </div>
+                                      </td>
                                     </tr>
-                                 ) : (
-                                    [...normalizeList(formData.bankAccounts)].sort((a: any, b: any) => String(a[bankSortKey] ?? '').localeCompare(String(b[bankSortKey] ?? ''))).map((bank: any, index: number) => (
-                                        <tr key={bank.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors text-xs">
-                                           <td className="px-3 py-3 font-mono font-bold text-gray-400">{String(index + 1).padStart(2, '0')}</td>
-                                           <td className="px-3 py-3 text-gray-600 font-medium">{bank.ifsc}</td>
-                                           <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.bankName}</td>
-                                           <td className="px-3 py-3 text-gray-600 break-all font-mono">{bankAccountDisplay(bank)}</td>
-                                           <td className="px-3 py-3 text-gray-600 break-words max-w-[150px]">{bank.holderName || '-'}</td>
-                                         {/*  <td className="px-3 py-3 text-gray-600">-</td>*/}
-                                           <td className="px-3 py-3 text-gray-600">{bank.isPrimary ? 'Yes' : 'No'}</td>
-                                           <td className="px-3 py-3">
-                                              <div className="flex items-center gap-3">
-                                                <button onClick={() => handleEditBank(bank)} className="text-indigo-600 hover:text-indigo-800 font-bold text-[10px] uppercase">Edit</button>
-                                                <button onClick={() => handleDeleteBank(bank.id)} className="text-red-500 hover:text-red-700 font-bold text-[10px] uppercase">Delete</button>
-                                              </div>
-                                           </td>
-                                        </tr>
-                                    ))
-                                 )}
+                                  ))
+                                )}
                               </tbody>
-                           </table>
+                            </table>
+                          </div>
                         </div>
-                     </div>
-                   )}
+                      )}
 
-                   {bankTab === 'add' && (
-                     <div className="pt-4 space-y-6 animate-in fade-in">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                           <div>
+                      {bankTab === 'add' && (
+                        <div className="pt-4 space-y-6 animate-in fade-in">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">IFSC Code*</label>
                               <input
                                 id="new-bank-ifsc"
@@ -1567,8 +1628,8 @@ export default function SellerOnboarding() {
                                 className={`w-full h-12 px-4 rounded border bg-gray-50/50 text-sm focus:outline-none focus:ring-1 ${bankErrors.ifsc ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                               />
                               {bankErrors.ifsc && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.ifsc}</p>}
-                           </div>
-                           <div>
+                            </div>
+                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Bank Name*</label>
                               <input
                                 id="new-bank-name"
@@ -1578,8 +1639,8 @@ export default function SellerOnboarding() {
                                 className={`w-full h-12 px-4 rounded border bg-gray-100 text-sm focus:outline-none focus:ring-1 ${bankErrors.bankName ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                               />
                               {bankErrors.bankName && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.bankName}</p>}
-                           </div>
-                           <div>
+                            </div>
+                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Bank Address*</label>
                               <textarea
                                 id="new-bank-address"
@@ -1589,21 +1650,21 @@ export default function SellerOnboarding() {
                                 className={`w-full h-24 p-4 rounded border bg-gray-100 text-sm resize-none focus:outline-none focus:ring-1 ${bankErrors.bankAddress ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                               />
                               {bankErrors.bankAddress && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.bankAddress}</p>}
-                           </div>
-                           <div className="space-y-6">
+                            </div>
+                            <div className="space-y-6">
                               <div>
-                                 <label className="block text-xs font-bold text-gray-700 mb-1">Account Holder Name*</label>
-                                 <input
+                                <label className="block text-xs font-bold text-gray-700 mb-1">Account Holder Name*</label>
+                                <input
                                   id="new-bank-holder"
                                   value={newBank.holderName}
                                   onChange={(event) => updateNewBank('holderName', event.target.value.replace(/[^A-Za-z .'-]/g, ''))}
                                   placeholder="Enter Account Holder's Name"
                                   className={`w-full h-12 px-4 rounded border bg-gray-50/50 text-sm focus:outline-none focus:ring-1 ${bankErrors.holderName ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
-                                 />
-                                 {bankErrors.holderName && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.holderName}</p>}
+                                />
+                                {bankErrors.holderName && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.holderName}</p>}
                               </div>
-                           </div>
-                           <div>
+                            </div>
+                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Bank Account No*</label>
                               <input
                                 id="new-bank-number"
@@ -1614,8 +1675,8 @@ export default function SellerOnboarding() {
                                 className={`w-full h-12 px-4 rounded border bg-gray-50/50 text-sm focus:outline-none focus:ring-1 ${bankErrors.accountNumber ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                               />
                               {bankErrors.accountNumber && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.accountNumber}</p>}
-                           </div>
-                           <div>
+                            </div>
+                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Confirm Bank Account No*</label>
                               <input
                                 id="new-bank-confirm"
@@ -1626,433 +1687,433 @@ export default function SellerOnboarding() {
                                 className={`w-full h-12 px-4 rounded border bg-gray-50/50 text-sm focus:outline-none focus:ring-1 ${bankErrors.confirmAccountNumber ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                               />
                               {bankErrors.confirmAccountNumber && <p className="mt-1 text-xs font-medium text-red-600">{bankErrors.confirmAccountNumber}</p>}
-                           </div>
-                        </div>
-
-                        <label className="flex items-center gap-2 mt-4 cursor-pointer">
-                           <input
-                            id="new-bank-primary"
-                            type="checkbox"
-                            checked={normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary}
-                            onChange={(event) => updateNewBank('isPrimary', event.target.checked)}
-                            disabled={normalizeList(formData.bankAccounts).length === 0}
-                            className="w-4 h-4 text-[#12335f] rounded border-gray-300"
-                           />
-                           <span className="text-sm font-medium text-gray-700">Is Primary Account?</span>
-                        </label>
-                        {normalizeList(formData.bankAccounts).length === 0 && <p className="text-xs font-medium text-[#12335f]">First bank account will be saved as the primary account.</p>}
-                        {bankErrors.isPrimary && <p className="text-xs font-medium text-red-600">{bankErrors.isPrimary}</p>}
-                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-8 pt-6 border-t border-gray-100">
-                           <p className="text-sm font-medium text-gray-800 mb-4 sm:mb-0">{editingBankId ? 'Complete validation to update the bank account' : 'Complete validation to add a new bank account'}</p>
-                           <Button onClick={() => {
-                             const validation = validateBankForm({
-                               ...newBank,
-                               isPrimary: normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary
-                             });
-                             setBankErrors(validation.errors);
-                             if (!validation.isValid) {
-                                toast.error("Please fix the bank account details.");
-                                return;
-                             }
-                             handleAddBank({
-                               ifsc: validation.values.ifsc,
-                               bankName: validation.values.bankName,
-                               bankAddress: validation.values.bankAddress,
-                               holderName: validation.values.holderName,
-                               accountNumber: validation.values.accountNumber,
-                               isPrimary: validation.values.isPrimary
-                             });
-                           }} disabled={!bankValidation.isValid || isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-6 h-9 rounded transition-colors tracking-wide uppercase text-xs disabled:cursor-not-allowed disabled:opacity-50">
-                                {editingBankId ? 'VALIDATE & UPDATE' : 'VALIDATE & ADD'}
-                           </Button>
-                        </div>
-                     </div>
-                   )}
-
-                   <div className="flex justify-end pt-2">
-                      <Button onClick={() => {
-                        if (normalizeList(formData.bankAccounts).length === 0) {
-                          toast.error("Please add at least one bank account.");
-                          return;
-                        }
-                        handleSaveSection('ownership');
-                      }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                         Save & Continue
-                      </Button>
-                   </div>
-                </div>
-              )}
-
-              {currentSection === 'ownership' && (
-                <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
-                   <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-4 sm:p-8 text-white shadow-2xl">
-                      <div className="absolute top-0 right-0 p-8 opacity-10">
-                         <ShieldCheck className="h-32 w-32" />
-                      </div>
-                      <h3 className="border-b border-white/10 pb-4 text-xl font-black uppercase tracking-tight ">Beneficial Ownership Declaration</h3>
-                      <p className="mt-4 text-slate-400 text-sm leading-relaxed font-medium ">
-                         I hereby solemnly affirm and declare that I have read and understood Rule 144(xi) of GFR 2017 and subsequent orders issued by the Ministry of Finance. I declare that our organization is compliant with the beneficial ownership rules as prescribed.
-                      </p>
-                      <label className="mt-8 flex cursor-pointer items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10">
-                         <input 
-                           type="checkbox" 
-                           name="ownershipDeclarationAccepted" 
-                           checked={formData.ownershipDeclarationAccepted} 
-                           onChange={handleChange}
-                           className="mt-0.5 h-6 w-6 shrink-0 rounded accent-blue-500" 
-                         />
-                         <span className="text-xs font-black uppercase leading-relaxed text-blue-400 ">I Accept and Affirm Compliance</span>
-                      </label>
-                   </div>
-                   
-                   <div className="flex justify-end pt-4 border-t border-slate-100">
-                      <Button
-                        onClick={() => handleSaveSection('documents')}
-                        disabled={isLoading || !formData.ownershipDeclarationAccepted}
-                        className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-gray-800"
-                      >
-                         {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Save & Continue'}
-                      </Button>
-                   </div>
-                </div>
-              )}
-
-              {currentSection === 'documents' && (
-                <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800">Documents Upload</h2>
-                    <p className="text-sm text-slate-500">Upload all required verification documents to complete onboarding.</p>
-                  </div>
-
-                  <div className="space-y-4">
-                    {getRequiredDocuments().map((doc) => {
-                      const uploadedDoc = submittedOnboardingDocuments.find((d: any) => d.documentType === doc.id);
-                      const fileAsset = uploadedDoc?.fileAsset;
-                      const isUploading = isUploadingMap[doc.id];
-                      const status = uploadedDoc?.verificationStatus || 'NOT_UPLOADED'; // PENDING, APPROVED, REJECTED, NOT_UPLOADED
-                      const remarks = uploadedDoc?.remarks;
-
-                      return (
-                        <div key={doc.id} className="border border-slate-200 rounded-xl bg-white p-5 shadow-sm transition-all hover:shadow-md">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <div className="flex items-start gap-3">
-                              <div className="mt-1 p-2 bg-slate-50 text-[#12335f] rounded-lg">
-                                <FileText className="h-5 w-5" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-sm font-bold text-slate-800">{doc.label}</h4>
-                                {fileAsset ? (
-                                  <div className="mt-1 flex items-center gap-2">
-                                    <span className="text-xs text-slate-500 font-medium truncate max-w-[200px] sm:max-w-xs">
-                                      {fileAsset.originalName || 'Uploaded Document'}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleViewDocument(fileAsset, doc.label)}
-                                      className="inline-flex items-center gap-1 text-xs text-[#12335f] font-semibold hover:underline"
-                                    >
-                                      View <ExternalLink className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-slate-400 font-medium mt-1 block">No file uploaded yet (Max 10MB, PDF/JPG/PNG)</span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 self-end sm:self-center">
-                              {/* Status Badge */}
-                              {status === 'APPROVED' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                                  <CheckCircle2 className="h-3.5 w-3.5" /> Approved
-                                </span>
-                              )}
-                              {status === 'REJECTED' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                                  <AlertCircle className="h-3.5 w-3.5" /> Rejected
-                                </span>
-                              )}
-                              {status === 'PENDING' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                  <Clock className="h-3.5 w-3.5" /> Pending Review
-                                </span>
-                              )}
-                              {status === 'NOT_UPLOADED' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                  Missing
-                                </span>
-                              )}
-
-                              {/* Upload Action */}
-                              {!isProfileLocked && (
-                                <label className="relative cursor-pointer">
-                                  <input
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleUploadDocument(doc.id, file);
-                                    }}
-                                    disabled={isUploading}
-                                  />
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#12335f] text-white hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50">
-                                    {isUploading ? (
-                                      <>
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading...
-                                      </>
-                                    ) : fileAsset ? (
-                                      'Replace File'
-                                    ) : (
-                                      <>
-                                        <UploadCloud className="h-3.5 w-3.5" /> Upload
-                                      </>
-                                    )}
-                                  </span>
-                                </label>
-                              )}
                             </div>
                           </div>
 
-                          {/* Rejection Remarks */}
-                          {status === 'REJECTED' && remarks && (
-                            <div className="mt-3 p-3 bg-red-50/50 border border-red-100 rounded-lg flex items-start gap-2 text-xs text-red-800 animate-in fade-in duration-200">
-                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="font-bold">Rejection Reason:</span> {remarks}
-                              </div>
-                            </div>
-                          )}
+                          <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                            <input
+                              id="new-bank-primary"
+                              type="checkbox"
+                              checked={normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary}
+                              onChange={(event) => updateNewBank('isPrimary', event.target.checked)}
+                              disabled={normalizeList(formData.bankAccounts).length === 0}
+                              className="w-4 h-4 text-[#12335f] rounded border-gray-300"
+                            />
+                            <span className="text-sm font-medium text-gray-700">Is Primary Account?</span>
+                          </label>
+                          {normalizeList(formData.bankAccounts).length === 0 && <p className="text-xs font-medium text-[#12335f]">First bank account will be saved as the primary account.</p>}
+                          {bankErrors.isPrimary && <p className="text-xs font-medium text-red-600">{bankErrors.isPrimary}</p>}
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-8 pt-6 border-t border-gray-100">
+                            <p className="text-sm font-medium text-gray-800 mb-4 sm:mb-0">{editingBankId ? 'Complete validation to update the bank account' : 'Complete validation to add a new bank account'}</p>
+                            <Button onClick={() => {
+                              const validation = validateBankForm({
+                                ...newBank,
+                                isPrimary: normalizeList(formData.bankAccounts).length === 0 ? true : newBank.isPrimary
+                              });
+                              setBankErrors(validation.errors);
+                              if (!validation.isValid) {
+                                toast.error("Please fix the bank account details.");
+                                return;
+                              }
+                              handleAddBank({
+                                ifsc: validation.values.ifsc,
+                                bankName: validation.values.bankName,
+                                bankAddress: validation.values.bankAddress,
+                                holderName: validation.values.holderName,
+                                accountNumber: validation.values.accountNumber,
+                                isPrimary: validation.values.isPrimary
+                              });
+                            }} disabled={!bankValidation.isValid || isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-6 h-9 rounded transition-colors tracking-wide uppercase text-xs disabled:cursor-not-allowed disabled:opacity-50">
+                              {editingBankId ? 'VALIDATE & UPDATE' : 'VALIDATE & ADD'}
+                            </Button>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* OTP / Submission Panel */}
-                  <div className="border-t border-slate-200 pt-8">
-                    <div className="flex flex-col items-center gap-6 py-6 bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8">
-                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Final Onboarding Submission</h3>
-                      
-                      {!formData.ownershipDeclarationAccepted ? (
-                        <p className="text-xs font-medium text-amber-600 text-center">
-                          Please accept the Beneficial Ownership Declaration in Section 7 before submitting.
-                        </p>
-                      ) : !areAllDocumentsUploaded() ? (
-                        <p className="text-xs font-medium text-amber-600 text-center">
-                          All mandatory documents must be uploaded before final submission.
-                        </p>
-                      ) : (
-                        <p className="text-xs font-semibold text-slate-500 text-center">
-                          OTP will be sent to your login email: <span className="text-slate-800">{user?.email || 'registered email'}</span>
-                        </p>
                       )}
 
-                      <div className="flex w-full max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                        <Button
-                          onClick={handleSendOwnershipOtp}
-                          disabled={isSendingOwnershipOtp || !formData.ownershipDeclarationAccepted || !areAllDocumentsUploaded() || isProfileLocked}
-                          className="bg-[#12335f] text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-800"
-                        >
-                          {isSendingOwnershipOtp ? <Loader2 className="animate-spin h-4 w-4" /> : ownershipOtpSent ? 'Resend OTP' : 'Send OTP'}
-                        </Button>
-                        <input
-                          value={ownershipOtp}
-                          onChange={(e) => setOwnershipOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          inputMode="numeric"
-                          maxLength={6}
-                          placeholder="Enter 6-digit OTP"
-                          disabled={!ownershipOtpSent || isProfileLocked}
-                          className="h-9 w-44 rounded border border-slate-300 px-3 text-center text-xs font-bold tracking-widest text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-400"
-                        />
-                        <Button
-                          onClick={() => handleFinalSubmit()}
-                          disabled={isLoading || !ownershipOtpSent || !formData.ownershipDeclarationAccepted || !areAllDocumentsUploaded() || !/^\d{6}$/.test(ownershipOtp) || isProfileLocked}
-                          className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-gray-800"
-                        >
-                          {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Final Submission'}
+                      <div className="flex justify-end pt-2">
+                        <Button onClick={() => {
+                          if (normalizeList(formData.bankAccounts).length === 0) {
+                            toast.error("Please add at least one bank account.");
+                            return;
+                          }
+                          handleSaveSection('ownership');
+                        }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                          Save & Continue
                         </Button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {currentSection === 'sellerProfile' && (
-                <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                   <div>
-                      <h2 className="text-xl font-bold text-slate-800">Seller Profile</h2>
-                      <p className="text-sm text-slate-500">Summary of your Personal Profile with GeM</p>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  {currentSection === 'ownership' && (
+                    <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-4 sm:p-8 text-white shadow-2xl">
+                        <div className="absolute top-0 right-0 p-8 opacity-10">
+                          <ShieldCheck className="h-32 w-32" />
+                        </div>
+                        <h3 className="border-b border-white/10 pb-4 text-xl font-black uppercase tracking-tight ">Beneficial Ownership Declaration</h3>
+                        <p className="mt-4 text-slate-400 text-sm leading-relaxed font-medium ">
+                          I hereby solemnly affirm and declare that I have read and understood Rule 144(xi) of GFR 2017 and subsequent orders issued by the Ministry of Finance. I declare that our organization is compliant with the beneficial ownership rules as prescribed.
+                        </p>
+                        <label className="mt-8 flex cursor-pointer items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10">
+                          <input
+                            type="checkbox"
+                            name="ownershipDeclarationAccepted"
+                            checked={formData.ownershipDeclarationAccepted}
+                            onChange={handleChange}
+                            className="mt-0.5 h-6 w-6 shrink-0 rounded accent-blue-500"
+                          />
+                          <span className="text-xs font-black uppercase leading-relaxed text-blue-400 ">I Accept and Affirm Compliance</span>
+                        </label>
+                      </div>
+
+                      <div className="flex justify-end pt-4 border-t border-slate-100">
+                        <Button
+                          onClick={() => handleSaveSection('documents')}
+                          disabled={isLoading || !formData.ownershipDeclarationAccepted}
+                          className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-gray-800"
+                        >
+                          {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Save & Continue'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentSection === 'documents' && (
+                    <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
                       <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">First Name</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
+                        <h2 className="text-xl font-bold text-slate-800">Documents Upload</h2>
+                        <p className="text-sm text-slate-500">Upload all required verification documents to complete onboarding.</p>
+                      </div>
+
+                      <div className="space-y-4">
+                        {getRequiredDocuments().map((doc) => {
+                          const uploadedDoc = submittedOnboardingDocuments.find((d: any) => d.documentType === doc.id);
+                          const fileAsset = uploadedDoc?.fileAsset;
+                          const isUploading = isUploadingMap[doc.id];
+                          const status = uploadedDoc?.verificationStatus || 'NOT_UPLOADED'; // PENDING, APPROVED, REJECTED, NOT_UPLOADED
+                          const remarks = uploadedDoc?.remarks;
+
+                          return (
+                            <div key={doc.id} className="border border-slate-200 rounded-xl bg-white p-5 shadow-sm transition-all hover:shadow-md">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="mt-1 p-2 bg-slate-50 text-[#12335f] rounded-lg">
+                                    <FileText className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h4 className="text-sm font-bold text-slate-800">{doc.label}</h4>
+                                    {fileAsset ? (
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <span className="text-xs text-slate-500 font-medium truncate max-w-[200px] sm:max-w-xs">
+                                          {fileAsset.originalName || 'Uploaded Document'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleViewDocument(fileAsset, doc.label)}
+                                          className="inline-flex items-center gap-1 text-xs text-[#12335f] font-semibold hover:underline"
+                                        >
+                                          View <ExternalLink className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 font-medium mt-1 block">No file uploaded yet (Max 10MB, PDF/JPG/PNG)</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 self-end sm:self-center">
+                                  {/* Status Badge */}
+                                  {status === 'APPROVED' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                                      <CheckCircle2 className="h-3.5 w-3.5" /> Approved
+                                    </span>
+                                  )}
+                                  {status === 'REJECTED' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                                      <AlertCircle className="h-3.5 w-3.5" /> Rejected
+                                    </span>
+                                  )}
+                                  {status === 'PENDING' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                      <Clock className="h-3.5 w-3.5" /> Pending Review
+                                    </span>
+                                  )}
+                                  {status === 'NOT_UPLOADED' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                      Missing
+                                    </span>
+                                  )}
+
+                                  {/* Upload Action */}
+                                  {!isProfileLocked && (
+                                    <label className="relative cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) handleUploadDocument(doc.id, file);
+                                        }}
+                                        disabled={isUploading}
+                                      />
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#12335f] text-white hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50">
+                                        {isUploading ? (
+                                          <>
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading...
+                                          </>
+                                        ) : fileAsset ? (
+                                          'Replace File'
+                                        ) : (
+                                          <>
+                                            <UploadCloud className="h-3.5 w-3.5" /> Upload
+                                          </>
+                                        )}
+                                      </span>
+                                    </label>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Rejection Remarks */}
+                              {status === 'REJECTED' && remarks && (
+                                <div className="mt-3 p-3 bg-red-50/50 border border-red-100 rounded-lg flex items-start gap-2 text-xs text-red-800 animate-in fade-in duration-200">
+                                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="font-bold">Rejection Reason:</span> {remarks}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* OTP / Submission Panel */}
+                      <div className="border-t border-slate-200 pt-8">
+                        <div className="flex flex-col items-center gap-6 py-6 bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8">
+                          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Final Onboarding Submission</h3>
+
+                          {!formData.ownershipDeclarationAccepted ? (
+                            <p className="text-xs font-medium text-amber-600 text-center">
+                              Please accept the Beneficial Ownership Declaration in Section 7 before submitting.
+                            </p>
+                          ) : !areAllDocumentsUploaded() ? (
+                            <p className="text-xs font-medium text-amber-600 text-center">
+                              All mandatory documents must be uploaded before final submission.
+                            </p>
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-500 text-center">
+                              OTP will be sent to your login email: <span className="text-slate-800">{user?.email || 'registered email'}</span>
+                            </p>
+                          )}
+
+                          <div className="flex w-full max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                            <Button
+                              onClick={handleSendOwnershipOtp}
+                              disabled={isSendingOwnershipOtp || !formData.ownershipDeclarationAccepted || !areAllDocumentsUploaded() || isProfileLocked}
+                              className="bg-[#12335f] text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-800"
+                            >
+                              {isSendingOwnershipOtp ? <Loader2 className="animate-spin h-4 w-4" /> : ownershipOtpSent ? 'Resend OTP' : 'Send OTP'}
+                            </Button>
+                            <input
+                              value={ownershipOtp}
+                              onChange={(e) => setOwnershipOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                              inputMode="numeric"
+                              maxLength={6}
+                              placeholder="Enter 6-digit OTP"
+                              disabled={!ownershipOtpSent || isProfileLocked}
+                              className="h-9 w-44 rounded border border-slate-300 px-3 text-center text-xs font-bold tracking-widest text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-400"
+                            />
+                            <Button
+                              onClick={() => handleFinalSubmit()}
+                              disabled={isLoading || !ownershipOtpSent || !formData.ownershipDeclarationAccepted || !areAllDocumentsUploaded() || !/^\d{6}$/.test(ownershipOtp) || isProfileLocked}
+                              className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide disabled:cursor-not-allowed disabled:opacity-60 hover:bg-gray-800"
+                            >
+                              {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Final Submission'}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentSection === 'sellerProfile' && (
+                    <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-800">Seller Profile</h2>
+                        <p className="text-sm text-slate-500">Summary of your Personal Profile with GeM</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">First Name</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
                             {user?.name ? user.name.split(' ')[0] : '-'}
-                         </div>
-                      </div>
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">Last Name</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Last Name</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
                             {user?.name ? user.name.split(' ').slice(1).join(' ') || '-' : '-'}
-                         </div>
-                      </div>
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">Mobile</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Mobile</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
                             {formData.mobile || user?.mobile || '9356150561'}
-                         </div>
-                      </div>
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">Email Id</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Email Id</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
                             {user?.email || '-'}
-                         </div>
-                      </div>
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">Roles</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Roles</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
                             Primary Seller
-                         </div>
+                          </div>
+                        </div>
                       </div>
-                   </div>
-                </div>
-              )}
+                    </div>
+                  )}
 
-              {currentSection === 'updateAadhaar' && (
-                <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                   <h2 className="text-xl font-bold text-slate-800">Update Aadhaar</h2>
-                   <div className="bg-slate-50 text-blue-800 p-4 rounded text-sm border border-slate-100 font-medium">
-                      On Aadhaar update, Key Person Validation has to be reverified
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Input 
-                        label="Aadhaar Number / Virtual ID*" 
-                        placeholder="Enter Aadhaar number / Virtual ID"
-                        value={aadhaarData.number}
-                        onChange={(e) => setAadhaarData(p => ({...p, number: e.target.value}))}
-                      />
-                      <Input 
-                        label="Mobile number linked with Aadhaar*" 
-                        placeholder="Enter mobile number linked with Aadhaar"
-                        value={aadhaarData.mobile}
-                        onChange={(e) => setAadhaarData(p => ({...p, mobile: e.target.value}))}
-                      />
-                   </div>
-                   <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 flex gap-3 items-start">
-                      <input 
-                        type="checkbox" 
-                        checked={aadhaarData.consent}
-                        onChange={(e) => setAadhaarData(p => ({...p, consent: e.target.checked}))}
-                        className="mt-1.5 h-4 w-4" 
-                      />
-                      <div className="text-xs text-slate-600 space-y-2">
-                         <p>I, the holder of the above Aadhaar, hereby give my consent to GeM ( Government e Marketplace), for using my Aadhaar number as allotted by UIDAI for GeM Registration. GeM ( Government e Marketplace) ,have informed me that my aadhaar data will not be stored/shared.</p>
-                         <p className="font-medium">मैं, उपर्युक्त आधार का धारक, भारतीय विशिष्ट पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को जेम पंजीकरण हेतु प्रयोग में लाने हेतु जेम (गवर्नमेंट ई-मार्केटप्लेस) को एतदद्वारा अपनी सहमति प्रदान करता हूँ। जेम (गवर्नमेंट ई-मार्केटप्लेस) ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।</p>
-                      </div>
-                   </div>
-                   <div className="space-y-2">
-                      <p className="text-xs font-medium text-slate-500">Click on the play button to listen consent / सहमति सुनने के लिए प्ले बटन पर क्लिक करें।</p>
-                      <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-xs font-medium text-slate-600">
-                         Consent audio is currently not configured. Please read the consent text above before continuing.
-                      </div>
-                   </div>
-                   <div className="flex justify-end border-t border-gray-100 pt-6">
-                      <Button disabled className="bg-gray-300 text-gray-500 rounded px-6 h-10 font-bold uppercase text-xs tracking-wide">
-                         Verify Aadhaar
-                      </Button>
-                   </div>
-                </div>
-              )}
-
-              {currentSection === 'changePassword' && (
-                <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                   <div>
-                      <h2 className="text-xl font-bold text-slate-800">Change Password</h2>
-                      <p className="text-sm text-slate-500">Password must fulfill password policy</p>
-                   </div>
-                   <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">
-                      <p className="text-sm font-medium text-slate-700">Please complete OTP verification, by clicking the below button to proceed with change of password.</p>
-                      <Button className="bg-[#12335f] hover:bg-slate-800 text-white rounded-lg px-8 h-10 font-bold uppercase text-xs tracking-wide whitespace-nowrap shadow-md shadow-blue-100">
-                         Get OTP
-                      </Button>
-                   </div>
-                </div>
-              )}
-
-              {currentSection === 'changeEmail' && (
-                <div className="space-y-2 animate-in fade-in duration-300 min-w-0 w-full">
-                   <div>
-                      <p className="text-sm text-slate-500">Please note that the new email ID will be used for business done on GeM</p>
-                   </div>
-                   <div className="bg-slate-50/50 border border-blue-200 rounded-lg p-5 space-y-2 mt-4">
-                      <h4 className="text-red-600 font-black text-sm">Important Update on Bid Notifications</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed">This is to inform you that, to receive bid notifications on your updated email ID, you are required to click on the <span className="font-bold text-slate-800">Ongoing Bids</span> page at least once. Until this action is completed, bid notifications will not be delivered to the updated email address.</p>
-                   </div>
-                   <div className="space-y-6 pt-4">
-                      <div className="max-w-md">
-                         <label className="block text-xs font-bold text-slate-600 mb-1">Current Email ID</label>
-                         <div className="bg-gray-100 border border-gray-200 px-4 py-3 rounded text-sm text-slate-700 font-medium">
-                            {user?.email || 'mukundmeheta@gmail.com'}
-                         </div>
+                  {currentSection === 'updateAadhaar' && (
+                    <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <h2 className="text-xl font-bold text-slate-800">Update Aadhaar</h2>
+                      <div className="bg-slate-50 text-blue-800 p-4 rounded text-sm border border-slate-100 font-medium">
+                        On Aadhaar update, Key Person Validation has to be reverified
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                         <Input 
-                           label="Email Id *" 
-                           placeholder="Please enter your email address"
-                           value={emailData.newEmail}
-                           onChange={(e) => setEmailData(p => ({...p, newEmail: e.target.value}))}
-                         />
-                         <Input 
-                           label="Verify Email Id *" 
-                           placeholder="Please enter your email address"
-                           value={emailData.verifyEmail}
-                           onChange={(e) => setEmailData(p => ({...p, verifyEmail: e.target.value}))}
-                         />
+                        <Input
+                          label="Aadhaar Number / Virtual ID*"
+                          placeholder="Enter Aadhaar number / Virtual ID"
+                          value={aadhaarData.number}
+                          onChange={(e) => setAadhaarData(p => ({ ...p, number: e.target.value }))}
+                        />
+                        <Input
+                          label="Mobile number linked with Aadhaar*"
+                          placeholder="Enter mobile number linked with Aadhaar"
+                          value={aadhaarData.mobile}
+                          onChange={(e) => setAadhaarData(p => ({ ...p, mobile: e.target.value }))}
+                        />
                       </div>
-                   </div>
-                   <div className="flex justify-end border-t border-gray-100 pt-6">
-                      <Button disabled className="bg-gray-300 text-gray-500 rounded px-8 h-10 font-bold uppercase text-xs tracking-wide shadow-sm">
-                         Send OTP
-                      </Button>
-                   </div>
-                </div>
-              )}
+                      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 flex gap-3 items-start">
+                        <input
+                          type="checkbox"
+                          checked={aadhaarData.consent}
+                          onChange={(e) => setAadhaarData(p => ({ ...p, consent: e.target.checked }))}
+                          className="mt-1.5 h-4 w-4"
+                        />
+                        <div className="text-xs text-slate-600 space-y-2">
+                          <p>I, the holder of the above Aadhaar, hereby give my consent to GeM ( Government e Marketplace), for using my Aadhaar number as allotted by UIDAI for GeM Registration. GeM ( Government e Marketplace) ,have informed me that my aadhaar data will not be stored/shared.</p>
+                          <p className="font-medium">मैं, उपर्युक्त आधार का धारक, भारतीय विशिष्ट पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को जेम पंजीकरण हेतु प्रयोग में लाने हेतु जेम (गवर्नमेंट ई-मार्केटप्लेस) को एतदद्वारा अपनी सहमति प्रदान करता हूँ। जेम (गवर्नमेंट ई-मार्केटप्लेस) ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-500">Click on the play button to listen consent / सहमति सुनने के लिए प्ले बटन पर क्लिक करें।</p>
+                        <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-xs font-medium text-slate-600">
+                          Consent audio is currently not configured. Please read the consent text above before continuing.
+                        </div>
+                      </div>
+                      <div className="flex justify-end border-t border-gray-100 pt-6">
+                        <Button disabled className="bg-gray-300 text-gray-500 rounded px-6 h-10 font-bold uppercase text-xs tracking-wide">
+                          Verify Aadhaar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
-              {currentSection === 'closeAccount' && (
-                <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                   <div className="bg-[#fff8e1] border border-[#ffe082] p-4 rounded-lg text-xs text-slate-800 space-y-2 font-medium">
-                      <div className="flex gap-2 items-start">
-                         <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                         <p>Please complete your profile to start transacting on MSME </p>
+                  {currentSection === 'changePassword' && (
+                    <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-800">Change Password</h2>
+                        <p className="text-sm text-slate-500">Password must fulfill password policy</p>
                       </div>
-                      <div className="flex gap-2 items-start">
-                         <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                         <p>Kindly verify Business PAN, Registered address and CIN (for companies) to view GeM Seller ID.</p>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">
+                        <p className="text-sm font-medium text-slate-700">Please complete OTP verification, by clicking the below button to proceed with change of password.</p>
+                        <Button className="bg-[#12335f] hover:bg-slate-800 text-white rounded-lg px-8 h-10 font-bold uppercase text-xs tracking-wide whitespace-nowrap shadow-md shadow-blue-100">
+                          Get OTP
+                        </Button>
                       </div>
-                      <div className="flex gap-2 items-start">
-                         <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                         <p>Please complete 'Beneficial Ownership Compliance'. <span className="text-[#12335f] cursor-pointer hover:underline">Click here</span></p>
+                    </div>
+                  )}
+
+                  {currentSection === 'changeEmail' && (
+                    <div className="space-y-2 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div>
+                        <p className="text-sm text-slate-500">Please note that the new email ID will be used for business done on GeM</p>
                       </div>
-                   </div>
-                   
-                   <div>
-                      <h2 className="text-xl font-bold text-slate-800">Close Account</h2>
-                      <p className="mt-2 text-sm text-slate-600 font-medium">If you close your account, your account will be closed permanently. You will not be able to login with this account. In addition, all the secondary seller accounts will also be closed.</p>
-                   </div>
-                   
-                   <div className="bg-slate-50 border border-slate-100 text-slate-700 text-sm p-5 rounded-lg">
-                      You are advised to check and validate your bank account detail before closing your seller account at GeM. The bank account details cannot be updated once the account is closed which may hamper refund of the caution money.
-                   </div>
-                   
-                   <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">
-                      <p className="text-sm text-slate-700 font-medium">To close your account permanently click on</p>
-                      <Button className="bg-[#12335f] hover:bg-slate-800 text-white rounded-lg px-6 h-10 font-bold uppercase text-xs tracking-wide shadow-md shadow-blue-100 whitespace-nowrap">
-                         Close Account
-                      </Button>
-                   </div>
-                </div>
-              )}
-              </fieldset>
+                      <div className="bg-slate-50/50 border border-blue-200 rounded-lg p-5 space-y-2 mt-4">
+                        <h4 className="text-red-600 font-black text-sm">Important Update on Bid Notifications</h4>
+                        <p className="text-sm text-slate-600 leading-relaxed">This is to inform you that, to receive bid notifications on your updated email ID, you are required to click on the <span className="font-bold text-slate-800">Ongoing Bids</span> page at least once. Until this action is completed, bid notifications will not be delivered to the updated email address.</p>
+                      </div>
+                      <div className="space-y-6 pt-4">
+                        <div className="max-w-md">
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Current Email ID</label>
+                          <div className="bg-gray-100 border border-gray-200 px-4 py-3 rounded text-sm text-slate-700 font-medium">
+                            {user?.email || 'mukundmeheta@gmail.com'}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <Input
+                            label="Email Id *"
+                            placeholder="Please enter your email address"
+                            value={emailData.newEmail}
+                            onChange={(e) => setEmailData(p => ({ ...p, newEmail: e.target.value }))}
+                          />
+                          <Input
+                            label="Verify Email Id *"
+                            placeholder="Please enter your email address"
+                            value={emailData.verifyEmail}
+                            onChange={(e) => setEmailData(p => ({ ...p, verifyEmail: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end border-t border-gray-100 pt-6">
+                        <Button disabled className="bg-gray-300 text-gray-500 rounded px-8 h-10 font-bold uppercase text-xs tracking-wide shadow-sm">
+                          Send OTP
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentSection === 'closeAccount' && (
+                    <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <div className="bg-[#fff8e1] border border-[#ffe082] p-4 rounded-lg text-xs text-slate-800 space-y-2 font-medium">
+                        <div className="flex gap-2 items-start">
+                          <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <p>Please complete your profile to start transacting on MSME </p>
+                        </div>
+                        <div className="flex gap-2 items-start">
+                          <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <p>Kindly verify Business PAN, Registered address and CIN (for companies) to view GeM Seller ID.</p>
+                        </div>
+                        <div className="flex gap-2 items-start">
+                          <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <p>Please complete 'Beneficial Ownership Compliance'. <span className="text-[#12335f] cursor-pointer hover:underline">Click here</span></p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-800">Close Account</h2>
+                        <p className="mt-2 text-sm text-slate-600 font-medium">If you close your account, your account will be closed permanently. You will not be able to login with this account. In addition, all the secondary seller accounts will also be closed.</p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-100 text-slate-700 text-sm p-5 rounded-lg">
+                        You are advised to check and validate your bank account detail before closing your seller account at GeM. The bank account details cannot be updated once the account is closed which may hamper refund of the caution money.
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">
+                        <p className="text-sm text-slate-700 font-medium">To close your account permanently click on</p>
+                        <Button className="bg-[#12335f] hover:bg-slate-800 text-white rounded-lg px-6 h-10 font-bold uppercase text-xs tracking-wide shadow-md shadow-blue-100 whitespace-nowrap">
+                          Close Account
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </fieldset>
               )}
             </CardContent>
           </Card>

@@ -76,7 +76,7 @@ export default function CreateQuotation() {
     splitTaxRate: '',
     igstTaxRate: '',
     otherTaxRate: '',
-    discountAmount: '',
+    discountPercent: '',
     deliveryDays: '',
     warranty: '',
     validTill: '',
@@ -89,7 +89,8 @@ export default function CreateQuotation() {
   const taxBreakdown = calculateGstBreakdown(subtotal, formData.splitTaxRate, formData.igstTaxRate, formData.otherTaxRate);
   const taxRate = taxBreakdown.totalRate;
   const taxAmount = taxBreakdown.totalTaxAmount;
-  const discountAmount = roundMoney(Number(formData.discountAmount || 0));
+  const discountPercent = Math.min(100, Math.max(0, Number(formData.discountPercent || 0)));
+  const discountAmount = roundMoney(subtotal * discountPercent / 100);
   const totalValue = roundMoney(subtotal + taxAmount - discountAmount);
 
   useEffect(() => {
@@ -180,8 +181,8 @@ export default function CreateQuotation() {
     if (!formData.unitPrice || !formData.quantity || !formData.deliveryDays) {
       return toast.error('Please fill in all required fields');
     }
-    if (discountAmount > subtotal + taxAmount) {
-      return toast.error('Discount cannot exceed subtotal plus tax');
+    if (discountPercent < 0 || discountPercent > 100) {
+      return toast.error('Discount must be a percentage between 0 and 100');
     }
 
     setSubmitting(true);
@@ -272,7 +273,7 @@ export default function CreateQuotation() {
                 <span>{formatCurrency(taxAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Discount</span>
+                <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
                 <span>- {formatCurrency(discountAmount)}</span>
               </div>
             </div>
@@ -458,19 +459,25 @@ export default function CreateQuotation() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Discount Amount (Optional)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Discount Percentage (Optional)</label>
                       <div className="relative">
-                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
                         <input
                           type="number"
                           min="0"
+                          max="100"
                           step="0.01"
-                          placeholder="0.00"
-                          value={formData.discountAmount}
-                          onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
-                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
+                          placeholder="0"
+                          value={formData.discountPercent}
+                          onChange={(e) => setFormData({ ...formData, discountPercent: e.target.value })}
+                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-3 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                         />
                       </div>
+                      {discountPercent > 0 && (
+                        <p className="text-[10px] font-semibold text-slate-400">
+                          = {formatCurrency(discountAmount)} off subtotal
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1">
@@ -586,7 +593,7 @@ export default function CreateQuotation() {
                         </div>
                       )}
                       <div className="flex items-center justify-between">
-                        <span>Discount</span>
+                        <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
                         <span>- {formatCurrency(discountAmount)}</span>
                       </div>
                       <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-black text-[#12335f]">

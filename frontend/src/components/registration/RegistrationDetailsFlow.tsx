@@ -83,6 +83,33 @@ const buyerDocOptions = [
   { id: 'authLetter', label: 'Authorization Letter of Representative (Optional)' }
 ];
 
+// MSME Udyam Registration Number — official format `UDYAM-<state>-<district>-<seq>`
+// where state is 2 letters, district is 2 digits, sequence is 7 digits.
+// Example: UDYAM-MH-12-0123456
+const UDYAM_REGEX = /^UDYAM-[A-Z]{2}-\d{2}-\d{7}$/;
+
+// Corporate Identification Number issued by MCA — 21 chars:
+//   1 letter (L=listed, U=unlisted) + 5 digits (industry code)
+//   + 2 letters (state) + 4 digits (year) + 3 letters (entity type)
+//   + 6 digits (registration number).
+// Example: U72900MH1996PLC104693
+const CIN_REGEX = /^[LU]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$/;
+
+const validateUdyam = (value: string) => {
+  const v = value.trim().toUpperCase();
+  if (!v) return 'Please enter Udyam Number.';
+  if (!UDYAM_REGEX.test(v)) return 'Invalid Udyam format. Expected UDYAM-XX-00-0000000.';
+  return '';
+};
+
+const validateCin = (value: string) => {
+  const v = value.trim().toUpperCase();
+  if (!v) return ''; // CIN is optional
+  if (v.length !== 21) return 'CIN must be exactly 21 characters.';
+  if (!CIN_REGEX.test(v)) return 'Invalid CIN format. Example: U72900MH1996PLC104693.';
+  return '';
+};
+
 export default function RegistrationDetailsFlow({ businessType, onBack, role, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(1);
   const { user, login } = useAuth();
@@ -147,6 +174,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [gstError, setGstError] = useState<string>('');
   const [isGstVerified, setIsGstVerified] = useState(false);
+  const [verifiedGstDetails, setVerifiedGstDetails] = useState<any>(null);
 
   const sellerRegistrationDocuments = () => {
     const docs = new Set(prereqSelectedDocuments);
@@ -187,15 +215,18 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
           state: data.state?.trim() || prev.state,
           district: data.city?.trim() || prev.district,
         }));
+        setVerifiedGstDetails(data);
         setIsGstVerified(true);
         toast.success(`GST verified: ${data.status || 'Status available'}`);
       } else {
         const err = await res.json().catch(() => ({}));
         setGstError(err?.message || 'Incorrect or invalid GST');
+        setVerifiedGstDetails(null);
         setIsGstVerified(false);
       }
     } catch (err) {
       setGstError('Verification service unavailable');
+      setVerifiedGstDetails(null);
       setIsGstVerified(false);
     } finally {
       setIsFetchingGst(false);
@@ -209,6 +240,8 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
   const [aadhaarConsent, setAadhaarConsent] = useState(false);
   const [isPanVerified, setIsPanVerified] = useState(false);
   const [mobileAvailability, setMobileAvailability] = useState<'idle' | 'checking' | 'available' | 'exists'>('idle');
+  const [aadhaarTouched, setAadhaarTouched] = useState(false);
+  const [mobileTouched, setMobileTouched] = useState(false);
 
   const [emailOtp, setEmailOtp] = useState('');
   const [isEmailVerified, setIsEmailVerified] = useState(false);
@@ -305,12 +338,16 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
   const dobValid = Boolean(dobDate && dobDate <= today && age >= 18);
   const aadhaarErrors = {
     aadhaarNumber: !aadhaarValue
-      ? 'Aadhaar Number / Virtual ID is required.'
+      ? (aadhaarTouched ? 'Aadhaar Number / Virtual ID is required.' : '')
       : !isAadhaarOrVidValid
-        ? 'Enter exactly 12 digits for Aadhaar or 16 digits for Virtual ID.'
+        ? (aadhaarValue.length > 12 && aadhaarValue.length < 16
+          ? `Aadhaar must be exactly 12 digits (entered ${aadhaarValue.length}). Virtual ID must be exactly 16 digits.`
+          : aadhaarValue.length > 16
+            ? 'Aadhaar must be 12 digits or Virtual ID must be 16 digits.'
+            : `Enter exactly 12 digits for Aadhaar or 16 digits for Virtual ID (entered ${aadhaarValue.length}).`)
         : '',
     mobile: !mobileValue
-      ? 'Mobile number linked with Aadhaar is required.'
+      ? (mobileTouched ? 'Mobile number linked with Aadhaar is required.' : '')
       : !isMobileValid
         ? 'Enter a valid 10 digit mobile number starting with 6, 7, 8, or 9.'
         : '',
@@ -371,6 +408,8 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
 
   const handleAadhaarFieldChange = (patch: Partial<typeof formData>) => {
     setFormData({ ...formData, ...patch });
+    if ('aadhaarNumber' in patch) setAadhaarTouched(true);
+    if ('mobile' in patch) setMobileTouched(true);
     if ('mobile' in patch || 'aadhaarNumber' in patch) {
       setSubmitErrors(prev => {
         const { mobile, aadhaarNumber, ...rest } = prev;
@@ -394,6 +433,8 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
   };
 
   const handleSendAadhaarOtp = () => {
+    setAadhaarTouched(true);
+    setMobileTouched(true);
     if (!isAadhaarReady) return toast.error('Please complete valid Aadhaar details and consent');
     if (mobileAlreadyRegistered) return toast.error('This Aadhaar-linked mobile number is already registered. Please edit Aadhaar details.');
 
@@ -431,6 +472,20 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
       if (role === 'seller' && showOptionalDetails && !formData.udyamNumber) {
         toast.error('Please enter Udyam Number');
         return;
+      }
+      if (role === 'seller' && showOptionalDetails && formData.udyamNumber) {
+        const err = validateUdyam(formData.udyamNumber);
+        if (err) {
+          toast.error(err);
+          return;
+        }
+      }
+      if (showOptionalDetails && formData.cin) {
+        const err = validateCin(formData.cin);
+        if (err) {
+          toast.error(err);
+          return;
+        }
       }
       if (formData.gstin && gstError) {
         toast.error(gstError);
@@ -594,6 +649,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
             udyamNumber: formData.udyamNumber,
             gstin: formData.gstin,
             gstVerified: Boolean(formData.gstin && isGstVerified),
+            gstDetails: Boolean(formData.gstin && isGstVerified) ? verifiedGstDetails : null,
             cin: formData.cin,
             website: formData.website,
             accountName,
@@ -629,7 +685,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
       /[A-Z]/.test(pw) && /[a-z]/.test(pw) &&
       /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
   };
-  const isBuyerAadhaarReady = formData.aadhaarNumber.length === 12 && formData.mobile.length === 10 && aadhaarConsent && !mobileAlreadyRegistered && mobileAvailability !== 'checking';
+  const isBuyerAadhaarReady = isAadhaarOrVidValid && formData.mobile.length === 10 && isMobileValid && aadhaarConsent && !mobileAlreadyRegistered && mobileAvailability !== 'checking';
   const isBuyerEmailReady = Boolean(formData.email && formData.verifyEmail && formData.email === formData.verifyEmail);
   if (isSuccess) {
     return (
@@ -908,14 +964,28 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                               Udyam Number * <Info className="h-3.5 w-3.5 text-slate-400" />
                             </label>
                             <Input
-                              placeholder="e.g., UDYAM-XX-00-0000000"
+                              placeholder="e.g., UDYAM-MH-12-0123456"
                               value={formData.udyamNumber}
-                              onChange={(e) => setFormData({ ...formData, udyamNumber: e.target.value.toUpperCase() })}
-                              className="h-10 rounded border-slate-300 bg-white text-[13px]"
+                              onChange={(e) => {
+                                // Allow only uppercase letters, digits, and hyphen.
+                                const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 19);
+                                setFormData({ ...formData, udyamNumber: cleaned });
+                              }}
+                              maxLength={19}
+                              className={cn(
+                                "h-10 rounded bg-white text-[13px]",
+                                formData.udyamNumber && validateUdyam(formData.udyamNumber)
+                                  ? "border-red-400 focus-visible:ring-red-300"
+                                  : "border-slate-300"
+                              )}
                             />
-                            {!formData.udyamNumber && (
+                            {formData.udyamNumber && validateUdyam(formData.udyamNumber) ? (
+                              <p className="text-[10px] text-red-500 mt-1 font-medium tracking-tight">
+                                {validateUdyam(formData.udyamNumber)}
+                              </p>
+                            ) : !formData.udyamNumber ? (
                               <p className="text-[10px] text-red-500 mt-1 font-medium tracking-tight">Please enter valid Udyam Number.</p>
-                            )}
+                            ) : null}
                           </div>
 
                           <div className="space-y-2">
@@ -923,11 +993,26 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                               CIN (Optional) <Info className="h-3.5 w-3.5 text-slate-400" />
                             </label>
                             <Input
-                              placeholder="Corporate Identification Number"
+                              placeholder="e.g., U72900MH1996PLC104693"
                               value={formData.cin}
-                              onChange={(e) => setFormData({ ...formData, cin: e.target.value.toUpperCase() })}
-                              className="h-10 rounded border-slate-300 bg-white text-[13px]"
+                              onChange={(e) => {
+                                // CIN uses only uppercase letters and digits, capped at 21 chars.
+                                const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 21);
+                                setFormData({ ...formData, cin: cleaned });
+                              }}
+                              maxLength={21}
+                              className={cn(
+                                "h-10 rounded bg-white text-[13px]",
+                                formData.cin && validateCin(formData.cin)
+                                  ? "border-red-400 focus-visible:ring-red-300"
+                                  : "border-slate-300"
+                              )}
                             />
+                            {formData.cin && validateCin(formData.cin) && (
+                              <p className="text-[10px] text-red-500 mt-1 font-medium tracking-tight">
+                                {validateCin(formData.cin)}
+                              </p>
+                            )}
                           </div>
 
                           <div className="space-y-2">
@@ -1000,14 +1085,27 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                             <input
                               type="password"
                               placeholder="Enter Aadhaar number / Virtual ID"
-                              maxLength={12}
+                              maxLength={16}
+                              inputMode="numeric"
                               value={formData.aadhaarNumber}
-                              onChange={(e) => handleAadhaarFieldChange({ aadhaarNumber: e.target.value.replace(/\D/g, '') })}
+                              onChange={(e) => handleAadhaarFieldChange({ aadhaarNumber: e.target.value.replace(/\D/g, '').slice(0, 16) })}
+                              onBlur={() => setAadhaarTouched(true)}
                               disabled={isAadhaarVerified || aadhaarOtpSent}
-                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-4 pr-11 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              className={cn(
+                                "h-11 w-full rounded-lg border bg-white px-4 pr-11 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60",
+                                aadhaarErrors.aadhaarNumber ? "border-red-400 focus:ring-red-500" : "border-slate-200 focus:ring-indigo-500"
+                              )}
                             />
                             <EyeOff className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                           </div>
+                          {maskedAadhaar && !aadhaarErrors.aadhaarNumber && (
+                            <p className="text-[11px] font-semibold text-slate-500">
+                              {isAadhaarNumberValid ? 'Aadhaar' : 'Virtual ID'} masked: {maskedAadhaar}
+                            </p>
+                          )}
+                          {aadhaarErrors.aadhaarNumber && (
+                            <p className="text-[11px] font-medium text-red-600">{aadhaarErrors.aadhaarNumber}</p>
+                          )}
                         </div>
 
                         <div className="space-y-1">
@@ -1229,8 +1327,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                                 <input
                                   placeholder="Enter Aadhaar number / Virtual ID"
                                   maxLength={16}
+                                  inputMode="numeric"
                                   value={formData.aadhaarNumber}
                                   onChange={(event) => handleAadhaarFieldChange({ aadhaarNumber: event.target.value.replace(/\D/g, '').slice(0, 16) })}
+                                  onBlur={() => setAadhaarTouched(true)}
                                   disabled={isAadhaarVerified || aadhaarOtpSent}
                                   className={cn(
                                     "h-11 w-full rounded border bg-white px-4 pr-11 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60",
@@ -1239,7 +1339,11 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                                 />
                                 <EyeOff className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                               </div>
-                              {maskedAadhaar && <p className="text-xs font-semibold text-slate-500">Masked: {maskedAadhaar}</p>}
+                              {maskedAadhaar && !aadhaarErrors.aadhaarNumber && (
+                                <p className="text-xs font-semibold text-slate-500">
+                                  {isAadhaarNumberValid ? 'Aadhaar' : 'Virtual ID'} masked: {maskedAadhaar}
+                                </p>
+                              )}
                               {aadhaarErrors.aadhaarNumber && <p className="text-xs font-medium text-red-600">{aadhaarErrors.aadhaarNumber}</p>}
                             </div>
 

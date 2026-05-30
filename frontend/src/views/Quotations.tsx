@@ -227,7 +227,8 @@ const getQuotePricing = (quote: Quotation) => {
   const taxAmount = Number(quote.taxAmount ?? (subtotal * taxRate / 100));
   const discountAmount = Number(quote.discountAmount || 0);
   const totalAmount = Number(quote.totalAmount ?? (subtotal + taxAmount - discountAmount));
-  return { subtotal, taxRate, taxAmount, discountAmount, totalAmount };
+  const discountPercent = subtotal > 0 ? Number((discountAmount / subtotal * 100).toFixed(2)) : 0;
+  return { subtotal, taxRate, taxAmount, discountAmount, discountPercent, totalAmount };
 };
 const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', hour12: true }) : '-';
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
@@ -336,7 +337,7 @@ function QuotationDetailsModal({
             <InfoBox label="Unit Rate" value={formatMoney(quote.unitPrice)} />
             <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
             <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
-            <InfoBox label="Discount" value={formatMoney(pricing.discountAmount)} />
+            <InfoBox label="Discount" value={`${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`} />
             <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
             <InfoBox label="Quantity" value={quote.quantity || '-'} />
             <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
@@ -475,8 +476,11 @@ function BidEditModal({
               />
             </div>
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
-              Discount Amount
-              <input name="discountAmount" type="number" min="0" step="0.01" defaultValue={quote.discountAmount || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+              Discount Percentage
+              <div className="relative mt-1">
+                <input name="discountPercent" type="number" min="0" max="100" step="0.01" defaultValue={taxableAmount > 0 && quote.discountAmount ? Number((Number(quote.discountAmount) / taxableAmount * 100).toFixed(2)) : ''} className="h-11 w-full rounded-md border border-slate-200 px-3 pr-8 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+              </div>
             </label>
           </div>
 
@@ -747,11 +751,15 @@ export default function Quotations() {
     if (!editTarget) return;
 
     const form = new FormData(event.currentTarget);
+    const unitPrice = Number(form.get('unitPrice') || 0);
+    const quantity = Number(form.get('quantity') || 0);
+    const discountPercent = Math.min(100, Math.max(0, Number(form.get('discountPercent') || 0)));
+    const discountAmount = Number((unitPrice * quantity * discountPercent / 100).toFixed(2));
     const payload = {
-      unitPrice: Number(form.get('unitPrice') || 0),
-      quantity: Number(form.get('quantity') || 0),
+      unitPrice,
+      quantity,
       taxRate: Number(form.get('taxRate') || 0),
-      discountAmount: Number(form.get('discountAmount') || 0),
+      discountAmount,
       deliveryDays: Number(form.get('deliveryDays') || 0),
       warranty: String(form.get('warranty') || '').trim() || null,
       validTill: String(form.get('validTill') || '') || null,
@@ -1236,7 +1244,7 @@ function QuotationCard({
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
             <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
-            <InfoBox label="Discount" value={formatMoney(pricing.discountAmount)} />
+            <InfoBox label="Discount" value={`${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`} />
             <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
             <InfoBox label="Valid Till" value={quote.validTill ? new Date(quote.validTill).toLocaleDateString() : 'Not Provided'} />
           </div>

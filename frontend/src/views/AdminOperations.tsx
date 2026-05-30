@@ -403,11 +403,9 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tile.label}</p>
-                {isStatsLoading ? (
-                  <div className="h-9 w-16 animate-pulse rounded bg-slate-100 mt-2 mb-1" />
-                ) : (
-                  <p className="mt-2 text-3xl font-black text-slate-950">{tile.value ?? 0}</p>
-                )}
+                <p className={cn("mt-2 text-3xl font-black", isStatsLoading ? "text-slate-300" : "text-slate-950")}>
+                  {isStatsLoading ? "0" : tile.value ?? 0}
+                </p>
                 <p className="mt-1 text-xs font-semibold text-slate-500">{tile.helper}</p>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-50 text-[#12335f]">

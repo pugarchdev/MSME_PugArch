@@ -9,7 +9,7 @@ import { MessageSquareText, RefreshCw, Search, Star, ThumbsUp, TrendingUp } from
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { Pagination } from '../../shared/Pagination';
 import { formatDate } from '../../shared/format';
 import { RatingDistribution } from '../components/RatingDistribution';
@@ -89,28 +89,22 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
         </div>
       </div>
 
-      {query.isLoading && !query.data ? (
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
-            <MetricCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-          <MetricCard label="Average" value={summary?.average?.toFixed(1) ?? '0.0'} icon="star" />
-          <MetricCard label="Total Ratings" value={summary?.count ?? 0} icon="thumbs" />
-          <MetricCard
-            label="Written Reviews"
-            value={(data.records || []).filter(r => r.review).length}
-            icon="msg"
-          />
-          <MetricCard
-            label="High Score (4+)"
-            value={(summary?.distribution || []).filter(b => b.star >= 4).reduce((a, b) => a + b.count, 0)}
-            icon="trend"
-          />
-        </div>
-      )}
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+        <MetricCard label="Average" value={summary?.average?.toFixed(1) ?? '0.0'} icon="star" loading={query.isLoading && !query.data} />
+        <MetricCard label="Total Ratings" value={summary?.count ?? 0} icon="thumbs" loading={query.isLoading && !query.data} />
+        <MetricCard
+          label="Written Reviews"
+          value={(data.records || []).filter(r => r.review).length}
+          icon="msg"
+          loading={query.isLoading && !query.data}
+        />
+        <MetricCard
+          label="High Score (4+)"
+          value={(summary?.distribution || []).filter(b => b.star >= 4).reduce((a, b) => a + b.count, 0)}
+          icon="trend"
+          loading={query.isLoading && !query.data}
+        />
+      </div>
 
       {query.error && (
         <InlineError
@@ -231,11 +225,13 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
 function MetricCard({
   label,
   value,
-  icon
+  icon,
+  loading
 }: {
   label: string;
   value: string | number;
   icon: 'star' | 'trend' | 'msg' | 'thumbs';
+  loading?: boolean;
 }) {
   const Icon =
     icon === 'star' ? Star
@@ -247,7 +243,7 @@ function MetricCard({
       <CardContent className="flex items-center justify-between p-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-          <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
+          <p className={`mt-1 text-lg font-black ${loading ? 'text-slate-300' : 'text-slate-950'}`}>{loading ? "0" : value}</p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-[#12335f]">
           <Icon className="h-5 w-5" />

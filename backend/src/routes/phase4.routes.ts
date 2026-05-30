@@ -1278,28 +1278,119 @@ router.get('/admin/onboarding/:id', authenticate, authorizeAdmin, asyncRoute(asy
     for (const value of Object.values(profile.documents as Record<string, any>)) {
       const list = Array.isArray(value) ? value : [value];
       for (const entry of list) {
-        const match = String(entry?.url || entry?.fileUrl || '').match(/\/api\/files\/(\d+)/);
+        const explicitFileId = Number(entry?.fileId || entry?.file?.id || entry?.fileAssetId);
+        if (Number.isFinite(explicitFileId) && explicitFileId > 0) docFileIds.push(explicitFileId);
+        const match = String(entry?.url || entry?.fileUrl || entry?.signedUrl || '').match(/\/api\/files\/(\d+)/);
         if (match) docFileIds.push(Number(match[1]));
       }
     }
   }
+  const ownerFileAssets = await db.fileAsset.findMany({
+    where: { ownerId: user.id, status: 'active' },
+    orderBy: { id: 'desc' },
+    select: { id: true, ownerId: true, key: true, url: true, originalName: true, mimeType: true, size: true, entityType: true, createdAt: true }
+  });
   const fileAssets = docFileIds.length > 0
     ? await db.fileAsset.findMany({ where: { id: { in: docFileIds } } })
     : [];
-  const fileAssetById = new Map(fileAssets.map((f: any) => [f.id, f]));
+  const fileAssetById = new Map([...ownerFileAssets, ...fileAssets].map((f: any) => [f.id, f]));
+  const normalizeDocumentName = (value: unknown) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/(_optimized)(?=\.[a-z0-9]+$)/i, '');
+  const findAssetForDocumentEntry = (entry: any, fileId: number | null) => {
+    if (fileId) return fileAssetById.get(fileId) as any;
+    const url = String(entry?.url || entry?.fileUrl || entry?.signedUrl || '');
+    if (url) {
+      const decodedUrl = (() => {
+        try {
+          return decodeURIComponent(url);
+        } catch {
+          return url;
+        }
+      })();
+      const byUrl = ownerFileAssets.find((asset: any) =>
+        asset.url === url || decodedUrl.includes(asset.key || '') || url.includes(`/api/files/${asset.id}/`)
+      );
+      if (byUrl) return byUrl;
+    }
+    const entryName = normalizeDocumentName(entry?.originalName || entry?.name || entry?.fileName);
+    if (!entryName) return null;
+    return ownerFileAssets.find((asset: any) => normalizeDocumentName(asset.originalName) === entryName)
+      || ownerFileAssets.find((asset: any) => {
+        const assetName = normalizeDocumentName(asset.originalName);
+        return assetName.includes(entryName) || entryName.includes(assetName);
+      })
+      || null;
+  };
+  const assetToDocument = (asset: any) => ({
+    fileId: asset.id,
+    url: `/api/files/${asset.id}/view`,
+    originalName: asset.originalName,
+    mimeType: asset.mimeType,
+    fileAsset: asset
+  });
   const enrichDocuments = (documents: any) => {
-    if (!documents || typeof documents !== 'object' || Array.isArray(documents)) return documents;
-    return Object.fromEntries(Object.entries(documents).map(([key, value]) => {
+    if (!documents || typeof documents !== 'object' || Array.isArray(documents)) {
+      return user.role === 'buyer' && ownerFileAssets.length > 0
+        ? { uploaded_files: ownerFileAssets.map(assetToDocument) }
+        : documents;
+    }
+    const enriched = Object.fromEntries(Object.entries(documents).map(([key, value]) => {
       const arr = Array.isArray(value) ? value : [value];
       return [key, arr.map((entry: any) => {
-        const match = String(entry?.url || entry?.fileUrl || '').match(/\/api\/files\/(\d+)/);
-        const fileAsset = match ? fileAssetById.get(Number(match[1])) : null;
-        return { ...entry, fileAsset };
+        const explicitFileId = Number(entry?.fileId || entry?.file?.id || entry?.fileAssetId);
+        const match = String(entry?.url || entry?.fileUrl || entry?.signedUrl || '').match(/\/api\/files\/(\d+)/);
+        const fileId = Number.isFinite(explicitFileId) && explicitFileId > 0 ? explicitFileId : (match ? Number(match[1]) : null);
+        const fileAsset = findAssetForDocumentEntry(entry, fileId);
+        return {
+          ...entry,
+          fileId: entry?.fileId || fileId || fileAsset?.id || undefined,
+          url: entry?.url || (fileAsset?.id ? `/api/files/${fileAsset.id}/view` : undefined),
+          originalName: entry?.originalName || fileAsset?.originalName,
+          mimeType: entry?.mimeType || fileAsset?.mimeType,
+          fileAsset
+        };
       })];
     }));
+    const hasVisibleDocument = Object.values(enriched).some((value: any) =>
+      (Array.isArray(value) ? value : [value]).some((entry: any) => entry?.url || entry?.fileId || entry?.fileAsset?.url)
+    );
+    return hasVisibleDocument || user.role !== 'buyer' || ownerFileAssets.length === 0
+      ? enriched
+      : { ...enriched, uploaded_files: ownerFileAssets.map(assetToDocument) };
   };
 
-  const enrichedProfile = profile ? { ...profile, documents: enrichDocuments(profile.documents) } : null;
+  const registrationDetails = (user.registrationDetails as Record<string, any>) || {};
+  const registrationGstDetails = registrationDetails.gstDetails && typeof registrationDetails.gstDetails === 'object'
+    ? registrationDetails.gstDetails
+    : {};
+  const organization = user.organization as any;
+  const gstVerificationDetails = {
+    gstin: (profile as any)?.gst || registrationDetails.gstin || organization?.gstin || null,
+    verified: Boolean((profile as any)?.gstFingerprint || registrationDetails.gstVerified || organization?.gstin),
+    source: (profile as any)?.gstFingerprint
+      ? 'onboarding'
+      : registrationDetails.gstVerified
+        ? 'registration'
+        : organization?.gstin
+          ? 'organization'
+          : null,
+    legalName: registrationGstDetails.legalName || registrationGstDetails.legalBusinessName || organization?.organizationName || (profile as any)?.organizationName || null,
+    tradeName: registrationGstDetails.tradeName || registrationGstDetails.tradeNam || null,
+    status: registrationGstDetails.status || registrationGstDetails.gstnStatus || null,
+    pan: registrationGstDetails.pan || organization?.panNumber || (profile as any)?.pan || registrationDetails.pan || null,
+    state: registrationGstDetails.state || organization?.state || (profile as any)?.state || registrationDetails.state || null,
+    district: registrationGstDetails.district || organization?.district || (profile as any)?.district || registrationDetails.district || null,
+    city: registrationGstDetails.city || organization?.city || (profile as any)?.city || null,
+    pincode: registrationGstDetails.pincode || organization?.pincode || (profile as any)?.pincode || null,
+    address: registrationGstDetails.address || organization?.addressLine1 || (profile as any)?.registeredAddress || null
+  };
+
+  const enrichedProfile = profile
+    ? { ...profile, documents: enrichDocuments(profile.documents), gstVerificationDetails }
+    : { gstVerificationDetails };
 
   res.json(maskSensitive({
     success: true,
@@ -1445,19 +1536,44 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
 
   if (changes.length > 0 && shouldNotify) {
     const isApproved = newOnboardingStatus === 'approved_for_procurement';
-    const title = isApproved ? 'Application Onboarding Approved' : 'Application Update: Section Remarks';
+    const isRejected = newOnboardingStatus === 'rejected';
+    const title = isApproved
+      ? 'Application Onboarding Approved'
+      : (isRejected ? 'Application Rejected' : 'Application Update: Section Remarks');
 
-    let message = `Updates to your profile sections:\n` + changes.join('\n');
-    if (rejectedDetails.length > 0) {
-      message += `\n\nSections requiring attention:\n` + rejectedDetails.join('\n');
-    }
+    let message: string;
+    let emailHtml: string;
 
-    let emailHtml = `<p>There have been updates to your onboarding application sections.</p>`;
-    emailHtml += `<h3>Status Changes:</h3><ul>` + changes.map(c => `<li>${c}</li>`).join('') + `</ul>`;
-    if (rejectedDetails.length > 0) {
-      emailHtml += `<h3>Sections requiring attention:</h3><ul>` + rejectedDetails.map(r => `<li>${r}</li>`).join('') + `</ul>`;
+    if (isApproved) {
+      // Final approval: every section is approved. Send a dedicated full-approval
+      // email instead of the section-diff template (which would otherwise show
+      // only the last-approved section, e.g. "Documents Upload").
+      const approvedList = sections.map(s => `- **${sectionLabels[s] || s}**: Approved`);
+      message =
+        'Congratulations — all sections of your onboarding application have been approved. ' +
+        'Your application is now approved for procurement access.\n\n' +
+        'Approved sections:\n' + approvedList.join('\n');
+
+      emailHtml = `
+        <p>Congratulations! All sections of your onboarding application have been reviewed and <strong>approved</strong>.</p>
+        <p>Your application is now <strong>approved for procurement access</strong>. You can begin participating in procurement activities on the portal.</p>
+        <h3>Approved sections:</h3>
+        <ul>${sections.map(s => `<li>${sectionLabels[s] || s}: Approved</li>`).join('')}</ul>
+        <p>Please log in to the portal to access your dashboard.</p>
+      `;
+    } else {
+      message = `Updates to your profile sections:\n` + changes.join('\n');
+      if (rejectedDetails.length > 0) {
+        message += `\n\nSections requiring attention:\n` + rejectedDetails.join('\n');
+      }
+
+      emailHtml = `<p>There have been updates to your onboarding application sections.</p>`;
+      emailHtml += `<h3>Status Changes:</h3><ul>` + changes.map(c => `<li>${c}</li>`).join('') + `</ul>`;
+      if (rejectedDetails.length > 0) {
+        emailHtml += `<h3>Sections requiring attention:</h3><ul>` + rejectedDetails.map(r => `<li>${r}</li>`).join('') + `</ul>`;
+      }
+      emailHtml += `<p>Please log in to the portal to view details and make any necessary corrections.</p>`;
     }
-    emailHtml += `<p>Please log in to the portal to view details and make any necessary corrections.</p>`;
 
     notificationService.notifyWithEmail(id, {
       title,
@@ -1550,22 +1666,39 @@ router.get('/utils/gst-verify/:gstin', verificationRateLimit, asyncRoute(async (
 
   const normalizedGstin = gstin.toUpperCase();
   const fingerprint = sha256(normalizedGstin);
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  let requesterUserId: number | null = null;
+  if (scheme === 'Bearer' && token) {
+    try {
+      const decoded = verifyAccessToken(token);
+      requesterUserId = decoded.id ? Number(decoded.id) : null;
+    } catch {
+      requesterUserId = null;
+    }
+  }
   const [sellerOffice, buyerProfile, organization] = await Promise.all([
     db.sellerOffice.findFirst({
       where: { gstFingerprint: fingerprint },
-      select: { id: true }
+      select: { id: true, sellerProfile: { select: { userId: true } } }
     }),
     db.buyerProfile.findFirst({
       where: { gstFingerprint: fingerprint },
-      select: { id: true }
+      select: { id: true, userId: true }
     }),
     db.organization.findFirst({
       where: { gstin: normalizedGstin },
-      select: { id: true }
+      select: { id: true, users: { select: { id: true }, take: 5 } }
     })
   ]);
 
-  if (sellerOffice || buyerProfile || organization) {
+  const ownedByRequester = Boolean(requesterUserId && (
+    sellerOffice?.sellerProfile?.userId === requesterUserId ||
+    buyerProfile?.userId === requesterUserId ||
+    organization?.users?.some((user: any) => user.id === requesterUserId)
+  ));
+
+  if ((sellerOffice || buyerProfile || organization) && !ownedByRequester) {
     throw new ApiError(400, 'GST is already registered', 'GST_ALREADY_REGISTERED');
   }
 
@@ -2436,8 +2569,6 @@ const quoteRequestInclude = {
         select: {
           businessName: true,
           organizationType: true,
-          city: true,
-          state: true,
           offices: {
             select: {
               city: true,

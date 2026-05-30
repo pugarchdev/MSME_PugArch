@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../lib/api";
@@ -73,7 +73,27 @@ const getDocumentFiles = (document: any) => {
 };
 
 const getDocumentUrl = (document: any) =>
-  typeof document === "string" ? document : document?.url || document?.signedUrl || "";
+  typeof document === "string"
+    ? document
+    : document?.url || document?.signedUrl || document?.fileAsset?.url || (document?.fileId ? `/api/files/${document.fileId}/view` : "");
+
+const DOCUMENT_LABELS: Record<string, string> = {
+  panCard: "PAN_COPY",
+  regCert: "REGISTRATION_CERTIFICATE",
+  gstCert: "GST_CERTIFICATE",
+  addressProof: "ADDRESS_PROOF",
+  authLetter: "AUTHORIZATION_LETTER",
+  uploaded_files: "UPLOADED_FILES",
+};
+
+const getDocumentLabel = (key: string) =>
+  DOCUMENT_LABELS[key] || String(key || "DOCUMENT").replace(/([a-z])([A-Z])/g, "$1_$2").replace(/[\s-]+/g, "_").toUpperCase();
+
+const getDocumentFileName = (file: any, fallback: string) =>
+  file?.originalName || file?.fileAsset?.originalName || file?.name || file?.fileName || fallback;
+
+const getDocumentUploadedAt = (file: any) =>
+  file?.uploadedAt || file?.createdAt || file?.fileAsset?.createdAt || file?.file?.createdAt || null;
 
 const getSellerOnboardingDocuments = (profile: any) => {
   const sellerDocuments = Array.isArray(profile?.sellerDocuments)
@@ -198,30 +218,71 @@ export default function AdminOnboarding() {
   }, [onboardingData]);
 
   /**
-   * Open the scrutiny modal with the lightweight list row for instant feedback,
-   * then fetch the heavy detail (full profile, offices, banks, certs, docs)
-   * from /admin/onboarding/:id and merge it in. Two-step pattern keeps the
-   * list endpoint lean while still showing complete data when a reviewer
-   * actually opens an application.
+   * Open the scrutiny modal with the heavy detail (full profile, offices,
+   * banks, certs, docs) already in place so review data appears instantly.
+   *
+   * Detail is fetched from /admin/onboarding/:id, but we cache every fetched
+   * record in `detailCacheRef` and prefetch the visible rows (and on hover),
+   * so by the time a reviewer clicks "Review" the data is usually already
+   * resident — the modal renders complete immediately with no spinner/flash.
+   * If the cache misses, we still show the lightweight row instantly and merge
+   * the detail in as soon as it lands.
    */
-  const openItemForReview = async (item: any) => {
-    setSelectedItem(item);
-    setFeedback(item.adminFeedback || "");
-    try {
-      const res = await api.fetch(`/api/admin/onboarding/${item._id || item.id}`, authOptions);
-      if (!res.ok) return;
-      const payload = await res.json();
-      const detail = payload?.data || payload;
-      if (detail) {
-        // Preserve the list-derived fields (e.g. cached profile from the list)
-        // and overlay the heavy detail. Detail wins because it's the
-        // authoritative deep copy.
-        setSelectedItem((prev: any) => (prev && (prev._id === item._id || prev._id === item.id)
-          ? { ...prev, ...detail }
-          : prev));
+  const detailCacheRef = useRef<Map<string, any>>(new Map());
+  const inFlightRef = useRef<Map<string, Promise<any>>>(new Map());
+
+  const fetchDetail = useCallback(async (item: any): Promise<any> => {
+    const key = String(item._id || item.id);
+    if (!key) return null;
+    if (detailCacheRef.current.has(key)) return detailCacheRef.current.get(key);
+    if (inFlightRef.current.has(key)) return inFlightRef.current.get(key);
+
+    const promise = (async () => {
+      try {
+        const res = await api.fetch(`/api/admin/onboarding/${key}`, { ...authOptions, skipCache: true });
+        if (!res.ok) return null;
+        const payload = await res.json();
+        const detail = payload?.data || payload;
+        if (detail) detailCacheRef.current.set(key, detail);
+        return detail;
+      } catch {
+        return null;
+      } finally {
+        inFlightRef.current.delete(key);
       }
-    } catch {
-      // Modal already shows the lightweight row; silent failure is fine.
+    })();
+
+    inFlightRef.current.set(key, promise);
+    return promise;
+  }, [authOptions]);
+
+  // Warm the cache without opening the modal (hover / visible rows).
+  const prefetchDetail = useCallback((item: any) => {
+    const key = String(item?._id || item?.id || "");
+    if (!key || detailCacheRef.current.has(key) || inFlightRef.current.has(key)) return;
+    void fetchDetail(item);
+  }, [fetchDetail]);
+
+  const openItemForReview = async (item: any) => {
+    const key = String(item._id || item.id);
+    setFeedback(item.adminFeedback || "");
+
+    // If detail is already cached, render the complete record immediately.
+    const cached = detailCacheRef.current.get(key);
+    if (cached) {
+      setSelectedItem({ ...item, ...cached });
+      return;
+    }
+
+    // Otherwise show the lightweight row instantly, then merge detail in.
+    setSelectedItem(item);
+    const detail = await fetchDetail(item);
+    if (detail) {
+      setSelectedItem((prev: any) =>
+        prev && (prev._id === item._id || prev._id === item.id || prev.id === item.id)
+          ? { ...prev, ...detail }
+          : prev,
+      );
     }
   };
 
@@ -331,6 +392,18 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`Complete application ${status}`);
+        // Keep the warmed detail cache in sync so reopening the modal shows
+        // the new status instantly instead of stale cached detail.
+        const cacheKey = String(userId);
+        const cachedDetail = detailCacheRef.current.get(cacheKey);
+        if (cachedDetail) {
+          detailCacheRef.current.set(cacheKey, {
+            ...cachedDetail,
+            onboardingStatus: status,
+            sectionStatus: updatedSectionStatus,
+            adminFeedback: reason || cachedDetail.adminFeedback,
+          });
+        }
         queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
         queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
@@ -341,6 +414,7 @@ export default function AdminOnboarding() {
           console.error('[AdminOnboarding] status update failed', { status: res.status, body: errBody });
         }
         // Revert to original state
+        detailCacheRef.current.delete(String(userId));
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
         setBuyers(previousBuyers);
@@ -349,6 +423,7 @@ export default function AdminOnboarding() {
       toast.error("Network error");
       console.error('[AdminOnboarding] status network error', err);
       // Revert to original state
+      detailCacheRef.current.delete(String(userId));
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
       setBuyers(previousBuyers);
@@ -472,6 +547,17 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`${section} status updated to ${status}`);
+        // Keep prefetch cache in sync
+        const cacheKey = String(userId);
+        const cachedDetail = detailCacheRef.current.get(cacheKey);
+        if (cachedDetail) {
+          detailCacheRef.current.set(cacheKey, {
+            ...cachedDetail,
+            onboardingStatus: newStatus,
+            sectionStatus: updatedSectionStatus,
+            sectionRejectionReasons: updatedRejectionReasons,
+          });
+        }
         queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
         queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
@@ -481,12 +567,10 @@ export default function AdminOnboarding() {
         const detail = errBody?.message || errBody?.error || `HTTP ${res.status}`;
         toast.error(`Failed to update section status: ${detail}`);
         if (typeof window !== 'undefined') {
-          // Helpful for debugging — server-side validation errors (zod) ship
-          // their `errors` array under `errors`. Logging it makes diagnosis
-          // a one-line job in the browser console.
           console.error('[AdminOnboarding] section-status update failed', { status: res.status, body: errBody });
         }
         // Revert to original state
+        detailCacheRef.current.delete(String(userId));
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
         setBuyers(previousBuyers);
@@ -495,6 +579,7 @@ export default function AdminOnboarding() {
       toast.error("Network error");
       console.error('[AdminOnboarding] section-status network error', err);
       // Revert to original state
+      detailCacheRef.current.delete(String(userId));
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
       setBuyers(previousBuyers);
@@ -769,6 +854,18 @@ export default function AdminOnboarding() {
     setPage(1);
   };
 
+  // Warm the detail cache for the rows currently on screen so opening the
+  // scrutiny modal is instant. Runs whenever the visible page changes.
+  // Prefetches are de-duped and capped per pass to avoid hammering the API.
+  useEffect(() => {
+    if (pagedCurrentData.length === 0) return;
+    const timer = setTimeout(() => {
+      pagedCurrentData.slice(0, pageSize).forEach(prefetchDetail);
+    }, 150);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, currentPage, pageSize, debouncedSearchTerm, statusFilter, progressFilter, sortBy, sellers, buyers]);
+
   useEffect(() => {
     setPage(1);
   }, [activeTab, searchTerm, statusFilter, progressFilter, sortBy]);
@@ -1016,13 +1113,9 @@ export default function AdminOnboarding() {
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                             {stat.label}
                           </p>
-                          {isLoading ? (
-                            <div className="h-8 w-16 animate-pulse rounded bg-slate-100 mt-1 mb-1" />
-                          ) : (
-                            <p className="text-2xl font-black text-slate-900 tracking-tighter">
-                              {stat.value}
-                            </p>
-                          )}
+                          <p className={cn("text-2xl font-black tracking-tighter", isLoading ? "text-slate-300" : "text-slate-900")}>
+                            {isLoading ? "0" : stat.value}
+                          </p>
                           <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                             {stat.sub}
                           </p>
@@ -1311,6 +1404,7 @@ export default function AdminOnboarding() {
                           {pagedCurrentData.map((item, index) => (
                             <TableRow
                               key={item._id}
+                              onMouseEnter={() => prefetchDetail(item)}
                               className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50"
                             >
                               <TableCell className="px-6 py-8">
@@ -1451,6 +1545,7 @@ export default function AdminOnboarding() {
                             <div
                               key={item._id}
                               onClick={() => void openItemForReview(item)}
+                              onMouseEnter={() => prefetchDetail(item)}
                               className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#12335f]/25 transition-all duration-300 flex flex-col justify-between min-w-0"
                             >
                               <div>
@@ -1975,39 +2070,76 @@ export default function AdminOnboarding() {
                             </button>
                           </div>
                         </div>
-                        <div className="grid md:grid-cols-2 gap-8">
-                          <InfoItem
-                            label="Organization Name"
-                            value={selectedItem.profile?.organizationName}
-                            highlight
-                          />
-                          <InfoItem
-                            label="Business Type"
-                            value={selectedItem.profile?.businessType || selectedItem.registrationDetails?.businessType}
-                          />
-                          <InfoItem
-                            label="Industry"
-                            value={selectedItem.profile?.industry}
-                          />
-                          <InfoItem
-                            label="PAN"
-                            value={selectedItem.profile?.pan || selectedItem.registrationDetails?.pan}
-                            mono
-                            highlight
-                          />
-                          <InfoItem
-                            label="CIN"
-                            value={selectedItem.profile?.cin}
-                          />
-                          <InfoItem
-                            label="GST"
-                            value={selectedItem.profile?.gst}
-                          />
-                          <InfoItem
-                            label="Website"
-                            value={selectedItem.profile?.website}
-                          />
-                        </div>
+                        {(() => {
+                          const gstDetails = selectedItem.profile?.gstVerificationDetails || {};
+                          const gstin = selectedItem.profile?.gst || gstDetails.gstin || selectedItem.registrationDetails?.gstin;
+                          return (
+                            <div className="grid md:grid-cols-2 gap-8">
+                              <InfoItem
+                                label="Organization Name"
+                                value={selectedItem.profile?.organizationName}
+                                highlight
+                              />
+                              <InfoItem
+                                label="Business Type"
+                                value={selectedItem.profile?.businessType || selectedItem.registrationDetails?.businessType}
+                              />
+                              <InfoItem
+                                label="Industry"
+                                value={selectedItem.profile?.industry}
+                              />
+                              <InfoItem
+                                label="PAN"
+                                value={selectedItem.profile?.pan || selectedItem.registrationDetails?.pan}
+                                mono
+                                highlight
+                              />
+                              <InfoItem
+                                label="CIN"
+                                value={selectedItem.profile?.cin}
+                              />
+                              <InfoItem
+                                label="GST"
+                                value={gstin}
+                              />
+                              <InfoItem
+                                label="GST Verification"
+                                value={gstDetails.verified ? `Verified${gstDetails.source ? ` via ${gstDetails.source}` : ""}` : "Not Verified"}
+                                highlight={Boolean(gstDetails.verified)}
+                              />
+                              {gstDetails.legalName && (
+                                <InfoItem
+                                  label="GST Legal Name"
+                                  value={gstDetails.legalName}
+                                />
+                              )}
+                              {gstDetails.status && (
+                                <InfoItem
+                                  label="GST Status"
+                                  value={gstDetails.status}
+                                />
+                              )}
+                              {gstDetails.address && (
+                                <div className="md:col-span-2">
+                                  <InfoItem
+                                    label="GST Registered Address"
+                                    value={[
+                                      gstDetails.address,
+                                      gstDetails.city,
+                                      gstDetails.district,
+                                      gstDetails.state,
+                                      gstDetails.pincode,
+                                    ].filter(Boolean).join(", ")}
+                                  />
+                                </div>
+                              )}
+                              <InfoItem
+                                label="Website"
+                                value={selectedItem.profile?.website}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Buyer Section 2: Rep */}
@@ -2272,34 +2404,66 @@ export default function AdminOnboarding() {
                             </button>
                           </div>
                         </div>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {selectedItem.profile?.documents &&
-                            Object.entries(selectedItem.profile.documents).map(
-                              ([key, url]: [string, any]) => {
-                                const documentFiles = getDocumentFiles(url).filter(getDocumentUrl);
-                                return documentFiles.length > 0 && (
-                                  <div
-                                    key={key}
-                                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2"
-                                  >
-                                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                      {key}
-                                    </p>
-                                    {documentFiles.map((file: any, index: number) => (
-                                      <button
-                                        key={`${key}-${file?.fileId || file?.url || index}`}
-                                        type="button"
-                                        onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
-                                        className="text-xs font-bold text-[#12335f] hover:underline flex items-center gap-1"
+                        {(() => {
+                          const buyerDocumentEntries = selectedItem.profile?.documents && typeof selectedItem.profile.documents === 'object'
+                            ? Object.entries(selectedItem.profile.documents)
+                              .map(([key, url]: [string, any]) => [key, getDocumentFiles(url).filter(getDocumentUrl)] as [string, any[]])
+                              .filter(([, files]) => files.length > 0)
+                            : [];
+
+                          return (
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {buyerDocumentEntries.map(
+                                ([key, documentFiles]: [string, any[]]) =>
+                                  documentFiles.map((file: any, index: number) => {
+                                    const label = getDocumentLabel(key);
+                                    const fileName = getDocumentFileName(file, `${label} Document`);
+                                    const uploadedAt = getDocumentUploadedAt(file);
+                                    const cardKey = `${key}-${index}-${file?.fileId || file?.url || fileName}`;
+                                    return (
+                                      <div
+                                        key={cardKey}
+                                        className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between"
                                       >
-                                        <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
-                                      </button>
-                                    ))}
-                                  </div>
-                                );
-                              },
-                            )}
-                        </div>
+                                        <div>
+                                          <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                              {label}
+                                            </span>
+                                            <Badge variant="default" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-[9px] font-bold px-1.5 py-0.5">
+                                              VERIFIED
+                                            </Badge>
+                                          </div>
+                                          <p className="text-xs font-bold text-slate-700 mt-1 line-clamp-1" title={fileName}>
+                                            {fileName}
+                                          </p>
+                                          {uploadedAt && (
+                                            <p className="text-[9px] text-slate-400 mt-0.5">
+                                              Uploaded: {formatDate(uploadedAt)}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="pt-2 border-t border-slate-100 mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, label)}
+                                            className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"
+                                          >
+                                            <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }),
+                              )}
+                              {buyerDocumentEntries.length === 0 && (
+                                <div className="col-span-full py-4 text-center text-xs text-slate-400 font-medium">
+                                  No uploaded documents found for this buyer profile.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </>
                   ) : (
@@ -2564,8 +2728,8 @@ export default function AdminOnboarding() {
                               value={
                                 Array.isArray(selectedItem.profile?.registrationTypes) && selectedItem.profile.registrationTypes.length > 0
                                   ? selectedItem.profile.registrationTypes
-                                      .map((type: string) => REGISTRATION_TYPE_LABELS[type] || type)
-                                      .join(", ")
+                                    .map((type: string) => REGISTRATION_TYPE_LABELS[type] || type)
+                                    .join(", ")
                                   : "N/A"
                               }
                             />
@@ -2932,7 +3096,7 @@ export default function AdminOnboarding() {
                                         <div className="pt-2 border-t border-slate-100 mt-2">
                                           {documentFiles.map((file: any, index: number) => (
                                             <button
-                                              key={`${key}-${file?.fileId || file?.url || index}`}
+                                              key={`${key}-${index}-${file?.fileId || file?.url || ''}`}
                                               type="button"
                                               onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
                                               className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"

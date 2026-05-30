@@ -11,7 +11,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
@@ -89,18 +89,12 @@ export default function RfqPage() {
                 </div>
             </div>
 
-            {list.isLoading && !list.data ? (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {[1, 2, 3, 4].map(i => <MetricCardSkeleton key={i} />)}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={FileText} />
-                    <Metric label="Pending" value={counters.pending} hint="Awaiting response" tone="warning" icon={FileText} />
-                    <Metric label="Responded" value={counters.responded} hint="Quote received" tone="positive" icon={Send} />
-                    <Metric label="Responses" value={counters.responses} hint="Total submissions" tone="neutral" icon={FileText} />
-                </div>
-            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={FileText} loading={list.isLoading && !list.data} />
+                <Metric label="Pending" value={counters.pending} hint="Awaiting response" tone="warning" icon={FileText} loading={list.isLoading && !list.data} />
+                <Metric label="Responded" value={counters.responded} hint="Quote received" tone="positive" icon={Send} loading={list.isLoading && !list.data} />
+                <Metric label="Responses" value={counters.responses} hint="Total submissions" tone="neutral" icon={FileText} loading={list.isLoading && !list.data} />
+            </div>
 
             <PageToolbar
                 eyebrow="Filters"
@@ -280,7 +274,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
     const [splitTaxRate, setSplitTaxRate] = useState('');
     const [igstTaxRate, setIgstTaxRate] = useState('');
     const [otherTaxRate, setOtherTaxRate] = useState('');
-    const [discountAmount, setDiscountAmount] = useState('');
+    const [discountPercent, setDiscountPercent] = useState('');
     const [deliveryDays, setDeliveryDays] = useState('');
     const [validityDate, setValidityDate] = useState('');
     const [notes, setNotes] = useState('');
@@ -290,7 +284,8 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
     const [expandedResponse, setExpandedResponse] = useState<Record<number, boolean>>({});
     const subtotal = Number(unitPrice || 0) * Number(quantity || 0);
     const taxBreakdown = calculateGstBreakdown(subtotal, splitTaxRate, igstTaxRate, otherTaxRate);
-    const discountValue = Number(discountAmount || 0);
+    const discountPercentValue = Math.min(100, Math.max(0, Number(discountPercent || 0)));
+    const discountValue = Number((subtotal * discountPercentValue / 100).toFixed(2));
     const totalAmount = Math.max(0, subtotal + taxBreakdown.totalTaxAmount - discountValue);
 
     const submitResponse = async () => {
@@ -305,7 +300,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
                         validityDate: validityDate || undefined,
                         documentUrl: respDocUrl || undefined,
                         notes: [
-                            `Price breakup: subtotal Rs. ${subtotal.toLocaleString('en-IN')}; tax ${taxBreakdown.label} = Rs. ${taxBreakdown.totalTaxAmount.toLocaleString('en-IN')}; discount Rs. ${discountValue.toLocaleString('en-IN')}; total Rs. ${totalAmount.toLocaleString('en-IN')}.`,
+                            `Price breakup: subtotal Rs. ${subtotal.toLocaleString('en-IN')}; tax ${taxBreakdown.label} = Rs. ${taxBreakdown.totalTaxAmount.toLocaleString('en-IN')}; discount ${discountPercentValue}% = Rs. ${discountValue.toLocaleString('en-IN')}; total Rs. ${totalAmount.toLocaleString('en-IN')}.`,
                             notes || ''
                         ].filter(Boolean).join('\n')
                     }
@@ -317,7 +312,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
         setSplitTaxRate('');
         setIgstTaxRate('');
         setOtherTaxRate('');
-        setDiscountAmount('');
+        setDiscountPercent('');
         setDeliveryDays('');
         setValidityDate('');
         setNotes('');
@@ -523,7 +518,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                                     <Input value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="Unit price (Rs.)" type="number" min="0" step="0.01" />
                                     <Input value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" type="number" min="1" step="1" />
-                                    <Input value={discountAmount} onChange={e => setDiscountAmount(e.target.value)} placeholder="Discount amount" type="number" min="0" step="0.01" />
+                                    <Input value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} placeholder="Discount (%)" type="number" min="0" max="100" step="0.01" />
                                 </div>
                                 <GstTaxPicker
                                     splitRate={splitTaxRate}
@@ -539,7 +534,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
                                 <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs font-bold text-slate-700 md:grid-cols-4">
                                     <p>Subtotal <span className="block font-black text-slate-950">{formatCurrency(subtotal)}</span></p>
                                     <p>Tax <span className="block font-black text-slate-950">{formatCurrency(taxBreakdown.totalTaxAmount)}</span></p>
-                                    <p>Discount <span className="block font-black text-slate-950">- {formatCurrency(discountValue)}</span></p>
+                                    <p>Discount{discountPercentValue > 0 ? ` (${discountPercentValue}%)` : ''} <span className="block font-black text-slate-950">- {formatCurrency(discountValue)}</span></p>
                                     <p>Total <span className="block font-black text-[#12335f]">{formatCurrency(totalAmount)}</span></p>
                                 </div>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1424,7 +1419,7 @@ function ModalFooter({
     );
 }
 
-function Metric({ label, value, hint, tone, icon: Icon }: { label: string; value: number; hint: string; tone: 'positive' | 'negative' | 'warning' | 'neutral'; icon: any }) {
+function Metric({ label, value, hint, tone, icon: Icon, loading }: { label: string; value: number; hint: string; tone: 'positive' | 'negative' | 'warning' | 'neutral'; icon: any; loading?: boolean }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
         negative: 'bg-red-600',
@@ -1436,7 +1431,7 @@ function Metric({ label, value, hint, tone, icon: Icon }: { label: string; value
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                    <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white', toneStyle[tone])}>

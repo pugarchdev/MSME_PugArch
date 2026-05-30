@@ -232,11 +232,9 @@ export default function Dashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">{stat.label}</div>
-                  {isAdminStatsLoading ? (
-                    <div className="h-9 w-16 animate-pulse rounded bg-slate-100 mt-1" />
-                  ) : (
-                    <div className="text-3xl font-extrabold tracking-tight text-slate-900">{stat.value ?? '0'}</div>
-                  )}
+                  <div className={cn("text-3xl font-extrabold tracking-tight", isAdminStatsLoading ? "text-slate-300" : "text-slate-900")}>
+                    {isAdminStatsLoading ? "0" : stat.value ?? "0"}
+                  </div>
                   <p className="mt-1 text-xs font-semibold text-slate-500">{stat.helper}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', stat.tone)}>

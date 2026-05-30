@@ -6,7 +6,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
@@ -34,11 +34,11 @@ const STATUS_TONE: Record<string, string> = {
     CANCELLED: 'border-slate-200 bg-slate-100 text-slate-500'
 };
 
-const buyerDisplayName = (buyer?: DirectPurchasePartyDto | null, fallbackId?: number) =>
-    buyer?.buyerProfile?.organizationName || buyer?.name || (fallbackId ? `Buyer #${fallbackId}` : 'Buyer');
+const buyerDisplayName = (buyer?: DirectPurchasePartyDto | null, _fallbackId?: number) =>
+    buyer?.buyerProfile?.organizationName || buyer?.name || 'Buyer';
 
-const sellerDisplayName = (seller?: DirectPurchasePartyDto | null, fallbackId?: number) =>
-    seller?.sellerProfile?.businessName || seller?.name || (fallbackId ? `Seller #${fallbackId}` : 'Seller');
+const sellerDisplayName = (seller?: DirectPurchasePartyDto | null, _fallbackId?: number) =>
+    seller?.sellerProfile?.businessName || seller?.name || 'Seller';
 
 const partyLocation = (party?: DirectPurchasePartyDto | null) => {
     const buyerProfile = party?.buyerProfile;
@@ -94,18 +94,12 @@ export default function DirectPurchasePage() {
                 </div>
             </div>
 
-            {list.isLoading && !list.data ? (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {[1, 2, 3, 4].map(i => <MetricCardSkeleton key={i} />)}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ShoppingCart} />
-                    <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={ShoppingCart} />
-                    <Metric label="Approved" value={counters.approved} hint="Ready to order" tone="positive" icon={ShoppingCart} />
-                    <Metric label="Ordered" value={counters.ordered} hint="PO generated" tone="neutral" icon={Truck} />
-                </div>
-            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ShoppingCart} loading={list.isLoading && !list.data} />
+                <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={ShoppingCart} loading={list.isLoading && !list.data} />
+                <Metric label="Approved" value={counters.approved} hint="Ready to order" tone="positive" icon={ShoppingCart} loading={list.isLoading && !list.data} />
+                <Metric label="Ordered" value={counters.ordered} hint="PO generated" tone="neutral" icon={Truck} loading={list.isLoading && !list.data} />
+            </div>
 
             <PageToolbar
                 eyebrow="Filters"
@@ -183,14 +177,13 @@ export default function DirectPurchasePage() {
                                                 >
                                                     {dp.purchaseNumber}
                                                 </button>
-                                                <p className="mt-0.5 text-[9px] font-mono text-slate-400">#{dp.id}</p>
                                             </td>
                                             <td className="px-4 py-3 text-xs text-wrap-anywhere">
-                                                <p className="font-bold text-slate-900">{dp.buyer?.name || `Buyer #${dp.buyerId}`}</p>
+                                                <p className="font-bold text-slate-900">{dp.buyer?.name || 'Buyer'}</p>
                                                 {dp.buyer?.email && <p className="text-[10px] text-slate-500">{dp.buyer.email}</p>}
                                             </td>
                                             <td className="px-4 py-3 text-xs text-wrap-anywhere">
-                                                <p className="font-bold text-slate-900">{dp.seller?.name || `Seller #${dp.sellerId}`}</p>
+                                                <p className="font-bold text-slate-900">{dp.seller?.name || 'Seller'}</p>
                                                 {dp.seller?.email && <p className="text-[10px] text-slate-500">{dp.seller.email}</p>}
                                             </td>
                                             <td className="px-4 py-3 text-right text-xs font-bold text-slate-900">{formatCurrency(dp.totalAmount)}</td>
@@ -424,7 +417,6 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <Field label="Buyer">
                             <Party
-                                id={dp.buyerId}
                                 name={buyerDisplayName(dp.buyer, dp.buyerId)}
                                 accountName={dp.buyer?.name}
                                 email={dp.buyer?.email}
@@ -435,7 +427,6 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
                         </Field>
                         <Field label="Seller">
                             <Party
-                                id={dp.sellerId}
                                 name={sellerDisplayName(dp.seller, dp.sellerId)}
                                 accountName={dp.seller?.name}
                                 email={dp.seller?.email}
@@ -596,7 +587,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Party({
-    id,
     name,
     accountName,
     email,
@@ -604,7 +594,6 @@ function Party({
     organizationType,
     location
 }: {
-    id: number;
     name: string;
     accountName?: string;
     email?: string;
@@ -677,7 +666,7 @@ function ModalFooter({
     );
 }
 
-function Metric({ label, value, hint, tone, icon: Icon }: { label: string; value: number; hint: string; tone: 'positive' | 'negative' | 'warning' | 'neutral'; icon: any }) {
+function Metric({ label, value, hint, tone, icon: Icon, loading }: { label: string; value: number; hint: string; tone: 'positive' | 'negative' | 'warning' | 'neutral'; icon: any; loading?: boolean }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
         negative: 'bg-red-600',
@@ -689,7 +678,7 @@ function Metric({ label, value, hint, tone, icon: Icon }: { label: string; value
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                    <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white', toneStyle[tone])}>

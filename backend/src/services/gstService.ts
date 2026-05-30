@@ -332,17 +332,42 @@ const normalizeProviderData = (raw: any, requestedGstin: string, source: GstData
   return normalized;
 };
 
-const normalizeCacheData = (cached: any, gstin: string): GstData => normalizeProviderData({
-  gstin,
-  legalName: cached.legalBusinessName,
-  tradeName: cached.tradeName,
-  constitutionOfBusiness: cached.constitutionOfBusiness,
-  dateOfRegistration: cached.registrationDate ? cached.registrationDate.toISOString().slice(0, 10) : '',
-  taxpayerType: cached.taxpayerType,
-  addressString: cached.businessAddress,
-  address: { state: cached.state, pincode: cached.pincode },
-  status: 'Active'
-}, gstin, 'cache');
+const normalizeCacheData = (cached: any, gstin: string): GstData => {
+  let city = '';
+  let district = '';
+  if (cached.businessAddress) {
+    const parts = cached.businessAddress.split(',').map((p: string) => p.trim()).filter(Boolean);
+    const stateIndex = parts.findIndex((p: string) => p.toLowerCase() === (cached.state || '').toLowerCase());
+    if (stateIndex > 0) {
+      city = parts[stateIndex - 1];
+      district = parts[stateIndex - 1];
+      if (stateIndex > 1) {
+        district = parts[stateIndex - 2];
+      }
+    } else if (parts.length > 2) {
+      // Fallback if state name is not exactly found in parts
+      city = parts[parts.length - 2];
+      district = parts[parts.length - 3] || parts[parts.length - 2];
+    }
+  }
+
+  return normalizeProviderData({
+    gstin,
+    legalName: cached.legalBusinessName,
+    tradeName: cached.tradeName,
+    constitutionOfBusiness: cached.constitutionOfBusiness,
+    dateOfRegistration: cached.registrationDate ? cached.registrationDate.toISOString().slice(0, 10) : '',
+    taxpayerType: cached.taxpayerType,
+    addressString: cached.businessAddress,
+    address: { 
+      state: cached.state, 
+      pincode: cached.pincode,
+      city: city || 'Unknown',
+      district: district || 'Unknown'
+    },
+    status: 'Active'
+  }, gstin, 'cache');
+};
 
 const cacheResult = async (data: GstData) => {
   if (!data.legalName && !data.tradeName) return;

@@ -41,6 +41,7 @@ interface DashboardSummary {
     sellerActivePOsCount?: number;
     sellerCatalogueItemsCount?: number;
     sellerPendingInvoicesCount?: number;
+    sellerQuotationsCount?: number;
     orgRole?: string;
     isAdmin?: boolean;
 }
@@ -200,7 +201,7 @@ export default function RoleAwareActionCards() {
         },
         {
             label: 'Quotations',
-            count: data.sellerPendingInvoicesCount || 0,
+            count: data.sellerQuotationsCount || 0,
             href: '/quotations',
             icon: FileText,
             tone: 'purple',

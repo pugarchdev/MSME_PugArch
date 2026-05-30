@@ -93,7 +93,26 @@ const APISETU_ROOT_CA = [
 
 export const normalizeGstin = (value: unknown) => clean(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-export const isValidGstin = (value: unknown) => GSTIN_REGEX.test(normalizeGstin(value));
+const GSTIN_CHECKSUM_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+export const hasValidGstinChecksum = (value: unknown) => {
+  const gstin = normalizeGstin(value);
+  if (!GSTIN_REGEX.test(gstin)) return false;
+
+  let factor = 2;
+  let sum = 0;
+  for (let index = 13; index >= 0; index -= 1) {
+    const codePoint = GSTIN_CHECKSUM_CHARS.indexOf(gstin[index]);
+    const product = codePoint * factor;
+    sum += Math.floor(product / 36) + (product % 36);
+    factor = factor === 2 ? 1 : 2;
+  }
+
+  const checksumIndex = (36 - (sum % 36)) % 36;
+  return GSTIN_CHECKSUM_CHARS[checksumIndex] === gstin[14];
+};
+
+export const isValidGstin = (value: unknown) => hasValidGstinChecksum(value);
 
 const pick = (...values: unknown[]) => {
   for (const value of values) {
@@ -268,7 +287,7 @@ const normalizeProviderData = (raw: any, requestedGstin: string, source: GstData
     state,
     pincode
   ).join(', ');
-  const address = structuredAddress || pick(payload?.addressString, payload?.businessAddress, payload?.address);
+  const address = structuredAddress || pick(payload?.addressString, payload?.businessAddress, payload?.address, principal?.adr, principal?.addressString, addressSource?.adr);
   const legalName = pick(payload?.legalNameOfBusiness, payload?.lgnm, payload?.legalName, payload?.legal_name, payload?.legalNam, payload?.legal_name_of_business, payload?.name);
   const tradeName = pick(payload?.tradeNam, payload?.tradeName, payload?.trade_name, payload?.trade_name_of_business, payload?.businessName);
   const status = pick(payload?.gstnStatus, payload?.sts, payload?.status, payload?.authStatus) || 'Active';
@@ -358,7 +377,7 @@ export class GstService {
   static normalize(raw: unknown) {
     const gstin = normalizeGstin(raw);
     if (!GSTIN_REGEX.test(gstin)) {
-      throw new ApiError(400, 'Invalid GSTIN format', 'INVALID_GSTIN');
+      throw new ApiError(400, 'Invalid GSTIN format. GSTIN must be 15 characters, for example 27AAKCP3338H1Z8.', 'INVALID_GSTIN');
     }
     return gstin;
   }

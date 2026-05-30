@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/u
 import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
+import { validators } from '../lib/validators';
 import RoleAwareActionCards from '../features/dashboard/components/RoleAwareActionCards';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -71,8 +72,11 @@ export default function Dashboard() {
 
   const handleGstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gstInput || gstInput.trim().length !== 15) {
-      toast.error("Please enter a valid 15-digit GSTIN.");
+    const normalizedGstin = gstInput.trim().toUpperCase();
+    if (!validators.gstin(normalizedGstin)) {
+      const message = 'Enter a valid GSTIN exactly as shown on your GST certificate. The format and checksum must both be correct.';
+      setErrorMsg(message);
+      toast.error(message);
       return;
     }
     setIsSubmittingGst(true);
@@ -84,11 +88,12 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ gstin: gstInput.trim().toUpperCase() })
+        body: JSON.stringify({ gstin: normalizedGstin })
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to verify GSTIN.");
+        const message = [errorData.message, errorData.instruction].filter(Boolean).join(' ');
+        throw new Error(message || "Failed to verify GSTIN. Please re-check the number or try again later.");
       }
       toast.success("GSTIN verified and saved successfully!");
       await refreshUser({ skipCache: true });
@@ -352,7 +357,10 @@ export default function Dashboard() {
                           type="text"
                           placeholder="Enter 15-digit GSTIN (e.g. 27AAAAA1111A1Z1)"
                           value={gstInput}
-                          onChange={(e) => setGstInput(e.target.value.toUpperCase())}
+                          onChange={(e) => {
+                            setGstInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                            if (errorMsg) setErrorMsg('');
+                          }}
                           maxLength={15}
                           className="w-full h-8 px-2.5 bg-white/10 border border-white/20 rounded text-[11px] font-semibold text-white placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-white uppercase tracking-wider"
                           disabled={isSubmittingGst}
@@ -360,7 +368,7 @@ export default function Dashboard() {
                       </div>
                       <Button
                         type="submit"
-                        disabled={isSubmittingGst || gstInput.length !== 15}
+                        disabled={isSubmittingGst || !validators.gstin(gstInput)}
                         className="h-8 bg-white hover:bg-slate-100 text-slate-900 rounded px-4 text-[11px] font-bold uppercase tracking-wider transition-all"
                       >
                         {isSubmittingGst ? 'Verifying...' : 'Verify & Save'}

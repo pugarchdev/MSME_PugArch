@@ -21,7 +21,7 @@ import { sha256 } from '../utils/crypto.js';
 import { panVerificationService } from '../services/verification/pan.service.js';
 import { udyamVerificationService } from '../services/verification/udyam.service.js';
 import { bankVerificationService } from '../services/verification/bank.service.js';
-import { GstService } from '../services/gstService.js';
+import { GstService, hasValidGstinChecksum } from '../services/gstService.js';
 import {
   approveMilestone,
   completeMilestone,
@@ -65,6 +65,62 @@ const userId = (req: AuthRequest) => Number(req.user?.id);
 const approvedProcurementStatuses = new Set(['approved_for_procurement', 'approved']);
 
 const ok = (res: Response, data: unknown, status = 200) => res.status(status).json(maskSensitive({ success: true, data }));
+
+const requireCompleteGstProfile = (gstResult: any) => {
+  if (!gstResult?.isRegisteredDealer) {
+    throw new ApiError(400, `GSTIN is not active on the GST registry (status: ${gstResult?.status || 'unknown'}). Please use an active GSTIN.`, 'GST_INACTIVE');
+  }
+  if (!gstResult?.legalName && !gstResult?.tradeName) {
+    throw new ApiError(424, 'GST verification provider did not return registered business details. Please try again later.', 'GST_PROVIDER_INCOMPLETE');
+  }
+  const missing = [
+    ['registered address', gstResult?.address],
+    ['state', gstResult?.state],
+    ['city or district', gstResult?.city || gstResult?.district],
+    ['pincode', gstResult?.pincode]
+  ].filter(([, value]) => !clean(value)).map(([label]) => label);
+
+  if (missing.length) {
+    throw new ApiError(
+      422,
+      `GSTIN was found, but the registry response is missing ${missing.join(', ')}. Please try again later or complete onboarding manually with your GST certificate.`,
+      'GST_PROFILE_INCOMPLETE',
+      { missing }
+    );
+  }
+};
+
+const buildVerifiedAddress = (gstResult: any) => ({
+  pincode: clean(gstResult?.pincode),
+  state: clean(gstResult?.state),
+  city: clean(gstResult?.city || gstResult?.district),
+  district: clean(gstResult?.district),
+  address: clean(gstResult?.address)
+});
+
+const assertGstinNotOwnedByAnotherAccount = async (normalizedGstin: string, currentUserId: number) => {
+  const fingerprint = sha256(normalizedGstin);
+  const [sellerOffice, buyerProfile] = await Promise.all([
+    db.sellerOffice.findFirst({
+      where: {
+        gstFingerprint: fingerprint,
+        sellerProfile: { userId: { not: currentUserId } }
+      },
+      select: { id: true }
+    }),
+    db.buyerProfile.findFirst({
+      where: {
+        gstFingerprint: fingerprint,
+        userId: { not: currentUserId }
+      },
+      select: { id: true }
+    })
+  ]);
+
+  if (sellerOffice || buyerProfile) {
+    throw new ApiError(409, 'This GSTIN is already verified with another account. Please sign in to that account or contact support.', 'GST_ALREADY_REGISTERED');
+  }
+};
 const attachBidFileAssets = async (rows: any[]) => {
   const fileIds = [...new Set(rows.map(row => Number(row?.fileAssetId)).filter(Boolean))];
   const assets = fileIds.length
@@ -1541,7 +1597,10 @@ async function upsertOrganizationFromGst(
 
 router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req, res) => {
   const { gstin } = parse(z.object({ gstin: z.string().trim().min(15).max(15) }), req.body);
-  const normalizedGstin = gstin.toUpperCase();
+  const normalizedGstin = GstService.normalize(gstin);
+  if (!hasValidGstinChecksum(normalizedGstin)) {
+    throw new ApiError(400, 'Invalid GSTIN checksum. Please re-check the last character from your GST certificate.', 'INVALID_GSTIN_CHECKSUM');
+  }
 
   const user = await db.user.findUnique({
     where: { id: userId(req) },
@@ -1550,6 +1609,9 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
   if (!user) throw new ApiError(404, 'User not found');
 
   const gstResult = await verifyGstinInternal(normalizedGstin);
+  requireCompleteGstProfile(gstResult);
+  await assertGstinNotOwnedByAnotherAccount(normalizedGstin, user.id);
+  const verifiedAddress = buildVerifiedAddress(gstResult);
 
   await db.apiVerificationLog.create({
     data: {
@@ -1613,10 +1675,10 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
           gstNumber: normalizedGstin,
           gstMasked: normalizedGstin,
           gstFingerprint: sha256(normalizedGstin),
-          pincode: gstResult.pincode || existingOffice.pincode,
-          state: gstResult.state || existingOffice.state,
-          city: gstResult.city || existingOffice.city,
-          address: gstResult.address || existingOffice.address
+          pincode: verifiedAddress.pincode || existingOffice.pincode,
+          state: verifiedAddress.state || existingOffice.state,
+          city: verifiedAddress.city || existingOffice.city,
+          address: verifiedAddress.address || existingOffice.address
         }
       });
     } else {
@@ -1629,10 +1691,10 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
           gstNumber: normalizedGstin,
           gstMasked: normalizedGstin,
           gstFingerprint: sha256(normalizedGstin),
-          pincode: gstResult.pincode,
-          state: gstResult.state,
-          city: gstResult.city,
-          address: gstResult.address,
+          pincode: verifiedAddress.pincode,
+          state: verifiedAddress.state,
+          city: verifiedAddress.city,
+          address: verifiedAddress.address,
           isMandatory: true
         }
       });
@@ -1653,11 +1715,11 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
       gst: normalizedGstin,
       gstMasked: normalizedGstin,
       gstFingerprint: sha256(normalizedGstin),
-      state: gstResult.state,
-      district: gstResult.district,
-      city: gstResult.city,
-      pincode: gstResult.pincode,
-      registeredAddress: gstResult.address,
+      state: verifiedAddress.state,
+      district: verifiedAddress.district,
+      city: verifiedAddress.city,
+      pincode: verifiedAddress.pincode,
+      registeredAddress: verifiedAddress.address,
       organizationName: buyerProfile?.organizationName || gstResult.legalName || gstResult.tradeName || 'Buyer Organization'
     };
 

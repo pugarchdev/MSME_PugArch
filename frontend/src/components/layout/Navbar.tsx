@@ -322,7 +322,9 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   const handleSwitchRole = async (targetRole: 'buyer' | 'seller') => {
     setRoleAction(targetRole);
     try {
-      const res = await api.post('/api/auth/switch-role', { role: targetRole });
+      const res = await api.post('/api/auth/switch-role', { role: targetRole }, {
+        headers: { Authorization: `Bearer ${authToken || localStorage.getItem('token') || ''}` }
+      });
       if (res.ok) {
         const data = await res.json();
         login(data.accessToken || data.token, data.user, data.refreshToken);
@@ -342,7 +344,9 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   const handleActivateRole = async (targetRole: 'buyer' | 'seller') => {
     setRoleAction(targetRole);
     try {
-      const res = await api.post('/api/auth/activate-dual-role', { roleToActivate: targetRole });
+      const res = await api.post('/api/auth/activate-dual-role', { roleToActivate: targetRole }, {
+        headers: { Authorization: `Bearer ${authToken || localStorage.getItem('token') || ''}` }
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data?.message || `Unable to activate ${targetRole} profile`);

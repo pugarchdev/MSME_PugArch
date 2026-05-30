@@ -2798,10 +2798,15 @@ router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
   if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { category: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
   const window = listWindow(query);
   const [tenders, total] = await Promise.all([
-    db.tender.findMany({ where, orderBy: { createdAt: 'desc' }, ...window }),
+    db.tender.findMany({
+      where,
+      include: { _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } } },
+      orderBy: { createdAt: 'desc' },
+      ...window
+    }),
     db.tender.count({ where })
   ]);
-  ok(res, paged(tenders, total, query, 'tenders'));
+  ok(res, paged(tenders.map((t: any) => ({ ...t, bidsCount: t._count?.bids ?? t.bidsCount ?? 0, _count: undefined })), total, query, 'tenders'));
 }));
 
 router.get('/tenders/public', asyncRoute(async (req, res) => {
@@ -2828,7 +2833,8 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
         include: {
           fileAsset: true
         }
-      }
+      },
+      _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } }
     },
     skip: query.skip,
     take: query.take,
@@ -2876,6 +2882,8 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
     return {
       ...tender,
       documentUrl: docs[0]?.url || tender.documentUrl,
+      bidsCount: tender._count?.bids ?? tender.bidsCount ?? 0,
+      _count: undefined,
       hasParticipated: !!myBid,
       participationStatus: myBid ? myBid.status : null,
       myBidId: myBid ? myBid.id : null,
@@ -2957,6 +2965,7 @@ router.post('/tenders/:id/bids', authenticate, authorize('seller'), asyncRoute(a
   const tender = await assertTenderAccess(req, id);
   const body = parse(bidBody, req.body);
   const bid = await tenderWorkflow.submitBid(actorFrom(req), id, body);
+  await invalidateByPattern('cache:tender_public:*');
   await auditWrite(req, 'bid.submitted', 'bid', bid.id, { tenderId: tender.id });
   ok(res, bid, 201);
 }));
@@ -3061,6 +3070,7 @@ router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req
   const bid = await assertBidAccess(req, id);
   if (bid.sellerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const updated = await tenderWorkflow.modifyBid(actorFrom(req), id, parse(bidBody.partial(), req.body));
+  await invalidateByPattern('cache:tender_public:*');
   await auditWrite(req, 'bid.updated', 'bid', id);
   ok(res, updated);
 }));
@@ -3070,6 +3080,7 @@ router.post('/bids/:id/withdraw', authenticate, authorize('seller'), asyncRoute(
   const bid = await assertBidAccess(req, id);
   if (bid.sellerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
   const updated = await tenderWorkflow.withdrawBid(actorFrom(req), id);
+  await invalidateByPattern('cache:tender_public:*');
   await auditWrite(req, 'bid.withdrawn', 'bid', id);
   ok(res, updated);
 }));

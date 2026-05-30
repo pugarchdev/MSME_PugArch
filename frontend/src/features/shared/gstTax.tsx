@@ -30,11 +30,9 @@ export const formatTaxRate = (value: number) =>
   Number.isInteger(value) ? String(value) : String(value).replace(/0+$/, '').replace(/\.$/, '');
 
 /**
- * Compute the full tax breakdown. CGST+SGST (intrastate) and IGST (interstate)
- * are independent inputs and BOTH may be applied when applicable — they are no
- * longer mutually exclusive. `splitRateInput` is the combined CGST+SGST rate
- * (e.g. 18 → CGST 9% + SGST 9%); `igstRateInput` is the IGST rate; and the
- * additional rate covers any other taxes (TDS, cess, etc.).
+ * Compute the full tax breakdown. GST must be applied either as CGST+SGST
+ * (intrastate) OR as IGST (interstate), never both at the same time. The
+ * optional additional rate is reserved for separate non-GST taxes/cess.
  */
 export const calculateGstBreakdown = (
   taxableAmount: number,
@@ -42,11 +40,13 @@ export const calculateGstBreakdown = (
   igstRateInput: unknown,
   additionalRateInput: unknown = 0
 ): GstBreakdown => {
-  const splitRate = toTaxNumber(splitRateInput);
-  const igstRate = toTaxNumber(igstRateInput);
+  const rawSplitRate = toTaxNumber(splitRateInput);
+  const rawIgstRate = toTaxNumber(igstRateInput);
+  const splitRate = rawSplitRate > 0 ? rawSplitRate : 0;
+  const igstRate = splitRate > 0 ? 0 : rawIgstRate;
   const additionalRate = toTaxNumber(additionalRateInput);
 
-  const standardRate = money(splitRate + igstRate);
+  const standardRate = money(splitRate || igstRate);
   const totalRate = money(standardRate + additionalRate);
   const cgstRate = splitRate / 2;
   const sgstRate = splitRate / 2;
@@ -116,7 +116,7 @@ export function GstTaxPicker({
           CGST + SGST Rate (%)
           <select
             value={splitRate}
-            onChange={event => onChange({ splitRate: event.target.value, igstRate, additionalRate })}
+            onChange={event => onChange({ splitRate: event.target.value, igstRate: event.target.value ? '' : igstRate, additionalRate })}
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/20"
           >
             <option value="">-Select-</option>
@@ -132,7 +132,7 @@ export function GstTaxPicker({
           IGST Rate (%)
           <select
             value={igstRate}
-            onChange={event => onChange({ splitRate, igstRate: event.target.value, additionalRate })}
+            onChange={event => onChange({ splitRate: event.target.value ? '' : splitRate, igstRate: event.target.value, additionalRate })}
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/20"
           >
             <option value="">-Select-</option>
@@ -204,6 +204,11 @@ export function GstTaxPicker({
           <span>{breakdown.label}</span>
           <span className="font-black text-[#12335f]">Total tax {formatTaxRate(breakdown.totalRate)}%</span>
         </div>
+        {splitRate && igstRate && (
+          <p className="mt-1 text-[10px] font-bold text-amber-700">
+            CGST+SGST and IGST cannot be applied together; CGST+SGST has been used for the calculation.
+          </p>
+        )}
       </div>
     </div>
   );

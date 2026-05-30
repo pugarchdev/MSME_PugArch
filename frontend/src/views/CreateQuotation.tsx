@@ -86,12 +86,13 @@ export default function CreateQuotation() {
     documentName: ''
   });
   const subtotal = roundMoney(Number(formData.unitPrice || 0) * Number(formData.quantity || 0));
-  const taxBreakdown = calculateGstBreakdown(subtotal, formData.splitTaxRate, formData.igstTaxRate, formData.otherTaxRate);
-  const taxRate = taxBreakdown.totalRate;
-  const taxAmount = taxBreakdown.totalTaxAmount;
   const discountPercent = Math.min(100, Math.max(0, Number(formData.discountPercent || 0)));
   const discountAmount = roundMoney(subtotal * discountPercent / 100);
-  const totalValue = roundMoney(subtotal + taxAmount - discountAmount);
+  const taxableAmount = Math.max(0, roundMoney(subtotal - discountAmount));
+  const taxBreakdown = calculateGstBreakdown(taxableAmount, formData.splitTaxRate, formData.igstTaxRate, formData.otherTaxRate);
+  const taxRate = taxBreakdown.totalRate;
+  const taxAmount = taxBreakdown.totalTaxAmount;
+  const totalValue = roundMoney(taxableAmount + taxAmount);
 
   useEffect(() => {
     fetchTenderDetails();
@@ -269,12 +270,16 @@ export default function CreateQuotation() {
                 <span>{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Tax ({taxBreakdown.label})</span>
-                <span>{formatCurrency(taxAmount)}</span>
-              </div>
-              <div className="flex items-center justify-between">
                 <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
                 <span>- {formatCurrency(discountAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Taxable Amount</span>
+                <span>{formatCurrency(taxableAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Tax ({taxBreakdown.label})</span>
+                <span>{formatCurrency(taxAmount)}</span>
               </div>
             </div>
 
@@ -453,7 +458,7 @@ export default function CreateQuotation() {
                         splitRate={formData.splitTaxRate}
                         igstRate={formData.igstTaxRate}
                         additionalRate={formData.otherTaxRate}
-                        taxableAmount={subtotal}
+                        taxableAmount={taxableAmount}
                         onChange={(next) => setFormData({ ...formData, splitTaxRate: next.splitRate, igstTaxRate: next.igstRate, otherTaxRate: next.additionalRate })}
                       />
                     </div>
@@ -565,6 +570,14 @@ export default function CreateQuotation() {
                         <span>{formatCurrency(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between">
+                        <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
+                        <span>- {formatCurrency(discountAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Taxable Amount</span>
+                        <span>{formatCurrency(taxableAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
                         <span>Tax ({taxBreakdown.label})</span>
                         <span>{formatCurrency(taxAmount)}</span>
                       </div>
@@ -592,10 +605,6 @@ export default function CreateQuotation() {
                           <span>{formatCurrency(taxBreakdown.additionalTaxAmount)}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between">
-                        <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
-                        <span>- {formatCurrency(discountAmount)}</span>
-                      </div>
                       <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-black text-[#12335f]">
                         <span>Total</span>
                         <span>{formatCurrency(totalValue)}</span>

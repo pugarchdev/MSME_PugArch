@@ -116,7 +116,7 @@ export default function SellerOnboarding() {
   const [editingBankId, setEditingBankId] = useState<number | null>(null);
   const [officeForm, setOfficeForm] = useState({
     name: '',
-    type: 'Registered',
+    type: '',
     pincode: '',
     state: '',
     city: '',
@@ -135,7 +135,7 @@ export default function SellerOnboarding() {
     const contactRegex = /^\d{10}$/;
 
     if (!candidate.name.trim()) errors.name = 'Office name is required.';
-    if (!candidate.type || candidate.type === 'Select type of address') errors.type = 'Type of office is required.';
+    if (!candidate.type) errors.type = 'Type of office is required.';
 
     if (!candidate.pincode.trim()) errors.pincode = 'Pincode is required.';
     else if (!pincodeRegex.test(candidate.pincode.trim())) errors.pincode = 'Enter a valid 6-digit pincode.';
@@ -696,7 +696,7 @@ export default function SellerOnboarding() {
   const resetOfficeForm = () => {
     setOfficeForm({
       name: '',
-      type: 'Registered',
+      type: '',
       pincode: '',
       state: '',
       city: '',
@@ -777,7 +777,7 @@ export default function SellerOnboarding() {
   };
 
   const handleAddBank = async (bankData: any) => {
-    if (isProfileLocked) {
+    if (isProfileLocked && normalizeList(formData.bankAccounts).length > 0) {
       toast.info(lockToastText);
       return;
     }
@@ -994,6 +994,10 @@ export default function SellerOnboarding() {
   if (!formData.ownershipDeclarationAccepted) warnings.push("Please complete Beneficial Ownership Compliance");
   if (!areAllDocumentsUploaded()) warnings.push("Please upload all required onboarding documents");
 
+  const bankAccountsCount = normalizeList(formData.bankAccounts).length;
+  const canCaptureMissingBankAfterApproval = isProfileLocked && currentSection === 'bank' && bankAccountsCount === 0;
+  const shouldDisableProfileFields = isProfileLocked && !isAccountSettings && currentSection !== 'documents' && !canCaptureMissingBankAfterApproval;
+
   if (isFetching) return <div className="flex h-screen items-center justify-center font-black  text-[#12335f] animate-pulse">Initializing Profile...</div>;
 
   return (
@@ -1077,7 +1081,7 @@ export default function SellerOnboarding() {
                   </Button>
                 </div>
               ) : (
-                <fieldset disabled={isProfileLocked && !isAccountSettings && currentSection !== 'documents'} className={`min-w-0 w-full ${(isProfileLocked && !isAccountSettings) ? 'opacity-70' : ''}`}>
+                <fieldset disabled={shouldDisableProfileFields} className={`min-w-0 w-full ${shouldDisableProfileFields ? 'opacity-70' : ''}`}>
                   {currentSection === 'pan' && (
                     <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1440,7 +1444,7 @@ export default function SellerOnboarding() {
                             <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Type Of Office*</label>
                               <select value={officeForm.type} onChange={(e) => updateOfficeForm('type', e.target.value)} className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white text-gray-500 ${officeErrors.type ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}>
-                                <option value="Registered">Select type of address</option>
+                                <option value="">Select type of address</option>
                                 <option value="Registered">Registered Office</option>
                                 <option value="Branch">Branch</option>
                                 <option value="Warehouse">Warehouse</option>
@@ -1543,6 +1547,11 @@ export default function SellerOnboarding() {
                   {currentSection === 'bank' && (
                     <div className="space-y-4 animate-in fade-in duration-300 min-w-0 w-full">
                       <p className="text-sm text-gray-600">You can add multiple Bank accounts for your Business. One account must be selected as Primary account</p>
+                      {canCaptureMissingBankAfterApproval && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                          Your approved profile is locked, but no bank account is on record. Add one primary bank account to complete payment readiness; existing approved bank records remain locked from changes.
+                        </div>
+                      )}
 
                       <div className="flex border-b border-gray-200">
                         <button onClick={() => { setBankTab('manage'); setEditingBankId(null); }} className={`px-6 py-3 text-sm font-semibold ${bankTab === 'manage' && !editingBankId ? 'text-[#12335f] border-t-2 border-l-2 border-r-2 border-gray-200 rounded-t-lg bg-white -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>Manage Bank Account</button>

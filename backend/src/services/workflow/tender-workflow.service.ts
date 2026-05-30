@@ -116,6 +116,8 @@ export const tenderWorkflow = {
       update: { status: 'BID_SUBMITTED', respondedAt: new Date() },
       create: { tenderId, sellerId: actor.id, status: 'BID_SUBMITTED', respondedAt: new Date() }
     }).catch(() => undefined);
+    const activeBidCount = await db.bid.count({ where: { tenderId, status: { not: 'withdrawn' } } });
+    await db.tender.update({ where: { id: tenderId }, data: { bidsCount: activeBidCount } }).catch(() => undefined);
     if (input.fileAssetId) {
       await db.fileAsset.updateMany({
         where: { id: Number(input.fileAssetId), ownerId: actor.id, status: 'active' },
@@ -153,6 +155,8 @@ export const tenderWorkflow = {
       where: { id: bidId },
       data: { status: 'withdrawn', statusEnum: bidStatusEnumFor('withdrawn'), withdrawnAt: new Date() }
     });
+    const activeBidCount = await db.bid.count({ where: { tenderId: bid.tenderId, status: { not: 'withdrawn' } } });
+    await db.tender.update({ where: { id: bid.tenderId }, data: { bidsCount: activeBidCount } }).catch(() => undefined);
     await auditWorkflow(actor, 'workflow.bid.withdrawn', 'bid', bidId);
     return updated;
   },

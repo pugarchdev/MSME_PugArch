@@ -709,6 +709,65 @@ router.post('/buyer/onboarding/send-otp', authenticate, authorize('buyer'), asyn
   ok(res, { success: true, sendsRemaining: otpState.sendsRemaining, deliveryConfigured });
 }));
 
+router.post('/buyer/settings/change-email/send-otp', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const { generateOtp, storeEmailOtp } = await import('../services/otp.service.js');
+  const { sendOtpEmail } = await import('../services/mail.service.js');
+
+  const newEmail = clean(req.body?.email || req.body?.newEmail).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    throw new ApiError(400, 'Enter a valid new email address');
+  }
+
+  const user = await db.user.findUnique({ where: { id: userId(req) }, select: { id: true, email: true } });
+  if (!user) throw new ApiError(404, 'User not found');
+  if (user.email?.toLowerCase() === newEmail) throw new ApiError(400, 'New email must be different from current email');
+
+  const existing = await db.user.findUnique({ where: { email: newEmail }, select: { id: true } });
+  if (existing) throw new ApiError(409, 'This email is already registered with another account');
+
+  const otp = generateOtp();
+  const otpState = await storeEmailOtp(newEmail, otp);
+  const deliveryConfigured = await sendOtpEmail(newEmail, otp, '[SECURE AUTH] Buyer email change verification code');
+
+  await auditWrite(req, 'buyer.change_email_otp.sent', 'user', user.id, {
+    newEmailHash: sha256(newEmail),
+    deliveryConfigured
+  });
+
+  ok(res, { success: true, sendsRemaining: otpState.sendsRemaining, deliveryConfigured });
+}));
+
+router.post('/buyer/settings/change-email', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const { verifyEmailOtp, consumeEmailOtp } = await import('../services/otp.service.js');
+
+  const newEmail = clean(req.body?.newEmail || req.body?.email).toLowerCase();
+  const otp = clean(req.body?.otp);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    throw new ApiError(400, 'Enter a valid new email address');
+  }
+  if (!/^\d{6}$/.test(otp)) throw new ApiError(400, 'Enter the 6-digit OTP sent to the new email');
+
+  const user = await db.user.findUnique({ where: { id: userId(req) }, select: { id: true, email: true } });
+  if (!user) throw new ApiError(404, 'User not found');
+  if (user.email?.toLowerCase() === newEmail) throw new ApiError(400, 'New email must be different from current email');
+
+  const existing = await db.user.findUnique({ where: { email: newEmail }, select: { id: true } });
+  if (existing) throw new ApiError(409, 'This email is already registered with another account');
+
+  const otpCheck = await verifyEmailOtp(newEmail, otp);
+  if (!otpCheck.ok) throw new ApiError(400, 'Invalid or expired OTP');
+
+  await db.user.update({
+    where: { id: user.id },
+    data: { email: newEmail }
+  });
+
+  await consumeEmailOtp(newEmail);
+  await auditWrite(req, 'buyer.email_changed', 'user', user.id, { newEmailHash: sha256(newEmail) });
+
+  ok(res, { success: true, message: 'Email updated successfully' });
+}));
+
 router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const data = req.body || {};
 

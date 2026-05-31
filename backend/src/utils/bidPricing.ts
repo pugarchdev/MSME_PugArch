@@ -26,18 +26,18 @@ export const calculateBidPricing = (input: BidPricingInput) => {
   }
 
   const subtotal = money(unitPrice * quantity);
-  const taxAmount = money(subtotal * taxRate / 100);
-  const grossAmount = money(subtotal + taxAmount);
-  if (discountAmount > grossAmount) {
-    throw new ApiError(400, 'Discount amount cannot exceed subtotal plus tax', 'BID_DISCOUNT_INVALID');
+  if (discountAmount > subtotal) {
+    throw new ApiError(400, 'Discount amount cannot exceed subtotal', 'BID_DISCOUNT_INVALID');
   }
+  const taxableAmount = money(subtotal - discountAmount);
+  const taxAmount = money(taxableAmount * taxRate / 100);
 
   return {
     taxRate,
     discountAmount,
     subtotal,
     taxAmount,
-    totalAmount: money(grossAmount - discountAmount)
+    totalAmount: money(taxableAmount + taxAmount)
   };
 };
 

@@ -175,22 +175,12 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
     const orgId = req.user.organizationId;
     const userIdNum = req.user.id;
 
-    if (!orgId) {
-        return ok(res, {
-            cartItemCount: 0,
-            pendingApprovalsCount: 0,
-            cartApprovalsCount: 0,
-            techReviewCount: 0,
-            grnsToApproveCount: 0,
-            activeDeliveriesCount: 0
-        });
-    }
-
-    // Get the user's OrgRole once so we can filter
-    const membership = await prisma.orgMembership.findUnique({
+    // Get the user's OrgRole once so we can filter. Users without an
+    // organisation still receive role-based dashboard counts below.
+    const membership = orgId ? await prisma.orgMembership.findUnique({
         where: { userId_organizationId: { userId: userIdNum, organizationId: orgId } },
         select: { orgRole: true, isActive: true }
-    });
+    }) : null;
     const orgRole = membership?.isActive ? membership.orgRole : null;
 
     // Determine which approval stages this role can decide
@@ -218,18 +208,21 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         sellerOpenTenders,
         sellerActivePOs,
         sellerCatalogueItems,
-        sellerPendingInvoices
+        sellerPendingInvoices,
+        sellerQuotations
     ] = await Promise.all([
         // cart item count
-        prisma.cart.findFirst({
-            where: { organizationId: orgId, status: 'ACTIVE' },
-            select: { _count: { select: { items: true } } }
-        }),
+        orgId
+            ? prisma.cart.findFirst({
+                where: { organizationId: orgId, status: 'ACTIVE' },
+                select: { _count: { select: { items: true } } }
+            })
+            : Promise.resolve(null),
         // pending approvals — filter by stages if user can decide them, else 0
         stages.length > 0
             ? prisma.procurementApproval.count({
                 where: {
-                    organizationId: orgId,
+                    organizationId: orgId as number,
                     stage: { in: stages as any },
                     decision: { in: ['PENDING', 'SENT_FOR_CLARIFICATION'] }
                 }
@@ -238,22 +231,24 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         // carts pending finance approval
         (orgRole === 'FINANCE_OFFICER' || orgRole === 'ORG_ADMIN')
             ? prisma.cart.count({
-                where: { organizationId: orgId, status: 'SUBMITTED_FOR_APPROVAL' }
+                where: { organizationId: orgId as number, status: 'SUBMITTED_FOR_APPROVAL' }
             })
             : Promise.resolve(0),
         // tech review queue
         (orgRole === 'TECHNICAL_OFFICER' || orgRole === 'ORG_ADMIN')
             ? prisma.cartItem.count({
                 where: {
-                    cart: { organizationId: orgId, status: 'SUBMITTED_FOR_APPROVAL' },
+                    cart: { organizationId: orgId as number, status: 'SUBMITTED_FOR_APPROVAL' },
                     technicalApproved: null
                 }
             })
             : Promise.resolve(0),
         // GRNs awaiting approval
-        prisma.goodsReceiptNote.count({
-            where: { organizationId: orgId, status: 'SUBMITTED' }
-        }),
+        orgId
+            ? prisma.goodsReceiptNote.count({
+                where: { organizationId: orgId, status: 'SUBMITTED' }
+            })
+            : Promise.resolve(0),
         // active deliveries (only useful for sellers)
         isSeller
             ? prisma.deliveryTracking.count({
@@ -283,7 +278,7 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         // ─── Seller baseline counts ───
         isSeller
             ? prisma.tender.count({
-                where: { status: 'OPEN' as any, closesAt: { gt: new Date() } }
+                where: { status: { in: ['published' as any, 'bid_submission' as any] }, closesAt: { gt: new Date() } }
             }).catch(() => 0)
             : Promise.resolve(0),
         isSeller
@@ -300,6 +295,11 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         isSeller
             ? prisma.invoice.count({
                 where: { sellerId: userIdNum, status: { in: ['DRAFT' as any, 'SUBMITTED' as any] } }
+            }).catch(() => 0)
+            : Promise.resolve(0),
+        isSeller
+            ? prisma.bid.count({
+                where: { sellerId: userIdNum, status: { not: 'withdrawn' as any } }
             }).catch(() => 0)
             : Promise.resolve(0)
     ]);
@@ -321,6 +321,7 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         sellerActivePOsCount: sellerActivePOs,
         sellerCatalogueItemsCount: sellerCatalogueItems,
         sellerPendingInvoicesCount: sellerPendingInvoices,
+        sellerQuotationsCount: sellerQuotations,
         orgRole
     });
 }));

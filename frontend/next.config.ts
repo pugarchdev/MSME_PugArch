@@ -4,8 +4,6 @@ import path from 'path';
 const getBackendUrl = (): string => {
   // If we are on Vercel, dynamically construct the backend URL from the frontend VERCEL_URL
   if (process.env.VERCEL_URL) {
-    // e.g. msme-frontend-git-home-anands-projects-27af4f8a.vercel.app
-    // replaces 'msme-frontend' with 'msme-pugarch-backend' to get the exact matching backend host
     const vercelUrl = process.env.VERCEL_URL;
     const backendHost = vercelUrl.replace('msme-frontend', 'msme-pugarch-backend');
     return `https://${backendHost}`;
@@ -19,9 +17,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   env: {
     NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF || '',
-    // On Vercel, set the API URL to /proxy so requests go through Next.js rewrites
-    // instead of direct cross-origin calls. The /proxy prefix avoids Vercel's
-    // reserved /api path (which is intercepted for serverless functions).
+    // On Vercel, route API calls through /proxy to avoid CORS entirely.
     // In local dev, use whatever is set in .env (e.g. http://localhost:5000).
     NEXT_PUBLIC_API_URL: process.env.VERCEL_URL ? '/proxy' : (process.env.NEXT_PUBLIC_API_URL || ''),
   },
@@ -30,18 +26,26 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     const backendUrl = getBackendUrl();
-    // On Vercel: proxy /proxy/api/* requests to the backend's /api/*.
-    // We use /proxy prefix because Vercel reserves /api for serverless functions.
     if (process.env.VERCEL_URL && backendUrl) {
       console.log(`[next.config] Rewrites: /proxy/:path* → ${backendUrl}/:path*`);
-      return [
-        {
-          source: '/proxy/:path*',
-          destination: `${backendUrl}/:path*`,
-        },
-      ];
+      // beforeFiles ensures the rewrite runs BEFORE Vercel tries to match
+      // filesystem pages, preventing false 404s on the /proxy prefix.
+      return {
+        beforeFiles: [
+          {
+            source: '/proxy/:path*',
+            destination: `${backendUrl}/:path*`,
+          },
+        ],
+        afterFiles: [],
+        fallback: [],
+      };
     }
-    return [];
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [],
+    };
   },
   webpack: (config) => {
     config.resolve = config.resolve || {};

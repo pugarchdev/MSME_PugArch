@@ -49,6 +49,7 @@ interface SidebarItem {
   icon: any;
   roles: string[];
   permission?: string;
+  featureCode?: string;
 }
 
 interface SidebarProps {
@@ -129,19 +130,20 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
   };
 
   const navItems: SidebarItem[] = [
-    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin'] },
+    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin', 'master_admin'] },
+    { label: 'Master Console', path: '/master-admin', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Admin Console', path: '/admin/onboarding', icon: ShieldCheck, roles: ['admin'] },
     { label: 'Governance Desk', path: '/admin/governance', icon: ClipboardCheck, roles: ['admin'] },
-    { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'] },
-    { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'Tenders', path: '/buyer/tenders', icon: FileText, roles: ['buyer'] },
-    { label: 'Tenders', path: '/seller/tenders', icon: FileText, roles: ['seller'] },
-    { label: 'Quotations', path: '/quotations', icon: ClipboardCheck, roles: ['seller', 'buyer'] },
+    { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
+    { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    { label: 'Tenders', path: '/buyer/tenders', icon: FileText, roles: ['buyer'], featureCode: 'tender-management' },
+    { label: 'Tenders', path: '/seller/tenders', icon: FileText, roles: ['seller'], featureCode: 'tender-management' },
+    { label: 'Quotations', path: '/quotations', icon: ClipboardCheck, roles: ['seller', 'buyer'], featureCode: 'bid-submission' },
     { label: 'Purchase Orders', path: '/seller/orders', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Purchase Orders', path: '/buyer/orders', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'Invoices', path: '/seller/invoices', icon: CreditCard, roles: ['seller'] },
-    { label: 'Invoices', path: '/buyer/invoices', icon: FileText, roles: ['buyer'] },
-    { label: 'Delivery', path: '/seller/delivery', icon: Truck, roles: ['seller'] },
+    { label: 'Invoices', path: '/seller/invoices', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module' },
+    { label: 'Invoices', path: '/buyer/invoices', icon: FileText, roles: ['buyer'], featureCode: 'payment-module' },
+    { label: 'Delivery', path: '/seller/delivery', icon: Truck, roles: ['seller'], featureCode: 'lpi-logistics-partner' },
     { label: 'Delivery Mgmt', path: '/seller/delivery-management', icon: Truck, roles: ['seller'] },
     { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
     { label: 'Vendors', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
@@ -152,21 +154,21 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Direct Purchase', path: '/seller/direct-purchase', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Parcel Tracking', path: '/buyer/tracking', icon: Truck, roles: ['buyer'] },
     { label: 'Delivery Console', path: '/admin/delivery', icon: Truck, roles: ['admin'] },
-    { label: 'MIS Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'] },
+    { label: 'MIS Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
     { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'Cart Approvals', path: '/cart/approvals', icon: CheckSquare, roles: ['buyer'] },
     { label: 'Technical Review', path: '/cart/technical-review', icon: ShieldCheck, roles: ['buyer'] },
     { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer'] },
     { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer'] },
     
-    { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'] },
-    { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'] },
+    { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'], featureCode: 'payment-module' },
+    { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'], featureCode: 'escrow-nodal-bank' },
     { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
     { label: 'Organizations', path: '/admin/organizations', icon: Building2, roles: ['admin'] },
-    { label: 'RBAC Control', path: '/admin/rbac', icon: ShieldCheck, roles: ['admin'] },
+    { label: 'RBAC Control', path: '/admin/rbac', icon: ShieldCheck, roles: ['admin'], featureCode: 'role-management' },
     // { label: 'Audit Logs', path: '/admin/audit-logs', icon: FileSearch, roles: ['admin'] },
     { label: 'Fraud Alerts', path: '/admin/fraud-alerts', icon: AlertTriangle, roles: ['admin'] },
     { label: 'Compliance Rules', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
@@ -174,15 +176,18 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
     { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
     { label: 'Account Settings', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
-    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
+    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin', 'master_admin'] },
   ];
 
   const filteredNav = navItems.filter(item => {
     if (!user) return false;
     const hasRole = item.roles.includes(user.role);
     if (!hasRole) return false;
+    if (item.featureCode && user.role !== 'master_admin' && Array.isArray(user.enabledFeatures) && user.enabledFeatures.length > 0) {
+      if (!user.enabledFeatures.includes(item.featureCode)) return false;
+    }
     if (item.permission) {
-      if (user.role === 'admin') return true;
+      if (user.role === 'admin' || user.role === 'master_admin') return true;
       return user.permissions?.includes(item.permission);
     }
     return true;

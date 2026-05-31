@@ -6,7 +6,7 @@ interface User {
   name: string;
   email: string;
   mobile?: string;
-  role: 'seller' | 'buyer' | 'admin';
+  role: 'seller' | 'buyer' | 'admin' | 'master_admin';
   isDualRole?: boolean;
   registrationStatus?: 'incomplete' | 'completed';
   onboardingStatus: 'pending' | 'pending_validation' | 'under_compliance_review' | 'resubmission_required' | 'approved_for_procurement' | 'approved' | 'rejected';
@@ -16,9 +16,20 @@ interface User {
   twoFactorEnabled?: boolean;
   adminFeedback?: string;
   permissions?: string[];
+  enabledFeatures?: string[];
   sellerProfile?: any;
   buyerProfile?: any;
   organizationId?: number;
+  companyId?: number | null;
+  company?: {
+    id: number;
+    name: string;
+    shortName?: string | null;
+    portalDisplayName: string;
+    logoUrl?: string | null;
+    district?: string | null;
+    state?: string | null;
+  } | null;
   organization?: {
     id: number;
     organizationName: string;
@@ -199,6 +210,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(token);
     setUser(user);
     setLoading(false);
+    const guestCartToken = localStorage.getItem('jsg_guest_cart_token');
+    if (guestCartToken && user.role === 'buyer') {
+      void api.post('/api/cart/merge-guest', { cartToken: guestCartToken }, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        if (res.ok) localStorage.removeItem('jsg_guest_cart_token');
+      }).catch(() => undefined);
+    }
   }, []);
 
   return (

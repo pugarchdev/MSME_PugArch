@@ -698,7 +698,8 @@ export const authController = {
             }
           },
           buyerProfile: true,
-          organization: true
+          organization: true,
+          company: true
         }
       });
       if (!user) return res.status(404).json({ message: 'Not found' });
@@ -750,7 +751,9 @@ export const authController = {
         user: { 
           ...userData, 
           _id: user.id, 
-          permissions: req.user?.permissions || [] 
+          permissions: req.user?.permissions || [],
+          enabledFeatures: req.user?.enabledFeatures || [],
+          companyId: req.user?.companyId ?? userData.companyId ?? null
         },
         profile: enrichedProfile
       }));

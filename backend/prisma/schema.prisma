@@ -33,6 +33,7 @@ model User {
   passwordResetVersion    Int                         @default(0)
   sessionVersion          Int                         @default(0)
   organizationId          Int?
+  companyId               Int?
   accountStatus           UserStatus                  @default(ACTIVE)
   createdAt               DateTime                    @default(now())
   updatedAt               DateTime                    @updatedAt
@@ -74,6 +75,10 @@ model User {
   sellerProfile           SellerProfile?
   tenders                 Tender[]
   organization            Organization?               @relation(fields: [organizationId], references: [id])
+  company                 Company?                    @relation(fields: [companyId], references: [id])
+  roles                   UserRole[]                  @relation("UserRoleUser")
+  assignedUserRoles       UserRole[]                  @relation("UserRoleAssigner")
+  updatedCompanyFeatures  CompanyFeature[]            @relation("CompanyFeatureUpdater")
   sessions                UserSession[]
   sellerDocumentsVerified SellerDocument[]            @relation("SellerDocumentVerifiedBy")
   apiVerificationLogs     ApiVerificationLog[]
@@ -112,6 +117,9 @@ model User {
   cartsRejected               Cart[]                  @relation("CartRejecter")
   cartItemsAsSeller           CartItem[]              @relation("CartItemSeller")
   cartItemsTechApproved       CartItem[]              @relation("CartItemTechApprover")
+  buyerRequirementsCreated    BuyerRequirement[]      @relation("BuyerRequirementCreator")
+  buyerRequirementsApproved   BuyerRequirement[]      @relation("BuyerRequirementApprover")
+  requirementResponses        RequirementResponse[]   @relation("RequirementResponseSeller")
   procurementApprovalsDecided ProcurementApproval[]   @relation("ProcurementApprovalApprover")
   grnsReceived                GoodsReceiptNote[]      @relation("GrnReceiver")
   grnDocumentsUploaded        GrnDocument[]           @relation("GrnDocumentUploader")
@@ -119,6 +127,7 @@ model User {
   @@index([role, onboardingStatus])
   @@index([mobile])
   @@index([organizationId])
+  @@index([companyId])
   @@index([accountStatus])
 }
 
@@ -284,6 +293,7 @@ model Organization {
   country                      String             @default("India")
   website                      String?
   organizationLogoFileId       Int?
+  companyId                    Int?
   annualTurnover               Decimal?           @db.Decimal(18, 2)
   employeeCount                Int?
   verificationStatus           VerificationStatus @default(PENDING)
@@ -294,6 +304,7 @@ model Organization {
   updatedAt                    DateTime           @updatedAt
   deletedAt                    DateTime?
   users                        User[]
+  company                      Company?           @relation(fields: [companyId], references: [id])
   buyerProfiles                BuyerProfile[]
   sellerProfiles               SellerProfile[]
   logoFile                     FileAsset?         @relation("OrganizationLogo", fields: [organizationLogoFileId], references: [id])
@@ -304,8 +315,13 @@ model Organization {
   requirements                 Requirement[]
   tenders                      Tender[]
   memberships                  OrgMembership[]
+  userRoles                    UserRole[]
   invitations                  OrgInvitation[]
   carts                        Cart[]
+  buyerRequirements            BuyerRequirement[]      @relation("BuyerRequirementOrganization")
+  requirementResponses         RequirementResponse[]   @relation("RequirementResponseOrganization")
+  guestCartItems               GuestCartItem[]
+  profile                      OrganizationProfile?
   procurementApprovals         ProcurementApproval[]
   grns                         GoodsReceiptNote[]
 
@@ -316,6 +332,169 @@ model Organization {
   @@index([verificationStatus])
   @@index([isBlacklisted])
   @@index([organizationLogoFileId])
+  @@index([companyId])
+}
+
+model Company {
+  id                Int              @id @default(autoincrement())
+  name              String
+  shortName         String?
+  portalDisplayName String
+  logoUrl           String?
+  contactEmail      String?
+  contactPhone      String?
+  address           String?
+  district          String?
+  state             String?
+  themeSettings     Json?
+  homepageContent   String?
+  aboutContent      String?
+  footerContent     String?
+  grievanceContent  String?
+  procurementPolicy String?
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  users             User[]
+  organizations     Organization[]
+  roles             RbacRole[]
+  userRoles         UserRole[]
+  features          CompanyFeature[]
+  settings          CompanySetting[]
+  contentPages      ContentPage[]
+  auditLogs         AuditLog[]
+  buyerRequirements BuyerRequirement[]
+  guestCarts        GuestCart[]
+
+  @@index([name])
+  @@index([district, state])
+  @@index([isActive])
+}
+
+model BuyerRequirement {
+  id                  Int                       @id @default(autoincrement())
+  companyId           Int?
+  buyerOrganizationId Int?
+  title               String
+  requirementType     BuyerRequirementType
+  categoryId          Int?
+  description         String
+  quantity            Decimal?                  @db.Decimal(18, 3)
+  unit                String?
+  location            String?
+  budgetMin           Decimal?                  @db.Decimal(18, 2)
+  budgetMax           Decimal?                  @db.Decimal(18, 2)
+  lastDate            DateTime
+  visibility          RequirementVisibility     @default(PUBLIC)
+  status              BuyerRequirementStatus    @default(DRAFT)
+  isFeatured          Boolean                   @default(false)
+  isUrgent            Boolean                   @default(false)
+  requiredDocuments   String[]                  @default([])
+  contactPerson       String?
+  attachmentUrl       String?
+  terms               String?
+  approvedById        Int?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  createdById         Int?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  company             Company?                  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  buyerOrganization   Organization?             @relation("BuyerRequirementOrganization", fields: [buyerOrganizationId], references: [id], onDelete: SetNull)
+  category            Category?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy           User?                     @relation("BuyerRequirementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy          User?                     @relation("BuyerRequirementApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  responses           RequirementResponse[]
+
+  @@index([companyId])
+  @@index([buyerOrganizationId])
+  @@index([categoryId])
+  @@index([status, lastDate])
+  @@index([isFeatured])
+  @@index([isUrgent])
+  @@index([createdById])
+  @@index([approvedById])
+}
+
+model RequirementResponse {
+  id                   Int                       @id @default(autoincrement())
+  requirementId        Int
+  sellerOrganizationId Int?
+  sellerUserId         Int
+  offeredPrice         Decimal?                  @db.Decimal(18, 2)
+  offeredQuantity      Decimal?                  @db.Decimal(18, 3)
+  deliveryTimeline     String?
+  message              String
+  attachmentUrl        String?
+  terms                String?
+  status               RequirementResponseStatus @default(SUBMITTED)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  requirement          BuyerRequirement          @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  sellerOrganization   Organization?             @relation("RequirementResponseOrganization", fields: [sellerOrganizationId], references: [id], onDelete: SetNull)
+  sellerUser           User                      @relation("RequirementResponseSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
+
+  @@index([requirementId])
+  @@index([sellerOrganizationId])
+  @@index([sellerUserId])
+  @@index([status])
+}
+
+model GuestCart {
+  id        Int             @id @default(autoincrement())
+  cartToken String          @unique
+  companyId Int?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  company   Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  items     GuestCartItem[]
+
+  @@index([companyId])
+  @@index([updatedAt])
+}
+
+model GuestCartItem {
+  id                   Int           @id @default(autoincrement())
+  guestCartId          Int
+  itemType             CartItemType
+  productId            Int?
+  serviceId            Int?
+  quantity             Decimal       @db.Decimal(18, 3)
+  priceSnapshot        Decimal?      @db.Decimal(18, 2)
+  sellerOrganizationId Int?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  guestCart            GuestCart     @relation(fields: [guestCartId], references: [id], onDelete: Cascade)
+  product              Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service              Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  sellerOrganization   Organization? @relation(fields: [sellerOrganizationId], references: [id], onDelete: SetNull)
+
+  @@unique([guestCartId, itemType, productId, serviceId])
+  @@index([guestCartId])
+  @@index([productId])
+  @@index([serviceId])
+  @@index([sellerOrganizationId])
+}
+
+model OrganizationProfile {
+  id                 Int                @id @default(autoincrement())
+  organizationId     Int                @unique
+  organizationType   OrganizationType?
+  industryType       String?
+  logoUrl            String?
+  description        String?
+  isLargeIndustry    Boolean            @default(false)
+  isBigMsme          Boolean            @default(false)
+  isFeatured         Boolean            @default(false)
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([isLargeIndustry])
+  @@index([isBigMsme])
+  @@index([isFeatured])
+  @@index([verificationStatus])
 }
 
 model SellerOffice {
@@ -387,22 +566,33 @@ model RbacRole {
   code         String           @unique
   name         String
   description  String?
+  companyId    Int?
+  scope        RoleScope        @default(GLOBAL)
   isSystemRole Boolean          @default(true)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   permissions  RolePermission[]
+  company      Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users        UserRole[]
+
+  @@index([companyId])
+  @@index([scope])
 }
 
 model Permission {
   id          Int              @id @default(autoincrement())
   code        String           @unique
   module      String
+  action      String?
+  featureId   Int?
   description String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   roles       RolePermission[]
+  feature     Feature?         @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   @@index([module])
+  @@index([featureId])
 }
 
 model RolePermission {
@@ -416,6 +606,89 @@ model RolePermission {
   @@unique([roleId, permissionId])
   @@index([roleId])
   @@index([permissionId])
+}
+
+model UserRole {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  roleId       Int
+  companyId    Int?
+  organizationId Int?
+  assignedById Int?
+  assignedAt   DateTime  @default(now())
+  isActive     Boolean   @default(true)
+  user         User      @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role         RbacRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedBy   User?     @relation("UserRoleAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId, companyId, organizationId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model Feature {
+  id          Int              @id @default(autoincrement())
+  code        String           @unique
+  name        String
+  module      String
+  description String?
+  isSystem    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  companies   CompanyFeature[]
+  permissions Permission[]
+
+  @@index([module])
+  @@index([isSystem])
+}
+
+model CompanyFeature {
+  companyId Int
+  featureId Int
+  enabled   Boolean  @default(true)
+  updatedById Int?
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  updatedBy User?    @relation("CompanyFeatureUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@id([companyId, featureId])
+  @@index([featureId])
+  @@index([enabled])
+  @@index([updatedById])
+}
+
+model CompanySetting {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+  @@index([companyId])
+}
+
+model ContentPage {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  slug      String
+  title     String
+  body      String
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@index([isActive])
 }
 
 model SellerDocument {
@@ -458,6 +731,7 @@ model Category {
   products       Product[]
   services       Service[]
   requirements   Requirement[]
+  buyerRequirements BuyerRequirement[]
   tenders        Tender[]
 
   @@index([parentId])
@@ -499,6 +773,7 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
   invoiceItems       InvoiceItem[]
   cartItems          CartItem[]
+  guestCartItems     GuestCartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -556,6 +831,7 @@ model Service {
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   certifications Certification[]
   cartItems      CartItem[]
+  guestCartItems GuestCartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -1067,12 +1343,24 @@ model AuctionBid {
 model AuditLog {
   id         Int      @id @default(autoincrement())
   userId     Int?
+  companyId  Int?
   action     String
   entityType String?
   entityId   Int?
   details    Json?
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
   User       User?    @relation(fields: [userId], references: [id])
+  company    Company? @relation(fields: [companyId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 model ApiVerificationLog {
@@ -2536,9 +2824,50 @@ enum ComplianceRuleCode {
 }
 
 enum Role {
+  master_admin
   seller
   buyer
   admin
+}
+
+enum RoleScope {
+  GLOBAL
+  COMPANY
+  ORGANIZATION
+}
+
+enum BuyerRequirementType {
+  PRODUCT
+  SERVICE
+}
+
+enum RequirementVisibility {
+  PUBLIC
+  VERIFIED_SELLERS_ONLY
+}
+
+enum BuyerRequirementStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  OPEN
+  CLOSED
+  CANCELLED
+  AWARDED
+  REJECTED
+}
+
+enum RequirementResponseStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+}
+
+enum CartItemType {
+  PRODUCT
+  SERVICE
 }
 
 // ─── Intra-Organisation Roles ────────────────────────────────────────────────
@@ -2883,4 +3212,51 @@ enum DeliveryTypeEnum {
   URGENT_DELIVERY
   PARTIAL_DELIVERY
   PROJECT_DELIVERY
+}
+
+// ─── Marketplace Public Portal Models ────────────────────────────────────────
+
+model MarketplaceBanner {
+  id           Int      @id @default(autoincrement())
+  companyId    Int?
+  title        String
+  subtitle     String?
+  imageUrl     String?
+  ctaText      String?
+  ctaLink      String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, displayOrder])
+  @@index([companyId])
+}
+
+model MarketplaceNotice {
+  id          Int       @id @default(autoincrement())
+  companyId   Int?
+  title       String
+  description String?
+  type        String    @default("general")
+  isActive    Boolean   @default(true)
+  publishedAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, publishedAt])
+  @@index([companyId])
+  @@index([type])
+}
+
+model MarketplaceSetting {
+  id        Int      @id @default(autoincrement())
+  companyId Int?
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, key])
+  @@index([companyId])
 }

@@ -83,6 +83,10 @@ const techDecisionSchema = z.object({
     note: z.string().trim().max(1000).optional()
 });
 
+const mergeGuestCartSchema = z.object({
+    cartToken: z.string().trim().min(12).max(120)
+});
+
 // ─── Get / create active cart ─────────────────────────────────────────────────
 
 const getOrCreateActiveCart = async (organizationId: number, createdById: number) => {
@@ -121,6 +125,49 @@ router.get('/cart', authenticate, authorize('buyer', 'seller'), shortCache(10), 
     ensureOrg(req);
     const cart = await getOrCreateActiveCart(orgId(req), userId(req));
     ok(res, cart);
+}));
+
+router.post('/cart/merge-guest', authenticate, authorize('buyer'), requireApprovedOrg, asyncRoute(async (req, res) => {
+    ensureOrg(req);
+    const { cartToken } = mergeGuestCartSchema.parse(req.body);
+    const guestCart = await (prisma as any).guestCart.findUnique({
+        where: { cartToken },
+        include: { items: { include: { product: true, service: true } } }
+    });
+    if (!guestCart || guestCart.items.length === 0) {
+        return ok(res, await getOrCreateActiveCart(orgId(req), userId(req)));
+    }
+
+    const cart = await getOrCreateActiveCart(orgId(req), userId(req));
+    for (const guestItem of guestCart.items) {
+        const product = guestItem.product;
+        const service = guestItem.service;
+        const sellerIdValue = product?.sellerId || service?.sellerId;
+        if (!sellerIdValue) continue;
+        const existing = await prisma.cartItem.findFirst({
+            where: { cartId: cart.id, productId: product?.id || null, serviceId: service?.id || null }
+        });
+        if (existing) {
+            await prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: Number(existing.quantity) + Number(guestItem.quantity) } });
+        } else {
+            await prisma.cartItem.create({
+                data: {
+                    cartId: cart.id,
+                    productId: product?.id || null,
+                    serviceId: service?.id || null,
+                    sellerId: sellerIdValue,
+                    itemName: product?.name || service?.name || 'Marketplace Item',
+                    quantity: Number(guestItem.quantity),
+                    unitOfMeasure: product?.unitOfMeasure || 'unit',
+                    unitPrice: product?.price || service?.basePrice || 0,
+                    currency: product?.currency || service?.currency || 'INR'
+                }
+            });
+        }
+    }
+    await (prisma as any).guestCart.delete({ where: { id: guestCart.id } }).catch(() => undefined);
+    const refreshed = await prisma.cart.findUnique({ where: { id: cart.id }, include: cartIncludes });
+    ok(res, refreshed);
 }));
 
 // ─── POST /api/cart/items — add item ─────────────────────────────────────────

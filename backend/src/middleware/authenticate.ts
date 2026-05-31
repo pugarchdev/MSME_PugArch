@@ -10,6 +10,8 @@ export type AuthenticatedUser = {
   sessionVersion: number;
   permissions?: string[];
   organizationId?: number | null;
+  companyId?: number | null;
+  enabledFeatures?: string[];
 };
 
 export type AuthRequest = Request & {
@@ -44,7 +46,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, sessionVersion: true, lockedUntil: true, organizationId: true }
+      select: { id: true, role: true, sessionVersion: true, lockedUntil: true, organizationId: true, companyId: true }
     });
 
     if (!user || user.role !== decoded.role || user.sessionVersion !== sessionVersion) {
@@ -69,7 +71,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       role: user.role, 
       sessionVersion: user.sessionVersion, 
       permissions: [], 
-      organizationId: user.organizationId 
+      organizationId: user.organizationId,
+      companyId: user.companyId,
+      enabledFeatures: []
     };
 
     // Fetch dynamic RBAC permissions
@@ -85,6 +89,27 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       });
       if (rbacRole) {
         req.user.permissions = rbacRole.permissions.map((rp: any) => rp.permission.code);
+      }
+
+      const activeAssignments = await (prisma as any).userRole.findMany({
+        where: {
+          userId: user.id,
+          isActive: true,
+          OR: [{ companyId: null }, { companyId: user.companyId }]
+        },
+        include: { role: { include: { permissions: { include: { permission: true } } } } }
+      });
+      const dynamicPermissions = activeAssignments.flatMap((assignment: any) =>
+        assignment.role.permissions.map((rp: any) => rp.permission.code)
+      );
+      req.user.permissions = Array.from(new Set([...(req.user.permissions || []), ...dynamicPermissions]));
+
+      if (user.companyId) {
+        const companyFeatures = await (prisma as any).companyFeature.findMany({
+          where: { companyId: user.companyId, enabled: true },
+          include: { feature: true }
+        });
+        req.user.enabledFeatures = companyFeatures.map((row: any) => row.feature.code);
       }
     } catch {
       // Fallback: empty permissions if RBAC lookup fails

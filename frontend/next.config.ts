@@ -7,8 +7,9 @@ const getBackendUrl = (): string => {
     try {
       const related = JSON.parse(process.env.VERCEL_RELATED_PROJECTS);
       const backendProject = related.find(
-        (p: any) => p.projectName === 'msme-pugarch-backend' || p.projectId?.startsWith('prj_')
-      );
+        (p: any) => p.projectName === 'msme-pugarch-backend'
+      ) || related[0];
+      
       if (backendProject) {
         const env = process.env.VERCEL_ENV || 'production';
         const host = backendProject.targets[env]?.url || backendProject.targets.production?.url;

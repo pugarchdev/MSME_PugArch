@@ -130,11 +130,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
 
   const navItems: SidebarItem[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin'] },
-    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
     { label: 'Admin Console', path: '/admin/onboarding', icon: ShieldCheck, roles: ['admin'] },
     { label: 'Governance Desk', path: '/admin/governance', icon: ClipboardCheck, roles: ['admin'] },
-    { label: 'Seller Hub', path: '/seller/onboarding', icon: Store, roles: ['seller'] },
-    { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
     { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'Quotations', path: '/quotations', icon: ClipboardCheck, roles: ['seller', 'buyer'] },
@@ -153,20 +150,18 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'RFQ', path: '/seller/rfq', icon: FileSearch, roles: ['seller'] },
     { label: 'Direct Purchase', path: '/seller/direct-purchase', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Vendors', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
-    { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'] },
-    { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Parcel Tracking', path: '/buyer/tracking', icon: Truck, roles: ['buyer'] },
     { label: 'Delivery Console', path: '/admin/delivery', icon: Truck, roles: ['admin'] },
     { label: 'MIS Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'] },
-    { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
-    { label: 'Profile', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
     { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'Cart Approvals', path: '/cart/approvals', icon: CheckSquare, roles: ['buyer'] },
     { label: 'Technical Review', path: '/cart/technical-review', icon: ShieldCheck, roles: ['buyer'] },
     { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer'] },
     { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer'] },
+    
+    { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'] },
+    { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
-
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
@@ -175,6 +170,11 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     // { label: 'Audit Logs', path: '/admin/audit-logs', icon: FileSearch, roles: ['admin'] },
     { label: 'Fraud Alerts', path: '/admin/fraud-alerts', icon: AlertTriangle, roles: ['admin'] },
     { label: 'Compliance Rules', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
+    { label: 'Seller Hub', path: '/seller/onboarding', icon: Store, roles: ['seller'] },
+    { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
+    { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
+    { label: 'Account Settings', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
+    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
   ];
 
   const filteredNav = navItems.filter(item => {

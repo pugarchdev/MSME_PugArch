@@ -2,24 +2,13 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 const getBackendUrl = (): string => {
-  // If we are on Vercel and have related projects, resolve the corresponding backend preview/prod URL
-  if (process.env.VERCEL_RELATED_PROJECTS) {
-    try {
-      const related = JSON.parse(process.env.VERCEL_RELATED_PROJECTS);
-      const backendProject = related.find(
-        (p: any) => p.projectName === 'msme-pugarch-backend'
-      ) || related[0];
-      
-      if (backendProject) {
-        const env = process.env.VERCEL_ENV || 'production';
-        const host = backendProject.targets[env]?.url || backendProject.targets.production?.url;
-        if (host) {
-          return `https://${host}`;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse VERCEL_RELATED_PROJECTS in next.config.ts:', e);
-    }
+  // If we are on Vercel, dynamically construct the backend URL from the frontend VERCEL_URL
+  if (process.env.VERCEL_URL) {
+    // e.g. msme-frontend-git-home-anands-projects-27af4f8a.vercel.app
+    // replaces 'msme-frontend' with 'msme-pugarch-backend' to get the exact matching backend host
+    const vercelUrl = process.env.VERCEL_URL;
+    const backendHost = vercelUrl.replace('msme-frontend', 'msme-pugarch-backend');
+    return `https://${backendHost}`;
   }
 
   // Fallback to local .env configuration

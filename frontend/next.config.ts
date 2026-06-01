@@ -1,13 +1,19 @@
 import type { NextConfig } from 'next';
 import path from 'path';
 
+const isAbsoluteHttpUrl = (value?: string): value is string =>
+  Boolean(value && /^https?:\/\//i.test(value));
+
 const getBackendUrl = (): string => {
   // 1. Allow explicit override via BACKEND_URL or NEXT_PUBLIC_BACKEND_URL
   if (process.env.BACKEND_URL) {
-    return process.env.BACKEND_URL;
+    return process.env.BACKEND_URL.replace(/\/$/, '');
   }
   if (process.env.NEXT_PUBLIC_BACKEND_URL) {
-    return process.env.NEXT_PUBLIC_BACKEND_URL;
+    return process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, '');
+  }
+  if (isAbsoluteHttpUrl(process.env.NEXT_PUBLIC_API_URL)) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
   }
 
   // 2. If we are on Vercel, dynamically construct the backend URL from the frontend VERCEL_URL
@@ -23,11 +29,11 @@ const getBackendUrl = (): string => {
     } else {
       backendHost = vercelUrl.replace('frontend', 'backend');
     }
-    return `https://${backendHost}`;
+    return `https://${backendHost}`.replace(/\/$/, '');
   }
 
   // 3. Fallback to local .env configuration
-  return process.env.NEXT_PUBLIC_API_URL || '';
+  return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 };
 
 const nextConfig: NextConfig = {

@@ -17,12 +17,26 @@ export const PERMISSIONS = {
   COMPLIANCE_READ: 'compliance:read',
   COMPLIANCE_OVERRIDE: 'compliance:override',
   AUDIT_READ: 'audit:read',
-  FILES_WRITE: 'files:write'
+  FILES_WRITE: 'files:write',
+  USER_VIEW: 'user.view',
+  USER_CREATE: 'user.create',
+  USER_UPDATE: 'user.update',
+  USER_DELETE: 'user.delete',
+  ROLE_ASSIGN: 'role.assign',
+  PERMISSION_MANAGE: 'permission.manage',
+  FEATURE_TOGGLE: 'feature.toggle',
+  COMPANY_MANAGE: 'company.manage',
+  CONTENT_UPDATE: 'content.update',
+  BRANDING_UPDATE: 'branding.update',
+  ORGANIZATION_MANAGE: 'organization.manage',
+  AUDIT_VIEW: 'audit.view',
+  OVERRIDE: 'override'
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
+  master_admin: Object.values(PERMISSIONS),
   admin: Object.values(PERMISSIONS),
   buyer: [
     PERMISSIONS.TENDERS_READ,
@@ -49,6 +63,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
 export const can = (user: { role?: string; permissions?: string[] } | undefined, permission: Permission | string) => {
   if (!user) return false;
+  if (user.role === 'master_admin') return true;
   // Check dynamic permissions first (from RBAC database)
   if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
     return user.permissions.includes(permission as string);
@@ -89,3 +104,81 @@ export const FOUNDATION_PERMISSION_CODES = {
 
 export type FoundationPermissionCode =
   (typeof FOUNDATION_PERMISSION_CODES)[keyof typeof FOUNDATION_PERMISSION_CODES];
+
+export const MASTER_FEATURES = [
+  ['buyer-registration', 'Buyer Registration', 'registration'],
+  ['seller-registration', 'Seller Registration', 'registration'],
+  ['gst-verification', 'GST Verification', 'verification'],
+  ['pan-verification', 'PAN Verification', 'verification'],
+  ['aadhaar-verification', 'Aadhaar Verification', 'verification'],
+  ['udyam-verification', 'Udyam Verification', 'verification'],
+  ['cin-verification', 'CIN Verification', 'verification'],
+  ['tender-management', 'Tender Management', 'procurement'],
+  ['bid-submission', 'Bid Submission', 'procurement'],
+  ['reverse-auction', 'Reverse Auction', 'procurement'],
+  ['rate-contract', 'Rate Contract', 'procurement'],
+  ['procurement-planning', 'Procurement Planning', 'procurement'],
+  ['buyer-seller-matching', 'Buyer-Seller Matching', 'marketplace'],
+  ['product-service-catalog', 'Product/Service Catalog', 'catalogue'],
+  ['document-upload', 'Document Upload', 'documents'],
+  ['document-verification', 'Document Verification', 'documents'],
+  ['approval-workflow', 'Approval Workflow', 'workflow'],
+  ['escrow-nodal-bank', 'Escrow/Nodal Bank Module', 'finance'],
+  ['payment-module', 'Payment Module', 'finance'],
+  ['razorpay-payment', 'Razorpay Payment', 'finance'],
+  ['grievance-module', 'Grievance Module', 'support'],
+  ['notifications', 'Notifications', 'communication'],
+  ['email-otp', 'Email OTP', 'communication'],
+  ['mobile-otp', 'Mobile OTP', 'communication'],
+  ['reports-mis', 'Reports & MIS', 'reports'],
+  ['dashboard-analytics', 'Dashboard Analytics', 'analytics'],
+  ['audit-logs', 'Audit Logs', 'audit'],
+  ['role-management', 'Role Management', 'access-control'],
+  ['permission-management', 'Permission Management', 'access-control'],
+  ['organization-management', 'Organization Management', 'organizations'],
+  ['user-management', 'User Management', 'users'],
+  ['compliance-risk', 'Compliance Risk', 'compliance'],
+  ['procurement-readiness', 'Procurement Readiness', 'compliance'],
+  ['lpi-logistics-partner', 'LPI / Logistics Partner Module', 'logistics'],
+  ['search-filters', 'Search and Filters', 'search'],
+  ['export-csv-pdf-excel', 'Export CSV/PDF/Excel', 'exports'],
+  ['cms-content-management', 'CMS / Content Management', 'content'],
+  ['branding-management', 'Branding Management', 'branding'],
+  ['buyer-requirement-board', 'Enable buyer requirement board', 'requirements'],
+  ['large-buyer-requirements-home', 'Enable large buyer requirements on home page', 'requirements'],
+  ['requirement-posting', 'Enable requirement posting', 'requirements'],
+  ['seller-response-requirements', 'Enable seller response to requirements', 'requirements'],
+  ['guest-cart', 'Enable guest cart', 'cart'],
+  ['cart-without-login', 'Enable cart without login', 'cart'],
+  ['large-industries-section', 'Enable large industries section', 'organizations'],
+  ['big-msmes-section', 'Enable big MSMEs section', 'organizations'],
+  ['hamburger-sidebar', 'Enable hamburger sidebar', 'navigation'],
+  ['organization-listing', 'Enable organization listing', 'organizations'],
+  ['product-marketplace', 'Enable product marketplace', 'marketplace'],
+  ['service-marketplace', 'Enable service marketplace', 'marketplace'],
+  ['public-browsing', 'Enable public browsing', 'marketplace'],
+  ['checkout', 'Enable checkout', 'cart'],
+  ['request-quote', 'Enable request quote', 'quotations']
+] as const;
+
+export const MASTER_PERMISSION_CODES = [
+  'user.view',
+  'user.create',
+  'user.update',
+  'user.delete',
+  'role.assign',
+  'permission.manage',
+  'buyer.approve',
+  'seller.verify',
+  'tender.create',
+  'tender.publish',
+  'bid.submit',
+  'report.export',
+  'feature.toggle',
+  'company.manage',
+  'content.update',
+  'branding.update',
+  'organization.manage',
+  'audit.view',
+  'override'
+] as const;

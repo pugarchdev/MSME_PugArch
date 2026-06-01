@@ -30,25 +30,7 @@ const isAllowedVercelFrontendOrigin = (origin: string) => {
     if (url.protocol !== 'https:') return false;
 
     const hostname = url.hostname;
-
-    // Allow known production and static frontend domains
-    const staticDomains = [
-      'msme-pugarch-frontend.vercel.app',
-      'msme-portal-pug-arch-frontend.vercel.app',
-      'msme-frontend.vercel.app',
-      'msme-pugarch.vercel.app',
-      'msme-portal-pug-arch-frontend-onet.vercel.app'
-    ];
-    if (staticDomains.includes(hostname)) return true;
-
-    // Securely allow Vercel Preview Deployments for this specific project
-    // Disable wildcard previews in production: !isProduction && ...
-    const isLocalPreview = !isProduction && hostname.endsWith('.vercel.app');
-    const isVercelPreview = 
-      hostname.endsWith('.vercel.app') &&
-      (hostname.startsWith('msme-frontend') || hostname.startsWith('msme-backend'));
-
-    return isLocalPreview || isVercelPreview;
+    return hostname.endsWith('.vercel.app');
   } catch {
     return false;
   }

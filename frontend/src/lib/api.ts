@@ -38,19 +38,9 @@ const getCache = new Map<string, CachedResponse>();
 const resolveUrl = (endpoint: string) => {
   if (endpoint.startsWith('http')) return endpoint;
 
-  if (!BASE_URL && process.env.NODE_ENV !== 'development') {
-    throw new Error('NEXT_PUBLIC_API_URL is not configured for this deployment');
-  }
-
-  if (
-    process.env.NODE_ENV !== 'development' &&
-    typeof window !== 'undefined' &&
-    BASE_URL &&
-    new URL(BASE_URL).origin === window.location.origin
-  ) {
-    throw new Error('NEXT_PUBLIC_API_URL points to the frontend deployment instead of the backend API');
-  }
-
+  // On Vercel, BASE_URL is intentionally empty — all /api/* requests are
+  // same-origin and proxied to the backend via Next.js rewrites.
+  // In local dev, BASE_URL is the backend URL (e.g. http://localhost:5000).
   return `${BASE_URL}${endpoint}`;
 };
 

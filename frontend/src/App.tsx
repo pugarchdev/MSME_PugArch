@@ -15,6 +15,13 @@ import Dashboard from './views/Dashboard';
 // JS bundle dramatically (the App tree was ~500kB; without lazy, every page
 // load shipped the entire portal). React.lazy + Suspense lets Next.js
 // stream chunks per route so navigation only downloads what the user needs.
+const MarketplaceHome = lazy(() => import('./features/marketplace/pages/MarketplaceHome'));
+const MarketplaceProductList = lazy(() => import('./features/marketplace/pages/MarketplaceProductList'));
+const MarketplaceProductDetail = lazy(() => import('./features/marketplace/pages/MarketplaceProductDetail'));
+const MarketplaceServiceDetail = lazy(() => import('./features/marketplace/pages/MarketplaceServiceDetail'));
+const BuyerRequirementListPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementListPage'));
+const BuyerRequirementDetailPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementDetailPage'));
+const GuestCartPage = lazy(() => import('./features/marketplace/pages/GuestCartPage'));
 const SellerOnboarding = lazy(() => import('./views/SellerOnboarding'));
 const BuyerOnboarding = lazy(() => import('./views/BuyerOnboarding'));
 const AdminOnboarding = lazy(() => import('./views/AdminOnboarding'));
@@ -75,6 +82,7 @@ const VendorStorefrontPage = lazy(() => import('./features/vendors/pages/VendorS
 const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
 const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
 const PortalDocumentation = lazy(() => import('./views/PortalDocumentation'));
+const MasterAdminPage = lazy(() => import('./features/masterAdmin/pages/MasterAdminPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -99,7 +107,11 @@ function RouteFallback() {
 }
 
 
-const roleOk = (role?: string, allowed?: string[]) => !allowed || (role && allowed.includes(role));
+const roleOk = (role?: string, allowed?: string[]) => {
+  if (!allowed) return true;
+  if (role === 'master_admin' && allowed.includes('admin')) return true;
+  return Boolean(role && allowed.includes(role));
+};
 
 /**
  * Imperative redirect component. Guards against firing when we're already on
@@ -148,7 +160,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup'].includes(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart'].includes(pathname) && !pathname.startsWith('/marketplace')) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -196,7 +208,7 @@ export default function App() {
     // user data yet AND no cached user from a previous session. After that,
     // background refreshes should never blank the UI.
     if (loading && !user) return <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...</div>;
-    if (pathname === '/') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Home />;
+    if (pathname === '/') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <MarketplaceHome />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Login />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
@@ -208,7 +220,17 @@ export default function App() {
     // in, sign up, or auto-accept; InviteSignupPage creates the account.
     if (pathname === '/invite/accept') return <AcceptInvitePage />;
     if (pathname === '/invite/signup') return <InviteSignupPage />;
+    // Public marketplace routes (accessible without login)
+    if (pathname === '/marketplace/products') return <MarketplaceProductList />;
+    if (pathname === '/marketplace/services') return <MarketplaceProductList />;
+    if (pathname === '/marketplace/sellers') return <MarketplaceHome />;
+    if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
+    if (/^\/marketplace\/requirements\/\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
+    if (/^\/marketplace\/products\/\d+$/.test(pathname)) return <MarketplaceProductDetail />;
+    if (/^\/marketplace\/services\/\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
+    if (pathname === '/cart' && !user) return <GuestCartPage />;
     if (!user) return null;
+    if (pathname === '/master-admin' && roleOk(user.role, ['master_admin'])) return <MasterAdminPage />;
     if (pathname === '/dashboard') return <Dashboard />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
@@ -312,7 +334,8 @@ export default function App() {
   };
 
   const fixedAuthRoutes = ['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register'];
-  const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname);
+  const isMarketplaceRoute = pathname.startsWith('/marketplace');
+  const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
 
   return (
     <div className="flex min-h-dvh bg-neutral-50 font-sans text-neutral-900">

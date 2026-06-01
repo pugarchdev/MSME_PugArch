@@ -53,6 +53,7 @@ body {
 }
 
 @layer base {
+
   button,
   [role="button"] {
     transition-property: background-color, border-color, color, box-shadow, opacity, translate, scale, transform, filter;
@@ -300,6 +301,33 @@ tr:hover .col-sticky-right {
   background-color: #f8fafc;
 }
 
+/* ─── High Contrast Mode ───────────────────────────────────────────────────────
+   Toggled via the accessibility button in the marketplace header. Increases
+   contrast for text and borders to meet WCAG AAA requirements. */
+.high-contrast {
+  --color-portal-surface: #ffffff;
+  --color-portal-border: #1f2937;
+}
+
+.high-contrast body {
+  color: #000000;
+}
+
+.high-contrast .bg-slate-50,
+.high-contrast .bg-slate-100 {
+  background-color: #ffffff !important;
+}
+
+.high-contrast .text-slate-400,
+.high-contrast .text-slate-500 {
+  color: #374151 !important;
+}
+
+.high-contrast .border-slate-100,
+.high-contrast .border-slate-200 {
+  border-color: #6b7280 !important;
+}
+
 /* ─── Government-Style Toast Messages ─────────────────────────────────────────
    Transforms the default sonner toast notifications into highly polished,
    authoritative B2B government-portal style cards featuring the national
@@ -308,8 +336,10 @@ tr:hover .col-sticky-right {
 
 [data-sonner-toast] {
   background-color: #ffffff !important;
-  color: #1f2937 !important; /* Slate-800 body */
-  border: 1px solid #cbd5e1 !important; /* Elegant slate border on all sides */
+  color: #1f2937 !important;
+  /* Slate-800 body */
+  border: 1px solid #cbd5e1 !important;
+  /* Elegant slate border on all sides */
   border-radius: 6px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
   font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
@@ -330,14 +360,13 @@ tr:hover .col-sticky-right {
   left: 0 !important;
   right: 0 !important;
   height: 2.5px !important;
-  background: linear-gradient(90deg, 
-    #ff9933 0%, 
-    #ff9933 33.33%, 
-    #ffffff 33.33%, 
-    #ffffff 66.66%, 
-    #138808 66.66%, 
-    #138808 100%
-  ) !important;
+  background: linear-gradient(90deg,
+      #ff9933 0%,
+      #ff9933 33.33%,
+      #ffffff 33.33%,
+      #ffffff 66.66%,
+      #138808 66.66%,
+      #138808 100%) !important;
   z-index: 10 !important;
 }
 
@@ -356,7 +385,8 @@ tr:hover .col-sticky-right {
   font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.08em !important;
-  color: #94a3b8 !important; /* Subtle Slate-400 */
+  color: #94a3b8 !important;
+  /* Subtle Slate-400 */
   margin-bottom: 1px !important;
 }
 
@@ -364,14 +394,16 @@ tr:hover .col-sticky-right {
 [data-sonner-toast] [data-title] {
   font-size: 14px !important;
   font-weight: 600 !important;
-  color: #0b2447 !important; /* Brand Navy */
+  color: #0b2447 !important;
+  /* Brand Navy */
   line-height: 1.4 !important;
 }
 
 [data-sonner-toast] [data-description] {
   font-size: 12.5px !important;
   font-weight: 400 !important;
-  color: #475569 !important; /* Slate-600 */
+  color: #475569 !important;
+  /* Slate-600 */
   line-height: 1.4 !important;
 }
 
@@ -389,22 +421,26 @@ tr:hover .col-sticky-right {
 }
 
 [data-sonner-toast][data-type="success"] [data-icon] {
-  background-color: #e8f5e9 !important; /* Soft green */
+  background-color: #e8f5e9 !important;
+  /* Soft green */
   color: #138808 !important;
 }
 
 [data-sonner-toast][data-type="error"] [data-icon] {
-  background-color: #ffebee !important; /* Soft red */
+  background-color: #ffebee !important;
+  /* Soft red */
   color: #d32f2f !important;
 }
 
 [data-sonner-toast][data-type="warning"] [data-icon] {
-  background-color: #fff3e0 !important; /* Soft saffron */
+  background-color: #fff3e0 !important;
+  /* Soft saffron */
   color: #ff9933 !important;
 }
 
 [data-sonner-toast][data-type="info"] [data-icon] {
-  background-color: #e1f5fe !important; /* Soft blue */
+  background-color: #e1f5fe !important;
+  /* Soft blue */
   color: #0b2447 !important;
 }
 

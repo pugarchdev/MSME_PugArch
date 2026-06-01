@@ -9,6 +9,8 @@ import cartRoutes from './cart.routes.js';
 import approvalsRoutes from './approvals.routes.js';
 import grnRoutes from './grn.routes.js';
 import tenderEvalRoutes from './tender-evaluation.routes.js';
+import masterAdminRoutes from './master-admin.routes.js';
+import marketplaceRoutes from './marketplace.routes.js';
 import prisma from '../config/prisma.js';
 
 const router = Router();
@@ -52,11 +54,13 @@ router.use('/auth', authRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/ratings', ratingsRoutes);
+router.use('/', marketplaceRoutes);
 router.use('/', orgRoutes);
 router.use('/', cartRoutes);
 router.use('/', approvalsRoutes);
 router.use('/', grnRoutes);
 router.use('/', tenderEvalRoutes);
+router.use('/', masterAdminRoutes);
 router.use('/', phase4Routes);
 
 export default router;

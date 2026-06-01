@@ -617,28 +617,34 @@ router.post('/marketplace/guest-cart/items', async (req: Request, res: Response)
         const productId = body.productId || null;
         const serviceId = body.serviceId || null;
 
-        const item = await db.guestCartItem.upsert({
+        const existing = await db.guestCartItem.findFirst({
             where: {
-                guestCartId_itemType_productId_serviceId: {
-                    guestCartId: cart.id,
-                    itemType,
-                    productId,
-                    serviceId
-                }
-            },
-            create: {
                 guestCartId: cart.id,
                 itemType,
                 productId,
-                serviceId,
-                quantity: body.quantity,
-                priceSnapshot: product?.price || service?.basePrice || null,
-                sellerOrganizationId: product?.organizationId || service?.organizationId || null
-            },
-            update: {
-                quantity: { increment: body.quantity }
+                serviceId
             }
         });
+
+        let item;
+        if (existing) {
+            item = await db.guestCartItem.update({
+                where: { id: existing.id },
+                data: { quantity: Number(existing.quantity) + body.quantity }
+            });
+        } else {
+            item = await db.guestCartItem.create({
+                data: {
+                    guestCartId: cart.id,
+                    itemType,
+                    productId,
+                    serviceId,
+                    quantity: body.quantity,
+                    priceSnapshot: product?.price || service?.basePrice || null,
+                    sellerOrganizationId: product?.organizationId || service?.organizationId || null
+                }
+            });
+        }
 
         const refreshed = await db.guestCart.findUnique({ where: { id: cart.id }, include: { items: { include: { product: true, service: true, sellerOrganization: true } } } });
         return ok(res, { cart: refreshed, item });
@@ -673,28 +679,33 @@ router.put('/marketplace/guest-cart/items', async (req: Request, res: Response) 
                 where: { guestCartId: cart.id, itemType, productId, serviceId }
             });
         } else {
-            await db.guestCartItem.upsert({
+            const existing = await db.guestCartItem.findFirst({
                 where: {
-                    guestCartId_itemType_productId_serviceId: {
-                        guestCartId: cart.id,
-                        itemType,
-                        productId,
-                        serviceId
-                    }
-                },
-                create: {
                     guestCartId: cart.id,
                     itemType,
                     productId,
-                    serviceId,
-                    quantity: body.quantity,
-                    priceSnapshot: product?.price || service?.basePrice || null,
-                    sellerOrganizationId: product?.organizationId || service?.organizationId || null
-                },
-                update: {
-                    quantity: body.quantity
+                    serviceId
                 }
             });
+
+            if (existing) {
+                await db.guestCartItem.update({
+                    where: { id: existing.id },
+                    data: { quantity: body.quantity }
+                });
+            } else {
+                await db.guestCartItem.create({
+                    data: {
+                        guestCartId: cart.id,
+                        itemType,
+                        productId,
+                        serviceId,
+                        quantity: body.quantity,
+                        priceSnapshot: product?.price || service?.basePrice || null,
+                        sellerOrganizationId: product?.organizationId || service?.organizationId || null
+                    }
+                });
+            }
         }
         
         const refreshed = await db.guestCart.findUnique({ where: { id: cart.id }, include: { items: { include: { product: true, service: true, sellerOrganization: true } } } });

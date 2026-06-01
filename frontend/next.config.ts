@@ -2,14 +2,31 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 const getBackendUrl = (): string => {
-  // If we are on Vercel, dynamically construct the backend URL from the frontend VERCEL_URL
+  // 1. Allow explicit override via BACKEND_URL or NEXT_PUBLIC_BACKEND_URL
+  if (process.env.BACKEND_URL) {
+    return process.env.BACKEND_URL;
+  }
+  if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+    return process.env.NEXT_PUBLIC_BACKEND_URL;
+  }
+
+  // 2. If we are on Vercel, dynamically construct the backend URL from the frontend VERCEL_URL
   if (process.env.VERCEL_URL) {
     const vercelUrl = process.env.VERCEL_URL;
-    const backendHost = vercelUrl.replace('msme-frontend', 'msme-pugarch-backend');
+    let backendHost = vercelUrl;
+    if (vercelUrl.includes('msme-pugarch-frontend')) {
+      backendHost = vercelUrl.replace('msme-pugarch-frontend', 'msme-pugarch-backend');
+    } else if (vercelUrl.includes('msme-portal-pug-arch-frontend')) {
+      backendHost = vercelUrl.replace('msme-portal-pug-arch-frontend', 'msme-pugarch-backend');
+    } else if (vercelUrl.includes('msme-frontend')) {
+      backendHost = vercelUrl.replace('msme-frontend', 'msme-pugarch-backend');
+    } else {
+      backendHost = vercelUrl.replace('frontend', 'backend');
+    }
     return `https://${backendHost}`;
   }
 
-  // Fallback to local .env configuration
+  // 3. Fallback to local .env configuration
   return process.env.NEXT_PUBLIC_API_URL || '';
 };
 

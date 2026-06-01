@@ -105,9 +105,8 @@ export default function MarketplaceProductList() {
         onSuccess: (data) => {
             if (data?.cart) {
                 queryClient.setQueryData(['guestCart'], data.cart);
-            } else {
-                queryClient.invalidateQueries({ queryKey: ['guestCart'] });
             }
+            queryClient.invalidateQueries({ queryKey: ['guestCart'] });
         },
         onError: (error: any, variables, context: any) => {
             if (context?.previousCart) {

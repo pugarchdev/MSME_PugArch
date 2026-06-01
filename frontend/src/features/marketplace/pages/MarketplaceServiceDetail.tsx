@@ -90,9 +90,8 @@ export default function MarketplaceServiceDetail() {
         onSuccess: (data) => {
             if (data?.cart) {
                 queryClient.setQueryData(['guestCart'], data.cart);
-            } else {
-                queryClient.invalidateQueries({ queryKey: ['guestCart'] });
             }
+            queryClient.invalidateQueries({ queryKey: ['guestCart'] });
         },
         onError: (error: any, newQuantity, context: any) => {
             if (context?.previousCart) {

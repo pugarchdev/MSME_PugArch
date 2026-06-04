@@ -1989,7 +1989,7 @@ export default function SellerOnboarding() {
                     <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
                       <div>
                         <h2 className="text-xl font-bold text-slate-800">Seller Profile</h2>
-                        <p className="text-sm text-slate-500">Summary of your Personal Profile with GeM</p>
+                        <p className="text-sm text-slate-500">Summary of your seller profile on JsgSmile.</p>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                         <div>
@@ -2054,8 +2054,8 @@ export default function SellerOnboarding() {
                           className="mt-1.5 h-4 w-4"
                         />
                         <div className="text-xs text-slate-600 space-y-2">
-                          <p>I, the holder of the above Aadhaar, hereby give my consent to GeM ( Government e Marketplace), for using my Aadhaar number as allotted by UIDAI for GeM Registration. GeM ( Government e Marketplace) ,have informed me that my aadhaar data will not be stored/shared.</p>
-                          <p className="font-medium">मैं, उपर्युक्त आधार का धारक, भारतीय विशिष्ट पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को जेम पंजीकरण हेतु प्रयोग में लाने हेतु जेम (गवर्नमेंट ई-मार्केटप्लेस) को एतदद्वारा अपनी सहमति प्रदान करता हूँ। जेम (गवर्नमेंट ई-मार्केटप्लेस) ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।</p>
+                          <p>I, the holder of the above Aadhaar, give my consent to JsgSmile to use the Aadhaar number or Virtual ID provided by me for identity verification. I understand that Aadhaar data will be handled according to applicable privacy and security requirements.</p>
+                          <p className="font-medium">Please read this consent carefully before continuing.</p>
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -2090,7 +2090,7 @@ export default function SellerOnboarding() {
                   {currentSection === 'changeEmail' && (
                     <div className="space-y-2 animate-in fade-in duration-300 min-w-0 w-full">
                       <div>
-                        <p className="text-sm text-slate-500">Please note that the new email ID will be used for business done on GeM</p>
+                        <p className="text-sm text-slate-500">Please note that the new email ID will be used for business done on JsgSmile.</p>
                       </div>
                       <div className="bg-slate-50/50 border border-blue-200 rounded-lg p-5 space-y-2 mt-4">
                         <h4 className="text-red-600 font-black text-sm">Important Update on Bid Notifications</h4>
@@ -2135,7 +2135,7 @@ export default function SellerOnboarding() {
                         </div>
                         <div className="flex gap-2 items-start">
                           <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                          <p>Kindly verify Business PAN, Registered address and CIN (for companies) to view GeM Seller ID.</p>
+                          <p>Kindly verify Business PAN, registered address, and CIN (for companies) to activate your JsgSmile Seller ID.</p>
                         </div>
                         <div className="flex gap-2 items-start">
                           <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
@@ -2149,7 +2149,7 @@ export default function SellerOnboarding() {
                       </div>
 
                       <div className="bg-slate-50 border border-slate-100 text-slate-700 text-sm p-5 rounded-lg">
-                        You are advised to check and validate your bank account detail before closing your seller account at GeM. The bank account details cannot be updated once the account is closed which may hamper refund of the caution money.
+                        You are advised to check and validate your bank account details before closing your seller account on JsgSmile. The bank account details cannot be updated once the account is closed, which may affect pending refunds or settlements.
                       </div>
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">

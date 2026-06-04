@@ -5,9 +5,9 @@
  * Route: /org/team
  * Access: ORG_ADMIN only
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-    Mail, Plus, RefreshCw, Shield, Trash2, UserCheck,
+    Mail, Plus, RefreshCw, Search, Shield, Trash2, UserCheck,
     UserPlus, Users, X, ChevronDown, Clock, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,7 +19,10 @@ import { getApi, postApi, putApi, deleteApi } from '../../shared/apiClient';
 import { formatDateTime, formatRelative } from '../../shared/format';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
-import { useFeatureQuery } from '../../shared/hooks';
+import { Pagination } from '../../shared/Pagination';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../../shared/hooks';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +53,7 @@ type Invitation = {
     createdAt: string;
     invitedBy: { id: number; name: string; email: string };
 };
+type MemberSortKey = 'name' | 'email' | 'role' | 'status' | 'joined' | 'lastLogin';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,6 +82,12 @@ export default function TeamManagementPage() {
     const { orgRole, orgStatus, isOrgAdmin } = useOrgRole();
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [editingMember, setEditingMember] = useState<Member | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [sortKey, setSortKey] = useState<MemberSortKey>('joined');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+    const [viewMode, setViewMode] = useResponsiveViewMode('phase7:team-management:view-mode');
 
     const { data: membersData, loading: membersLoading, refreshing: membersRefreshing, error: membersError, reload: reloadMembers } =
         useFeatureQuery<Member[]>('/api/org/members', []);
@@ -87,6 +97,46 @@ export default function TeamManagementPage() {
 
     const members = Array.isArray(membersData) ? membersData : [];
     const invitations = Array.isArray(invitesData) ? invitesData : [];
+    const visibleMembers = useMemo(() => {
+        const text = searchTerm.trim().toLowerCase();
+        return [...members].filter(member => {
+            const haystack = [
+                member.userId,
+                member.user.name,
+                member.user.email,
+                member.user.mobile,
+                member.orgRole,
+                member.user.accountStatus
+            ].join(' ').toLowerCase();
+            if (text && !haystack.includes(text)) return false;
+            if (roleFilter && member.orgRole !== roleFilter) return false;
+            if (statusFilter === 'active' && !member.isActive) return false;
+            if (statusFilter === 'inactive' && member.isActive) return false;
+            return true;
+        }).sort((a, b) => {
+            const valueFor = (member: Member) => {
+                if (sortKey === 'name') return member.user.name || '';
+                if (sortKey === 'email') return member.user.email || '';
+                if (sortKey === 'role') return member.orgRole || '';
+                if (sortKey === 'status') return member.isActive ? 'active' : 'inactive';
+                if (sortKey === 'lastLogin') return new Date(member.user.lastLoginAt || 0).getTime();
+                return new Date(member.acceptedAt || member.invitedAt || 0).getTime();
+            };
+            const av = valueFor(a);
+            const bv = valueFor(b);
+            const result = typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).localeCompare(String(bv));
+            return sortDirection === 'asc' ? result : -result;
+        });
+    }, [members, roleFilter, searchTerm, sortDirection, sortKey, statusFilter]);
+    const { page, pageSize, pageItems, total, setPage, setPageSize } = usePagination(visibleMembers, 10);
+
+    const toggleSort = (field: MemberSortKey) => {
+        setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+        setSortKey(field);
+        setPage(1);
+    };
 
     const handleRemoveMember = async (member: Member) => {
         if (!window.confirm(`Remove ${member.user.name} from the organisation? They will lose access immediately.`)) return;
@@ -108,6 +158,34 @@ export default function TeamManagementPage() {
             toast.error(err?.message || 'Failed to cancel invitation');
         }
     };
+
+    const renderMemberActions = (member: Member) => (
+        <>
+            {member.userId !== Number(user?.id) && (
+                <div className="flex items-center justify-end gap-1">
+                    <button
+                        type="button"
+                        onClick={() => setEditingMember(member)}
+                        title="Change role"
+                        className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-[#12335f] hover:bg-slate-50"
+                    >
+                        <Shield className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleRemoveMember(member)}
+                        title="Remove member"
+                        className="flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            )}
+            {member.userId === Number(user?.id) && (
+                <span className="text-[10px] font-black uppercase text-slate-400">You</span>
+            )}
+        </>
+    );
 
     if (!isOrgAdmin && orgRole !== null) {
         return (
@@ -153,39 +231,120 @@ export default function TeamManagementPage() {
 
             {membersError && <InlineError message={membersError} onRetry={reloadMembers} />}
 
+            {members.length > 0 && (
+                <Card className="border-slate-200/80 bg-white shadow-sm">
+                    <CardContent className="p-4">
+                        <div className="grid gap-3 lg:grid-cols-[1fr_190px_150px_auto_auto] lg:items-center">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    value={searchTerm}
+                                    onChange={event => { setSearchTerm(event.target.value); setPage(1); }}
+                                    placeholder="Search member name, email, mobile, role..."
+                                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                                />
+                            </div>
+                            <select
+                                value={roleFilter}
+                                onChange={event => { setRoleFilter(event.target.value); setPage(1); }}
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                            >
+                                <option value="">All roles</option>
+                                {ORG_ROLES.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+                            </select>
+                            <select
+                                value={statusFilter}
+                                onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                            >
+                                <option value="">Any status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                            <Button
+                                variant="outline"
+                                className="h-10 rounded-lg text-xs font-black uppercase"
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setRoleFilter('');
+                                    setStatusFilter('');
+                                    setPage(1);
+                                }}
+                            >
+                                Reset
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Members Table */}
             <Card className="border-slate-200/80 shadow-sm">
                 <CardContent className="p-0">
                     <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Team Members ({members.length})</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Team Members ({total} shown of {members.length})</p>
                     </div>
                     {membersLoading ? (
                         <LoadingState label="Loading members..." />
                     ) : members.length === 0 ? (
                         <EmptyState title="No members yet" description="Invite your first team member to get started." />
+                    ) : pageItems.length === 0 ? (
+                        <EmptyState title="No members match these filters" description="Clear the search, role, or status filter to see all members." />
+                    ) : viewMode === 'grid' ? (
+                        <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+                            {pageItems.map(member => (
+                                <article key={member.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-lg">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <EntityIdLink label={`MBR-${member.userId}`} id={member.userId} size="sm" onClick={() => { }} />
+                                            <h2 className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{member.user.name}</h2>
+                                            <p className="text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{member.user.email}</p>
+                                        </div>
+                                        <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${member.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                                            {member.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </div>
+                                    <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-600">
+                                        <p><span className="font-black text-slate-900">Role:</span> <span className={`ml-1 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${ROLE_COLORS[member.orgRole]}`}>{member.orgRole.replace(/_/g, ' ')}</span></p>
+                                        <p><span className="font-black text-slate-900">Joined:</span> {formatDateTime(member.acceptedAt || member.invitedAt)}</p>
+                                        <p><span className="font-black text-slate-900">Last login:</span> {member.user.lastLoginAt ? formatRelative(member.user.lastLoginAt) : 'Never'}</p>
+                                        {member.user.mobile && <p><span className="font-black text-slate-900">Mobile:</span> {member.user.mobile}</p>}
+                                    </div>
+                                    <div className="mt-4 flex justify-end border-t border-slate-100 pt-3">
+                                        {renderMemberActions(member)}
+                                    </div>
+                                </article>
+                            ))}
+                            <div className="md:col-span-2 xl:col-span-3">
+                                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="members" />
+                            </div>
+                        </div>
                     ) : (
+                        <>
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[800px] text-sm">
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
                                         <th className="px-4 py-2.5 text-left w-12">#</th>
-                                        <th className="px-4 py-2.5 text-left">Member</th>
-                                        <th className="px-4 py-2.5 text-left w-48">Role</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Status</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Joined</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Last Login</th>
+                                        <th className="px-4 py-2.5 text-left"><SortableHeader label="Member" field="name" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-56"><SortableHeader label="Email" field="email" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-48"><SortableHeader label="Role" field="role" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Joined" field="joined" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Last Login" field="lastLogin" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                                         <th className="px-4 py-2.5 text-right w-32">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {members.map((member, idx) => (
+                                    {pageItems.map((member, idx) => (
                                         <tr key={member.id} className="hover:bg-slate-50/60">
-                                            <td className="px-4 py-3 text-xs font-mono text-slate-400">{String(idx + 1).padStart(2, '0')}</td>
+                                            <td className="px-4 py-3 text-xs font-mono text-slate-400">{String((page - 1) * pageSize + idx + 1).padStart(2, '0')}</td>
                                             <td className="px-4 py-3">
                                                 <EntityIdLink label={`MBR-${member.userId}`} id={member.userId} size="sm" onClick={() => { }} />
                                                 <p className="mt-1 text-sm font-black text-slate-900 text-wrap-anywhere">{member.user.name}</p>
-                                                <p className="text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{member.user.email}</p>
                                             </td>
+                                            <td className="px-4 py-3 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{member.user.email}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${ROLE_COLORS[member.orgRole]}`}>
                                                     {member.orgRole.replace(/_/g, ' ')}
@@ -209,35 +368,15 @@ export default function TeamManagementPage() {
                                                 ) : '—'}
                                             </td>
                                             <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                                                {member.userId !== Number(user?.id) && (
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setEditingMember(member)}
-                                                            title="Change role"
-                                                            className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-[#12335f] hover:bg-slate-50"
-                                                        >
-                                                            <Shield className="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRemoveMember(member)}
-                                                            title="Remove member"
-                                                            className="flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50"
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                                {member.userId === Number(user?.id) && (
-                                                    <span className="text-[10px] font-black uppercase text-slate-400">You</span>
-                                                )}
+                                                {renderMemberActions(member)}
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
+                        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="members" />
+                        </>
                     )}
                 </CardContent>
             </Card>

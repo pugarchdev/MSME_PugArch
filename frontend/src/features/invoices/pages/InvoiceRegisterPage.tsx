@@ -7,7 +7,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
-import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../../shared/hooks';
+import { useFeatureQuery, usePaginatedFeatureQuery, useResponsiveViewMode } from '../../shared/hooks';
 import { usePurchaseOrders } from '../../purchaseOrders/hooks';
 import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
@@ -39,9 +39,11 @@ type InvoiceRow = {
 
 const statusOf = (invoice: InvoiceRow) => String(invoice.invoiceStatus || invoice.status || 'draft').toLowerCase();
 
+const statuses = ['draft', 'submitted', 'under_review', 'approved', 'rejected', 'paid', 'cancelled'];
+
 export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer' | 'seller' | 'admin' }) {
-  const { data: invoices, loading, refreshing, error, reload } = useFeatureQuery<InvoiceRow[]>('/api/invoices', []);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [acceptedPoOnly, setAcceptedPoOnly] = useState(false);
   const [invoiceScope, setInvoiceScope] = useState<'all' | 'interstate' | 'domestic'>('all');
@@ -52,6 +54,50 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [detailedInvoice, setDetailedInvoice] = useState<any>(null);
   const [detailedLoading, setDetailedLoading] = useState(false);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
+  // Sorting state variables
+  const [sortField, setSortField] = useState<'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status'>('invoiceNumber');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const {
+    records: pagedInvoices,
+    loading,
+    refreshing,
+    error,
+    reload,
+    setRecords: setPagedInvoices,
+    page,
+    pageSize,
+    total,
+    setPage,
+    setPageSize
+  } = usePaginatedFeatureQuery<InvoiceRow>(
+    '/api/invoices',
+    {
+      search: debouncedSearch,
+      status: statusFilter,
+      acceptedPo: acceptedPoOnly ? 'true' : undefined,
+      scope: invoiceScope,
+      sortBy: sortField,
+      sortOrder
+    },
+    10
+  );
+
+  const { data: summaryData } = useFeatureQuery<{ totalValue: number; pendingCount: number; approvedCount: number } | null>(
+    '/api/invoices/summary',
+    null
+  );
+  const totalValue = summaryData?.totalValue ?? 0;
+  const pendingCount = summaryData?.pendingCount ?? 0;
+  const approvedCount = summaryData?.approvedCount ?? 0;
 
   useEffect(() => {
     if (!selectedInvoice) {
@@ -75,8 +121,6 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     };
     void fetchDetailedInvoice();
   }, [selectedInvoice]);
-
-
 
   // Checkout modal state variables
   const [checkoutInvoice, setCheckoutInvoice] = useState<InvoiceRow | null>(null);
@@ -102,10 +146,6 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [invoiceGstRate, setInvoiceGstRate] = useState('18');
   const [invoiceTdsRate, setInvoiceTdsRate] = useState('0');
   const [invoiceInterstate, setInvoiceInterstate] = useState(false);
-
-  // Sorting state variables
-  const [sortField, setSortField] = useState<'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status'>('invoiceNumber');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const toggleSort = (field: 'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status') => {
     if (sortField === field) {
@@ -178,82 +218,8 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     );
   }, [acceptedPurchaseOrders, purchaseOrderSearch]);
 
-  const statuses = useMemo(() => Array.from(new Set(invoices.map(statusOf))).sort(), [invoices]);
-  const filtered = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return invoices.filter(invoice => {
-      const haystack = [
-        invoice.invoiceNumber,
-        invoice.status,
-        invoice.invoiceStatus,
-        invoice.purchaseOrder?.poNumber,
-        invoice.purchaseOrder?.title,
-        invoice.buyer?.name,
-        invoice.seller?.name
-      ].filter(Boolean).join(' ').toLowerCase();
-      const purchaseOrderStatus = (invoice.purchaseOrder?.poStatus || '').toLowerCase();
-      const isAcceptedPo = purchaseOrderStatus === 'accepted';
-      const matchesInvoiceScope =
-        invoiceScope === 'all'
-          ? true
-          : invoiceScope === 'interstate'
-            ? invoice.interstate === true
-            : invoice.interstate === false;
-      return (
-        (!term || haystack.includes(term)) &&
-        (!statusFilter || statusOf(invoice) === statusFilter) &&
-        (!acceptedPoOnly || isAcceptedPo) &&
-        matchesInvoiceScope
-      );
-    });
-  }, [invoices, searchTerm, statusFilter, acceptedPoOnly, invoiceScope]);
 
-  const sortedInvoices = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      let aVal: any = '';
-      let bVal: any = '';
 
-      if (sortField === 'invoiceNumber') {
-        aVal = a.invoiceNumber || `INV-${a.id}`;
-        bVal = b.invoiceNumber || `INV-${b.id}`;
-      } else if (sortField === 'poNumber') {
-        aVal = a.purchaseOrder?.poNumber || `PO #${a.purchaseOrderId || ''}`;
-        bVal = b.purchaseOrder?.poNumber || `PO #${b.purchaseOrderId || ''}`;
-      } else if (sortField === 'party') {
-        aVal = role === 'seller' ? a.buyer?.name || '' : a.seller?.name || '';
-        bVal = role === 'seller' ? b.buyer?.name || '' : b.seller?.name || '';
-      } else if (sortField === 'taxableAmount') {
-        aVal = Number(a.taxableAmount || 0);
-        bVal = Number(b.taxableAmount || 0);
-      } else if (sortField === 'totalTaxAmount') {
-        aVal = Number(a.totalTaxAmount || 0);
-        bVal = Number(b.totalTaxAmount || 0);
-      } else if (sortField === 'tdsAmount') {
-        aVal = Number(a.tdsAmount || 0);
-        bVal = Number(b.tdsAmount || 0);
-      } else if (sortField === 'totalAmount') {
-        aVal = Number(a.amount || a.totalAmount || 0);
-        bVal = Number(b.amount || b.totalAmount || 0);
-      } else if (sortField === 'dueDate') {
-        aVal = a.dueDate || '';
-        bVal = b.dueDate || '';
-      } else if (sortField === 'status') {
-        aVal = statusOf(a);
-        bVal = statusOf(b);
-      }
-
-      if (typeof aVal === 'string') {
-        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      } else {
-        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-    });
-  }, [filtered, sortField, sortOrder, role]);
-  const { page, pageSize, pageItems: pagedInvoices, total, setPage, setPageSize } = usePagination(sortedInvoices, 10);
-
-  const totalValue = filtered.reduce((sum, invoice) => sum + Number(invoice.amount || invoice.totalAmount || 0), 0);
-  const pendingCount = filtered.filter(invoice => ['draft', 'submitted', 'pending'].includes(statusOf(invoice))).length;
-  const approvedCount = filtered.filter(invoice => ['approved', 'paid'].includes(statusOf(invoice))).length;
 
   // Invoice Actions
   const handleApproveInvoice = async (invoiceId: number) => {
@@ -445,7 +411,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       </div>
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-        <Metric label="Invoices" value={filtered.length} icon={FileText} />
+        <Metric label="Invoices" value={total} icon={FileText} />
         <Metric label="Pending" value={pendingCount} icon={Clock} />
         <Metric label="Approved/Paid" value={approvedCount} icon={CheckCircle2} />
         <Metric label="Invoice Value" value={formatCurrency(totalValue)} icon={IndianRupee} />
@@ -508,7 +474,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         </CardContent>
       </Card>
 
-      {filtered.length === 0 ? (
+      {total === 0 ? (
         <EmptyState
           title="No invoices found"
           description={

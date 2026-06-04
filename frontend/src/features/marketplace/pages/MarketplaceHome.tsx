@@ -81,7 +81,7 @@ export default function MarketplaceHome() {
                     viewAllHref="/marketplace/services"
                 />
 
-                {/* 7. Industry & supplier network (NEW) */}
+                {/* 7. Industry & supplier network */}
                 {/* <IndustryNetwork /> */}
 
                 {/* 8. Latest bids & buyer requirements (NEW) */}

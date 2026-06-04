@@ -52,6 +52,8 @@ const allowedByExtension: Record<string, string[]> = {
   '.png': ['image/png'],
   '.doc': ['application/msword'],
   '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.xls': ['application/vnd.ms-excel'],
+  '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
   '.csv': ['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain']
 };
 
@@ -69,11 +71,13 @@ const extensionForMime = (mimeType: string) => {
   if (mimeType === 'image/png') return '.png';
   if (mimeType === 'application/msword') return '.doc';
   if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return '.docx';
+  if (mimeType === 'application/vnd.ms-excel') return '.xls';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return '.xlsx';
   if (['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain'].includes(mimeType)) return '.csv';
   return '.bin';
 };
 
-const detectMagicMime = (buffer: Buffer): string | null => {
+const detectMagicMime = (buffer: Buffer, declaredMime?: string): string | null => {
   if (buffer.subarray(0, 4).equals(Buffer.from([0x25, 0x50, 0x44, 0x46]))) return 'application/pdf';
   if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return 'image/jpeg';
   if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
@@ -82,9 +86,14 @@ const detectMagicMime = (buffer: Buffer): string | null => {
     if (archiveIndex.includes('[Content_Types].xml') || archiveIndex.includes('word/')) {
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     }
+    if (archiveIndex.includes('xl/')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
     return null;
   }
-  if (buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) return 'application/msword';
+  if (buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) {
+    return declaredMime === 'application/vnd.ms-excel' ? 'application/vnd.ms-excel' : 'application/msword';
+  }
   const sample = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8');
   if (/^[\u0009\u000a\u000d\u0020-\u007e]+$/.test(sample) && sample.includes(',')) return 'text/csv';
   return null;
@@ -110,7 +119,7 @@ export const validateFile = (file: Express.Multer.File) => {
   if (!allowedMimes.includes(file.mimetype)) throw new ApiError(400, 'File MIME type does not match extension', 'FILE_MIME_MISMATCH');
   if (containsExecutableSignature(file.buffer)) throw new ApiError(400, 'Unsafe file content detected', 'FILE_EXECUTABLE_SIGNATURE');
 
-  const magicMime = detectMagicMime(file.buffer);
+  const magicMime = detectMagicMime(file.buffer, file.mimetype);
   if (!magicMime || !allowedMimes.includes(magicMime)) {
     if (ext === '.csv' && magicMime === 'text/csv' && allowedMimes.includes(file.mimetype)) {
       const checksum = crypto.createHash('sha256').update(file.buffer).digest('hex');
@@ -153,7 +162,7 @@ const providerFor = (name: StorageProviderName): StorageProvider =>
   name === 'gcp' ? gcpStorageProvider : cloudinaryStorageProvider;
 
 export const canAccessFileAsset = async (asset: any, user: { id: number; role: string }) => {
-  if (user.role === 'admin') return true;
+  if (user.role === 'admin' || user.role === 'master_admin') return true;
   if (asset.ownerId === user.id) return true;
   if (!asset.entityId) return false;
 
@@ -161,6 +170,62 @@ export const canAccessFileAsset = async (asset: any, user: { id: number; role: s
   if (asset.entityType === 'bid') return checkOwnership('bid', asset.entityId, user);
   if (asset.entityType === 'quote') return checkOwnership('quote', asset.entityId, user);
   if (['catalogue', 'catalogue_product', 'catalogue_service'].includes(asset.entityType)) return true;
+  if (asset.entityType === 'procurement_bid') {
+    const doc = await prisma.procurementBidDocument.findFirst({
+      where: { fileAssetId: asset.id },
+      include: { bid: true }
+    });
+    if (!doc) return false;
+    if (doc.visibility === 'PUBLIC') return true;
+    if (user.role === 'buyer' && doc.bid.buyerId === user.id) return true;
+    if (user.role === 'seller' && doc.visibility === 'SELLER_AFTER_LOGIN') return true;
+    return false;
+  }
+  if (['procurement_bid_participation', 'procurement_participation_document', 'procurement_financial_quote'].includes(asset.entityType)) {
+    const doc = await prisma.procurementBidParticipationDocument.findFirst({
+      where: { fileAssetId: asset.id },
+      include: { participation: { include: { bid: true } } }
+    });
+    if (!doc) return false;
+    const bid = doc.participation.bid;
+    if (user.role === 'seller') return doc.sellerId === user.id;
+    if (user.role === 'buyer') {
+      if (bid.buyerId !== user.id) return false;
+      if (doc.documentCategory !== 'FINANCIAL_QUOTE') {
+        return ['CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
+      }
+      return doc.participation.technicalStatus === 'QUALIFIED' && ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
+    }
+    return false;
+  }
+  if (['procurement_bid_clarification', 'procurement_clarification_file'].includes(asset.entityType)) {
+    const file = await prisma.procurementBidClarificationFile.findFirst({
+      where: { fileAssetId: asset.id },
+      include: { clarification: { include: { bid: true } } }
+    });
+    if (!file) return false;
+    if (user.role === 'seller') return file.clarification.sellerId === user.id;
+    if (user.role === 'buyer') return file.clarification.bid.buyerId === user.id;
+    return false;
+  }
+  if (['procurement_award_document', 'procurement_evaluation_report'].includes(asset.entityType)) {
+    return false;
+  }
+  if (['procurement_delivery_document', 'procurement_invoice'].includes(asset.entityType)) {
+    const deliveryDoc = await prisma.deliveryDocument.findFirst({
+      where: { fileAssetId: asset.id },
+      include: { deliveryTracking: { include: { purchaseOrder: true } } }
+    }).catch(() => null);
+    const invoice = deliveryDoc ? null : await prisma.invoice.findFirst({
+      where: { OR: [{ invoiceFileId: asset.id }, { fileAssetId: asset.id }] },
+      include: { purchaseOrder: true }
+    }).catch(() => null);
+    const po = deliveryDoc?.deliveryTracking?.purchaseOrder || invoice?.purchaseOrder;
+    if (!po) return asset.ownerId === user.id;
+    if (user.role === 'seller') return po.sellerId === user.id;
+    if (user.role === 'buyer') return po.buyerId === user.id;
+    return false;
+  }
 
   return false;
 };
@@ -235,7 +300,7 @@ export const getSignedUrl = async (fileId: number, user: { id: number; role: str
     await auditLog({
       actorUserId: user.id,
       actorRole: user.role,
-      action: 'file.access_denied',
+      action: asset.entityType?.startsWith('procurement') ? 'procurement.file_access_denied' : 'file.access_denied',
       entityType: 'file',
       entityId: asset.id,
       ipAddress: request?.ipAddress,
@@ -254,7 +319,7 @@ export const getSignedUrl = async (fileId: number, user: { id: number; role: str
   await auditLog({
     actorUserId: user.id,
     actorRole: user.role,
-    action: 'file.viewed',
+    action: asset.entityType?.startsWith('procurement') ? 'procurement.file_viewed' : 'file.viewed',
     entityType: 'file',
     entityId: asset.id,
     ipAddress: request?.ipAddress,

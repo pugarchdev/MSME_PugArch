@@ -44,7 +44,7 @@ export default function Login() {
       if (returnUrl) {
         router.replace(decodeURIComponent(returnUrl));
       } else {
-        router.replace('/dashboard');
+        router.replace(user.role === 'master_admin' ? '/master-admin' : '/dashboard');
       }
     }
   }, [user, router, returnUrl]);

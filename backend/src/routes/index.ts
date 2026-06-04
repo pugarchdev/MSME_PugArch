@@ -11,6 +11,7 @@ import grnRoutes from './grn.routes.js';
 import tenderEvalRoutes from './tender-evaluation.routes.js';
 import masterAdminRoutes from './master-admin.routes.js';
 import marketplaceRoutes from './marketplace.routes.js';
+import procurementBidRoutes from '../modules/procurementBid/procurement-bid.routes.js';
 import prisma from '../config/prisma.js';
 
 const router = Router();
@@ -61,6 +62,7 @@ router.use('/', approvalsRoutes);
 router.use('/', grnRoutes);
 router.use('/', tenderEvalRoutes);
 router.use('/', masterAdminRoutes);
+router.use('/', procurementBidRoutes);
 router.use('/', phase4Routes);
 
 export default router;

@@ -1,42 +1,91 @@
 import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
 import {
+  AlertTriangle,
+  Archive,
   BarChart3,
+  Bell,
   Building2,
+  CheckCircle2,
+  CreditCard,
+  Eye,
   FileClock,
-  Globe2,
+  Filter,
+  Grid2X2,
   LayoutDashboard,
-  Palette,
-  Save,
+  List,
+  Mail,
+  Plus,
+  RefreshCw,
+  RotateCcw,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   ToggleLeft,
   ToggleRight,
   Users
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Loader2 } from '../../../components/ui/loader';
 import { api } from '../../../lib/api';
 import { cn } from '../../../lib/utils';
+import { Pagination } from '../../shared/Pagination';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { useResponsiveViewMode, type ViewMode } from '../../shared/hooks';
+
+type ApiPage<T> = { items: T[]; total: number; page: number; pageSize: number; summary?: Record<string, number> };
+type TabId = 'overview' | 'organizations' | 'users' | 'procurement' | 'payments' | 'features' | 'email' | 'audit' | 'security';
 
 type Company = {
   id: number;
   name: string;
+  portalDisplayName?: string | null;
   shortName?: string | null;
-  portalDisplayName: string;
-  logoUrl?: string | null;
-  contactEmail?: string | null;
-  contactPhone?: string | null;
-  address?: string | null;
   district?: string | null;
   state?: string | null;
-  homepageContent?: string | null;
-  aboutContent?: string | null;
-  footerContent?: string | null;
-  grievanceContent?: string | null;
-  procurementPolicy?: string | null;
-  isActive: boolean;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type Organization = {
+  id: number;
+  organizationName?: string | null;
+  organizationType?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  udyamNumber?: string | null;
+  cin?: string | null;
+  contactPerson?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  district?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  verificationStatus?: string | null;
+  isBlacklisted?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  users?: Array<{ id: number }>;
+};
+
+type UserRecord = {
+  id: number;
+  userId?: string | null;
+  name?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  role?: string | null;
+  onboardingStatus?: string | null;
+  accountStatus?: string | null;
+  createdAt?: string;
+  organization?: { id: number; organizationName?: string | null; organizationType?: string | null } | null;
+  company?: { id: number; name?: string | null } | null;
 };
 
 type Feature = {
@@ -44,398 +93,1098 @@ type Feature = {
   code: string;
   name: string;
   module: string;
+  description?: string | null;
   enabled?: boolean;
 };
 
-type RoleRecord = {
+type BidRecord = {
   id: number;
-  code: string;
-  name: string;
-  scope: string;
-  company?: { id: number; name: string } | null;
-  permissions?: Array<{ permission: { id: number; code: string; module: string } }>;
+  bidNumber?: string;
+  title?: string;
+  buyerOrganizationName?: string;
+  category?: string;
+  status?: string;
+  approvalStatus?: string;
+  lifecycleStage?: string;
+  estimatedValue?: string | number | null;
+  endDate?: string;
+  createdAt?: string;
+  _count?: { participations?: number; documents?: number; awards?: number };
 };
 
-type Permission = {
+type PaymentRecord = {
   id: number;
-  code: string;
-  module: string;
-  description?: string | null;
+  referenceId?: string;
+  gateway?: string | null;
+  method?: string | null;
+  status?: string | null;
+  paymentStatus?: string | null;
+  amount?: string | number | null;
+  currency?: string;
+  createdAt?: string;
+  payer?: { name?: string | null; email?: string | null };
+  payee?: { name?: string | null; email?: string | null };
 };
 
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'companies', label: 'Companies', icon: Building2 },
-  { id: 'features', label: 'Features', icon: ToggleRight },
-  { id: 'roles', label: 'Roles', icon: ShieldCheck },
+type AuditRecord = {
+  id: number;
+  action?: string | null;
+  entityType?: string | null;
+  entityId?: string | number | null;
+  createdAt?: string;
+  User?: { name?: string | null; email?: string | null; role?: string | null } | null;
+};
+
+const tabs: Array<{ id: TabId; label: string; icon: any }> = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'organizations', label: 'Organizations', icon: Building2 },
   { id: 'users', label: 'Users', icon: Users },
-  { id: 'content', label: 'Branding', icon: Palette },
-  { id: 'audit', label: 'Audit', icon: FileClock }
+  { id: 'procurement', label: 'Procurement', icon: BarChart3 },
+  { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'features', label: 'Features', icon: ToggleRight },
+  { id: 'email', label: 'Email Setup', icon: Mail },
+  { id: 'audit', label: 'Audit Logs', icon: FileClock },
+  { id: 'security', label: 'Security', icon: ShieldCheck }
+];
+
+const quickActions = [
+  ['Add Organization', 'organizations', Plus],
+  ['Add User', 'users', Users],
+  ['Review Pending Bids', 'procurement', BarChart3],
+  ['Configure Email', 'email', Mail],
+  ['View Audit Logs', 'audit', FileClock],
+  ['View Payments', 'payments', CreditCard]
 ] as const;
 
-const emptyCompany = {
-  name: '',
-  shortName: '',
-  portalDisplayName: '',
-  district: '',
-  state: '',
-  contactEmail: '',
-  contactPhone: '',
-  address: ''
-};
+const pageSizeOptions = [10, 20, 50];
 
 export default function MasterAdminPage() {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('dashboard');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dashboard, setDashboard] = useState<any>(null);
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const { token } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [overview, setOverview] = useState<any>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [companies, setCompanies] = useState<ApiPage<Company>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [organizations, setOrganizations] = useState<ApiPage<Organization>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [users, setUsers] = useState<ApiPage<UserRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [procurement, setProcurement] = useState<ApiPage<BidRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [payments, setPayments] = useState<ApiPage<PaymentRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
   const [features, setFeatures] = useState<Feature[]>([]);
-  const [roles, setRoles] = useState<RoleRecord[]>([]);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [organizations, setOrganizations] = useState<any[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [companyForm, setCompanyForm] = useState(emptyCompany);
-  const [query, setQuery] = useState('');
+  const [emailSettings, setEmailSettings] = useState<any>(null);
+  const [auditLogs, setAuditLogs] = useState<ApiPage<AuditRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [security, setSecurity] = useState<any>(null);
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<Record<string, string | null>>({});
+  const [filters, setFilters] = useState<Record<TabId, Record<string, string>>>({
+    overview: {},
+    organizations: { search: '', status: '', organizationType: '' },
+    users: { search: '', role: '', status: '' },
+    procurement: { search: '', status: '' },
+    payments: { search: '', status: '' },
+    features: { search: '', module: '' },
+    email: {},
+    audit: { search: '', action: '', entityType: '' },
+    security: {}
+  });
+  const [sorts, setSorts] = useState<Record<string, { field: string; direction: SortDirection }>>({
+    companies: { field: 'updatedAt', direction: 'desc' },
+    organizations: { field: 'updatedAt', direction: 'desc' },
+    users: { field: 'createdAt', direction: 'desc' },
+    procurement: { field: 'createdAt', direction: 'desc' },
+    payments: { field: 'createdAt', direction: 'desc' },
+    audit: { field: 'createdAt', direction: 'desc' }
+  });
+  const [pages, setPages] = useState<Record<string, { page: number; pageSize: number }>>({
+    companies: { page: 1, pageSize: 20 },
+    organizations: { page: 1, pageSize: 20 },
+    users: { page: 1, pageSize: 20 },
+    procurement: { page: 1, pageSize: 20 },
+    payments: { page: 1, pageSize: 20 },
+    audit: { page: 1, pageSize: 20 }
+  });
+  const [viewMode, setViewMode] = useResponsiveViewMode('master-admin:control-center:view-mode');
+  const debouncedFilters = useDebounce(filters, 350);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
-  const selectedCompany = companies.find(company => company.id === selectedCompanyId) || companies[0];
-
-  const fetchJson = async (path: string) => {
-    const res = await api.fetch(path, { headers: authHeaders, skipCache: true });
-    if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || 'Request failed');
-    return res.json();
+  const fetchJson = async <T,>(path: string): Promise<T> => {
+    const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+    const res = await api.fetch(path, { headers, skipCache: true });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || 'Request failed');
+    return (body?.data ?? body) as T;
   };
 
-  const loadAll = async () => {
-    setLoading(true);
+  const setBusy = (key: string, busy: boolean) => setLoading(prev => ({ ...prev, [key]: busy }));
+  const setSectionError = (key: string, message: string | null) => setError(prev => ({ ...prev, [key]: message }));
+
+  const loadOverview = async () => {
+    setOverviewLoading(true);
     try {
-      const [dash, companyData, roleData, permissionData, userData, orgData, auditData] = await Promise.all([
-        fetchJson('/api/master-admin/dashboard'),
-        fetchJson('/api/master-admin/companies?pageSize=100'),
-        fetchJson('/api/master-admin/roles'),
-        fetchJson('/api/master-admin/permissions'),
-        fetchJson('/api/master-admin/users?pageSize=10'),
-        fetchJson('/api/master-admin/organizations?pageSize=10'),
-        fetchJson('/api/master-admin/audit-logs?pageSize=10')
-      ]);
-      setDashboard(dash);
-      setCompanies(companyData.items || []);
-      setSelectedCompanyId((companyData.items || [])[0]?.id || null);
-      setRoles(roleData.items || []);
-      setPermissions(permissionData.items || []);
-      setUsers(userData.items || []);
-      setOrganizations(orgData.items || []);
-      setAuditLogs(auditData.items || []);
-    } catch (error: any) {
-      toast.error(error.message || 'Unable to load master admin data');
+      const data = await fetchJson<any>('/api/master-admin/dashboard');
+      setOverview(data);
+      setSectionError('overview', null);
+    } catch (err: any) {
+      setSectionError('overview', err.message);
     } finally {
-      setLoading(false);
+      setOverviewLoading(false);
     }
   };
 
-  useEffect(() => {
-    void loadAll();
-  }, []);
+  const loadCompanies = async () => {
+    setBusy('companies', true);
+    try {
+      const data = await fetchJson<ApiPage<Company>>(endpoint('/api/master-admin/companies', {
+        ...pages.companies,
+        search: debouncedFilters.organizations.search,
+        status: debouncedFilters.organizations.status,
+        sortBy: sorts.companies.field,
+        sortOrder: sorts.companies.direction
+      }));
+      setCompanies(data);
+      setSelectedCompanyId(current => current ?? data.items[0]?.id ?? null);
+      setSectionError('companies', null);
+    } catch (err: any) {
+      setSectionError('companies', err.message);
+    } finally {
+      setBusy('companies', false);
+    }
+  };
 
-  useEffect(() => {
+  const loadOrganizations = async () => {
+    setBusy('organizations', true);
+    try {
+      const data = await fetchJson<ApiPage<Organization>>(endpoint('/api/master-admin/organizations', {
+        ...pages.organizations,
+        search: debouncedFilters.organizations.search,
+        status: debouncedFilters.organizations.status,
+        organizationType: debouncedFilters.organizations.organizationType,
+        sortBy: sorts.organizations.field,
+        sortOrder: sorts.organizations.direction
+      }));
+      setOrganizations(data);
+      setSectionError('organizations', null);
+    } catch (err: any) {
+      setSectionError('organizations', err.message);
+    } finally {
+      setBusy('organizations', false);
+    }
+  };
+
+  const loadUsers = async () => {
+    setBusy('users', true);
+    try {
+      const data = await fetchJson<ApiPage<UserRecord>>(endpoint('/api/master-admin/users', {
+        ...pages.users,
+        search: debouncedFilters.users.search,
+        role: debouncedFilters.users.role,
+        status: debouncedFilters.users.status,
+        sortBy: sorts.users.field,
+        sortOrder: sorts.users.direction
+      }));
+      setUsers(data);
+      setSectionError('users', null);
+    } catch (err: any) {
+      setSectionError('users', err.message);
+    } finally {
+      setBusy('users', false);
+    }
+  };
+
+  const loadProcurement = async () => {
+    setBusy('procurement', true);
+    try {
+      const data = await fetchJson<ApiPage<BidRecord>>(endpoint('/api/master-admin/procurement', {
+        ...pages.procurement,
+        search: debouncedFilters.procurement.search,
+        status: debouncedFilters.procurement.status,
+        sortBy: sorts.procurement.field,
+        sortOrder: sorts.procurement.direction
+      }));
+      setProcurement(data);
+      setSectionError('procurement', null);
+    } catch (err: any) {
+      setSectionError('procurement', err.message);
+    } finally {
+      setBusy('procurement', false);
+    }
+  };
+
+  const loadPayments = async () => {
+    setBusy('payments', true);
+    try {
+      const data = await fetchJson<ApiPage<PaymentRecord>>(endpoint('/api/master-admin/payments', {
+        ...pages.payments,
+        search: debouncedFilters.payments.search,
+        status: debouncedFilters.payments.status,
+        sortBy: sorts.payments.field,
+        sortOrder: sorts.payments.direction
+      }));
+      setPayments(data);
+      setSectionError('payments', null);
+    } catch (err: any) {
+      setSectionError('payments', err.message);
+    } finally {
+      setBusy('payments', false);
+    }
+  };
+
+  const loadFeatures = async () => {
     if (!selectedCompanyId) return;
-    fetchJson(`/api/master-admin/companies/${selectedCompanyId}/features`)
-      .then(data => setFeatures(data.items || []))
-      .catch(error => toast.error(error.message || 'Unable to load feature toggles'));
-  }, [selectedCompanyId]);
-
-  const createCompany = async () => {
-    setSaving(true);
+    setBusy('features', true);
     try {
-      const res = await api.fetch('/api/master-admin/companies', {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify(companyForm)
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || 'Unable to create company');
-      toast.success('Company created');
-      setCompanyForm(emptyCompany);
-      await loadAll();
-    } catch (error: any) {
-      toast.error(error.message);
+      const data = await fetchJson<{ items: Feature[] }>(`/api/master-admin/companies/${selectedCompanyId}/features`);
+      setFeatures(data.items || []);
+      setSectionError('features', null);
+    } catch (err: any) {
+      setSectionError('features', err.message);
     } finally {
-      setSaving(false);
+      setBusy('features', false);
     }
   };
 
-  const saveFeatures = async () => {
-    if (!selectedCompanyId) return;
-    setSaving(true);
+  const loadEmail = async () => {
+    setBusy('email', true);
     try {
-      const res = await api.fetch(`/api/master-admin/companies/${selectedCompanyId}/features`, {
-        method: 'PUT',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: features.map(feature => ({ featureId: feature.id, enabled: Boolean(feature.enabled) })) })
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || 'Unable to save features');
-      toast.success('Feature settings saved');
-    } catch (error: any) {
-      toast.error(error.message);
+      setEmailSettings(await fetchJson<any>('/api/master-admin/email-settings'));
+      setSectionError('email', null);
+    } catch (err: any) {
+      setSectionError('email', err.message);
     } finally {
-      setSaving(false);
+      setBusy('email', false);
     }
   };
 
-  const saveContent = async () => {
-    if (!selectedCompany) return;
-    setSaving(true);
+  const loadAudit = async () => {
+    setBusy('audit', true);
     try {
-      const res = await api.fetch(`/api/master-admin/companies/${selectedCompany.id}/content`, {
-        method: 'PUT',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedCompany)
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || 'Unable to save content');
-      toast.success('Branding and content saved');
-      await loadAll();
-    } catch (error: any) {
-      toast.error(error.message);
+      const data = await fetchJson<ApiPage<AuditRecord>>(endpoint('/api/master-admin/audit-logs', {
+        ...pages.audit,
+        search: debouncedFilters.audit.search,
+        action: debouncedFilters.audit.action,
+        entityType: debouncedFilters.audit.entityType
+      }));
+      setAuditLogs(data);
+      setSectionError('audit', null);
+    } catch (err: any) {
+      setSectionError('audit', err.message);
     } finally {
-      setSaving(false);
+      setBusy('audit', false);
     }
   };
 
-  const filteredCompanies = companies.filter(company =>
-    [company.name, company.portalDisplayName, company.district, company.state].join(' ').toLowerCase().includes(query.toLowerCase())
-  );
+  const loadSecurity = async () => {
+    setBusy('security', true);
+    try {
+      setSecurity(await fetchJson<any>('/api/master-admin/security-overview'));
+      setSectionError('security', null);
+    } catch (err: any) {
+      setSectionError('security', err.message);
+    } finally {
+      setBusy('security', false);
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[420px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-brand-navy" />
-      </div>
+  useEffect(() => { void loadOverview(); }, []);
+  useEffect(() => { void loadCompanies(); }, [pages.companies, debouncedFilters.organizations.search, debouncedFilters.organizations.status, sorts.companies]);
+  useEffect(() => { void loadOrganizations(); }, [pages.organizations, debouncedFilters.organizations, sorts.organizations]);
+  useEffect(() => { void loadUsers(); }, [pages.users, debouncedFilters.users, sorts.users]);
+  useEffect(() => { void loadProcurement(); }, [pages.procurement, debouncedFilters.procurement, sorts.procurement]);
+  useEffect(() => { void loadPayments(); }, [pages.payments, debouncedFilters.payments, sorts.payments]);
+  useEffect(() => { void loadFeatures(); }, [selectedCompanyId]);
+  useEffect(() => { void loadEmail(); void loadSecurity(); }, []);
+  useEffect(() => { void loadAudit(); }, [pages.audit, debouncedFilters.audit]);
+
+  const summaryCards = useMemo(() => {
+    const summary = overview?.summary || {};
+    return [
+      ['Organizations', summary.totalOrganizations, `${summary.activeOrganizations || 0} verified`, Building2, 'blue'],
+      ['Pending Orgs', summary.pendingOrganizations, `${summary.suspendedOrganizations || 0} suspended`, AlertTriangle, 'amber'],
+      ['Users', summary.totalUsers, `${summary.totalBuyers || 0} buyers / ${summary.totalSellers || 0} sellers`, Users, 'green'],
+      ['Active Bids', summary.activeBids, `${summary.pendingApprovals || 0} pending approvals`, BarChart3, 'blue'],
+      ['Payments', summary.totalPayments, `${summary.pendingSettlements || 0} pending settlements`, CreditCard, 'green'],
+      ['Fraud Alerts', summary.openFraudAlerts, 'open security signals', ShieldCheck, 'red']
+    ];
+  }, [overview]);
+
+  const visibleFeatures = useMemo(() => {
+    const text = filters.features.search.toLowerCase();
+    const module = filters.features.module.toLowerCase();
+    return features.filter(feature =>
+      (!text || `${feature.name} ${feature.code} ${feature.description || ''}`.toLowerCase().includes(text)) &&
+      (!module || feature.module.toLowerCase().includes(module))
     );
-  }
+  }, [features, filters.features]);
+
+  const updateFilter = (tab: TabId, key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [tab]: { ...prev[tab], [key]: value } }));
+    const pageKey = tab === 'organizations' ? 'organizations' : tab;
+    if (pages[pageKey]) setPages(prev => ({ ...prev, [pageKey]: { ...prev[pageKey], page: 1 } }));
+  };
+
+  const resetFilters = (tab: TabId) => {
+    setFilters(prev => ({ ...prev, [tab]: Object.fromEntries(Object.keys(prev[tab]).map(key => [key, ''])) }));
+    const pageKey = tab === 'organizations' ? 'organizations' : tab;
+    if (pages[pageKey]) setPages(prev => ({ ...prev, [pageKey]: { ...prev[pageKey], page: 1 } }));
+  };
+
+  const onSort = (key: string, field: string) => {
+    setSorts(prev => ({
+      ...prev,
+      [key]: {
+        field,
+        direction: prev[key]?.field === field && prev[key]?.direction === 'asc' ? 'desc' : 'asc'
+      }
+    }));
+  };
+
+  const setPageState = (key: string, page: number) => setPages(prev => ({ ...prev, [key]: { ...prev[key], page } }));
+  const setPageSizeState = (key: string, pageSize: number) => setPages(prev => ({ ...prev, [key]: { page: 1, pageSize } }));
+  const refreshActive = () => {
+    const loaders: Record<TabId, () => Promise<void>> = {
+      overview: loadOverview,
+      organizations: async () => { await loadCompanies(); await loadOrganizations(); },
+      users: loadUsers,
+      procurement: loadProcurement,
+      payments: loadPayments,
+      features: loadFeatures,
+      email: loadEmail,
+      audit: loadAudit,
+      security: loadSecurity
+    };
+    void loaders[activeTab]();
+  };
+
+  const showUnsafeAction = (label: string) => {
+    toast.warning(`${label} requires confirmation, reason capture, and audited backend support. Use suspend/archive before permanent deletion.`);
+  };
 
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Master Admin</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-950">Portal Control Center</h1>
+    <div className="min-h-full bg-slate-50">
+      <div className="mx-auto max-w-[1560px] space-y-5 px-3 py-4 sm:px-5 lg:px-6">
+        <header className="rounded-md border border-slate-200 bg-white px-4 py-4 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c27803]">JsgSmile Governance</p>
+              <h1 className="mt-1 text-2xl font-black text-[#12335f] sm:text-3xl">Master Admin Control Center</h1>
+              <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-600">
+                Complete portal governance, organization control, user management, feature settings, procurement monitoring, payment oversight, and security review.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {quickActions.map(([label, tab, Icon]) => (
+                <Button key={label} type="button" variant="outline" onClick={() => setActiveTab(tab)} className="h-9 rounded-md text-xs font-black">
+                  <Icon className="mr-2 h-4 w-4" />
+                  {label}
+                </Button>
+              ))}
+              <Button type="button" onClick={refreshActive} className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-bold transition',
-                  activeTab === tab.id
-                    ? 'border-[#12335f] bg-[#12335f] text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                )}
-              >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        </header>
+
+        <div className="flex gap-2 overflow-x-auto rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-black transition',
+                activeTab === tab.id ? 'bg-[#12335f] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-[#12335f]'
+              )}
+            >
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        {activeTab === 'dashboard' && (
-          <div className="space-y-5">
+        {activeTab === 'overview' && (
+          <section className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              {[
-                ['Companies', dashboard?.summary?.totalCompanies, Building2],
-                ['Buyers', dashboard?.summary?.totalBuyers, Users],
-                ['Sellers', dashboard?.summary?.totalSellers, Globe2],
-                ['Users', dashboard?.summary?.totalUsers, Users],
-                ['Active Features', dashboard?.summary?.activeFeatures, ToggleRight],
-                ['Pending', dashboard?.summary?.pendingApprovals, BarChart3]
-              ].map(([label, value, Icon]: any) => (
-                <Card key={label} className="rounded-md border-slate-200">
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div>
-                      <p className="text-xs font-bold text-slate-500">{label}</p>
-                      <p className="mt-1 text-2xl font-black text-slate-950">{value ?? 0}</p>
-                    </div>
-                    <Icon className="h-5 w-5 text-[#8a6a2f]" />
-                  </CardContent>
-                </Card>
+              {overviewLoading ? Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />) : summaryCards.map(([label, value, subtext, Icon, tone]: any) => (
+                <KpiCard key={label} label={label} value={value ?? 0} subtext={subtext} icon={Icon} tone={tone} />
               ))}
             </div>
-            <DataTable title="Recent Audit Logs" rows={dashboard?.recentAuditLogs || []} columns={['action', 'entityType', 'createdAt']} />
-          </div>
-        )}
-
-        {activeTab === 'companies' && (
-          <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-            <section className="space-y-3">
-              <SearchBox value={query} onChange={setQuery} />
-              <DataTable title="Companies / Districts" rows={filteredCompanies} columns={['name', 'portalDisplayName', 'district', 'state', 'isActive']} />
-            </section>
-            <section className="rounded-md border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-black text-slate-900">Create Company</h2>
-              <div className="mt-3 space-y-2">
-                {Object.keys(emptyCompany).map(key => (
-                  <input
-                    key={key}
-                    value={(companyForm as any)[key]}
-                    onChange={event => setCompanyForm(prev => ({ ...prev, [key]: event.target.value }))}
-                    placeholder={key.replace(/([A-Z])/g, ' $1')}
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#12335f]"
-                  />
-                ))}
-              </div>
-              <Button onClick={createCompany} disabled={saving} className="mt-3 w-full gap-2 rounded-md">
-                <Save className="h-4 w-4" />
-                Save Company
-              </Button>
-            </section>
-          </div>
-        )}
-
-        {activeTab === 'features' && (
-          <section className="rounded-md border border-slate-200 bg-white p-4">
-            <CompanySelect companies={companies} value={selectedCompanyId} onChange={setSelectedCompanyId} />
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {features.map(feature => (
-                <button
-                  key={feature.id}
-                  type="button"
-                  onClick={() => setFeatures(prev => prev.map(item => item.id === feature.id ? { ...item, enabled: !item.enabled } : item))}
-                  className="flex min-h-14 items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:border-slate-300"
-                >
-                  <span>
-                    <span className="block text-sm font-bold text-slate-900">{feature.name}</span>
-                    <span className="block text-xs text-slate-500">{feature.module}</span>
-                  </span>
-                  {feature.enabled ? <ToggleRight className="h-6 w-6 text-emerald-600" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
-                </button>
-              ))}
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <Panel title="Recent Audit Trail" icon={FileClock} error={error.overview}>
+                <SimpleList rows={overview?.recentAuditLogs || []} primary="action" secondary="entityType" meta="createdAt" />
+              </Panel>
+              <Panel title="Production Guardrails" icon={ShieldCheck}>
+                <div className="grid gap-2">
+                  {[
+                    'Master-only backend routes enforced',
+                    'Secrets are masked and sourced from environment',
+                    'Production CORS requires explicit origins',
+                    'Delete actions prefer suspend/archive with reason',
+                    'Payments, settlements, audit logs are not hard-deleted'
+                  ].map(item => <StatusLine key={item} label={item} ok />)}
+                </div>
+              </Panel>
             </div>
-            <Button onClick={saveFeatures} disabled={saving} className="mt-4 gap-2 rounded-md">
-              <Save className="h-4 w-4" />
-              Save Toggles
-            </Button>
           </section>
         )}
 
-        {activeTab === 'roles' && (
-          <div className="grid gap-4 xl:grid-cols-2">
-            <DataTable title="Roles" rows={roles} columns={['code', 'name', 'scope']} />
-            <DataTable title="Permissions" rows={permissions} columns={['code', 'module', 'description']} />
-          </div>
+        {activeTab === 'organizations' && (
+          <section className="space-y-4">
+            <Toolbar
+              tab="organizations"
+              filters={filters.organizations}
+              updateFilter={updateFilter}
+              resetFilters={resetFilters}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selects={[
+                ['status', 'All statuses', ['VERIFIED', 'PENDING', 'UNDER_REVIEW', 'REJECTED', 'SUSPENDED']],
+                ['organizationType', 'All organization types', ['Buyer', 'Seller', 'MSME', 'Large Industry', 'Government', 'Private', 'PSU', 'Service Provider']]
+              ]}
+            />
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <PaginatedTable
+                title="Companies"
+                icon={Building2}
+                rows={companies.items}
+                total={companies.total}
+                page={pages.companies.page}
+                pageSize={pages.companies.pageSize}
+                loading={loading.companies}
+                error={error.companies}
+                columns={[
+                  ['name', 'Company'],
+                  ['portalDisplayName', 'Portal'],
+                  ['district', 'District'],
+                  ['state', 'State'],
+                  ['isActive', 'Active']
+                ]}
+                sort={sorts.companies}
+                onSort={field => onSort('companies', field)}
+                onPageChange={page => setPageState('companies', page)}
+                onPageSizeChange={size => setPageSizeState('companies', size)}
+                viewMode={viewMode}
+                actions={row => <SafeActions onAction={showUnsafeAction} label={row.name || 'company'} />}
+              />
+              <PaginatedTable
+                title="Organizations"
+                icon={Building2}
+                rows={organizations.items}
+                total={organizations.total}
+                page={pages.organizations.page}
+                pageSize={pages.organizations.pageSize}
+                loading={loading.organizations}
+                error={error.organizations}
+                columns={[
+                  ['organizationName', 'Organization'],
+                  ['organizationType', 'Type'],
+                  ['verificationStatus', 'Verification'],
+                  ['state', 'State'],
+                  ['updatedAt', 'Updated']
+                ]}
+                sort={sorts.organizations}
+                onSort={field => onSort('organizations', field)}
+                onPageChange={page => setPageState('organizations', page)}
+                onPageSizeChange={size => setPageSizeState('organizations', size)}
+                viewMode={viewMode}
+                actions={row => <SafeActions onAction={showUnsafeAction} label={row.organizationName || 'organization'} />}
+              />
+            </div>
+          </section>
         )}
 
         {activeTab === 'users' && (
-          <div className="grid gap-4 xl:grid-cols-2">
-            <DataTable title="Users" rows={users} columns={['name', 'email', 'role', 'accountStatus']} />
-            <DataTable title="Organizations" rows={organizations} columns={['organizationName', 'organizationType', 'verificationStatus', 'isBlacklisted']} />
-          </div>
+          <section className="space-y-4">
+            <Toolbar
+              tab="users"
+              filters={filters.users}
+              updateFilter={updateFilter}
+              resetFilters={resetFilters}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selects={[
+                ['role', 'All roles', ['master_admin', 'admin', 'buyer', 'seller']],
+                ['status', 'All account statuses', ['ACTIVE', 'SUSPENDED', 'DEACTIVATED', 'PENDING']]
+              ]}
+            />
+            <PaginatedTable
+              title="Portal Users"
+              icon={Users}
+              rows={users.items}
+              total={users.total}
+              page={pages.users.page}
+              pageSize={pages.users.pageSize}
+              loading={loading.users}
+              error={error.users}
+              columns={[
+                ['name', 'Name'],
+                ['email', 'Email'],
+                ['role', 'Role'],
+                ['accountStatus', 'Account'],
+                ['onboardingStatus', 'Verification'],
+                ['createdAt', 'Created']
+              ]}
+              sort={sorts.users}
+              onSort={field => onSort('users', field)}
+              onPageChange={page => setPageState('users', page)}
+              onPageSizeChange={size => setPageSizeState('users', size)}
+              viewMode={viewMode}
+              actions={row => <SafeActions onAction={showUnsafeAction} label={row.email || 'user'} />}
+            />
+          </section>
         )}
 
-        {activeTab === 'content' && selectedCompany && (
-          <section className="rounded-md border border-slate-200 bg-white p-4">
-            <CompanySelect companies={companies} value={selectedCompany.id} onChange={setSelectedCompanyId} />
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              {['portalDisplayName', 'logoUrl', 'contactEmail', 'contactPhone', 'homepageContent', 'aboutContent', 'footerContent', 'grievanceContent', 'procurementPolicy'].map(key => (
-                <textarea
-                  key={key}
-                  value={(selectedCompany as any)[key] || ''}
-                  onChange={event => setCompanies(prev => prev.map(company => company.id === selectedCompany.id ? { ...company, [key]: event.target.value } : company))}
-                  placeholder={key.replace(/([A-Z])/g, ' $1')}
-                  className="min-h-20 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#12335f]"
-                />
-              ))}
+        {activeTab === 'procurement' && (
+          <section className="space-y-4">
+            <MetricStrip summary={procurement.summary} labels={[
+              ['totalBids', 'All bids'],
+              ['pendingApprovals', 'Pending approvals'],
+              ['activeBids', 'Active bids'],
+              ['technicalEvaluation', 'Technical eval'],
+              ['financialEvaluation', 'Financial eval'],
+              ['awardRecommended', 'Award recommended'],
+              ['participations', 'Participations']
+            ]} />
+            <Toolbar
+              tab="procurement"
+              filters={filters.procurement}
+              updateFilter={updateFilter}
+              resetFilters={resetFilters}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selects={[['status', 'All statuses', ['OPEN', 'PENDING_ADMIN_APPROVAL', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED', 'EXPIRED']]]}
+            />
+            <PaginatedTable
+              title="Procurement Bids"
+              icon={BarChart3}
+              rows={procurement.items}
+              total={procurement.total}
+              page={pages.procurement.page}
+              pageSize={pages.procurement.pageSize}
+              loading={loading.procurement}
+              error={error.procurement}
+              columns={[
+                ['bidNumber', 'Bid No.'],
+                ['title', 'Title'],
+                ['buyerOrganizationName', 'Buyer'],
+                ['status', 'Status'],
+                ['approvalStatus', 'Approval'],
+                ['endDate', 'End Date']
+              ]}
+              sort={sorts.procurement}
+              onSort={field => onSort('procurement', field)}
+              onPageChange={page => setPageState('procurement', page)}
+              onPageSizeChange={size => setPageSizeState('procurement', size)}
+              viewMode={viewMode}
+              actions={row => (
+                <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black" onClick={() => toast.info(`Open /bids/${row.id} to inspect this bid.`)}>
+                  <Eye className="mr-1 h-3 w-3" />
+                  View
+                </Button>
+              )}
+            />
+            <SafetyNotice />
+          </section>
+        )}
+
+        {activeTab === 'payments' && (
+          <section className="space-y-4">
+            <MetricStrip summary={payments.summary} labels={[
+              ['totalPayments', 'Payments'],
+              ['failedPayments', 'Failed'],
+              ['pendingSettlements', 'Pending settlements'],
+              ['completedSettlements', 'Completed settlements'],
+              ['pendingWebhooks', 'Pending webhooks']
+            ]} />
+            <Toolbar
+              tab="payments"
+              filters={filters.payments}
+              updateFilter={updateFilter}
+              resetFilters={resetFilters}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selects={[['status', 'All statuses', ['initiated', 'success', 'failed', 'refunded', 'cancelled']]]}
+            />
+            <PaginatedTable
+              title="Payment Transactions"
+              icon={CreditCard}
+              rows={payments.items}
+              total={payments.total}
+              page={pages.payments.page}
+              pageSize={pages.payments.pageSize}
+              loading={loading.payments}
+              error={error.payments}
+              columns={[
+                ['referenceId', 'Reference'],
+                ['gateway', 'Gateway'],
+                ['status', 'Status'],
+                ['amount', 'Amount'],
+                ['currency', 'Currency'],
+                ['createdAt', 'Created']
+              ]}
+              sort={sorts.payments}
+              onSort={field => onSort('payments', field)}
+              onPageChange={page => setPageState('payments', page)}
+              onPageSizeChange={size => setPageSizeState('payments', size)}
+              viewMode={viewMode}
+              actions={row => <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black" onClick={() => toast.info(`Payment ${row.referenceId || row.id} is read-only here.`)}>View</Button>}
+            />
+            <SafetyNotice text="Payments, settlements, invoices, ledgers, and audit logs are immutable operational records. Do not hard-delete financial history." />
+          </section>
+        )}
+
+        {activeTab === 'features' && (
+          <section className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+              <CompanySelect companies={companies.items} value={selectedCompanyId} onChange={setSelectedCompanyId} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <SearchInput value={filters.features.search} onChange={value => updateFilter('features', 'search', value)} placeholder="Search features..." />
+                <SearchInput value={filters.features.module} onChange={value => updateFilter('features', 'module', value)} placeholder="Filter module..." icon={Filter} />
+              </div>
             </div>
-            <Button onClick={saveContent} disabled={saving} className="mt-4 gap-2 rounded-md">
-              <Save className="h-4 w-4" />
-              Save Content
-            </Button>
+            <Panel title="Feature Control" icon={ToggleRight} loading={loading.features} error={error.features}>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {visibleFeatures.map(feature => (
+                  <button
+                    key={feature.id}
+                    type="button"
+                    onClick={() => toast.info('Feature toggles are read-only in this control pass. Existing save endpoint remains protected for audited updates.')}
+                    className="min-h-24 rounded-md border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#12335f]/30 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-slate-900">{feature.name}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">{feature.module}</p>
+                      </div>
+                      {feature.enabled ? <ToggleRight className="h-6 w-6 text-emerald-600" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-xs text-slate-500">{feature.description || 'Feature availability can be governed per company.'}</p>
+                  </button>
+                ))}
+              </div>
+            </Panel>
+          </section>
+        )}
+
+        {activeTab === 'email' && (
+          <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+            <Panel title="SMTP Configuration" icon={Mail} loading={loading.email} error={error.email}>
+              <div className="grid gap-3">
+                <Detail label="SMTP Host" value={emailSettings?.smtp?.host} />
+                <Detail label="SMTP Port" value={emailSettings?.smtp?.port} />
+                <Detail label="SMTP Username" value={emailSettings?.smtp?.user || 'Not configured'} />
+                <Detail label="From Email" value={emailSettings?.smtp?.fromEmail || 'Not configured'} />
+                <Detail label="From Name" value={emailSettings?.smtp?.fromName} />
+                <StatusLine label="SMTP password configured" ok={Boolean(emailSettings?.smtp?.passwordConfigured)} />
+                <Button type="button" variant="outline" className="h-9 rounded-md text-xs font-black" onClick={() => toast.info('Send Test Email requires the protected backend test endpoint before enabling.')}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Send Test Email
+                </Button>
+              </div>
+            </Panel>
+            <Panel title="Notification Templates" icon={Bell}>
+              <div className="grid gap-2">
+                {(emailSettings?.notifications?.templates || []).map((template: string) => (
+                  <StatusLine key={template} label={template} ok={Boolean(emailSettings?.notifications?.emailEnabled)} />
+                ))}
+              </div>
+            </Panel>
           </section>
         )}
 
         {activeTab === 'audit' && (
-          <DataTable title="Audit Logs" rows={auditLogs} columns={['action', 'entityType', 'entityId', 'createdAt']} />
+          <section className="space-y-4">
+            <Toolbar
+              tab="audit"
+              filters={filters.audit}
+              updateFilter={updateFilter}
+              resetFilters={resetFilters}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selects={[
+                ['action', 'Any action', ['company', 'role', 'payment', 'file', 'bid', 'login']],
+                ['entityType', 'Any entity', ['user', 'organization', 'company', 'payment', 'procurement', 'file']]
+              ]}
+            />
+            <PaginatedTable
+              title="Audit Logs"
+              icon={FileClock}
+              rows={auditLogs.items}
+              total={auditLogs.total}
+              page={pages.audit.page}
+              pageSize={pages.audit.pageSize}
+              loading={loading.audit}
+              error={error.audit}
+              columns={[
+                ['action', 'Action'],
+                ['entityType', 'Entity'],
+                ['entityId', 'Entity ID'],
+                ['createdAt', 'Created']
+              ]}
+              sort={sorts.audit}
+              onSort={field => onSort('audit', field)}
+              onPageChange={page => setPageState('audit', page)}
+              onPageSizeChange={size => setPageSizeState('audit', size)}
+              viewMode={viewMode}
+            />
+          </section>
+        )}
+
+        {activeTab === 'security' && (
+          <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+            <MetricStrip summary={security?.summary} labels={[
+              ['failedLogins', 'Failed logins'],
+              ['suspiciousActions', 'Suspicious actions'],
+              ['openFraudAlerts', 'Open fraud alerts'],
+              ['roleChanges', 'Role changes'],
+              ['fileAccessEvents', 'File access events'],
+              ['paymentActions', 'Payment actions']
+            ]} />
+            <Panel title="Security Controls" icon={ShieldCheck} loading={loading.security} error={error.security}>
+              <div className="grid gap-2">
+                {Object.entries(security?.controls || {}).map(([key, value]) => (
+                  <StatusLine key={key} label={String(value)} ok />
+                ))}
+              </div>
+            </Panel>
+            <Panel title="Dangerous Action Policy" icon={AlertTriangle}>
+              <SafetyNotice text="Permanent deletion must require exact confirmation text, a reason, backend permission checks, and audit logging. Archive or suspend is the default." />
+            </Panel>
+          </section>
         )}
       </div>
     </div>
   );
 }
 
-function SearchBox({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function Toolbar({
+  tab,
+  filters,
+  updateFilter,
+  resetFilters,
+  viewMode,
+  setViewMode,
+  selects
+}: {
+  tab: TabId;
+  filters: Record<string, string>;
+  updateFilter: (tab: TabId, key: string, value: string) => void;
+  resetFilters: (tab: TabId) => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  selects?: Array<[string, string, string[]]>;
+}) {
+  const activeFilters = Object.entries(filters).filter(([, value]) => value);
+  return (
+    <div className="sticky top-0 z-10 rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="grid flex-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <SearchInput value={filters.search || ''} onChange={value => updateFilter(tab, 'search', value)} placeholder="Search..." />
+          {selects?.map(([key, label, options]) => (
+            <select key={key} value={filters[key] || ''} onChange={event => updateFilter(tab, key, event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-[#12335f]">
+              <option value="">{label}</option>
+              {options.map(option => <option key={option} value={option}>{labelize(option)}</option>)}
+            </select>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => resetFilters(tab)} className="h-10 rounded-md text-xs font-black">
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Reset
+          </Button>
+          <ViewToggle viewMode={viewMode} onChange={setViewMode} />
+        </div>
+      </div>
+      {activeFilters.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {activeFilters.map(([key, value]) => (
+            <span key={key} className="rounded-full bg-[#12335f]/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#12335f]">
+              {labelize(key)}: {labelize(value)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchInput({ value, onChange, placeholder, icon: Icon = Search }: { value: string; onChange: (value: string) => void; placeholder: string; icon?: any }) {
   return (
     <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      <input
-        value={value}
-        onChange={event => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-[#12335f]"
-        placeholder="Search"
-      />
+      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-[#12335f]" />
+    </div>
+  );
+}
+
+function ViewToggle({ viewMode, onChange }: { viewMode: ViewMode; onChange: (mode: ViewMode) => void }) {
+  return (
+    <div className="inline-flex h-10 overflow-hidden rounded-md border border-slate-200 bg-white">
+      <button type="button" onClick={() => onChange('list')} className={cn('px-3', viewMode === 'list' ? 'bg-[#12335f] text-white' : 'text-slate-500')}>
+        <List className="h-4 w-4" />
+      </button>
+      <button type="button" onClick={() => onChange('grid')} className={cn('px-3', viewMode === 'grid' ? 'bg-[#12335f] text-white' : 'text-slate-500')}>
+        <Grid2X2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function PaginatedTable<T extends Record<string, any>>({
+  title,
+  icon: Icon,
+  rows,
+  columns,
+  total,
+  page,
+  pageSize,
+  loading,
+  error,
+  sort,
+  onSort,
+  onPageChange,
+  onPageSizeChange,
+  viewMode,
+  actions
+}: {
+  title: string;
+  icon: any;
+  rows: T[];
+  columns: Array<[string, string]>;
+  total: number;
+  page: number;
+  pageSize: number;
+  loading?: boolean;
+  error?: string | null;
+  sort: { field: string; direction: SortDirection };
+  onSort: (field: string) => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  viewMode: ViewMode;
+  actions?: (row: T) => React.ReactNode;
+}) {
+  if (viewMode === 'grid') {
+    return (
+      <Panel title={title} icon={Icon} loading={loading} error={error}>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map(row => (
+            <article key={row.id || JSON.stringify(row)} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+              <div className="space-y-2">
+                {columns.slice(0, 5).map(([field, label]) => (
+                  <Detail key={field} label={label} value={formatCell(valueAt(row, field))} />
+                ))}
+              </div>
+              {actions && <div className="mt-3 flex flex-wrap gap-2">{actions(row)}</div>}
+            </article>
+          ))}
+          {rows.length === 0 && <EmptyState />}
+        </div>
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
+      </Panel>
+    );
+  }
+
+  return (
+    <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-[#12335f]" />
+          <h2 className="text-sm font-black text-slate-900">{title}</h2>
+        </div>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
+      </div>
+      {error ? <ErrorState message={error} /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="w-16 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">S.No.</th>
+                {columns.map(([field, label]) => (
+                  <th key={field} className="px-4 py-3">
+                    <SortableHeader label={label} field={field} activeField={sort.field} direction={sort.direction} onSort={onSort} />
+                  </th>
+                ))}
+                {actions && <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading && rows.length === 0 ? Array.from({ length: 5 }).map((_, index) => <TableSkeleton key={index} columns={columns.length + (actions ? 2 : 1)} />) : rows.map((row, index) => (
+                <tr key={row.id || index} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 text-xs font-black text-slate-400">{(page - 1) * pageSize + index + 1}</td>
+                  {columns.map(([field]) => (
+                    <td key={field} className="max-w-72 truncate px-4 py-3 text-slate-700">{formatCell(valueAt(row, field))}</td>
+                  ))}
+                  {actions && <td className="px-4 py-3"><div className="flex justify-end gap-2">{actions(row)}</div></td>}
+                </tr>
+              ))}
+              {!loading && rows.length === 0 && <tr><td colSpan={columns.length + (actions ? 2 : 1)}><EmptyState /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
+    </section>
+  );
+}
+
+function Panel({ title, icon: Icon, children, loading, error }: { title: string; icon: any; children: React.ReactNode; loading?: boolean; error?: string | null }) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-[#12335f]" />
+          <h2 className="text-sm font-black text-slate-900">{title}</h2>
+        </div>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
+      </div>
+      {error ? <ErrorState message={error} /> : children}
+    </section>
+  );
+}
+
+function KpiCard({ label, value, subtext, icon: Icon, tone }: { label: string; value: number; subtext: string; icon: any; tone: string }) {
+  const tones: Record<string, string> = {
+    blue: 'bg-sky-50 text-[#12335f]',
+    green: 'bg-emerald-50 text-emerald-700',
+    amber: 'bg-amber-50 text-amber-700',
+    red: 'bg-red-50 text-red-700'
+  };
+  return (
+    <Card className="rounded-md border-slate-200 bg-white shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+            <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+          </div>
+          <div className={cn('rounded-md p-2', tones[tone] || tones.blue)}><Icon className="h-5 w-5" /></div>
+        </div>
+        <p className="mt-3 text-xs font-semibold text-slate-500">{subtext}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricStrip({ summary, labels }: { summary?: Record<string, number>; labels: Array<[string, string]> }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      {labels.map(([key, label]) => (
+        <div key={key} className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+          <p className="mt-1 text-xl font-black text-[#12335f]">{summary?.[key] ?? 0}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SafeActions({ onAction, label }: { onAction: (label: string) => void; label: string }) {
+  return (
+    <>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black" onClick={() => toast.info(`Open detail view for ${label}.`)}>
+        <Eye className="mr-1 h-3 w-3" />
+        View
+      </Button>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-amber-700" onClick={() => onAction(`Suspend/archive ${label}`)}>
+        <Archive className="mr-1 h-3 w-3" />
+        Archive
+      </Button>
+    </>
+  );
+}
+
+function SafetyNotice({ text = 'This action may affect historical records. Use archive/suspend unless permanent deletion is legally approved.' }: { text?: string }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">
+      <AlertTriangle className="mr-2 inline h-4 w-4" />
+      {text}
     </div>
   );
 }
 
 function CompanySelect({ companies, value, onChange }: { companies: Company[]; value: number | null; onChange: (id: number) => void }) {
   return (
-    <select
-      value={value || ''}
-      onChange={event => onChange(Number(event.target.value))}
-      className="h-10 min-w-64 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#12335f]"
-    >
-      {companies.map(company => (
-        <option key={company.id} value={company.id}>{company.portalDisplayName} - {company.name}</option>
-      ))}
+    <select value={value || ''} onChange={event => onChange(Number(event.target.value))} className="h-10 min-w-64 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-[#12335f]">
+      {companies.map(company => <option key={company.id} value={company.id}>{company.portalDisplayName || company.name}</option>)}
     </select>
   );
 }
 
-function DataTable({ title, rows, columns }: { title: string; rows: any[]; columns: string[] }) {
+function Detail({ label, value }: { label: string; value: unknown }) {
   return (
-    <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h2 className="text-sm font-black text-slate-900">{title}</h2>
-        <span className="text-xs font-bold text-slate-500">{rows.length} records</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="w-16 px-4 py-3">S.No.</th>
-              {columns.map(column => <th key={column} className="px-4 py-3">{column}</th>)}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((row, index) => (
-              <tr key={row.id || index} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-bold text-slate-500">{index + 1}</td>
-                {columns.map(column => (
-                  <td key={column} className="max-w-72 truncate px-4 py-3 text-slate-700">
-                    {formatCell(row[column])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No records found</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-bold text-slate-800">{formatCell(value)}</p>
+    </div>
   );
 }
 
+function StatusLine({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+      <span className="text-xs font-bold text-slate-700">{label}</span>
+      <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider', ok ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
+        <CheckCircle2 className="h-3 w-3" />
+        {ok ? 'Ready' : 'Review'}
+      </span>
+    </div>
+  );
+}
+
+function SimpleList({ rows, primary, secondary, meta }: { rows: any[]; primary: string; secondary: string; meta: string }) {
+  if (!rows.length) return <EmptyState />;
+  return (
+    <div className="divide-y divide-slate-100">
+      {rows.map((row, index) => (
+        <div key={row.id || index} className="flex items-center justify-between gap-3 py-3">
+          <div>
+            <p className="text-sm font-black text-slate-900">{formatCell(row[primary])}</p>
+            <p className="text-xs font-semibold text-slate-500">{formatCell(row[secondary])}</p>
+          </div>
+          <p className="shrink-0 text-xs font-bold text-slate-400">{formatCell(row[meta])}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonCard() {
+  return <div className="h-32 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm"><div className="m-4 h-4 w-24 rounded bg-slate-100" /><div className="m-4 h-8 w-16 rounded bg-slate-100" /></div>;
+}
+
+function TableSkeleton({ columns }: { columns: number }) {
+  return <tr>{Array.from({ length: columns }).map((_, index) => <td key={index} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-slate-100" /></td>)}</tr>;
+}
+
+function EmptyState() {
+  return <div className="px-4 py-8 text-center text-sm font-bold text-slate-500">No records found for the current filters.</div>;
+}
+
+function ErrorState({ message }: { message: string }) {
+  return <div className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{message}</div>;
+}
+
+const endpoint = (path: string, params: Record<string, string | number | undefined>) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') query.set(key, String(value));
+  }
+  const value = query.toString();
+  return value ? `${path}?${value}` : path;
+};
+
+const valueAt = (row: any, path: string) => path.split('.').reduce((value, key) => value?.[key], row);
+
 const formatCell = (value: unknown) => {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (typeof value === 'string' && value.includes('T')) return value.slice(0, 10);
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('en-IN') : '-';
   if (value == null || value === '') return '-';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
+  if (typeof value === 'object') {
+    const anyValue = value as any;
+    return anyValue.organizationName || anyValue.name || anyValue.email || JSON.stringify(value);
+  }
+  return String(value).replace(/_/g, ' ');
 };
+
+const labelize = (value: string) => value.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, char => char.toUpperCase());

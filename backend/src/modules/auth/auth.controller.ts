@@ -342,7 +342,7 @@ export const authController = {
         return res.status(423).json({ message: 'Account is temporarily locked. Please try again later.' });
       }
 
-      if (user.accountStatus === 'BLOCKED' || user.accountStatus === 'SUSPENDED') {
+      if (user.accountStatus !== 'ACTIVE') {
         await recordLoginEvent({ req, userId: user.id, success: false, reason: 'account_disabled' });
         await auditLog({
           actorUserId: user.id,

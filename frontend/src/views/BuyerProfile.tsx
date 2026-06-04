@@ -431,7 +431,7 @@ export default function BuyerProfile() {
         return;
       }
 
-      // Enrich payload with GeM-specific fields
+      // Enrich payload with portal-specific buyer fields.
       payload.organizationType = formData.organizationType;
       payload.ministry = formData.ministry;
       payload.division = formData.division;
@@ -1093,11 +1093,11 @@ export default function BuyerProfile() {
                         label="Email (Official) *" 
                         value={formData.verifyingEmail} 
                         onChange={(e) => handleFieldChange('verifyingEmail', e.target.value)}
-                        placeholder="buycon5.gpmp.mh@gembuyer.in"
+                        placeholder="buyer@example.com"
                         error={formErrors.verifyingEmail}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
-                      <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with NIC/GeM.</p>
+                      <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with your official organization domain.</p>
                     </div>
                     <Input 
                       label="Mobile (Official) *" 

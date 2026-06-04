@@ -1246,13 +1246,102 @@ app.get("/", (req, res) => {
 app.get("/api/test", (req, res) => res.json({ message: "API working" }));
 
 // --- Tender APIs ---
+app.get('/api/tenders/summary', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+    const where = role === 'admin' ? {} : { buyerId: userId };
+
+    const tenders = await prisma.tender.findMany({
+      where,
+      select: { status: true }
+    });
+
+    const draftCount = tenders.filter(t => t.status === 'draft').length;
+    const activeCount = tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin')).length;
+    const closedCount = tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated').length;
+
+    res.json({ success: true, draftCount, activeCount, closedCount });
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to load tenders summary');
+  }
+});
+
 app.get('/api/tenders', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusTab = req.query.status ? String(req.query.status).trim() : 'published';
+    const category = req.query.category ? String(req.query.category).trim() : 'All';
+    const budget = req.query.budget ? String(req.query.budget).trim() : 'All';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+    let where: any = role === 'admin' ? {} : { buyerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { tenderId: { contains: search, mode: 'insensitive' } },
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } }
+          ]
+        }
+      ];
+    }
+
+    if (category !== 'All') {
+      where.category = category;
+    }
+
+    if (budget === 'under_10l') {
+      where.budget = { lt: 1000000 };
+    } else if (budget === '10l_50l') {
+      where.budget = { gte: 1000000, lte: 5000000 };
+    } else if (budget === 'above_50l') {
+      where.budget = { gt: 5000000 };
+    }
+
+    if (statusTab === 'draft') {
+      where.status = 'draft';
+    } else if (statusTab === 'published') {
+      where.status = { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] };
+    } else if (statusTab === 'closed') {
+      where.status = { in: ['closed', 'awarded', 'po_generated'] };
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'tenderId') {
+      orderBy = { tenderId: sortOrder };
+    } else if (sortBy === 'title') {
+      orderBy = { title: sortOrder };
+    } else if (sortBy === 'category') {
+      orderBy = { category: sortOrder };
+    } else if (sortBy === 'budget') {
+      orderBy = { budget: sortOrder };
+    } else if (sortBy === 'bids') {
+      orderBy = { bidsCount: sortOrder };
+    } else if (sortBy === 'closes') {
+      orderBy = { closesAt: sortOrder };
+    } else if (sortBy === 'status') {
+      orderBy = { status: sortOrder };
+    } else {
+      orderBy = { createdAt: sortOrder };
+    }
+
+    const total = await prisma.tender.count({ where });
     const tenders = await prisma.tender.findMany({
-      where: req.user?.role === 'admin' ? {} : { buyerId: Number(req.user?.id) },
-      orderBy: { createdAt: 'desc' }
+      where,
+      orderBy,
+      skip,
+      take
     });
-    res.json(maskSensitive(tenders));
+    res.json({ success: true, tenders: maskSensitive(tenders), total });
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to load tenders');
   }
@@ -2245,99 +2334,6 @@ const finalizeEndedAuctionsJob = async () => {
     }).catch(logAuctionFinalizerSkipped);
   }
 };
-
-// --- Seed Data Logic ---
-try {
-  const userCount = await prisma.user.count();
-  if (userCount === 0 && env.NODE_ENV !== 'production') {
-    console.log('Seeding sample data for Prisma...');
-    const hashedPassword = await hashPassword('SampleData@12345');
-
-    // Admin
-    await prisma.user.create({
-      data: {
-        name: 'Admin User',
-        email: 'admin@jsgsmile.com',
-        password: hashedPassword,
-        role: 'admin',
-        registrationStatus: 'completed',
-        onboardingStatus: 'approved_for_procurement'
-      }
-    });
-
-    // Sample Users
-    const sampleUsers = [
-      { name: 'Rajesh Kumar', email: 'rajesh@texcorp.com', role: 'seller' as const },
-      { name: 'Suresh Raina', email: 'suresh@buildcon.com', role: 'buyer' as const },
-    ];
-
-    for (const u of sampleUsers) {
-      const user = await prisma.user.create({
-        data: {
-          name: u.name,
-          email: u.email,
-          password: hashedPassword,
-          role: u.role,
-          registrationStatus: 'completed',
-          onboardingStatus: 'approved_for_procurement'
-        }
-      });
-
-      if (u.role === 'seller') {
-        await prisma.sellerProfile.create({
-          data: {
-            userId: user.id,
-            organizationType: 'Pvt Ltd',
-            pan: 'ABCDE1234F',
-            nameAsInPan: u.name,
-            panVerified: true,
-            businessName: 'TEXCORP',
-            productCategories: ['Textiles'],
-          }
-        });
-      } else {
-        await prisma.buyerProfile.create({
-          data: {
-            userId: user.id,
-            organizationName: 'BUILDCON',
-            businessType: 'Partnership',
-            industry: 'Construction',
-            pan: 'BCDEF2345G',
-            representativeName: u.name,
-            mobile: '9123456789',
-            state: 'Karnataka',
-            city: 'Bangalore',
-            pincode: '560001',
-            registeredAddress: '45, Tech Center, MG Road',
-            gst: '29BCDEF2345G1Z2',
-          }
-        });
-
-        // Add a tender for the buyer
-        await prisma.tender.create({
-          data: {
-            buyerId: user.id,
-            tenderId: 'T-2026-0001',
-            title: 'Office Furniture Supply',
-            category: 'Furniture',
-            budget: 500000,
-            description: 'Need ergonomic chairs and desks.',
-            status: 'published',
-            closesAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
-          }
-        });
-      }
-    }
-    console.log('Seeding completed.');
-  }
-} catch (err: any) {
-  const message = String(err?.message || '');
-  if (message.includes("Can't reach database server")) {
-    console.warn('Seeding skipped: database server is unreachable.');
-  } else {
-    console.error('Seeding error:', err);
-  }
-}
 
 const handleSecureUpload = async (req: AuthRequest & { file?: Express.Multer.File }, res: any, legacy = false) => {
   try {
@@ -3465,8 +3461,7 @@ app.post('/api/buyer/register', authenticate, authorize('buyer'), async (req: Au
   }
 });
 
-// --- Financial Workflow APIs ---
-app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+app.get('/api/purchase-orders/summary', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
   try {
     const userId = Number(req.user?.id);
     const role = String(req.user?.role);
@@ -3476,18 +3471,107 @@ app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admi
         ? { buyerId: userId }
         : { sellerId: userId };
 
+    const orders = await prisma.purchaseOrder.findMany({
+      where,
+      select: { amount: true, totalValue: true, status: true }
+    });
+
+    const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'];
+    const totalSpend = orders.filter(order => order.status !== 'cancelled').reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0);
+    const deliveredCount = orders.filter(order => order.status === 'delivered').length;
+    const openCount = orders.filter(order => openStatuses.includes(String(order.status || '').toLowerCase())).length;
+
+    res.json({ success: true, totalSpend, deliveredCount, openCount });
+  } catch (err: any) {
+    return handleFinancialRouteError(res, err);
+  }
+});
+
+app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusTab = req.query.status ? String(req.query.status).trim() : 'All';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+
+    let where: any = role === 'admin'
+      ? {}
+      : role === 'buyer'
+        ? { buyerId: userId }
+        : { sellerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { poNumber: { contains: search, mode: 'insensitive' } },
+            { title: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            { seller: { name: { contains: search, mode: 'insensitive' } } },
+            { buyer: { name: { contains: search, mode: 'insensitive' } } }
+          ]
+        }
+      ];
+    }
+
+    if (statusTab === 'Open') {
+      where.status = { in: ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'] };
+    } else if (statusTab === 'Delivered') {
+      where.status = 'delivered';
+    } else if (statusTab === 'Cancelled') {
+      where.status = 'cancelled';
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'value_high') {
+      orderBy = { amount: 'desc' };
+    } else if (sortBy === 'value_low') {
+      orderBy = { amount: 'asc' };
+    } else if (sortBy === 'po_asc') {
+      orderBy = { poNumber: 'asc' };
+    } else if (sortBy === 'po_desc') {
+      orderBy = { poNumber: 'desc' };
+    } else if (sortBy === 'title_asc') {
+      orderBy = { title: 'asc' };
+    } else if (sortBy === 'title_desc') {
+      orderBy = { title: 'desc' };
+    } else if (sortBy === 'party_asc') {
+      orderBy = role === 'buyer' ? { seller: { name: 'asc' } } : { buyer: { name: 'asc' } };
+    } else if (sortBy === 'party_desc') {
+      orderBy = role === 'buyer' ? { seller: { name: 'desc' } } : { buyer: { name: 'desc' } };
+    } else if (sortBy === 'expected_asc') {
+      orderBy = { expectedDelivery: 'asc' };
+    } else if (sortBy === 'expected_desc') {
+      orderBy = { expectedDelivery: 'desc' };
+    } else if (sortBy === 'status' || sortBy === 'status_asc') {
+      orderBy = { status: 'asc' };
+    } else if (sortBy === 'status_desc') {
+      orderBy = { status: 'desc' };
+    } else {
+      orderBy = { createdAt: 'desc' };
+    }
+
+    const total = await prisma.purchaseOrder.count({ where });
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where,
       include: {
         tender: { select: { id: true, tenderId: true, title: true, category: true, status: true } },
         deliveryWorkflow: true,
         inspectionRecord: true,
-        invoices: { orderBy: { createdAt: 'desc' } }
+        invoices: { orderBy: { createdAt: 'desc' } },
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } }
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100
+      orderBy,
+      skip,
+      take
     });
-    res.json({ success: true, purchaseOrders: maskSensitive(purchaseOrders) });
+    res.json({ success: true, purchaseOrders: maskSensitive(purchaseOrders), total });
   } catch (err: any) {
     return handleFinancialRouteError(res, err);
   }
@@ -3562,7 +3646,7 @@ app.post('/api/purchase-orders/:id/invoices', authenticate, authorize('seller', 
   }
 });
 
-app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+app.get('/api/invoices/summary', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
   try {
     const userId = Number(req.user?.id);
     const role = String(req.user?.role);
@@ -3574,14 +3658,119 @@ app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), as
 
     const invoices = await prisma.invoice.findMany({
       where,
-      include: {
-        purchaseOrder: { select: { id: true, poNumber: true, status: true, tenderId: true } },
-        payments: { orderBy: { createdAt: 'desc' } }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100
+      select: { amount: true, status: true, invoiceStatus: true }
     });
-    res.json({ success: true, invoices: maskSensitive(invoices) });
+
+    const statusOf = (inv: any) => String(inv.invoiceStatus || inv.status || 'draft').toLowerCase();
+    const totalValue = invoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    const pendingCount = invoices.filter(inv => ['draft', 'submitted', 'pending'].includes(statusOf(inv))).length;
+    const approvedCount = invoices.filter(inv => ['approved', 'paid'].includes(statusOf(inv))).length;
+
+    res.json({ success: true, totalValue, pendingCount, approvedCount });
+  } catch (err: any) {
+    return handleFinancialRouteError(res, err);
+  }
+});
+
+app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusFilter = req.query.status ? String(req.query.status).trim() : '';
+    const acceptedPo = req.query.acceptedPo === 'true';
+    const scope = req.query.scope ? String(req.query.scope) : 'all';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    let where: any = role === 'admin'
+      ? {}
+      : role === 'buyer'
+        ? { buyerId: userId }
+        : { sellerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { invoiceNumber: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            {
+              purchaseOrder: {
+                OR: [
+                  { poNumber: { contains: search, mode: 'insensitive' } },
+                  { title: { contains: search, mode: 'insensitive' } }
+                ]
+              }
+            },
+            { buyer: { name: { contains: search, mode: 'insensitive' } } },
+            { seller: { name: { contains: search, mode: 'insensitive' } } }
+          ]
+        }
+      ];
+    }
+
+    if (statusFilter) {
+      where.OR = [
+        { status: { equals: statusFilter, mode: 'insensitive' } },
+        { invoiceStatus: { equals: statusFilter as any } }
+      ];
+    }
+
+    if (acceptedPo) {
+      where.purchaseOrder = {
+        ...where.purchaseOrder,
+        status: 'accepted'
+      };
+    }
+
+    if (scope === 'interstate') {
+      where.metadata = { path: ['interstate'], equals: true };
+    } else if (scope === 'domestic') {
+      where.NOT = { metadata: { path: ['interstate'], equals: true } };
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'invoiceNumber') {
+      orderBy = { invoiceNumber: sortOrder };
+    } else if (sortBy === 'poNumber') {
+      orderBy = { purchaseOrder: { poNumber: sortOrder } };
+    } else if (sortBy === 'party') {
+      orderBy = role === 'seller' ? { buyer: { name: sortOrder } } : { seller: { name: sortOrder } };
+    } else if (sortBy === 'taxableAmount') {
+      orderBy = { taxableAmount: sortOrder };
+    } else if (sortBy === 'totalTaxAmount') {
+      orderBy = { totalTaxAmount: sortOrder };
+    } else if (sortBy === 'tdsAmount') {
+      orderBy = { tdsAmount: sortOrder };
+    } else if (sortBy === 'totalAmount') {
+      orderBy = { amount: sortOrder };
+    } else if (sortBy === 'dueDate') {
+      orderBy = { createdAt: sortOrder };
+    } else if (sortBy === 'status') {
+      orderBy = { status: sortOrder };
+    } else {
+      orderBy = { createdAt: sortOrder };
+    }
+
+    const total = await prisma.invoice.count({ where });
+    const invoices = await prisma.invoice.findMany({
+      where,
+      include: {
+        purchaseOrder: { select: { id: true, poNumber: true, status: true, tenderId: true, title: true } },
+        payments: { orderBy: { createdAt: 'desc' } },
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } }
+      },
+      orderBy,
+      skip,
+      take
+    });
+    res.json({ success: true, invoices: maskSensitive(invoices), total });
   } catch (err: any) {
     return handleFinancialRouteError(res, err);
   }
@@ -4945,6 +5134,19 @@ const startListening = (port: number) => {
 
 app.use(errorHandler);
 
+const checkStartupDatabaseConnection = async () => {
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1');
+    return true;
+  } catch (error) {
+    logger.warn(
+      { err: summarizeBackgroundError(error) },
+      'Database is unreachable on startup; skipping database background jobs. User login requires DATABASE_URL to reach the live database.'
+    );
+    return false;
+  }
+};
+
 export async function startServer() {
   await connectRedis().catch(error => {
     console.error('[Redis] continuing without Redis connection', error instanceof Error ? error.message : error);
@@ -4986,6 +5188,9 @@ export async function startServer() {
 
   const PORT = env.PORT;
   startListening(PORT);
+
+  const databaseAvailable = await checkStartupDatabaseConnection();
+  if (!databaseAvailable) return;
 
   const auctionFinalizerInterval = setInterval(() => {
     void finalizeEndedAuctionsJob().catch(logAuctionFinalizerFailure);

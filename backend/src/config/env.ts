@@ -116,9 +116,30 @@ if (isTrueProduction) {
   }
 }
 
+const normalizeDatabaseUrl = (value?: string) => {
+  if (!value) return value;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') return value;
+
+    url.searchParams.delete('channel_binding');
+    if (!url.searchParams.has('connect_timeout')) {
+      url.searchParams.set('connect_timeout', '30');
+    }
+
+    return url.toString();
+  } catch {
+    return value;
+  }
+};
+
+const databaseUrl = normalizeDatabaseUrl(parsed.data.DATABASE_URL) ?? 'postgresql://placeholder/diagnostic';
+process.env.DATABASE_URL = databaseUrl;
+
 export const env = {
   ...parsed.data,
-  DATABASE_URL: parsed.data.DATABASE_URL ?? 'postgresql://placeholder/diagnostic',
+  DATABASE_URL: databaseUrl,
   JWT_SECRET: parsed.data.JWT_SECRET ?? 'non-production-placeholder-jwt-secret'
 };
 

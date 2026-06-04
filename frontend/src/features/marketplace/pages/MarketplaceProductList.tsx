@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, usePathname } from 'next/navigation';
 import { Search, ChevronRight, Package, MapPin, BadgeCheck, ShoppingCart, Eye, ChevronLeft, Wrench } from 'lucide-react';
@@ -10,6 +10,9 @@ import { MarketplaceFooter } from '../components/MarketplaceFooter';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { useResponsiveViewMode } from '../../shared/hooks';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 
 const fallbackProducts: MarketplaceProduct[] = [
     {
@@ -107,6 +110,7 @@ const fallbackServices: MarketplaceService[] = [
         imageUrl: 'https://picsum.photos/seed/msme-civil-works/640/420'
     }
 ];
+type MarketplaceSortKey = 'name' | 'seller' | 'category' | 'price' | 'status';
 
 export default function MarketplaceProductList() {
     const { user } = useAuth();
@@ -119,6 +123,9 @@ export default function MarketplaceProductList() {
     const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
     const [sort, setSort] = useState(searchParams?.get('sort') || 'latest');
     const [page, setPage] = useState(Number(searchParams?.get('page')) || 1);
+    const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:marketplace:${isServices ? 'services' : 'products'}:view-mode`);
+    const [tableSortKey, setTableSortKey] = useState<MarketplaceSortKey>('name');
+    const [tableSortDirection, setTableSortDirection] = useState<SortDirection>('asc');
 
     const { data: homeData } = useQuery({
         queryKey: ['marketplaceHomeData'],
@@ -159,6 +166,24 @@ export default function MarketplaceProductList() {
     const items = isShowingFallback ? (isServices ? fallbackServices : fallbackProducts) : apiItems;
     const total = isShowingFallback ? items.length : listData?.total || 0;
     const totalPages = isShowingFallback ? 1 : listData?.totalPages || 0;
+    const sortedItems = useMemo(() => [...items].sort((a: any, b: any) => {
+        const valueFor = (item: any) => {
+            if (tableSortKey === 'seller') return item.organization?.organizationName || item.seller?.name || '';
+            if (tableSortKey === 'category') return item.category?.name || '';
+            if (tableSortKey === 'price') return Number(isServices ? item.basePrice || 0 : item.price || 0);
+            if (tableSortKey === 'status') return item.status || '';
+            return item.name || '';
+        };
+        const av = valueFor(a);
+        const bv = valueFor(b);
+        const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+        return tableSortDirection === 'asc' ? result : -result;
+    }), [isServices, items, tableSortDirection, tableSortKey]);
+
+    const toggleTableSort = (field: MarketplaceSortKey) => {
+        setTableSortDirection(prev => tableSortKey === field && prev === 'asc' ? 'desc' : 'asc');
+        setTableSortKey(field);
+    };
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -260,6 +285,7 @@ export default function MarketplaceProductList() {
                             <option value="price_desc">Price: High to Low</option>
                             <option value="name">Name A-Z</option>
                         </select>
+                        <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     </div>
 
                     {/* Results Count */}
@@ -275,9 +301,78 @@ export default function MarketplaceProductList() {
                             {isServices ? <Wrench className="h-12 w-12 text-slate-300 mx-auto mb-3" /> : <Package className="h-12 w-12 text-slate-300 mx-auto mb-3" />}
                             <p className="text-sm text-slate-500">No {isServices ? 'services' : 'products'} found matching your criteria.</p>
                         </div>
+                    ) : viewMode === 'list' ? (
+                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[920px] text-left text-sm">
+                                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                                        <tr>
+                                            <th className="px-4 py-3"><SortableHeader label={isServices ? 'Service' : 'Product'} field="name" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
+                                            <th className="px-4 py-3"><SortableHeader label="Seller" field="seller" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
+                                            <th className="px-4 py-3"><SortableHeader label="Category" field="category" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
+                                            <th className="px-4 py-3 text-right"><SortableHeader label="Price" field="price" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} className="justify-end" /></th>
+                                            <th className="px-4 py-3"><SortableHeader label="Status" field="status" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
+                                            <th className="px-4 py-3 text-right font-black">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {sortedItems.map((item: any) => {
+                                            const isFallback = item.id < 0;
+                                            const isVerified = item.organization?.verificationStatus === 'VERIFIED';
+                                            const location = item.organization?.city || item.organization?.district || item.organization?.state;
+                                            const itemPrice = isServices ? item.basePrice : item.price;
+                                            const detailUrl = isFallback
+                                                ? (isServices ? '/marketplace/services' : '/marketplace/products')
+                                                : (isServices ? `/marketplace/services/${item.id}` : `/marketplace/products/${item.id}`);
+                                            return (
+                                                <tr key={item.id} className="bg-white transition hover:bg-blue-50/50">
+                                                    <td className="px-4 py-3">
+                                                        <Link
+                                                            href={detailUrl}
+                                                            onClick={() => {
+                                                                if (isFallback) return;
+                                                                queryClient.setQueryData(
+                                                                    [isServices ? 'marketplaceService' : 'marketplaceProduct', item.id],
+                                                                    isServices ? { service: item } : { product: item }
+                                                                );
+                                                            }}
+                                                            className="text-xs font-black text-slate-900 hover:text-[#0b2447]"
+                                                        >
+                                                            {item.name}
+                                                        </Link>
+                                                        <p className="mt-1 text-[10px] font-semibold text-slate-500">{isServices ? item.pricingModel || 'Service' : item.unitOfMeasure || 'Unit'}{location ? ` | ${location}` : ''}</p>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-xs font-semibold text-slate-600">
+                                                        <span className="text-wrap-anywhere">{item.organization?.organizationName || item.seller?.name || 'Verified seller'}</span>
+                                                        {isVerified && <span className="ml-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Verified</span>}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-xs font-semibold text-slate-600">{item.category?.name || '-'}</td>
+                                                    <td className="px-4 py-3 text-right text-xs font-black text-[#0b2447]">{itemPrice ? `INR ${Number(itemPrice).toLocaleString('en-IN')}` : 'Request quote'}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase text-blue-700">{item.status || 'ACTIVE'}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex justify-end gap-2">
+                                                            <Link href={detailUrl} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 hover:bg-slate-50">
+                                                                <Eye className="h-3 w-3" /> {isFallback ? 'Browse' : 'Details'}
+                                                            </Link>
+                                                            {!isFallback && (
+                                                                <button onClick={() => handleAddToCart(item.id)} className="inline-flex h-8 items-center gap-1 rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white hover:bg-[#12335f]">
+                                                                    <ShoppingCart className="h-3 w-3" /> Cart
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {items.map((item: any) => {
+                            {sortedItems.map((item: any) => {
                                 const isFallback = item.id < 0;
                                 const imageUrl = item.imageUrl || (!isServices ? item.images?.[0]?.fileAsset?.url : undefined);
                                 const isVerified = item.organization?.verificationStatus === 'VERIFIED';

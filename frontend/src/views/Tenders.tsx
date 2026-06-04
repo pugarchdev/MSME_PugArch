@@ -38,7 +38,8 @@ import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
-import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
+import { useFeatureQuery, usePaginatedFeatureQuery, useResponsiveViewMode } from '../features/shared/hooks';
+import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 
 interface Tender {
   id: number;
@@ -137,14 +138,12 @@ const normalizeTenderList = (payload: any): Tender[] => {
 export default function Tenders() {
   const router = useRouter();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
-  const cachedTenders = api.peek('/api/tenders', authOptions);
-  const [tenders, setTenders] = useState<Tender[]>(normalizeTenderList(cachedTenders));
-  const [loading, setLoading] = useState(!cachedTenders);
   const [activeTab, setActiveTab] = useState<string>('published');
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
   const [budgetFilter, setBudgetFilter] = useState('All');
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'created', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTender, setNewTender] = useState({
@@ -165,6 +164,48 @@ export default function Tenders() {
   const [editingTender, setEditingTender] = useState<Tender | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchText);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchText]);
+
+  const {
+    records: pagedTenders,
+    loading,
+    refreshing,
+    error,
+    reload,
+    setRecords: setPagedTenders,
+    page,
+    pageSize,
+    total,
+    setPage,
+    setPageSize
+  } = usePaginatedFeatureQuery<Tender>(
+    '/api/tenders',
+    {
+      search: debouncedSearch,
+      status: activeTab,
+      category: selectedCategoryFilter,
+      budget: budgetFilter,
+      sortBy: sortConfig.key,
+      sortOrder: sortConfig.direction
+    },
+    10
+  );
+
+  const { data: summaryData, reload: reloadSummary } = useFeatureQuery<{ draftCount: number; activeCount: number; closedCount: number } | null>(
+    '/api/tenders/summary',
+    null
+  );
+
+  const refreshAll = () => {
+    void reload();
+    void reloadSummary();
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -211,24 +252,6 @@ export default function Tenders() {
     }
   };
 
-  useEffect(() => {
-    fetchTenders();
-  }, []);
-
-  const fetchTenders = async () => {
-    try {
-      const res = await api.get('/api/tenders', authOptions);
-      if (res.ok) {
-        const data = await res.json();
-        setTenders(normalizeTenderList(data));
-      }
-    } catch (err) {
-      console.error('Failed to fetch tenders', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handlePublish = async (tenderId: number) => {
     setPublishingId(tenderId);
     try {
@@ -240,7 +263,7 @@ export default function Tenders() {
 
       if (res.ok) {
         toast.success('Tender published successfully');
-        await fetchTenders();
+        refreshAll();
         setActiveTab('published');
       } else {
         const errorData = await res.json();
@@ -290,7 +313,7 @@ export default function Tenders() {
         toast.success('Tender created successfully');
         setIsModalOpen(false);
         setNewTender({ title: '', category: '', budget: '', description: '', documentUrl: '', closesAt: '', quantityUnit: '', paymentTerms: '', deliveryType: '' });
-        fetchTenders();
+        refreshAll();
       } else {
         const errorData = await res.json().catch(() => null);
         toast.error(errorData?.message || 'Failed to create tender');
@@ -330,7 +353,7 @@ export default function Tenders() {
       toast.success('Tender updated successfully');
       setEditingTender(null);
       setSelectedTender(data);
-      await fetchTenders();
+      refreshAll();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
     } finally {
@@ -347,7 +370,7 @@ export default function Tenders() {
       toast.success('Tender deleted successfully');
       setSelectedTender(null);
       setEditingTender(null);
-      await fetchTenders();
+      refreshAll();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
     }
@@ -433,49 +456,8 @@ export default function Tenders() {
     </div>
   );
 
-  const currentTenders = (activeTab === 'published'
-    ? tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin'))
-    : activeTab === 'closed'
-      ? tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated')
-      : tenders.filter(t => t.status === activeTab)
-  ).filter(t => {
-    const matchesSearch = !searchText ||
-      t.title.toLowerCase().includes(searchText.toLowerCase()) ||
-      (t.tenderId && t.tenderId.toLowerCase().includes(searchText.toLowerCase()));
-
-    const matchesCategory = selectedCategoryFilter === 'All' || t.category === selectedCategoryFilter;
-    const matchesBudget =
-      budgetFilter === 'All' ||
-      (budgetFilter === 'under_10l' && Number(t.budget || 0) < 1000000) ||
-      (budgetFilter === '10l_50l' && Number(t.budget || 0) >= 1000000 && Number(t.budget || 0) <= 5000000) ||
-      (budgetFilter === 'above_50l' && Number(t.budget || 0) > 5000000);
-
-    return matchesSearch && matchesCategory && matchesBudget;
-  }).sort((a, b) => {
-    const direction = sortConfig.direction === 'asc' ? 1 : -1;
-    const valueFor = (tender: Tender) => {
-      if (sortConfig.key === 'tenderId') return tender.tenderId || `T-2026-01${tender.id}`;
-      if (sortConfig.key === 'title') return tender.title || '';
-      if (sortConfig.key === 'category') return tender.category || '';
-      if (sortConfig.key === 'budget') return Number(tender.budget || 0);
-      if (sortConfig.key === 'bids') return Number(tender.bidsCount || 0);
-      if (sortConfig.key === 'closes') return new Date(tender.closesAt || 0).getTime();
-      if (sortConfig.key === 'status') return tender.status || '';
-      return tender.id;
-    };
-    const aValue = valueFor(a);
-    const bValue = valueFor(b);
-    if (typeof aValue === 'number' && typeof bValue === 'number') return (aValue - bValue) * direction;
-    return String(aValue).localeCompare(String(bValue)) * direction;
-  });
-  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(currentTenders, 10);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <Loader2 className="h-8 w-8" />
-      </div>
-    );
+  if (loading && pagedTenders.length === 0) {
+    return <LoadingState label="Loading tenders..." />;
   }
 
   return (
@@ -500,9 +482,9 @@ export default function Tenders() {
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-1 bg-[#f1f3f4] p-1 rounded-lg border border-[#e8eaed]">
             {[
-              { id: 'draft', label: 'Draft', count: tenders.filter(t => t.status === 'draft').length },
-              { id: 'published', label: 'Active', count: tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin')).length },
-              { id: 'closed', label: 'Closed', count: tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated').length }
+              { id: 'draft', label: 'Draft', count: summaryData?.draftCount ?? 0 },
+              { id: 'published', label: 'Active', count: summaryData?.activeCount ?? 0 },
+              { id: 'closed', label: 'Closed', count: summaryData?.closedCount ?? 0 }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -594,7 +576,7 @@ export default function Tenders() {
                     <td colSpan={9} className="px-8 py-10"><div className="h-4 bg-slate-50 rounded w-full"></div></td>
                   </tr>
                 ))
-              ) : currentTenders.length === 0 ? (
+              ) : pagedTenders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-8 py-20 text-center">
                     <div className="flex flex-col items-center gap-4 opacity-30">
@@ -691,7 +673,7 @@ export default function Tenders() {
             </tbody>
           </table>
         </div>
-        {viewMode === 'grid' && currentTenders.length === 0 && (
+        {viewMode === 'grid' && pagedTenders.length === 0 && (
           <div className="rounded-lg border border-[#dadce0] bg-white px-8 py-20 text-center shadow-sm">
             <div className="flex flex-col items-center gap-4 opacity-30">
               <FileText className="h-12 w-12" />
@@ -700,7 +682,7 @@ export default function Tenders() {
           </div>
         )}
 
-        {viewMode === 'grid' && currentTenders.length > 0 && (
+        {viewMode === 'grid' && pagedTenders.length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {pagedTenders.map((tender, index) => (
               <div key={tender.id} className="rounded-lg border border-[#dadce0] bg-white p-4 shadow-sm transition hover:shadow-md">
@@ -755,7 +737,7 @@ export default function Tenders() {
           </div>
         )}
 
-        {currentTenders.length > 0 && (
+        {pagedTenders.length > 0 && (
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="tenders" />
         )}
 

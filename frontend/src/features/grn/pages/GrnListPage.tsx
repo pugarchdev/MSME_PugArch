@@ -3,8 +3,8 @@
  *
  * Route: /grn
  */
-import { useState } from 'react';
-import { CheckCircle2, ClipboardList, Clock, FileCheck2, Plus, RefreshCw, XCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CheckCircle2, ClipboardList, Clock, FileCheck2, Plus, RefreshCw, Search, XCircle } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { useRouter } from 'next/navigation';
 import { Button } from '../../../components/ui/button';
@@ -12,7 +12,11 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
-import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
+import { formatDateTime, formatRelative } from '../../shared/format';
+import { Pagination } from '../../shared/Pagination';
+import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useGrns } from '../hooks';
 import type { GrnStatus } from '../api';
 import { GrnCreateModal } from '../components/GrnCreateModal';
@@ -24,16 +28,58 @@ const STATUS_TONE: Record<GrnStatus, string> = {
     REJECTED: 'border-red-200 bg-red-50 text-red-700',
     PARTIAL: 'border-blue-200 bg-blue-50 text-blue-700'
 };
+type GrnSortKey = 'grnNumber' | 'poNumber' | 'seller' | 'items' | 'status' | 'receivedAt' | 'updatedAt';
 
 export default function GrnListPage() {
     const router = useRouter();
     const { hasMinRole } = useOrgRole();
     const [filter, setFilter] = useState<GrnStatus | 'ALL'>('ALL');
     const [showCreate, setShowCreate] = useState(false);
+    const [search, setSearch] = useState('');
+    const [sortKey, setSortKey] = useState<GrnSortKey>('updatedAt');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+    const [viewMode, setViewMode] = useResponsiveViewMode('phase7:grn-list:view-mode');
     const { data, isLoading, error, refetch, isFetching } = useGrns(filter === 'ALL' ? undefined : filter);
 
     const grns = data || [];
     const canCreate = hasMinRole('LOGISTICS_OFFICER');
+    const visibleGrns = useMemo(() => {
+        const text = search.trim().toLowerCase();
+        return [...grns].filter(g => {
+            const haystack = [
+                g.grnNumber,
+                g.status,
+                g.purchaseOrder?.poNumber,
+                g.purchaseOrder?.title,
+                g.purchaseOrder?.seller?.name,
+                g.receivedBy?.name
+            ].join(' ').toLowerCase();
+            return !text || haystack.includes(text);
+        }).sort((a, b) => {
+            const valueFor = (g: any) => {
+                if (sortKey === 'grnNumber') return g.grnNumber || '';
+                if (sortKey === 'poNumber') return g.purchaseOrder?.poNumber || '';
+                if (sortKey === 'seller') return g.purchaseOrder?.seller?.name || '';
+                if (sortKey === 'items') return g.items?.length || 0;
+                if (sortKey === 'status') return g.status || '';
+                if (sortKey === 'receivedAt') return new Date(g.receivedAt || 0).getTime();
+                return new Date(g.updatedAt || 0).getTime();
+            };
+            const av = valueFor(a);
+            const bv = valueFor(b);
+            const result = typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).localeCompare(String(bv));
+            return sortDirection === 'asc' ? result : -result;
+        });
+    }, [grns, search, sortDirection, sortKey]);
+    const { page, pageSize, pageItems, total, setPage, setPageSize } = usePagination(visibleGrns, 10);
+
+    const toggleSort = (field: GrnSortKey) => {
+        setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+        setSortKey(field);
+        setPage(1);
+    };
 
     const counts = {
         ALL: grns.length,
@@ -56,6 +102,7 @@ export default function GrnListPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-lg text-xs font-black uppercase">
                         <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
                     </Button>
@@ -77,12 +124,67 @@ export default function GrnListPage() {
 
             {error && <InlineError message={(error as Error).message} onRetry={() => refetch()} />}
 
+            {grns.length > 0 && (
+                <Card className="border-slate-200/80 shadow-sm">
+                    <CardContent className="p-4">
+                        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    value={search}
+                                    onChange={event => { setSearch(event.target.value); setPage(1); }}
+                                    placeholder="Search GRN, PO, seller, receiver, status..."
+                                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                                />
+                            </div>
+                            <Button
+                                variant="outline"
+                                className="h-10 rounded-lg text-xs font-black uppercase"
+                                onClick={() => { setSearch(''); setFilter('ALL'); setPage(1); }}
+                            >
+                                Reset
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {isLoading ? (
                 <LoadingState label="Loading GRNs..." />
             ) : grns.length === 0 ? (
                 <Card><CardContent className="py-12">
                     <EmptyState title="No GRNs found" description="Create one against an active Purchase Order to record the receipt of goods." />
                 </CardContent></Card>
+            ) : pageItems.length === 0 ? (
+                <Card><CardContent className="py-12">
+                    <EmptyState title="No GRNs match these filters" description="Clear the search or status card filter to see all goods receipt notes." />
+                </CardContent></Card>
+            ) : viewMode === 'grid' ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {pageItems.map((g: any) => (
+                        <button
+                            type="button"
+                            key={g.id}
+                            onClick={() => router.push(`/grn/${g.id}`)}
+                            className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-lg"
+                        >
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{g.grnNumber}</p>
+                                    <h2 className="mt-1 text-sm font-black text-slate-950">{g.purchaseOrder?.poNumber || 'Purchase Order'}</h2>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{g.purchaseOrder?.title}</p>
+                                </div>
+                                <StatusPill status={g.status} />
+                            </div>
+                            <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-600">
+                                <p><span className="font-black text-slate-900">Seller:</span> {g.purchaseOrder?.seller?.name || '-'}</p>
+                                <p><span className="font-black text-slate-900">Items:</span> {g.items.length} line{g.items.length === 1 ? '' : 's'}</p>
+                                <p><span className="font-black text-slate-900">Received:</span> {formatDateTime(g.receivedAt)}</p>
+                                <p><span className="font-black text-slate-900">Updated:</span> {formatRelative(g.updatedAt)}</p>
+                            </div>
+                        </button>
+                    ))}
+                </div>
             ) : (
                 <Card className="border-slate-200/80 shadow-sm">
                     <CardContent className="p-0">
@@ -91,18 +193,18 @@ export default function GrnListPage() {
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
                                         <th className="px-4 py-2.5 text-left w-12">#</th>
-                                        <th className="px-4 py-2.5 text-left w-44">GRN ID</th>
-                                        <th className="px-4 py-2.5 text-left">Purchase Order</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Items</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Status</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Received</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Updated</th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="GRN ID" field="grnNumber" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left"><SortableHeader label="Purchase Order" field="poNumber" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Items" field="items" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Received" field="receivedAt" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Updated" field="updatedAt" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {grns.map((g, idx) => (
+                                    {pageItems.map((g, idx) => (
                                         <tr key={g.id} className="hover:bg-slate-50/60 cursor-pointer" onClick={() => router.push(`/grn/${g.id}`)}>
-                                            <td className="px-4 py-3 font-mono text-xs text-slate-400">{String(idx + 1).padStart(2, '0')}</td>
+                                            <td className="px-4 py-3 font-mono text-xs text-slate-400">{String((page - 1) * pageSize + idx + 1).padStart(2, '0')}</td>
                                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                                                 <EntityIdLink label={g.grnNumber} id={g.id} size="sm" onClick={() => router.push(`/grn/${g.id}`)} />
                                             </td>
@@ -115,9 +217,7 @@ export default function GrnListPage() {
                                                 {g.items.length} line{g.items.length === 1 ? '' : 's'}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_TONE[g.status]}`}>
-                                                    {g.status}
-                                                </span>
+                                                <StatusPill status={g.status} />
                                             </td>
                                             <td className="px-4 py-3 text-xs font-semibold text-slate-700">
                                                 <p>{formatDateTime(g.receivedAt)}</p>
@@ -136,10 +236,22 @@ export default function GrnListPage() {
                 </Card>
             )}
 
+            {!isLoading && grns.length > 0 && (
+                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="GRNs" />
+            )}
+
             {showCreate && (
                 <GrnCreateModal onClose={() => setShowCreate(false)} onCreated={(g) => { setShowCreate(false); router.push(`/grn/${g.id}`); }} />
             )}
         </div>
+    );
+}
+
+function StatusPill({ status }: { status: GrnStatus }) {
+    return (
+        <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_TONE[status]}`}>
+            {status}
+        </span>
     );
 }
 

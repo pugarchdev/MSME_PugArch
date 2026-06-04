@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { BidDetailModal } from './BidDetailModal';
 import type { BuyerRequirement } from '../api';
+import { isProcurementDemoDataEnabled } from '../../procurementBid/api';
 
 /* ─── Sample bids ────────────────────────────────────────────────────────── */
 const SAMPLE_BIDS: BuyerRequirement[] = [
@@ -98,8 +99,9 @@ interface Props { requirements?: BuyerRequirement[]; }
 
 export function LatestBids({ requirements }: Props) {
     const { ref, visible } = useFadeIn();
-    const bids = (requirements && requirements.length > 0) ? requirements : SAMPLE_BIDS;
-    const isSampleData = !requirements || requirements.length === 0;
+    const demoEnabled = isProcurementDemoDataEnabled();
+    const bids = (requirements && requirements.length > 0) ? requirements : demoEnabled ? SAMPLE_BIDS : [];
+    const isSampleData = demoEnabled && (!requirements || requirements.length === 0);
     const [selected, setSelected] = useState<BuyerRequirement | null>(null);
 
     return (
@@ -117,15 +119,22 @@ export function LatestBids({ requirements }: Props) {
                                 {isSampleData && <span className="ml-1.5 text-[10px] text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded">Sample data · live bids appear once connected to backend</span>}
                             </p>
                         </div>
-                        <Link href="/marketplace/requirements" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-[#0b2447] text-[#0b2447] text-xs font-bold hover:bg-[#0b2447] hover:text-white active:scale-95 transition shrink-0 self-start sm:self-end">
+                        <Link href="/bids" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-[#0b2447] text-[#0b2447] text-xs font-bold hover:bg-[#0b2447] hover:text-white active:scale-95 transition shrink-0 self-start sm:self-end">
                             View All Bids <ChevronRight className="h-3.5 w-3.5" />
                         </Link>
                     </div>
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {bids.map((bid, i) => <BidCard key={bid.id} bid={bid} index={i} visible={visible} onView={setSelected} />)}
-                    </div>
+                    {bids.length ? (
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {bids.map((bid, i) => <BidCard key={bid.id} bid={bid} index={i} visible={visible} onView={setSelected} />)}
+                        </div>
+                    ) : (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
+                            <p className="text-sm font-bold text-slate-700">No bids available currently.</p>
+                            <p className="mt-1 text-xs text-slate-500">Live buyer requirements will appear here once the backend returns published records.</p>
+                        </div>
+                    )}
                     <div className="mt-6 text-center" style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease 600ms' }}>
-                        <Link href="/marketplace/requirements" className="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-[#0b2447] text-white text-xs font-bold hover:bg-[#12335f] active:scale-95 transition">
+                        <Link href="/bids" className="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-[#0b2447] text-white text-xs font-bold hover:bg-[#12335f] active:scale-95 transition">
                             View All Buyer Requirements &amp; Bids <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                     </div>

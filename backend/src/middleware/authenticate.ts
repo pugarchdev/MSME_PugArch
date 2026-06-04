@@ -46,7 +46,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, sessionVersion: true, lockedUntil: true, organizationId: true, companyId: true }
+      select: { id: true, role: true, sessionVersion: true, lockedUntil: true, accountStatus: true, organizationId: true, companyId: true }
     });
 
     if (!user || user.role !== decoded.role || user.sessionVersion !== sessionVersion) {
@@ -64,6 +64,10 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return apiResponse.error(res, 423, 'Account is temporarily locked', 'ACCOUNT_LOCKED');
+    }
+
+    if (user.accountStatus !== 'ACTIVE') {
+      return apiResponse.error(res, 403, 'Your account is inactive or blocked. Please contact the platform administrator.', 'ACCOUNT_DISABLED');
     }
 
     req.user = { 

@@ -18,6 +18,7 @@
     "test:integration": "node --test tests/phase8.integration.test.mjs",
     "test:delivery": "node --test tests/delivery.test.mjs",
     "audit:deps": "npm audit --workspace=backend --audit-level=high",
+    "cleanup:seed-data": "tsx scripts/cleanup-seed-data.ts",
     "backfill:org-membership": "tsx scripts/backfill-org-membership.ts",
     "attach-user-to-org": "tsx scripts/attach-user-to-org.ts",
     "security:check": "npm run typecheck && npm run prisma:validate && npm run lint:security && npm run test:security && npm run audit:deps"

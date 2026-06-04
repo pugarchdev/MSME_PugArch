@@ -4,11 +4,18 @@ import { getApi, normalizeList, normalizePaginated, peekApi } from './apiClient'
 
 export type ViewMode = 'list' | 'grid';
 
-export const useResponsiveViewMode = () => {
+export const useResponsiveViewMode = (storageKey?: string) => {
   const [viewMode, setViewModeState] = useState<ViewMode>('list');
   const hasManualSelection = useRef(false);
 
   useEffect(() => {
+    const savedMode = storageKey ? window.localStorage.getItem(storageKey) : null;
+    if (savedMode === 'list' || savedMode === 'grid') {
+      hasManualSelection.current = true;
+      setViewModeState(savedMode);
+      return;
+    }
+
     const mobileQuery = window.matchMedia('(max-width: 767px)');
     const applyDeviceDefault = () => {
       if (!hasManualSelection.current) {
@@ -19,12 +26,13 @@ export const useResponsiveViewMode = () => {
     applyDeviceDefault();
     mobileQuery.addEventListener('change', applyDeviceDefault);
     return () => mobileQuery.removeEventListener('change', applyDeviceDefault);
-  }, []);
+  }, [storageKey]);
 
   const setViewMode = useCallback((mode: ViewMode) => {
     hasManualSelection.current = true;
+    if (storageKey) window.localStorage.setItem(storageKey, mode);
     setViewModeState(mode);
-  }, []);
+  }, [storageKey]);
 
   return [viewMode, setViewMode] as const;
 };

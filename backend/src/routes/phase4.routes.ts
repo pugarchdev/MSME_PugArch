@@ -2793,20 +2793,128 @@ router.post('/tenders', authenticate, authorize('buyer'), asyncRoute(async (req,
 
 router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  const where: any = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { status: { in: ['published', 'bid_submission'] } };
-  if (query.status) where.status = query.status;
-  if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { category: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
+  const baseWhere: any = isAdmin(req)
+    ? {}
+    : req.user?.role === 'buyer'
+      ? { buyerId: userId(req) }
+      : { status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] } };
+
+  const where: any = { ...baseWhere };
+
+  // Status/Tab filter
+  if (query.status) {
+    if (query.status === 'published') {
+      where.status = { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] };
+    } else if (query.status === 'closed') {
+      where.status = { in: ['closed', 'awarded', 'po_generated'] };
+    } else {
+      where.status = query.status;
+    }
+  }
+
+  // Category filter
+  const category = req.query.category as string;
+  if (category && category !== 'All') {
+    where.category = category;
+  }
+
+  // Budget filter
+  const budget = req.query.budget as string;
+  if (budget && budget !== 'All') {
+    if (budget === 'under_10l') {
+      where.budget = { lt: 1000000 };
+    } else if (budget === '10l_50l') {
+      where.budget = { gte: 1000000, lte: 5000000 };
+    } else if (budget === 'above_50l') {
+      where.budget = { gt: 5000000 };
+    }
+  }
+
+  // Search filter
+  const search = (req.query.search || query.q) as string;
+  if (search && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { tenderId: { contains: term, mode: 'insensitive' } },
+      { title: { contains: term, mode: 'insensitive' } },
+      { category: { contains: term, mode: 'insensitive' } },
+      { description: { contains: term, mode: 'insensitive' } }
+    ];
+  }
+
+  // Sorting
+  let orderBy: any = { createdAt: 'desc' };
+  const sortBy = req.query.sortBy as string;
+  const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc';
+
+  if (sortBy === 'tenderId') {
+    orderBy = { tenderId: sortOrder };
+  } else if (sortBy === 'title') {
+    orderBy = { title: sortOrder };
+  } else if (sortBy === 'category') {
+    orderBy = { category: sortOrder };
+  } else if (sortBy === 'budget') {
+    orderBy = { budget: sortOrder };
+  } else if (sortBy === 'closes' || sortBy === 'closesAt') {
+    orderBy = { closesAt: sortOrder };
+  } else if (sortBy === 'status') {
+    orderBy = { status: sortOrder };
+  } else if (sortBy === 'created' || sortBy === 'createdAt') {
+    orderBy = { createdAt: sortOrder };
+  }
+
   const window = listWindow(query);
   const [tenders, total] = await Promise.all([
     db.tender.findMany({
       where,
       include: { _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       ...window
     }),
     db.tender.count({ where })
   ]);
-  ok(res, paged(tenders.map((t: any) => ({ ...t, bidsCount: t._count?.bids ?? t.bidsCount ?? 0, _count: undefined })), total, query, 'tenders'));
+
+  ok(res, paged(
+    tenders.map((t: any) => ({
+      ...t,
+      bidsCount: t._count?.bids ?? t.bidsCount ?? 0,
+      _count: undefined
+    })),
+    total,
+    query,
+    'tenders'
+  ));
+}));
+
+router.get('/tenders/summary', authenticate, asyncRoute(async (req, res) => {
+  const baseWhere: any = isAdmin(req)
+    ? {}
+    : req.user?.role === 'buyer'
+      ? { buyerId: userId(req) }
+      : { status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] } };
+
+  const [draftCount, activeCount, closedCount] = await Promise.all([
+    db.tender.count({
+      where: {
+        ...baseWhere,
+        status: 'draft'
+      }
+    }),
+    db.tender.count({
+      where: {
+        ...baseWhere,
+        status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] }
+      }
+    }),
+    db.tender.count({
+      where: {
+        ...baseWhere,
+        status: { in: ['closed', 'awarded', 'po_generated'] }
+      }
+    })
+  ]);
+
+  ok(res, { draftCount, activeCount, closedCount });
 }));
 
 router.get('/tenders/public', asyncRoute(async (req, res) => {

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../src/config/env.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -66,62 +66,6 @@ const rolePermissionCodes: Record<string, string[]> = {
   SUPPORT_AGENT: ['dispute.manage', 'compliance.review']
 };
 
-const features = [
-  ['buyer-registration', 'Buyer Registration', 'registration'],
-  ['seller-registration', 'Seller Registration', 'registration'],
-  ['gst-verification', 'GST Verification', 'verification'],
-  ['pan-verification', 'PAN Verification', 'verification'],
-  ['aadhaar-verification', 'Aadhaar Verification', 'verification'],
-  ['udyam-verification', 'Udyam Verification', 'verification'],
-  ['cin-verification', 'CIN Verification', 'verification'],
-  ['tender-management', 'Tender Management', 'procurement'],
-  ['bid-submission', 'Bid Submission', 'procurement'],
-  ['reverse-auction', 'Reverse Auction', 'procurement'],
-  ['rate-contract', 'Rate Contract', 'procurement'],
-  ['procurement-planning', 'Procurement Planning', 'procurement'],
-  ['buyer-seller-matching', 'Buyer-Seller Matching', 'marketplace'],
-  ['product-service-catalog', 'Product/Service Catalog', 'catalogue'],
-  ['document-upload', 'Document Upload', 'documents'],
-  ['document-verification', 'Document Verification', 'documents'],
-  ['approval-workflow', 'Approval Workflow', 'workflow'],
-  ['escrow-nodal-bank', 'Escrow/Nodal Bank Module', 'finance'],
-  ['payment-module', 'Payment Module', 'finance'],
-  ['razorpay-payment', 'Razorpay Payment', 'finance'],
-  ['grievance-module', 'Grievance Module', 'support'],
-  ['notifications', 'Notifications', 'communication'],
-  ['email-otp', 'Email OTP', 'communication'],
-  ['mobile-otp', 'Mobile OTP', 'communication'],
-  ['reports-mis', 'Reports & MIS', 'reports'],
-  ['dashboard-analytics', 'Dashboard Analytics', 'analytics'],
-  ['audit-logs', 'Audit Logs', 'audit'],
-  ['role-management', 'Role Management', 'access-control'],
-  ['permission-management', 'Permission Management', 'access-control'],
-  ['organization-management', 'Organization Management', 'organizations'],
-  ['user-management', 'User Management', 'users'],
-  ['compliance-risk', 'Compliance Risk', 'compliance'],
-  ['procurement-readiness', 'Procurement Readiness', 'compliance'],
-  ['lpi-logistics-partner', 'LPI / Logistics Partner Module', 'logistics'],
-  ['search-filters', 'Search and Filters', 'search'],
-  ['export-csv-pdf-excel', 'Export CSV/PDF/Excel', 'exports'],
-  ['cms-content-management', 'CMS / Content Management', 'content'],
-  ['branding-management', 'Branding Management', 'branding'],
-  ['buyer-requirement-board', 'Enable buyer requirement board', 'requirements'],
-  ['large-buyer-requirements-home', 'Enable large buyer requirements on home page', 'requirements'],
-  ['requirement-posting', 'Enable requirement posting', 'requirements'],
-  ['seller-response-requirements', 'Enable seller response to requirements', 'requirements'],
-  ['guest-cart', 'Enable guest cart', 'cart'],
-  ['cart-without-login', 'Enable cart without login', 'cart'],
-  ['large-industries-section', 'Enable large industries section', 'organizations'],
-  ['big-msmes-section', 'Enable big MSMEs section', 'organizations'],
-  ['hamburger-sidebar', 'Enable hamburger sidebar', 'navigation'],
-  ['organization-listing', 'Enable organization listing', 'organizations'],
-  ['product-marketplace', 'Enable product marketplace', 'marketplace'],
-  ['service-marketplace', 'Enable service marketplace', 'marketplace'],
-  ['public-browsing', 'Enable public browsing', 'marketplace'],
-  ['checkout', 'Enable checkout', 'cart'],
-  ['request-quote', 'Enable request quote', 'quotations']
-] as const;
-
 const complianceRules = [
   ['MISSING_REQUIRED_DOCUMENT', 'Missing required document', 'A mandatory onboarding or verification document is missing.', 'HIGH'],
   ['EXPIRED_CERTIFICATE', 'Expired certificate', 'A certificate or statutory document is expired.', 'MEDIUM'],
@@ -133,44 +77,9 @@ const complianceRules = [
   ['POLICY_VIOLATION', 'Policy violation', 'A platform policy or procurement control was violated.', 'HIGH']
 ] as const;
 
-const categories = [
-  ['IT Equipment', 'it-equipment', 'PRODUCT'],
-  ['Office Supplies', 'office-supplies', 'PRODUCT'],
-  ['Machinery', 'machinery', 'PRODUCT'],
-  ['Services', 'services', 'SERVICE'],
-  ['Construction', 'construction', 'BOTH'],
-  ['Consulting', 'consulting', 'SERVICE'],
-  ['Furniture', 'furniture', 'PRODUCT'],
-  ['Medical Supplies', 'medical-supplies', 'PRODUCT'],
-  ['Logistics', 'logistics', 'SERVICE'],
-  ['Software & Cloud', 'software-cloud', 'BOTH']
-] as const;
-
 async function main() {
   const roleRecords = new Map<string, { id: number }>();
   const permissionRecords = new Map<string, { id: number }>();
-
-  let defaultCompany = await (prisma as any).company.findFirst({
-    where: { shortName: 'JSG' },
-    select: { id: true }
-  });
-  if (!defaultCompany) {
-    defaultCompany = await (prisma as any).company.create({
-      data: {
-        name: 'Jharsuguda District',
-        shortName: 'JSG',
-        portalDisplayName: 'JsgSmile',
-        district: 'Jharsuguda',
-        state: 'Odisha',
-        homepageContent: 'Welcome to the district MSME procurement portal.',
-        aboutContent: 'Digital procurement, onboarding, and supplier enablement for district MSMEs.',
-        footerContent: 'JsgSmile MSME procurement portal',
-        grievanceContent: 'Submit and track procurement grievances through the portal.',
-        procurementPolicy: 'District procurement policy content can be managed by administrators.'
-      },
-      select: { id: true }
-    });
-  }
 
   for (const [code, name, description] of roles) {
     const role = await prisma.rbacRole.upsert({
@@ -191,20 +100,6 @@ async function main() {
       select: { id: true }
     });
     permissionRecords.set(code, permission);
-  }
-
-  for (const [code, name, module] of features) {
-    const feature = await (prisma as any).feature.upsert({
-      where: { code },
-      update: { name, module, isSystem: true },
-      create: { code, name, module, isSystem: true },
-      select: { id: true }
-    });
-    await (prisma as any).companyFeature.upsert({
-      where: { companyId_featureId: { companyId: defaultCompany.id, featureId: feature.id } },
-      update: { enabled: true },
-      create: { companyId: defaultCompany.id, featureId: feature.id, enabled: true }
-    });
   }
 
   const masterEmail = process.env.MASTER_ADMIN_EMAIL;
@@ -281,172 +176,6 @@ async function main() {
     });
   }
 
-  for (const [name, slug, type] of categories) {
-    await prisma.category.upsert({
-      where: { slug },
-      update: { name, type, isActive: true },
-      create: { name, slug, type, isActive: true }
-    });
-  }
-
-  const defaultPasswordHash = await bcrypt.hash('Pass@1234567', 12);
-  const categoryRecords = await prisma.category.findMany({ take: 1 });
-  const categoryId = categoryRecords.length > 0 ? categoryRecords[0].id : null;
-
-  for (let i = 1; i <= 10; i++) {
-    const orgName = `Seed Organization ${i}`;
-    let org = await prisma.organization.findFirst({ where: { organizationName: orgName } });
-    if (!org) {
-      org = await prisma.organization.create({
-        data: {
-          organizationName: orgName,
-          organizationType: 'PRIVATE_LIMITED',
-          companyId: defaultCompany.id,
-        }
-      });
-    }
-
-    const sellerEmail = `seller${i}@gmail.com`;
-    const buyerEmail = `buyer${i}@gmail.com`;
-
-    const sellerUser = await prisma.user.upsert({
-      where: { email: sellerEmail },
-      update: { password: defaultPasswordHash, organizationId: org.id },
-      create: {
-        name: `Seller ${i}`,
-        email: sellerEmail,
-        userId: `SELLER_${i}`,
-        password: defaultPasswordHash,
-        role: 'seller' as any,
-        registrationStatus: 'completed',
-        onboardingStatus: 'approved_for_procurement',
-        accountStatus: 'ACTIVE',
-        organizationId: org.id,
-        companyId: defaultCompany.id,
-      }
-    });
-
-    const buyerUser = await prisma.user.upsert({
-      where: { email: buyerEmail },
-      update: { password: defaultPasswordHash, organizationId: org.id },
-      create: {
-        name: `Buyer ${i}`,
-        email: buyerEmail,
-        userId: `BUYER_${i}`,
-        password: defaultPasswordHash,
-        role: 'buyer' as any,
-        registrationStatus: 'completed',
-        onboardingStatus: 'approved_for_procurement',
-        accountStatus: 'ACTIVE',
-        organizationId: org.id,
-        companyId: defaultCompany.id,
-      }
-    });
-
-    for (let j = 1; j <= 10; j++) {
-      const productName = `Seed Product ${i}-${j}`;
-      const serviceName = `Seed Service ${i}-${j}`;
-
-      let product = await prisma.product.findFirst({ where: { name: productName, sellerId: sellerUser.id } });
-      if (!product) {
-        const fileAsset = await prisma.fileAsset.create({
-          data: {
-            ownerId: sellerUser.id,
-            ownerRole: 'seller',
-            entityType: 'product',
-            storageProvider: 'LOCAL',
-            key: `product_images/seed_${i}_${j}.jpg`,
-            url: `https://picsum.photos/seed/${i}${j}/400/400`,
-            mimeType: 'image/jpeg',
-            size: 1024,
-            checksum: `dummy-checksum-${i}-${j}`,
-            originalName: `seed_${i}_${j}.jpg`
-          }
-        });
-
-        const docAsset = await prisma.fileAsset.create({
-          data: {
-            ownerId: sellerUser.id,
-            ownerRole: 'seller',
-            entityType: 'product_cert',
-            storageProvider: 'LOCAL',
-            key: `product_docs/cert_${i}_${j}.pdf`,
-            url: `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`,
-            mimeType: 'application/pdf',
-            size: 2048,
-            checksum: `dummy-doc-checksum-${i}-${j}`,
-            originalName: `cert_${i}_${j}.pdf`
-          }
-        });
-
-        product = await prisma.product.create({
-          data: {
-            name: productName,
-            description: `This is a properly seeded product for org ${i}.`,
-            price: 100 * j,
-            currency: 'INR',
-            status: 'ACTIVE' as any,
-            sellerId: sellerUser.id,
-            organizationId: org.id,
-            categoryId: categoryId,
-            images: {
-              create: {
-                fileAssetId: fileAsset.id,
-                altText: productName,
-                isPrimary: true
-              }
-            },
-            certifications: {
-              create: {
-                name: `Product Certification ${i}-${j}`,
-                fileAssetId: docAsset.id,
-                verificationStatus: 'VERIFIED' as any
-              }
-            }
-          }
-        });
-      }
-
-      let service = await prisma.service.findFirst({ where: { name: serviceName, sellerId: sellerUser.id } });
-      if (!service) {
-        const docAsset = await prisma.fileAsset.create({
-          data: {
-            ownerId: sellerUser.id,
-            ownerRole: 'seller',
-            entityType: 'service_cert',
-            storageProvider: 'LOCAL',
-            key: `service_docs/cert_${i}_${j}.pdf`,
-            url: `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`,
-            mimeType: 'application/pdf',
-            size: 2048,
-            checksum: `dummy-svc-doc-checksum-${i}-${j}`,
-            originalName: `svc_cert_${i}_${j}.pdf`
-          }
-        });
-
-        service = await prisma.service.create({
-          data: {
-            name: serviceName,
-            description: `This is a properly seeded service for org ${i}.`,
-            basePrice: 500 * j,
-            currency: 'INR',
-            status: 'ACTIVE' as any,
-            pricingModel: 'FIXED' as any,
-            sellerId: sellerUser.id,
-            organizationId: org.id,
-            categoryId: categoryId,
-            certifications: {
-              create: {
-                name: `Service Certification ${i}-${j}`,
-                fileAssetId: docAsset.id,
-                verificationStatus: 'VERIFIED' as any
-              }
-            }
-          }
-        });
-      }
-    }
-  }
 }
 
 main()

@@ -84,6 +84,13 @@ const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLive
 const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
 const PortalDocumentation = lazy(() => import('./views/PortalDocumentation'));
 const MasterAdminPage = lazy(() => import('./features/masterAdmin/pages/MasterAdminPage'));
+const BidsListingPage = lazy(() => import('./features/procurementBid/pages/BidsListingPage'));
+const BidDetailsPage = lazy(() => import('./features/procurementBid/pages/BidDetailsPage'));
+const BidParticipationPage = lazy(() => import('./features/procurementBid/pages/BidParticipationPage'));
+const BidResultsPage = lazy(() => import('./features/procurementBid/pages/BidResultsPage'));
+const BuyerPublishBidPage = lazy(() => import('./features/procurementBid/pages/BuyerPublishBidPage'));
+const AdminBidManagementPage = lazy(() => import('./features/procurementBid/pages/AdminBidManagementPage'));
+const ProcurementOrdersPage = lazy(() => import('./features/procurementBid/pages/ProcurementOrdersPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -152,7 +159,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart'].includes(pathname) && !pathname.startsWith('/marketplace') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -219,13 +226,15 @@ export default function App() {
   };
 
   const renderRoute = () => {
+    const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : '/dashboard';
+
     // Only show the full-screen "loading" splash when we genuinely have no
     // user data yet AND no cached user from a previous session. After that,
     // background refreshes should never blank the UI.
     if (loading && !user) return <PremiumLoader />;
-    if (pathname === '/') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <MarketplaceHome />;
-    if (pathname === '/login') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Login />;
-    if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <ForgotPassword />;
+    if (pathname === '/') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
+    if (pathname === '/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
+    if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
@@ -240,8 +249,14 @@ export default function App() {
     if (pathname === '/marketplace/services') return <MarketplaceProductList />;
     if (pathname === '/marketplace/sellers') return <MarketplaceHome />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
-    if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
+    if (pathname === '/marketplace/requirements') return <BidsListingPage />;
     if (/^\/marketplace\/requirements\/\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
+    if (pathname === '/bids') return <BidsListingPage />;
+    if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;
+    if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
+    if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;
+    if (pathname === '/buyer/publish-bid') return <BuyerPublishBidPage />;
+    if (pathname === '/admin/bids') return <AdminBidManagementPage />;
     if (/^\/marketplace\/products\/\d+$/.test(pathname)) return <MarketplaceProductDetail />;
     if (/^\/marketplace\/services\/\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
     // Public vendor store — accessible without login, uses marketplace layout
@@ -249,6 +264,7 @@ export default function App() {
     if (pathname === '/cart' && !user) return <GuestCartPage />;
     if (!user) return null;
     if (pathname === '/master-admin' && roleOk(user.role, ['master_admin'])) return <MasterAdminPage />;
+    if (pathname === '/dashboard' && user.role === 'master_admin') return <Redirect to="/master-admin" />;
     if (pathname === '/dashboard') return <Dashboard />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
@@ -348,12 +364,13 @@ export default function App() {
     if (pathname === '/admin/reports/procurement' && roleOk(user.role, ['admin'])) return <ProcurementReportPage />;
     if (pathname === '/admin/reports/payments' && roleOk(user.role, ['admin'])) return <PaymentsReportPage />;
     if (pathname === '/admin/reports/suppliers' && roleOk(user.role, ['admin'])) return <SuppliersReportPage />;
-    return <Redirect to="/dashboard" />;
+    return <Redirect to={authenticatedHome} />;
   };
 
   const fixedAuthRoutes = ['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register'];
-  const isMarketplaceRoute = pathname.startsWith('/marketplace') || /^\/vendors\/\d+$/.test(pathname);
+  const isMarketplaceRoute = pathname.startsWith('/marketplace') || pathname.startsWith('/bids') || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
+  const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 
   return (
     <div className="flex min-h-dvh bg-neutral-50 font-sans text-neutral-900">
@@ -378,7 +395,7 @@ export default function App() {
             isSidebarCollapsed={isSidebarCollapsed}
           />
         )}
-        {showDashboardLayout && <OrgApprovalBanner />}
+        {showOrgApprovalBanner && <OrgApprovalBanner />}
         <main className={cn(
           "flex-1 min-w-0",
           !showDashboardLayout ? "min-h-dvh p-0" : "overflow-y-auto p-3 sm:p-4 md:p-5"

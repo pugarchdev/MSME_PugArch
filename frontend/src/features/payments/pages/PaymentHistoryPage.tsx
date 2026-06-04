@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock3,
@@ -28,6 +28,7 @@ import { Pagination } from '../../shared/Pagination';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode, usePaginatedFeatureQuery } from '../../shared/hooks';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 
 type PaymentRow = {
   id: number;
@@ -61,13 +62,16 @@ type PaymentRow = {
     releasedAt?: string;
   };
 };
+type PaymentSortKey = 'reference' | 'parties' | 'gateway' | 'amount' | 'escrow' | 'status' | 'date';
 
 export default function PaymentHistoryPage({ admin = false }: { admin?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [gatewayFilter, setGatewayFilter] = useState('');
   const [escrowFilter, setEscrowFilter] = useState('');
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:payment-history:${admin ? 'admin' : 'user'}:view-mode`);
+  const [sortKey, setSortKey] = useState<PaymentSortKey>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<PaymentRow | null>(null);
   const warning: string | null = null;
@@ -78,12 +82,32 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
     ...(gatewayFilter ? { gateway: gatewayFilter } : {})
   }, 20);
 
-  const filtered = payments.filter(payment => {
+  const filtered = useMemo(() => payments.filter(payment => {
     if (!escrowFilter) return true;
     const hasEscrow = Boolean(payment.escrowAccount);
     return escrowFilter === 'funded' ? hasEscrow : !hasEscrow;
-  });
+  }).sort((a, b) => {
+    const valueFor = (payment: PaymentRow) => {
+      if (sortKey === 'reference') return payment.referenceId || '';
+      if (sortKey === 'parties') return `${payment.payer?.name || ''} ${payment.payee?.name || ''}`;
+      if (sortKey === 'gateway') return `${payment.gateway || 'manual'} ${payment.method || ''}`;
+      if (sortKey === 'amount') return Number(payment.amount || 0);
+      if (sortKey === 'escrow') return payment.escrowAccount?.status || 'not_funded';
+      if (sortKey === 'status') return payment.status || '';
+      return new Date(payment.completedAt || payment.createdAt || 0).getTime();
+    };
+    const av = valueFor(a);
+    const bv = valueFor(b);
+    const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+    return sortDirection === 'asc' ? result : -result;
+  }), [escrowFilter, payments, sortDirection, sortKey]);
   const pagedPayments = filtered;
+
+  const toggleSort = (field: PaymentSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
+    setPage(1);
+  };
 
   if (loading) return <LoadingState label="Loading payment history..." />;
 
@@ -134,14 +158,14 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
+                onChange={event => { setSearchTerm(event.target.value); setPage(1); }}
                 placeholder="Search reference, invoice, PO, payer, payee..."
                 className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
               />
             </div>
             <select
               value={statusFilter}
-              onChange={event => setStatusFilter(event.target.value)}
+              onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">All statuses</option>
@@ -155,7 +179,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             </select>
             <select
               value={gatewayFilter}
-              onChange={event => setGatewayFilter(event.target.value)}
+              onChange={event => { setGatewayFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">All gateways</option>
@@ -165,7 +189,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             </select>
             <select
               value={escrowFilter}
-              onChange={event => setEscrowFilter(event.target.value)}
+              onChange={event => { setEscrowFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">Escrow / any</option>
@@ -233,15 +257,15 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="p-3">Sr. No</th>
-                  <th className="p-3">Reference</th>
-                  <th className="p-3">Parties</th>
-                  <th className="p-3">Gateway</th>
-                  <th className="p-3">Amount</th>
+                  <th className="p-3"><SortableHeader label="Reference" field="reference" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Parties" field="parties" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Gateway" field="gateway" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Amount" field="amount" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Tax/TDS</th>
-                  <th className="p-3">Escrow Vault</th>
+                  <th className="p-3"><SortableHeader label="Escrow Vault" field="escrow" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Ledger Entries</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Date</th>
+                  <th className="p-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Date" field="date" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>

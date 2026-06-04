@@ -53,6 +53,7 @@ export const apiResponse = {
       success: false,
       message: userMessage,
       ...(code ? { code } : {}),
+      ...(code ? { errorCode: code } : {}),
       ...(details ? { details } : {}),
       instruction
     });

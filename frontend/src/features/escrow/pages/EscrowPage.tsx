@@ -14,6 +14,7 @@ import { Pagination } from '../../shared/Pagination';
 import { useResponsiveViewMode, usePaginatedFeatureQuery } from '../../shared/hooks';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 
 type Milestone = {
   id: number;
@@ -44,6 +45,7 @@ type EscrowAccount = {
   milestones?: Milestone[];
   transactions?: Array<{ id: number; type: string; amount: string | number; createdAt?: string }>;
 };
+type EscrowSortKey = 'escrow' | 'parties' | 'amount' | 'reference' | 'status' | 'fundedAt';
 
 const statusClass = (status: string) => {
   const normalized = status.toLowerCase();
@@ -58,7 +60,9 @@ export default function EscrowPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [fundingFilter, setFundingFilter] = useState('');
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode('phase7:escrow:view-mode');
+  const [sortKey, setSortKey] = useState<EscrowSortKey>('fundedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<EscrowAccount | null>(null);
 
@@ -102,10 +106,29 @@ export default function EscrowPage() {
       if (fundingFilter === 'funded' && !item.fundedAt) return false;
       if (fundingFilter === 'pending' && item.fundedAt) return false;
       return true;
+    }).sort((a, b) => {
+      const valueFor = (item: EscrowAccount) => {
+        if (sortKey === 'escrow') return item.id;
+        if (sortKey === 'parties') return `${item.buyer?.name || ''} ${item.seller?.name || ''}`;
+        if (sortKey === 'amount') return Number(item.amount || 0);
+        if (sortKey === 'reference') return `${item.purchaseOrder?.poNumber || ''} ${item.paymentTransaction?.referenceId || ''}`;
+        if (sortKey === 'status') return item.status || '';
+        return new Date(item.fundedAt || item.createdAt || 0).getTime();
+      };
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDirection === 'asc' ? result : -result;
     });
-  }, [escrows, fundingFilter]);
+  }, [escrows, fundingFilter, sortDirection, sortKey]);
 
   const pagedEscrows = filtered;
+
+  const toggleSort = (field: EscrowSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
+    setPage(1);
+  };
 
   const completeMilestone = async (milestoneId: number) => {
     const res = await api.post(`/api/milestones/${milestoneId}/complete`, {}, { headers });
@@ -155,16 +178,16 @@ export default function EscrowPage() {
             <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] lg:grid-cols-[1.8fr_1fr_1fr]">
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+                <input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
               </div>
-              <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+              <select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
                 <option value="">All statuses</option>
                 <option value="held">Held</option>
                 <option value="released">Released</option>
                 <option value="frozen">Frozen</option>
                 <option value="refunded">Refunded</option>
               </select>
-              <select value={fundingFilter} onChange={event => setFundingFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+              <select value={fundingFilter} onChange={event => { setFundingFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
                 <option value="">All fund states</option>
                 <option value="funded">Funded</option>
                 <option value="pending">Pending funding</option>
@@ -185,11 +208,11 @@ export default function EscrowPage() {
                 <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Sr. No</th>
-                    <th className="px-4 py-3">Escrow</th>
-                    <th className="px-4 py-3">Buyer / Seller</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">PO / Reference</th>
-                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3"><SortableHeader label="Escrow" field="escrow" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Buyer / Seller" field="parties" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Amount" field="amount" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="PO / Reference" field="reference" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>

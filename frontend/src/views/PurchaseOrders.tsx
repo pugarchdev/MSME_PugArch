@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -10,7 +10,7 @@ import { cn } from '../lib/utils';
 import { postApi } from '../features/shared/apiClient';
 import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 import { formatCurrency, formatDate, maskEmail } from '../features/shared/format';
-import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../features/shared/hooks';
+import { useFeatureQuery, usePaginatedFeatureQuery, useResponsiveViewMode } from '../features/shared/hooks';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
@@ -25,14 +25,52 @@ export default function PurchaseOrders() {
   const router = useRouter();
   const isSeller = user?.role === 'seller';
   const isBuyer = user?.role === 'buyer';
-  const { data: orders, loading, refreshing, error, reload, setData } = useFeatureQuery<PurchaseOrderDto[]>('/api/purchase-orders', []);
+
   const [activeTab, setActiveTab] = useState<'Open' | 'Delivered' | 'Cancelled' | 'All'>('Open');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const {
+    records: pagedOrders,
+    loading,
+    refreshing,
+    error,
+    reload,
+    setRecords: setPagedOrders,
+    page,
+    pageSize,
+    total,
+    setPage,
+    setPageSize
+  } = usePaginatedFeatureQuery<PurchaseOrderDto>(
+    '/api/purchase-orders',
+    {
+      search: debouncedSearch,
+      status: activeTab,
+      sortBy
+    },
+    10
+  );
+
+  const { data: summaryData } = useFeatureQuery<{ totalSpend: number; deliveredCount: number; openCount: number } | null>(
+    '/api/purchase-orders/summary',
+    null
+  );
+  const totalSpend = summaryData?.totalSpend ?? 0;
+  const deliveredCount = summaryData?.deliveredCount ?? 0;
+  const openCount = summaryData?.openCount ?? 0;
 
   const handleConvertToInvoice = (order: PurchaseOrderDto) => {
     const amountVal = order.amount || order.totalValue || 0;
@@ -70,7 +108,7 @@ export default function PurchaseOrders() {
     }
   };
 
-  const SortHeader = ({ label, columnKey, className = '' }: { label: string, columnKey: string, className?: string }) => {
+  const SortHeader = ({ label, columnKey, className = '' }: { label: string; columnKey: string; className?: string }) => {
     let isActive = false;
     let isAsc = true;
 
@@ -114,54 +152,6 @@ export default function PurchaseOrders() {
     );
   };
 
-  const filteredOrders = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return orders
-      .filter(order => {
-        const status = String(order.status || '').toLowerCase();
-        const matchesTab = activeTab === 'All' ||
-          (activeTab === 'Open' && openStatuses.includes(status)) ||
-          (activeTab === 'Delivered' && status === 'delivered') ||
-          (activeTab === 'Cancelled' && status === 'cancelled');
-        const haystack = [order.poNumber, order.title, order.seller?.name, order.buyer?.name, order.status, order.poStatus].filter(Boolean).join(' ').toLowerCase();
-        return matchesTab && (!term || haystack.includes(term));
-      })
-      .sort((a, b) => {
-        if (sortBy === 'value_high') return Number(b.amount || b.totalValue || 0) - Number(a.amount || a.totalValue || 0);
-        if (sortBy === 'value_low') return Number(a.amount || a.totalValue || 0) - Number(b.amount || b.totalValue || 0);
-
-        if (sortBy === 'status' || sortBy === 'status_asc') return String(a.status || '').localeCompare(String(b.status || ''));
-        if (sortBy === 'status_desc') return String(b.status || '').localeCompare(String(a.status || ''));
-
-        if (sortBy === 'po_asc') return String(a.poNumber || '').localeCompare(String(b.poNumber || ''));
-        if (sortBy === 'po_desc') return String(b.poNumber || '').localeCompare(String(a.poNumber || ''));
-
-        if (sortBy === 'title_asc') return String(a.title || '').localeCompare(String(b.title || ''));
-        if (sortBy === 'title_desc') return String(b.title || '').localeCompare(String(a.title || ''));
-
-        if (sortBy === 'party_asc') {
-          const aParty = a.seller?.name || a.buyer?.name || '';
-          const bParty = b.seller?.name || b.buyer?.name || '';
-          return aParty.localeCompare(bParty);
-        }
-        if (sortBy === 'party_desc') {
-          const aParty = a.seller?.name || a.buyer?.name || '';
-          const bParty = b.seller?.name || b.buyer?.name || '';
-          return bParty.localeCompare(aParty);
-        }
-
-        if (sortBy === 'expected_asc') return new Date(a.expectedDelivery || 0).getTime() - new Date(b.expectedDelivery || 0).getTime();
-        if (sortBy === 'expected_desc') return new Date(b.expectedDelivery || 0).getTime() - new Date(a.expectedDelivery || 0).getTime();
-
-        return String(b.createdAt || b.poNumber).localeCompare(String(a.createdAt || a.poNumber));
-      });
-  }, [activeTab, orders, searchTerm, sortBy]);
-  const { page, pageSize, pageItems: pagedOrders, total, setPage, setPageSize } = usePagination(filteredOrders, 10);
-
-  const totalSpend = orders.filter(order => order.status !== 'cancelled').reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0);
-  const deliveredCount = orders.filter(order => order.status === 'delivered').length;
-  const openCount = orders.filter(order => openStatuses.includes(String(order.status || '').toLowerCase())).length;
-
   const completeAction = async () => {
     if (!confirming) return;
     try {
@@ -169,7 +159,7 @@ export default function PurchaseOrders() {
         ? `/api/purchase-orders/${confirming.order.id}/acknowledge`
         : `/api/purchase-orders/${confirming.order.id}/cancel`;
       const updated = await postApi<PurchaseOrderDto>(endpoint, {});
-      setData(current => current.map(order => order.id === updated.id ? { ...order, ...updated } : order));
+      setPagedOrders(current => current.map(order => order.id === updated.id ? { ...order, ...updated } : order));
       toast.success(`PO ${readableStatus(updated.status)}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to update purchase order');
@@ -231,7 +221,7 @@ export default function PurchaseOrders() {
     toast.success('PO PDF generated');
   };
 
-  if (loading && orders.length === 0) return <LoadingState label="Loading purchase orders..." />;
+  if (loading && pagedOrders.length === 0) return <LoadingState label="Loading purchase orders..." />;
 
   return (
     <div className="space-y-4">
@@ -294,7 +284,7 @@ export default function PurchaseOrders() {
         </CardContent>
       </Card>
 
-      {filteredOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
+      {pagedOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {pagedOrders.map(order => (

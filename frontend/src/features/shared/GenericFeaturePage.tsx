@@ -10,6 +10,7 @@ import { EntityIdLink } from './EntityIdLink';
 import { ViewModeToggle } from './ViewModeToggle';
 import { formatCurrency, formatDate } from './format';
 import { usePaginatedFeatureQuery, useResponsiveViewMode } from './hooks';
+import { SortableHeader, type SortDirection } from './SortableHeader';
 import { deleteApi, postApi, putApi } from './apiClient';
 import { toast } from 'sonner';
 import { DocumentPreviewModal } from '../../components/DocumentPreviewModal';
@@ -19,6 +20,7 @@ import { compressImage } from '../../lib/compress';
 
 
 type GenericRecord = Record<string, any>;
+type GenericSortKey = 'record' | 'status' | 'value' | 'date';
 
 const valueOf = (record: GenericRecord, keys: string[]) => keys.map(key => record?.[key]).find(value => value !== undefined && value !== null && value !== '');
 const titleOf = (record: GenericRecord) => String(valueOf(record, ['title', 'name', 'subject', 'poNumber', 'invoiceNumber', 'ticketNumber', 'ruleCode']) || `Record #${record.id || '-'}`);
@@ -53,7 +55,9 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
   const [statusFilter, setStatusFilter] = useState('');
   const [valueFilter, setValueFilter] = useState('');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:generic:${endpoint}:view-mode`);
+  const [sortKey, setSortKey] = useState<GenericSortKey>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedRecord, setSelectedRecord] = useState<GenericRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<GenericRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
@@ -81,14 +85,31 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
       const amount = Number(amountOf(record) || 0);
       const matchesValue = !valueFilter || (valueFilter === 'high' ? amount >= 100000 : valueFilter === 'medium' ? amount >= 25000 && amount < 100000 : amount < 25000);
       return matchesValue;
+    }).sort((a, b) => {
+      const valueFor = (record: GenericRecord) => {
+        if (sortKey === 'record') return titleOf(record);
+        if (sortKey === 'status') return statusOf(record);
+        if (sortKey === 'value') return Number(amountOf(record) || 0);
+        return new Date(dateOf(record) || 0).getTime();
+      };
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDirection === 'asc' ? result : -result;
     });
-  }, [records, valueFilter]);
+  }, [records, sortDirection, sortKey, valueFilter]);
   const pageItems = filtered;
   const totalValue = filtered.reduce<number>((sum, record) => sum + Number(amountOf(record) || 0), 0);
   const pendingCount = filtered.filter(record => /pending|draft|requested|sent|generated/i.test(statusOf(record))).length;
   const canMutate = endpoint === '/api/direct-purchases' || endpoint === '/api/quote-requests';
   const isRfqPage = endpoint === '/api/quote-requests';
   const canEditRecord = (record: GenericRecord) => canMutate && !(isRfqPage && Array.isArray(record.quoteResponses) && record.quoteResponses.length > 0);
+
+  const toggleSort = (field: GenericSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
+    setPage(1);
+  };
 
   const handleDelete = async (record: GenericRecord) => {
     if (!window.confirm(`Delete ${titleOf(record)}?`)) return;
@@ -176,7 +197,7 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           <div className="flex flex-col sm:flex-row gap-2 items-center">
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+              <input value={searchTerm} onChange={event => { setSearchTerm(event.target.value); setPage(1); }} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
             </div>
 
             <Button
@@ -196,12 +217,12 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           )}>
             <div className="relative w-full">
               <SlidersHorizontal className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
+              <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
                 <option value="">All statuses</option>
                 {statusOptions.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
               </select>
             </div>
-            <select value={valueFilter} onChange={event => setValueFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+            <select value={valueFilter} onChange={event => { setValueFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
               <option value="">All values</option>
               <option value="high">Above Rs. 1 lakh</option>
               <option value="medium">Rs. 25k to 1 lakh</option>
@@ -235,7 +256,14 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr><th className="p-3 w-20">Sr. No.</th><th className="p-3">Record</th><th className="p-3">Status</th><th className="p-3">Value</th><th className="p-3">Date</th><th className="p-3 text-right">Actions</th></tr>
+                <tr>
+                  <th className="p-3 w-20">Sr. No.</th>
+                  <th className="p-3"><SortableHeader label="Record" field="record" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Value" field="value" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Date" field="date" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pageItems.map((record, index) => (

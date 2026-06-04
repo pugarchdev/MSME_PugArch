@@ -25,6 +25,8 @@ const configuredOrigins = [
 ].map(origin => origin.trim()).filter(Boolean);
 
 const isAllowedVercelFrontendOrigin = (origin: string) => {
+  if (isProduction) return false;
+
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:') return false;
@@ -45,7 +47,7 @@ export const isAllowedCorsOrigin = (origin?: string) => {
     return false;
   }
 
-  return configuredOrigins.includes(origin) || isAllowedVercelFrontendOrigin(origin);
+  return configuredOrigins.includes(origin) || (!isProduction && isAllowedVercelFrontendOrigin(origin));
 };
 
 export const applyCorsHeaders = (req: Request, res: Response) => {

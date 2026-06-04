@@ -95,17 +95,7 @@ import PremiumLoader from './components/PremiumLoader';
  * only the main panel shows shimmer until the route chunk lands.
  */
 function RouteFallback() {
-  return (
-    <div className="space-y-3 p-4">
-      <div className="h-9 w-1/3 animate-pulse rounded-md bg-slate-100" />
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
-        ))}
-      </div>
-      <div className="h-72 animate-pulse rounded-xl bg-slate-100" />
-    </div>
-  );
+  return <PremiumLoader />;
 }
 
 

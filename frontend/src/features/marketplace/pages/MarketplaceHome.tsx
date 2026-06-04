@@ -5,6 +5,8 @@ import { marketplaceApi, type MarketplaceHomeData } from '../api';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
+import PremiumLoader from '../../../components/PremiumLoader';
+
 // ── Layout
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
 import { MarketplaceFooter } from '../components/MarketplaceFooter';
@@ -43,7 +45,7 @@ export default function MarketplaceHome() {
         placeholderData: (previous) => previous ?? api.peek('/api/marketplace/home') ?? undefined,
     });
 
-    if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
+    if (isLoading && !data) return <PremiumLoader />;
 
     return (
         <div className="min-h-dvh bg-[#f1f3f6] text-slate-800 flex flex-col">

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useGuestCart } from '../hooks/useGuestCart';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
+import PremiumLoader from '../../../components/PremiumLoader';
 
 export default function MarketplaceProductDetail() {
     const { user } = useAuth();
@@ -92,29 +93,7 @@ export default function MarketplaceProductDetail() {
         });
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-dvh bg-white flex flex-col">
-                <div className="brand-tricolor-strip w-full" />
-                <MarketplaceHeader user={user} />
-                <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
-                    <div className="animate-pulse space-y-6">
-                        <div className="h-4 w-48 bg-slate-200 rounded" />
-                        <div className="grid lg:grid-cols-2 gap-8">
-                            <div className="h-80 bg-slate-200 rounded-lg" />
-                            <div className="space-y-4">
-                                <div className="h-6 w-3/4 bg-slate-200 rounded" />
-                                <div className="h-4 w-1/2 bg-slate-200 rounded" />
-                                <div className="h-8 w-32 bg-slate-200 rounded" />
-                                <div className="h-20 bg-slate-200 rounded" />
-                            </div>
-                        </div>
-                    </div>
-                </main>
-                <MarketplaceFooter />
-            </div>
-        );
-    }
+    if (loading) return <PremiumLoader />;
 
     if (!product) {
         return (

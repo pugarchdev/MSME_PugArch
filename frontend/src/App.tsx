@@ -87,6 +87,7 @@ const MasterAdminPage = lazy(() => import('./features/masterAdmin/pages/MasterAd
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
+import PremiumLoader from './components/PremiumLoader';
 
 /**
  * Lightweight skeleton for lazy-loaded routes. Replaces a full-page spinner
@@ -214,11 +215,7 @@ export default function App() {
   }, [mounted, user]);
 
   if (!mounted) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">
-        JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...
-      </div>
-    );
+    return <PremiumLoader />;
   }
 
   // Helper: only redirect if both client (user state) and server (cookie)
@@ -235,7 +232,7 @@ export default function App() {
     // Only show the full-screen "loading" splash when we genuinely have no
     // user data yet AND no cached user from a previous session. After that,
     // background refreshes should never blank the UI.
-    if (loading && !user) return <div className="flex min-h-dvh items-center justify-center px-4 text-center font-bold text-neutral-700">JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem...</div>;
+    if (loading && !user) return <PremiumLoader />;
     if (pathname === '/') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <MarketplaceHome />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <Login />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to="/dashboard" /> : <ForgotPassword />;

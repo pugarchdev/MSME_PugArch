@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, unwrapApiData } from '../lib/api';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -12,7 +12,69 @@ import { validators } from '../lib/validators';
 import RoleAwareActionCards from '../features/dashboard/components/RoleAwareActionCards';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+const ADMIN_REVIEW_CHECKLIST = [
+  'Clear pending stakeholder approvals',
+  'Check resubmissions with remarks',
+  'Export MIS report for audit trail',
+  'Verify approved seller capacity'
+] as const;
 
+type AdminTile = {
+  label: string;
+  value: number;
+  helper: string;
+  icon: React.ComponentType<{ className?: string }>;
+  path: string;
+  tone: string;
+};
+
+type AdminModule = {
+  title: string;
+  detail: string;
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+const AdminKpiLink = React.memo(function AdminKpiLink({ stat, isLoading }: { stat: AdminTile; isLoading: boolean }) {
+  const Icon = stat.icon;
+  return (
+    <Link key={stat.label} href={stat.path} className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#12335f]/40 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 focus:ring-[#12335f]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">{stat.label}</div>
+          <div className={cn("text-3xl font-extrabold tracking-tight", isLoading ? "text-slate-300" : "text-slate-900")}>
+            {isLoading ? "0" : stat.value ?? "0"}
+          </div>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{stat.helper}</p>
+        </div>
+        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', stat.tone)}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </Link>
+  );
+});
+
+const AdminModuleLink = React.memo(function AdminModuleLink({ module }: { module: AdminModule }) {
+  const Icon = module.icon;
+  return (
+    <Link
+      href={module.path}
+      className="rounded-lg border border-slate-200 bg-slate-50 p-4 transition-all duration-200 hover:border-[#12335f]/40 hover:bg-white hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 focus:ring-[#12335f]"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-[#12335f] shadow-sm">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">{module.title}</h3>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{module.detail}</p>
+          <span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-widest text-[#12335f]">Open Module</span>
+        </div>
+      </div>
+    </Link>
+  );
+});
 
 export default function Dashboard() {
   const { user, token, logout, refreshUser } = useAuth();
@@ -70,7 +132,7 @@ export default function Dashboard() {
     staleTime: 5 * 60_000,
   });
 
-  const handleGstSubmit = async (e: React.FormEvent) => {
+  const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedGstin = gstInput.trim().toUpperCase();
     if (!validators.gstin(normalizedGstin)) {
@@ -104,7 +166,7 @@ export default function Dashboard() {
     } finally {
       setIsSubmittingGst(false);
     }
-  };
+  }, [gstInput, token, refreshUser, queryClient]);
 
   useEffect(() => {
     if (!token) return;
@@ -121,18 +183,20 @@ export default function Dashboard() {
     }
   }, [token, router]);
 
-  const registrationGstin = String(user?.registrationDetails?.gstin || '').trim().toUpperCase();
-  const registrationGstVerified = Boolean(user?.registrationDetails?.gstVerified && validators.gstin(registrationGstin));
-  const organizationGstin = String((user?.organization as any)?.gstin || profileData?.user?.organization?.gstin || '').trim().toUpperCase();
-  const profileGstin = String(user?.buyerProfile?.gst || profile?.buyerProfile?.gst || profile?.gst || '').trim().toUpperCase();
-  const sellerOfficeHasGst = user?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
-    || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
-    || profile?.offices?.some((o: any) => o.gstNumber);
-  const hasGst = user?.role === 'seller'
-    ? (sellerOfficeHasGst || registrationGstVerified || validators.gstin(organizationGstin))
-    : (validators.gstin(profileGstin) || registrationGstVerified || validators.gstin(organizationGstin));
+  const hasGst = useMemo(() => {
+    const registrationGstin = String(user?.registrationDetails?.gstin || '').trim().toUpperCase();
+    const registrationGstVerified = Boolean(user?.registrationDetails?.gstVerified && validators.gstin(registrationGstin));
+    const organizationGstin = String((user?.organization as any)?.gstin || profileData?.user?.organization?.gstin || '').trim().toUpperCase();
+    const profileGstin = String(user?.buyerProfile?.gst || profile?.buyerProfile?.gst || profile?.gst || '').trim().toUpperCase();
+    const sellerOfficeHasGst = user?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
+      || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
+      || profile?.offices?.some((o: any) => o.gstNumber);
+    return user?.role === 'seller'
+      ? (sellerOfficeHasGst || registrationGstVerified || validators.gstin(organizationGstin))
+      : (validators.gstin(profileGstin) || registrationGstVerified || validators.gstin(organizationGstin));
+  }, [profile, profileData, user]);
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = useCallback((status: string) => {
     switch (status) {
       case 'approved_for_procurement': return <CheckCircle2 className="h-10 w-10 text-emerald-500" />;
       case 'rejected': return <XCircle className="h-10 w-10 text-red-500" />;
@@ -140,14 +204,13 @@ export default function Dashboard() {
       case 'resubmission_required': return <AlertTriangle className="h-10 w-10 text-amber-500" />;
       default: return <Clock className="h-10 w-10 text-blue-500" />;
     }
-  };
+  }, []);
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = useCallback((status: string) => {
     return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  };
+  }, []);
 
-  if (user?.role === 'admin') {
-    const adminTiles = [
+  const adminTiles = useMemo(() => [
       {
         label: 'Pending Approval',
         value: adminStats?.pendingApproval ?? 0,
@@ -180,9 +243,9 @@ export default function Dashboard() {
         path: '/admin/reports',
         tone: 'bg-slate-100 text-slate-700'
       }
-    ];
+  ], [adminStats]);
 
-    const adminModules = [
+  const adminModules = useMemo(() => [
       {
         title: 'Governance Desk',
         detail: 'Monitor procurement readiness, compliance exceptions, review queues, and approved stakeholder capacity.',
@@ -201,8 +264,14 @@ export default function Dashboard() {
         path: '/admin/reports',
         icon: BarChart3
       }
-    ];
+  ], []);
 
+  const sectionMessages = useMemo(() => Object.entries(user?.sectionRejectionReasons || {}).filter(([section, reason]) => {
+    const status = user?.sectionStatus?.[section as keyof typeof user.sectionStatus];
+    return reason && ['rejected', 'resubmission_required'].includes(status || '');
+  }), [user?.sectionRejectionReasons, user?.sectionStatus]);
+
+  if (user?.role === 'admin') {
     return (
       <div className="space-y-5 animate-in fade-in duration-500">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -227,22 +296,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {adminTiles.map(stat => (
-            <Link key={stat.label} href={stat.path} className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#12335f]/40 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 focus:ring-[#12335f]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">{stat.label}</div>
-                  <div className={cn("text-3xl font-extrabold tracking-tight", isAdminStatsLoading ? "text-slate-300" : "text-slate-900")}>
-                    {isAdminStatsLoading ? "0" : stat.value ?? "0"}
-                  </div>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{stat.helper}</p>
-                </div>
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', stat.tone)}>
-                  <stat.icon className="h-5 w-5" />
-                </div>
-              </div>
-            </Link>
-          ))}
+          {adminTiles.map(stat => <AdminKpiLink key={stat.label} stat={stat} isLoading={isAdminStatsLoading} />)}
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
@@ -252,24 +306,7 @@ export default function Dashboard() {
               <p className="text-xs font-medium text-slate-500">Operational pages added to the sidebar for procurement portal control.</p>
             </div>
             <div className="grid gap-3 p-4 md:grid-cols-2">
-              {adminModules.map(module => (
-                <Link
-                  key={module.title}
-                  href={module.path}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-4 transition-all duration-200 hover:border-[#12335f]/40 hover:bg-white hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 focus:ring-[#12335f]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-[#12335f] shadow-sm">
-                      <module.icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">{module.title}</h3>
-                      <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{module.detail}</p>
-                      <span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-widest text-[#12335f]">Open Module</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+              {adminModules.map(module => <AdminModuleLink key={module.title} module={module} />)}
             </div>
           </section>
 
@@ -279,12 +316,7 @@ export default function Dashboard() {
             </div>
             <h2 className="mt-4 text-lg font-black uppercase">Daily review checklist</h2>
             <div className="mt-4 space-y-3">
-              {[
-                'Clear pending stakeholder approvals',
-                'Check resubmissions with remarks',
-                'Export MIS report for audit trail',
-                'Verify approved seller capacity'
-              ].map(item => (
+              {ADMIN_REVIEW_CHECKLIST.map(item => (
                 <div key={item} className="flex items-start gap-2 text-xs font-semibold text-blue-50">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                   <span>{item}</span>
@@ -299,11 +331,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const sectionMessages = Object.entries(user?.sectionRejectionReasons || {}).filter(([section, reason]) => {
-    const status = user?.sectionStatus?.[section as keyof typeof user.sectionStatus];
-    return reason && ['rejected', 'resubmission_required'].includes(status || '');
-  });
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500 max-w-6xl mx-auto pb-6">

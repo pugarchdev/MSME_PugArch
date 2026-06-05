@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
@@ -118,6 +118,57 @@ const preloadRoute = (path: string) => {
   }
 };
 
+const HIGH_PRIORITY_PREFETCH_ROUTES = [
+  '/dashboard',
+  '/master-admin',
+  '/admin/users',
+  '/admin/organizations',
+  '/admin/onboarding',
+  '/admin/reports',
+  '/payments',
+  '/escrow',
+  '/settings/notifications'
+] as const;
+
+const SidebarNavLink = memo(function SidebarNavLink({
+  item,
+  isActive,
+  isCollapsed,
+  onClose
+}: {
+  item: SidebarItem;
+  isActive: boolean;
+  isCollapsed: boolean;
+  onClose: () => void;
+}) {
+  const handlePreload = useCallback(() => preloadRoute(item.path), [item.path]);
+  const Icon = item.icon;
+
+  return (
+    <Link
+      href={item.path}
+      scroll={false}
+      onClick={onClose}
+      onMouseEnter={handlePreload}
+      onFocus={handlePreload}
+      title={isCollapsed ? item.label : undefined}
+      className={cn("relative flex items-center gap-3 rounded-md transition-all duration-200 group",
+        isCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
+        isActive
+          ? "bg-white/10 text-white"
+          : "text-white/70 hover:bg-white/5 hover:text-white"
+      )}
+    >
+      {isActive && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r bg-[#c8a45c]" aria-hidden="true" />
+      )}
+      <Icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", isActive ? "text-[#c8a45c]" : "text-white/60 group-hover:text-white")} />
+      <span className={cn("text-sm font-medium truncate", isCollapsed && "lg:hidden")}>{item.label}</span>
+      {isActive && <ChevronRight className={cn("ml-auto h-3 w-3 text-[#c8a45c]", isCollapsed && "lg:hidden")} />}
+    </Link>
+  );
+});
+
 export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse, onHoverChange }: SidebarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -135,16 +186,16 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     }
   }, []);
 
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     if (navRef.current) {
       sessionStorage.setItem('sidebarScrollPosition', String(navRef.current.scrollTop));
     }
-  };
+  }, []);
 
-  const handleHover = (value: boolean) => {
+  const handleHover = useCallback((value: boolean) => {
     setIsHovered(value);
     onHoverChange?.(value);
-  };
+  }, [onHoverChange]);
 
   useEffect(() => {
     if (sidebarRef.current) {
@@ -182,12 +233,12 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
 
   const isActuallyCollapsed = isCollapsed && !isHovered;
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     logout();
     router.push('/');
-  };
+  }, [logout, router]);
 
-  const navItems: SidebarItem[] = [
+  const navItems: SidebarItem[] = useMemo(() => [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin'] },
     { label: 'Master Console', path: '/master-admin', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Admin Console', path: '/admin/onboarding', icon: ShieldCheck, roles: ['admin'] },
@@ -235,9 +286,9 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
     { label: 'Account Settings', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
     { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
-  ];
+  ], []);
 
-  const filteredNav = navItems.filter(item => {
+  const filteredNav = useMemo(() => navItems.filter(item => {
     if (!user) return false;
     const hasRole = item.roles.includes(user.role);
     if (!hasRole) return false;
@@ -249,7 +300,19 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       return user.permissions?.includes(item.permission);
     }
     return true;
-  });
+  }), [navItems, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const routes = new Set<string>([
+      ...HIGH_PRIORITY_PREFETCH_ROUTES,
+      ...filteredNav.slice(0, 8).map(item => item.path)
+    ]);
+    routes.forEach(path => {
+      router.prefetch(path);
+      preloadRoute(path);
+    });
+  }, [filteredNav, router, user]);
 
   if (!user) return null;
 
@@ -303,28 +366,13 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
           {filteredNav.map((item) => {
             const isActive = pathname === item.path;
             return (
-              <Link
+              <SidebarNavLink
                 key={item.label}
-                href={item.path}
-                scroll={false}
-                onClick={onClose}
-                onMouseEnter={() => preloadRoute(item.path)}
-                onFocus={() => preloadRoute(item.path)}
-                title={isActuallyCollapsed ? item.label : undefined}
-                className={cn("relative flex items-center gap-3 rounded-md transition-all duration-200 group",
-                  isActuallyCollapsed ? "lg:justify-center lg:px-0 px-3 py-2.5 h-11" : "px-3 py-2.5",
-                  isActive
-                    ? "bg-white/10 text-white"
-                    : "text-white/70 hover:bg-white/5 hover:text-white"
-                )}
-              >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r bg-[#c8a45c]" aria-hidden="true" />
-                )}
-                <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", isActive ? "text-[#c8a45c]" : "text-white/60 group-hover:text-white")} />
-                <span className={cn("text-sm font-medium truncate", isActuallyCollapsed && "lg:hidden")}>{item.label}</span>
-                {isActive && <ChevronRight className={cn("ml-auto h-3 w-3 text-[#c8a45c]", isActuallyCollapsed && "lg:hidden")} />}
-              </Link>
+                item={item}
+                isActive={isActive}
+                isCollapsed={isActuallyCollapsed}
+                onClose={onClose}
+              />
             );
           })}
         </nav>

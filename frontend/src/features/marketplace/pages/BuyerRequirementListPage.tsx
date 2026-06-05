@@ -31,14 +31,16 @@ const SORT_OPTIONS = [
 ];
 
 function daysLeft(iso: string) {
-    return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+    return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000));
 }
 
 function statusBadge(req: BuyerRequirement) {
-    const d = daysLeft(req.lastDate);
-    if (req.isUrgent || d <= 3) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
-    if (d <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
-    if ((req._count?.responses || 0) < 2) return { label: 'New', cls: 'bg-green-50 text-green-700 border-green-200', icon: <CheckCircle className="h-3 w-3" /> };
+    const status = String(req.computedStatus || req.statusLabel || req.status || '').toUpperCase();
+    const d = req.daysRemaining ?? daysLeft(req.lastDate);
+    if (status === 'AWARDED') return { label: 'Awarded', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle className="h-3 w-3" /> };
+    if (status === 'CLOSED' || d <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
+    if (status === 'UNDER_EVALUATION' || status === 'UNDER REVIEW') return { label: 'Under Evaluation', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: null };
+    if (status === 'CLOSING_SOON' || req.isUrgent || d <= 7) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
     return { label: 'Open', cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: null };
 }
 

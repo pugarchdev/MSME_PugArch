@@ -1,9 +1,10 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import React from 'react';
 import { cn } from '../../lib/utils';
 
 export type SortDirection = 'asc' | 'desc';
 
-export function SortableHeader<T extends string>({
+function SortableHeaderBase<T extends string>({
   label,
   field,
   activeField,
@@ -40,3 +41,5 @@ export function SortableHeader<T extends string>({
     </button>
   );
 }
+
+export const SortableHeader = React.memo(SortableHeaderBase) as typeof SortableHeaderBase;

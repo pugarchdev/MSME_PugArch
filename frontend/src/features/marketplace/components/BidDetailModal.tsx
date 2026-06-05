@@ -11,14 +11,16 @@ import {
 } from 'lucide-react';
 
 function daysLeft(iso: string) {
-    return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+    return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000));
 }
 
 function statusBadge(req: BuyerRequirement) {
-    const d = daysLeft(req.lastDate);
-    if (req.isUrgent || d <= 3) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
-    if (d <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
-    if ((req._count?.responses || 0) < 2) return { label: 'New', cls: 'bg-green-50 text-green-700 border-green-200', icon: <CheckCircle className="h-3 w-3" /> };
+    const status = String(req.computedStatus || req.statusLabel || req.status || '').toUpperCase();
+    const d = req.daysRemaining ?? daysLeft(req.lastDate);
+    if (status === 'AWARDED') return { label: 'Awarded', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle className="h-3 w-3" /> };
+    if (status === 'CLOSED' || d <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
+    if (status === 'UNDER_EVALUATION' || status === 'UNDER REVIEW') return { label: 'Under Evaluation', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: null };
+    if (status === 'CLOSING_SOON' || req.isUrgent || d <= 7) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
     return { label: 'Open', cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: null };
 }
 
@@ -29,7 +31,8 @@ export function BidDetailModal({ bid, onClose }: Props) {
     const router = useRouter();
     const isService = bid.requirementType === 'SERVICE';
     const badge = statusBadge(bid);
-    const days = daysLeft(bid.lastDate);
+    const days = bid.daysRemaining ?? daysLeft(bid.lastDate);
+    const isResponseClosed = badge.label === 'Closed' || badge.label === 'Awarded';
 
     const [message, setMessage] = useState('');
     const [price, setPrice] = useState('');
@@ -51,6 +54,10 @@ export function BidDetailModal({ bid, onClose }: Props) {
     }, [onClose]);
 
     const handleSubmit = async () => {
+        if (isResponseClosed) {
+            toast.info('This requirement is no longer accepting seller responses.');
+            return;
+        }
         if (!user) {
             toast.info('Login to submit a response', {
                 action: { label: 'Login', onClick: () => { onClose(); router.push('/login'); } },
@@ -183,7 +190,7 @@ export function BidDetailModal({ bid, onClose }: Props) {
                     {/* Response form */}
                     <div className="border-t border-slate-100 bg-slate-50 p-4 sm:p-5 space-y-3 shrink-0">
                         <div className="flex items-center justify-between">
-                            <p className="text-sm font-bold text-[#0b2447]">Submit Your Quote</p>
+                            <p className="text-sm font-bold text-[#0b2447]">{isResponseClosed ? 'Requirement Details' : 'Submit Your Quote'}</p>
                             {!user && <p className="text-[10px] text-amber-600 font-semibold">Login required to submit</p>}
                             {user && user.role !== 'seller' && <p className="text-[10px] text-amber-600 font-semibold">Seller account required</p>}
                         </div>
@@ -201,7 +208,7 @@ export function BidDetailModal({ bid, onClose }: Props) {
                         <div className="flex gap-3">
                             <button
                                 onClick={handleSubmit}
-                                disabled={submitting}
+                                disabled={submitting || isResponseClosed}
                                 className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-lg bg-[#0b2447] text-white text-xs font-bold hover:bg-[#12335f] disabled:opacity-60 active:scale-95 transition [&:not(:disabled):hover]:translate-y-0"
                             >
                                 <Send className="h-3.5 w-3.5" />

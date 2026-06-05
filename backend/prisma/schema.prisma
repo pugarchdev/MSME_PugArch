@@ -139,6 +139,7 @@ model User {
   procurementAuditLogs        ProcurementAuditLog[]   @relation("ProcurementAuditUser")
 
   @@index([role, onboardingStatus])
+  @@index([role])
   @@index([mobile])
   @@index([organizationId])
   @@index([companyId])
@@ -343,6 +344,7 @@ model Organization {
   procurementBids              ProcurementBid[]        @relation("ProcurementBidOrganization")
 
   @@index([organizationName])
+  @@index([organizationType])
   @@index([gstin])
   @@index([panNumber])
   @@index([udyamNumber])
@@ -350,6 +352,8 @@ model Organization {
   @@index([isBlacklisted])
   @@index([organizationLogoFileId])
   @@index([companyId])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model Company {
@@ -386,6 +390,8 @@ model Company {
   @@index([name])
   @@index([district, state])
   @@index([isActive])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model BuyerRequirement {
@@ -427,6 +433,10 @@ model BuyerRequirement {
   @@index([buyerOrganizationId])
   @@index([categoryId])
   @@index([status, lastDate])
+  @@index([status, createdAt])
+  @@index([status, isUrgent, lastDate])
+  @@index([createdAt])
+  @@index([updatedAt])
   @@index([isFeatured])
   @@index([isUrgent])
   @@index([createdById])
@@ -452,9 +462,15 @@ model RequirementResponse {
   sellerUser           User                      @relation("RequirementResponseSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
 
   @@index([requirementId])
+  @@index([requirementId, createdAt])
+  @@index([requirementId, sellerUserId, status])
   @@index([sellerOrganizationId])
+  @@index([sellerOrganizationId, createdAt])
   @@index([sellerUserId])
+  @@index([sellerUserId, createdAt])
   @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model GuestCart {
@@ -1961,6 +1977,7 @@ model PaymentTransaction {
   paymentSettlements     PaymentSettlement[]    @relation("PaymentSettlementTransaction")
 
   @@index([gateway, status])
+  @@index([status])
   @@index([gatewayEnum])
   @@index([methodEnum])
   @@index([paymentStatus])
@@ -2040,8 +2057,10 @@ model EscrowAccount {
 
   @@index([buyerId, status])
   @@index([sellerId, status])
+  @@index([status])
   @@index([escrowStatus])
   @@index([purchaseOrderId])
+  @@index([createdAt])
 }
 
 model EscrowTransaction {
@@ -2528,6 +2547,8 @@ model ProcurementBidParticipation {
   @@unique([bidId, sellerId])
   @@index([sellerId, submissionStatus])
   @@index([bidId, technicalStatus, financialStatus])
+  @@index([submissionStatus])
+  @@index([submittedAt])
 }
 
 model ProcurementBidParticipationDocument {

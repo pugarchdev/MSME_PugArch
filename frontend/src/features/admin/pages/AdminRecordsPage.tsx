@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Eye, Filter, RefreshCw, Search, ShieldCheck, Users, X, Grid, List, Save, Edit3, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -118,10 +118,10 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
     setPage(1);
   }, [query, role, status, severity, kind]);
 
-  const setPageSize = (nextPageSize: number) => {
+  const setPageSize = useCallback((nextPageSize: number) => {
     setPageSizeState(nextPageSize);
     setPage(1);
-  };
+  }, []);
 
   const handleToggleUserStatus = async (record: RecordMap) => {
     const currentUserId = currentUser?.id;
@@ -262,62 +262,53 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
     }
   };
 
-  const params = new URLSearchParams();
-  params.set('skip', String((page - 1) * pageSize));
-  params.set('take', String(pageSize));
-  if (query.trim()) params.set('q', query.trim());
-  if (role) params.set('role', role);
-  if (status) params.set('status', status);
-  if (kind === 'users' && status) {
-    if (['completed', 'incomplete'].includes(status)) params.set('registrationStatus', status);
-    else params.set('accountStatus', status);
-  }
-  if (severity) params.set('severity', severity);
-  const endpoint = `${cfg.endpoint}${params.toString() ? `?${params.toString()}` : ''}`;
-  const { data, loading, refreshing, error, reload, setData } = useFeatureQuery<any>(endpoint, { records: [] });
-  let records = readRecords(data);
+  const endpoint = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('skip', String((page - 1) * pageSize));
+    params.set('take', String(pageSize));
+    if (query.trim()) params.set('q', query.trim());
+    if (role) params.set('role', role);
+    if (status) params.set('status', status);
+    if (kind === 'users' && status) {
+      if (['completed', 'incomplete'].includes(status)) params.set('registrationStatus', status);
+      else params.set('accountStatus', status);
+    }
+    if (severity) params.set('severity', severity);
+    const queryString = params.toString();
+    return `${cfg.endpoint}${queryString ? `?${queryString}` : ''}`;
+  }, [cfg.endpoint, kind, page, pageSize, query, role, severity, status]);
 
-  const total = totalOf(data, records.length);
+  const { data, loading, refreshing, error, reload, setData } = useFeatureQuery<any>(endpoint, { records: [] });
+  const rawRecords = useMemo(() => readRecords(data), [data]);
+
+  const total = totalOf(data, rawRecords.length);
   const Icon = cfg.icon;
 
-  const valueForSort = (record: RecordMap) => {
-    if (sortKey === 'record') return rowTitle(kind, record);
-    if (sortKey === 'status') return String(statusOf(kind, record));
-    if (sortKey === 'severity') return record.severity || record.role || record.alertType || '';
-    if (sortKey === 'date') return new Date(record.createdAt || record.updatedAt || 0).getTime();
-    return '';
-  };
+  const records = useMemo(() => {
+    const valueForSort = (record: RecordMap) => {
+      if (sortKey === 'record') return rowTitle(kind, record);
+      if (sortKey === 'status') return String(statusOf(kind, record));
+      if (sortKey === 'severity') return record.severity || record.role || record.alertType || '';
+      if (sortKey === 'date') return new Date(record.createdAt || record.updatedAt || 0).getTime();
+      return '';
+    };
 
-  records = [...records].sort((a, b) => {
-    const aVal = valueForSort(a);
-    const bVal = valueForSort(b);
-    const res = typeof aVal === 'number' && typeof bVal === 'number'
-      ? aVal - bVal
-      : String(aVal).localeCompare(String(bVal));
-    return sortDirection === 'asc' ? res : -res;
-  });
+    return [...rawRecords].sort((a, b) => {
+      const aVal = valueForSort(a);
+      const bVal = valueForSort(b);
+      const res = typeof aVal === 'number' && typeof bVal === 'number'
+        ? aVal - bVal
+        : String(aVal).localeCompare(String(bVal));
+      return sortDirection === 'asc' ? res : -res;
+    });
+  }, [kind, rawRecords, sortDirection, sortKey]);
 
-  const toggleSort = (key: string) => {
+  const toggleSort = useCallback((key: string) => {
     setSortDirection(prev => sortKey === key && prev === 'asc' ? 'desc' : 'asc');
     setSortKey(key);
-  };
+  }, [sortKey]);
 
-  const SortHead = ({ label, field }: { label: string; field: string }) => (
-    <button
-      type="button"
-      onClick={() => toggleSort(field)}
-      className="inline-flex items-center gap-1 text-left hover:text-slate-700"
-    >
-      {label}
-      <span className="text-slate-400">
-        {sortKey === field ? (
-          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-        ) : (
-          <ArrowUpDown className="h-3 w-3 opacity-50" />
-        )}
-      </span>
-    </button>
-  );
+  const currentUserId = useMemo(() => currentUser ? Number(currentUser.id) : null, [currentUser]);
 
   const metrics = useMemo(() => {
     if (kind === 'users') {
@@ -406,7 +397,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                 onToggleStatus={handleToggleUserStatus}
                 onEdit={setEditingUser}
                 onDelete={handleDeleteUser}
-                currentUserId={currentUser ? Number(currentUser.id) : null}
+                currentUserId={currentUserId}
               />
             ))}
           </div>
@@ -421,10 +412,10 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="p-3 w-16">Sr. No.</th>
-                  <th className="p-3"><SortHead label="Record" field="record" /></th>
-                  <th className="p-3"><SortHead label="Status" field="status" /></th>
-                  <th className="p-3"><SortHead label="Severity/Role" field="severity" /></th>
-                  <th className="p-3"><SortHead label="Date" field="date" /></th>
+                  <th className="p-3"><SortHeadButton label="Record" field="record" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Severity/Role" field="severity" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Date" field="date" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Action</th>
                 </tr>
               </thead>
@@ -479,7 +470,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                         {kind === 'users' && (
                           <>
                             <Button variant="outline" onClick={() => setEditingUser(record)} className="h-9 rounded-lg text-xs font-black text-blue-600 hover:text-blue-700 border-blue-100 hover:bg-blue-50/50"><Edit3 className="mr-2 h-4 w-4" />Edit</Button>
-                            <Button variant="outline" onClick={() => handleDeleteUser(record)} className="h-9 rounded-lg text-xs font-black text-rose-600 hover:text-rose-700 border-rose-100 hover:bg-rose-50/50" disabled={Number(record.id) === Number(currentUser?.id)}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
+                            <Button variant="outline" onClick={() => handleDeleteUser(record)} className="h-9 rounded-lg text-xs font-black text-rose-600 hover:text-rose-700 border-rose-100 hover:bg-rose-50/50" disabled={Number(record.id) === Number(currentUserId)}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
                           </>
                         )}
                       </div>
@@ -533,6 +524,37 @@ function formatDateTime(dateVal: any) {
 
   return `${dateStr} ${timeStr}`;
 }
+
+const SortHeadButton = memo(function SortHeadButton({
+  label,
+  field,
+  sortKey,
+  sortDirection,
+  onSort
+}: {
+  label: string;
+  field: string;
+  sortKey: string;
+  sortDirection: 'asc' | 'desc';
+  onSort: (field: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className="inline-flex items-center gap-1 text-left hover:text-slate-700"
+    >
+      {label}
+      <span className="text-slate-400">
+        {sortKey === field ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-50" />
+        )}
+      </span>
+    </button>
+  );
+});
 
 function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: RecordMap; onClose: () => void }) {
   const safeRecord = { ...record };
@@ -724,11 +746,11 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
   );
 }
 
-function DetailMetric({ label, value }: { label: string; value: string }) {
+const DetailMetric = memo(function DetailMetric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-sm font-black text-slate-900">{value}</p></div>;
-}
+});
 
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+const DetailSection = memo(function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">
@@ -737,9 +759,9 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
       <div className="p-4">{children}</div>
     </div>
   );
-}
+});
 
-function DetailField({ label, value }: { label: string; value?: string | number | null }) {
+const DetailField = memo(function DetailField({ label, value }: { label: string; value?: string | number | null }) {
   const display = value != null && value !== '' ? String(value) : '—';
   return (
     <div className="space-y-0.5">
@@ -747,9 +769,9 @@ function DetailField({ label, value }: { label: string; value?: string | number 
       <p className="text-xs font-bold text-slate-700 break-all">{display}</p>
     </div>
   );
-}
+});
 
-function AdminRecordCard({
+const AdminRecordCard = memo(function AdminRecordCard({
   kind,
   record,
   srNo,
@@ -829,7 +851,7 @@ function AdminRecordCard({
       </CardContent>
     </Card>
   );
-}
+});
 
 function UserEditModal({
   user,

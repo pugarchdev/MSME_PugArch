@@ -14,6 +14,7 @@
  * dashboard makes ONE network call instead of 5+ parallel queries.
  */
 import { useQuery } from '@tanstack/react-query';
+import React, { useCallback, useMemo } from 'react';
 import {
     AlertTriangle, ArrowRight, ClipboardCheck, ClipboardList, FileText, Gavel,
     Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck
@@ -45,6 +46,16 @@ interface DashboardSummary {
     orgRole?: string;
     isAdmin?: boolean;
 }
+
+type ActionCardConfig = {
+    label: string;
+    count: number;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tone: string;
+    show: boolean;
+    priority: boolean;
+};
 
 const TONES: Record<string, string> = {
     amber: 'bg-amber-50 text-amber-700',
@@ -79,7 +90,77 @@ const TONE_TEXT_COLORS: Record<string, string> = {
     cyan: 'text-cyan-700'
 };
 
-export default function RoleAwareActionCards() {
+const ActionCard = React.memo(function ActionCard({
+    card,
+    isLoading,
+    priority,
+    onOpen
+}: {
+    card: ActionCardConfig;
+    isLoading: boolean;
+    priority?: boolean;
+    onOpen: (href: string) => void;
+}) {
+    const Icon = card.icon;
+    const handleClick = useCallback(() => onOpen(card.href), [card.href, onOpen]);
+
+    return (
+        <button
+            type="button"
+            onClick={handleClick}
+            className={cn(
+                "group text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2",
+                priority && "relative overflow-hidden",
+                TONE_HOVER_BORDERS[card.tone] || TONE_HOVER_BORDERS.slate
+            )}
+        >
+            {priority && card.count > 0 && (
+                <div className={cn(
+                    "absolute top-0 bottom-0 left-0 w-0.5",
+                    card.tone === 'amber' ? "bg-amber-500" :
+                    card.tone === 'blue' ? "bg-blue-500" :
+                    card.tone === 'purple' ? "bg-purple-500" :
+                    card.tone === 'emerald' ? "bg-emerald-500" : "bg-slate-500"
+                )} />
+            )}
+
+            <div className="flex items-center justify-between mb-1.5">
+                <div className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-105",
+                    TONES[card.tone] || TONES.slate
+                )}>
+                    <Icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="flex items-center gap-1">
+                    {priority && card.count > 0 && (
+                        <span className={cn(
+                            "inline-flex items-center px-1 py-0.5 rounded text-[7.5px] font-extrabold uppercase tracking-wider animate-pulse",
+                            card.tone === 'amber' ? "bg-amber-100 text-amber-850" :
+                            card.tone === 'rose' ? "bg-rose-100 text-rose-850" :
+                            card.tone === 'emerald' ? "bg-emerald-100 text-emerald-850" : "bg-blue-100 text-blue-850"
+                        )}>
+                            Pending
+                        </span>
+                    )}
+                    <ArrowRight className={cn("h-3 w-3 text-slate-400 transition-transform duration-200 group-hover:translate-x-0.5", priority ? "group-hover:text-slate-800" : "group-hover:text-slate-700")} />
+                </div>
+            </div>
+            {isLoading ? (
+                <div className="h-6 w-10 rounded bg-slate-100 animate-pulse mb-0.5" />
+            ) : (
+                <p className={cn(
+                    "text-xl font-extrabold tracking-tight leading-none",
+                    card.count > 0 ? (TONE_TEXT_COLORS[card.tone] || "text-slate-900") : "text-slate-800"
+                )}>
+                    {card.count}
+                </p>
+            )}
+            <p className={cn("text-[9px] font-bold uppercase tracking-wide mt-1 leading-tight", priority ? "text-slate-650" : "text-slate-500")}>{card.label}</p>
+        </button>
+    );
+});
+
+function RoleAwareActionCards() {
     const { user } = useAuth();
     const { orgRole, isOrgAdmin, isProcurementOfficer, isFinanceOfficer, isTechnicalOfficer, isLogisticsOfficer } = useOrgRole();
     const router = useRouter();
@@ -97,15 +178,7 @@ export default function RoleAwareActionCards() {
     const isBuyer = user?.role === 'buyer';
     const isSeller = user?.role === 'seller';
 
-    const cards: Array<{
-        label: string;
-        count: number;
-        href: string;
-        icon: any;
-        tone: string;
-        show: boolean;
-        priority: boolean;
-    }> = [
+    const cards: ActionCardConfig[] = useMemo(() => [
         // ─── Buyer baseline tiles ───
         {
             label: 'My Tenders',
@@ -237,13 +310,14 @@ export default function RoleAwareActionCards() {
             show: isBuyer && !!(isOrgAdmin || isTechnicalOfficer),
             priority: true
         }
-    ];
+    ], [data, isBuyer, isSeller, isOrgAdmin, isProcurementOfficer, isFinanceOfficer, isTechnicalOfficer]);
 
-    const visible = cards.filter(c => c.show);
+    const visible = useMemo(() => cards.filter(c => c.show), [cards]);
+    const priorityActions = useMemo(() => visible.filter(c => c.priority), [visible]);
+    const generalMonitoring = useMemo(() => visible.filter(c => !c.priority), [visible]);
+    const openCard = useCallback((href: string) => router.push(href), [router]);
+
     if (visible.length === 0) return null;
-
-    const priorityActions = visible.filter(c => c.priority);
-    const generalMonitoring = visible.filter(c => !c.priority);
 
     return (
         <div className="space-y-4">
@@ -257,60 +331,7 @@ export default function RoleAwareActionCards() {
                         </h4>
                     </div>
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                        {priorityActions.map(card => (
-                            <button
-                                key={card.label}
-                                type="button"
-                                onClick={() => router.push(card.href)}
-                                className={cn(
-                                    "group text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 relative overflow-hidden",
-                                    TONE_HOVER_BORDERS[card.tone] || TONE_HOVER_BORDERS.slate
-                                )}
-                            >
-                                {card.count > 0 && (
-                                    <div className={cn(
-                                        "absolute top-0 bottom-0 left-0 w-0.5",
-                                        card.tone === 'amber' ? "bg-amber-500" :
-                                        card.tone === 'blue' ? "bg-blue-500" :
-                                        card.tone === 'purple' ? "bg-purple-500" :
-                                        card.tone === 'emerald' ? "bg-emerald-500" : "bg-slate-500"
-                                    )} />
-                                )}
-
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <div className={cn(
-                                        "flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-105", 
-                                        TONES[card.tone] || TONES.slate
-                                    )}>
-                                        <card.icon className="h-3.5 w-3.5" />
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        {card.count > 0 && (
-                                            <span className={cn(
-                                                "inline-flex items-center px-1 py-0.5 rounded text-[7.5px] font-extrabold uppercase tracking-wider animate-pulse",
-                                                card.tone === 'amber' ? "bg-amber-100 text-amber-850" :
-                                                card.tone === 'rose' ? "bg-rose-100 text-rose-850" :
-                                                card.tone === 'emerald' ? "bg-emerald-100 text-emerald-850" : "bg-blue-100 text-blue-850"
-                                            )}>
-                                                Pending
-                                            </span>
-                                        )}
-                                        <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-slate-800 transition-transform duration-200 group-hover:translate-x-0.5" />
-                                    </div>
-                                </div>
-                                {isLoading ? (
-                                    <div className="h-6 w-10 rounded bg-slate-100 animate-pulse mb-0.5" />
-                                ) : (
-                                    <p className={cn(
-                                        "text-xl font-extrabold tracking-tight leading-none",
-                                        card.count > 0 ? (TONE_TEXT_COLORS[card.tone] || "text-slate-900") : "text-slate-800"
-                                    )}>
-                                        {card.count}
-                                    </p>
-                                )}
-                                <p className="text-[9px] font-bold uppercase tracking-wide text-slate-650 mt-1 leading-tight">{card.label}</p>
-                            </button>
-                        ))}
+                        {priorityActions.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} priority onOpen={openCard} />)}
                     </div>
                 </div>
             )}
@@ -322,41 +343,12 @@ export default function RoleAwareActionCards() {
                         General Monitoring
                     </h4>
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                        {generalMonitoring.map(card => (
-                            <button
-                                key={card.label}
-                                type="button"
-                                onClick={() => router.push(card.href)}
-                                className={cn(
-                                    "group text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2",
-                                    TONE_HOVER_BORDERS[card.tone] || TONE_HOVER_BORDERS.slate
-                                )}
-                            >
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <div className={cn(
-                                        "flex h-7 w-7 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105", 
-                                        TONES[card.tone] || TONES.slate
-                                    )}>
-                                        <card.icon className="h-3.5 w-3.5" />
-                                    </div>
-                                    <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 group-hover:translate-x-0.5" />
-                                </div>
-                                {isLoading ? (
-                                    <div className="h-6 w-10 rounded bg-slate-100 animate-pulse mb-0.5" />
-                                ) : (
-                                    <p className={cn(
-                                        "text-xl font-extrabold tracking-tight leading-none",
-                                        card.count > 0 ? (TONE_TEXT_COLORS[card.tone] || "text-slate-900") : "text-slate-800"
-                                    )}>
-                                        {card.count}
-                                    </p>
-                                )}
-                                <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 mt-1 leading-tight">{card.label}</p>
-                            </button>
-                        ))}
+                        {generalMonitoring.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} onOpen={openCard} />)}
                     </div>
                 </div>
             )}
         </div>
     );
 }
+
+export default React.memo(RoleAwareActionCards);

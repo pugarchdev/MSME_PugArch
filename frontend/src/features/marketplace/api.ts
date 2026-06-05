@@ -73,6 +73,12 @@ export interface BuyerRequirement {
     lastDate: string;
     visibility: 'PUBLIC' | 'VERIFIED_SELLERS_ONLY';
     status: string;
+    requirementNumber?: string;
+    bidStatus?: 'OPEN' | 'CLOSING_SOON' | 'UNDER_EVALUATION' | 'AWARDED' | 'CLOSED' | string;
+    computedStatus?: 'OPEN' | 'CLOSING_SOON' | 'UNDER_EVALUATION' | 'AWARDED' | 'CLOSED' | string;
+    statusLabel?: 'Open' | 'Closing Soon' | 'Under Evaluation' | 'Awarded' | 'Closed' | string;
+    daysRemaining?: number;
+    timeRemaining?: string;
     isFeatured: boolean;
     isUrgent: boolean;
     requiredDocuments?: string[];

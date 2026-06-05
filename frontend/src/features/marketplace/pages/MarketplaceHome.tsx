@@ -5,8 +5,6 @@ import { marketplaceApi, type MarketplaceHomeData } from '../api';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
-import PremiumLoader from '../../../components/PremiumLoader';
-
 // ── Layout
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
 import { MarketplaceFooter } from '../components/MarketplaceFooter';
@@ -45,7 +43,7 @@ export default function MarketplaceHome() {
         placeholderData: (previous) => previous ?? api.peek('/api/marketplace/home') ?? undefined,
     });
 
-    if (isLoading && !data) return <PremiumLoader />;
+    if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
 
     return (
         <div className="min-h-dvh bg-[#f1f3f6] text-slate-800 flex flex-col">
@@ -85,7 +83,7 @@ export default function MarketplaceHome() {
                 {/* <IndustryNetwork /> */}
 
                 {/* 8. Latest bids & buyer requirements (NEW) */}
-                <LatestBids requirements={data?.featuredRequirements} />
+                <LatestBids requirements={data?.featuredRequirements} loading={isLoading && !data} />
 
                 {/* 9. Verified seller strip */}
                 <SellerStrip sellers={data?.verifiedSellers || []} />

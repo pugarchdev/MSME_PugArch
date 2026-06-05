@@ -1,10 +1,11 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { getOrSetCache } from '../services/cache.service.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
+import { verifyAccessToken } from '../services/token.service.js';
 
 const db = prisma as any;
 const router = Router();
@@ -23,6 +24,120 @@ const paginationQuery = z.object({
 
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });
 
+const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization || '';
+    const [scheme, token] = authHeader.split(' ');
+    if (scheme !== 'Bearer' || !token) return next();
+
+    try {
+        const decoded = verifyAccessToken(token);
+        const user = await prisma.user.findUnique({
+            where: { id: Number(decoded.id) },
+            select: { id: true, role: true, sessionVersion: true, accountStatus: true, organizationId: true, companyId: true }
+        });
+        if (user && user.accountStatus === 'ACTIVE' && user.role === decoded.role && user.sessionVersion === Number(decoded.sessionVersion)) {
+            req.user = {
+                id: user.id,
+                role: user.role,
+                sessionVersion: user.sessionVersion,
+                permissions: [],
+                organizationId: user.organizationId,
+                companyId: user.companyId,
+                enabledFeatures: []
+            };
+        }
+    } catch {
+        // Public marketplace pages should remain public if an optional token is stale.
+    }
+
+    return next();
+};
+
+const safeBuyerOrganizationSelect = {
+    id: true,
+    organizationName: true,
+    organizationType: true,
+    city: true,
+    district: true,
+    state: true,
+    verificationStatus: true
+};
+
+const requirementCategorySelect = { id: true, name: true, slug: true };
+
+const publicRequirementListSelect = {
+    id: true,
+    title: true,
+    requirementType: true,
+    categoryId: true,
+    description: true,
+    quantity: true,
+    unit: true,
+    location: true,
+    budgetMin: true,
+    budgetMax: true,
+    lastDate: true,
+    visibility: true,
+    status: true,
+    isFeatured: true,
+    isUrgent: true,
+    approvedAt: true,
+    createdAt: true,
+    updatedAt: true,
+    category: { select: requirementCategorySelect },
+    buyerOrganization: { select: safeBuyerOrganizationSelect },
+    _count: { select: { responses: true } }
+};
+
+const publicRequirementDetailSelect = {
+    ...publicRequirementListSelect,
+    requiredDocuments: true
+};
+
+const ownerRequirementSelect = {
+    ...publicRequirementDetailSelect,
+    companyId: true,
+    buyerOrganizationId: true,
+    createdById: true,
+    approvedById: true,
+    contactPerson: true
+};
+
+const buyerResponseSelect = {
+    id: true,
+    requirementId: true,
+    sellerOrganizationId: true,
+    sellerUserId: true,
+    offeredPrice: true,
+    offeredQuantity: true,
+    deliveryTimeline: true,
+    message: true,
+    attachmentUrl: true,
+    terms: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+    sellerUser: { select: { id: true, name: true, email: true, mobile: true, onboardingStatus: true } },
+    sellerOrganization: { select: safeBuyerOrganizationSelect }
+};
+
+const sellerResponseSelect = {
+    id: true,
+    requirementId: true,
+    sellerOrganizationId: true,
+    sellerUserId: true,
+    offeredPrice: true,
+    offeredQuantity: true,
+    deliveryTimeline: true,
+    message: true,
+    attachmentUrl: true,
+    terms: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+    requirement: { select: publicRequirementListSelect }
+};
+
 const requirementIncludes = {
     category: { select: { id: true, name: true, slug: true } },
     buyerOrganization: {
@@ -40,9 +155,50 @@ const requirementIncludes = {
     _count: { select: { responses: true } }
 };
 
-const publicRequirementWhere = {
+const getPublicRequirementWhere = () => ({
     status: { in: ['PUBLISHED', 'OPEN'] },
-    lastDate: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    lastDate: { gte: new Date() }
+});
+
+const closingSoonMs = 7 * 24 * 60 * 60 * 1000;
+
+const computeRequirementState = (requirement: any) => {
+    const rawStatus = String(requirement?.status || '').toUpperCase();
+    const lastDateMs = requirement?.lastDate ? new Date(requirement.lastDate).getTime() : 0;
+    const msRemaining = lastDateMs - Date.now();
+    const daysRemaining = Number.isFinite(msRemaining) ? Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000))) : 0;
+
+    if (rawStatus === 'AWARDED') return { code: 'AWARDED', label: 'Awarded', daysRemaining, timeRemaining: 'Awarded' };
+    if (['CLOSED', 'CANCELLED', 'REJECTED'].includes(rawStatus) || (lastDateMs > 0 && msRemaining <= 0)) {
+        return { code: 'CLOSED', label: 'Closed', daysRemaining: 0, timeRemaining: 'Closed' };
+    }
+    if (rawStatus === 'UNDER_REVIEW') return { code: 'UNDER_EVALUATION', label: 'Under Evaluation', daysRemaining, timeRemaining: 'Under evaluation' };
+    if (msRemaining <= closingSoonMs) return { code: 'CLOSING_SOON', label: 'Closing Soon', daysRemaining, timeRemaining: `${daysRemaining}d left` };
+    return { code: 'OPEN', label: 'Open', daysRemaining, timeRemaining: `${daysRemaining}d left` };
+};
+
+const decorateRequirement = (requirement: any) => {
+    if (!requirement) return requirement;
+    const state = computeRequirementState(requirement);
+    return {
+        ...requirement,
+        requirementNumber: `REQ-${String(requirement.id).padStart(5, '0')}`,
+        bidStatus: state.code,
+        computedStatus: state.code,
+        statusLabel: state.label,
+        daysRemaining: state.daysRemaining,
+        timeRemaining: state.timeRemaining
+    };
+};
+
+const loadLatestRequirements = async (take = 6) => {
+    const requirements = await db.buyerRequirement?.findMany?.({
+        where: getPublicRequirementWhere(),
+        orderBy: { createdAt: 'desc' },
+        take,
+        select: publicRequirementListSelect
+    }).catch(() => []);
+    return (requirements || []).map(decorateRequirement);
 };
 
 const requirementSchema = z.object({
@@ -72,6 +228,11 @@ const responseSchema = z.object({
     terms: z.string().trim().max(2000).optional()
 });
 
+const responseListQuery = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20)
+}).partial();
+
 const guestCartItemSchema = z.object({
     cartToken: z.string().trim().min(12).max(120),
     productId: z.coerce.number().int().positive().optional(),
@@ -84,6 +245,7 @@ const guestCartItemSchema = z.object({
 // ─── Public: Home Page Aggregated Data ───────────────────────────────────────
 router.get('/marketplace/home', async (_req: Request, res: Response) => {
     try {
+        const latestRequirements = await loadLatestRequirements(6);
         const data = await getOrSetCache('marketplace:home', async () => {
             const [
                 banners,
@@ -92,7 +254,6 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 featuredServices,
                 verifiedSellers,
                 notices,
-                featuredRequirements,
                 largeIndustries,
                 bigMsmes,
                 stats
@@ -162,13 +323,6 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                     take: 5
                 }).catch(() => []),
 
-                db.buyerRequirement?.findMany?.({
-                    where: { status: { in: ['PUBLISHED', 'OPEN'] }, isFeatured: true },
-                    orderBy: [{ isUrgent: 'desc' }, { lastDate: 'asc' }],
-                    take: 6,
-                    include: requirementIncludes
-                }).catch(() => []),
-
                 db.organization.findMany({
                     where: {
                         verificationStatus: 'VERIFIED',
@@ -235,10 +389,10 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 }))
             ]);
 
-            return { banners, categories, featuredProducts, featuredServices, featuredRequirements, verifiedSellers, largeIndustries, bigMsmes, notices, stats };
+            return { banners, categories, featuredProducts, featuredServices, featuredRequirements: [], verifiedSellers, largeIndustries, bigMsmes, notices, stats };
         }, 300); // Cache 5 minutes
 
-        return ok(res, data);
+        return ok(res, { ...data, featuredRequirements: latestRequirements });
     } catch (error) {
         console.error('[Marketplace Home]', error);
         return apiResponse.error(res, 500, 'Failed to load marketplace data', 'MARKETPLACE_HOME_ERROR');
@@ -489,44 +643,63 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
         const page = query.page || 1;
         const pageSize = query.pageSize || 12;
         const skip = (page - 1) * pageSize;
-        const where: any = { status: { in: ['PUBLISHED', 'OPEN'] } };
+        const where: any = { ...getPublicRequirementWhere() };
         if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }, { location: { contains: query.q, mode: 'insensitive' } }];
         if (query.type) where.requirementType = query.type;
         if (query.tab === 'products') where.requirementType = 'PRODUCT';
         if (query.tab === 'services') where.requirementType = 'SERVICE';
-        if (query.tab === 'closing_soon') where.lastDate = { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
+        if (query.tab === 'closing_soon') where.lastDate = { gte: new Date(), lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
         if (query.tab === 'large_industries') where.buyerOrganization = { profile: { isLargeIndustry: true } };
         if (query.tab === 'government') where.buyerOrganization = { organizationType: { in: ['GOVERNMENT', 'PSU'] } };
         if (query.categoryId) where.categoryId = query.categoryId;
         if (query.location) where.location = { contains: query.location, mode: 'insensitive' };
 
         const [requirements, total] = await Promise.all([
-            db.buyerRequirement.findMany({ where, orderBy: [{ isUrgent: 'desc' }, { lastDate: 'asc' }], skip, take: pageSize, include: requirementIncludes }),
+            db.buyerRequirement.findMany({ where, orderBy: [{ isUrgent: 'desc' }, { lastDate: 'asc' }, { createdAt: 'desc' }], skip, take: pageSize, select: publicRequirementListSelect }),
             db.buyerRequirement.count({ where })
         ]);
-        return ok(res, { requirements, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+        return ok(res, { requirements: requirements.map(decorateRequirement), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
         console.error('[Marketplace Requirements]', error);
         return apiResponse.error(res, 500, 'Failed to load buyer requirements', 'BUYER_REQUIREMENTS_ERROR');
     }
 });
 
-router.get('/marketplace/requirements/:id', async (req: Request, res: Response) => {
+router.get('/marketplace/requirements/:id', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
-        const requirement = await db.buyerRequirement.findFirst({ where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } }, include: requirementIncludes });
+        const requirement = await db.buyerRequirement.findFirst({ where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } }, select: publicRequirementDetailSelect });
         if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
-        const similar = await db.buyerRequirement.findMany({
-            where: { id: { not: id }, status: { in: ['PUBLISHED', 'OPEN'] }, OR: [{ categoryId: requirement.categoryId || undefined }, { requirementType: requirement.requirementType }] },
-            take: 4,
-            orderBy: { lastDate: 'asc' },
-            include: requirementIncludes
-        });
-        return ok(res, { requirement, similarRequirements: similar });
+        const [similar, ownResponse] = await Promise.all([
+            db.buyerRequirement.findMany({
+                where: { ...getPublicRequirementWhere(), id: { not: id }, OR: [{ categoryId: requirement.categoryId || undefined }, { requirementType: requirement.requirementType }] },
+                take: 4,
+                orderBy: { lastDate: 'asc' },
+                select: publicRequirementListSelect
+            }),
+            req.user?.role === 'seller'
+                ? db.requirementResponse.findFirst({
+                    where: { requirementId: id, sellerUserId: Number(req.user.id) },
+                    orderBy: { createdAt: 'desc' },
+                    select: { id: true, status: true, createdAt: true, updatedAt: true }
+                })
+                : Promise.resolve(null)
+        ]);
+        return ok(res, { requirement: decorateRequirement(requirement), similarRequirements: similar.map(decorateRequirement), ownResponse });
     } catch (error) {
         console.error('[Marketplace Requirement Detail]', error);
         return apiResponse.error(res, 500, 'Failed to load requirement detail', 'REQUIREMENT_DETAIL_ERROR');
+    }
+});
+
+router.get('/public/requirements/latest', async (req: Request, res: Response) => {
+    try {
+        const take = Math.min(Math.max(Number(req.query.limit) || 6, 1), 12);
+        return ok(res, await loadLatestRequirements(take));
+    } catch (error) {
+        console.error('[Public Latest Requirements]', error);
+        return apiResponse.error(res, 500, 'Failed to load latest requirements', 'PUBLIC_REQUIREMENTS_ERROR');
     }
 });
 
@@ -548,21 +721,150 @@ router.post('/buyer/requirements', authenticate, authorize('buyer', 'admin', 'ma
     }
 });
 
-router.post('/marketplace/requirements/:id/responses', authenticate, authorize('seller', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
+router.post('/marketplace/requirements/:id/responses', authenticate, authorize('seller'), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         const body = responseSchema.parse(req.body);
-        const seller = await prisma.user.findUnique({ where: { id: Number(req.user?.id) }, select: { onboardingStatus: true, organizationId: true } });
+        if (req.user?.role !== 'seller') {
+            return apiResponse.error(res, 403, 'Only seller accounts can respond to buyer requirements.', 'SELLER_ROLE_REQUIRED');
+        }
+        const seller = await prisma.user.findUnique({ where: { id: Number(req.user?.id) }, select: { id: true, onboardingStatus: true, organizationId: true } });
         if (req.user?.role === 'seller' && (!seller || !['approved_for_procurement', 'approved'].includes(String(seller.onboardingStatus)))) {
             return apiResponse.error(res, 403, 'Please complete seller onboarding and verification to respond to this requirement.', 'SELLER_VERIFICATION_REQUIRED');
         }
-        const requirement = await db.buyerRequirement.findFirst({ where: { id, status: { in: ['PUBLISHED', 'OPEN'] } }, select: { id: true } });
-        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found or not open', 'REQUIREMENT_NOT_OPEN');
-        const response = await db.requirementResponse.create({ data: { ...body, requirementId: id, sellerUserId: Number(req.user?.id), sellerOrganizationId: seller?.organizationId || req.user?.organizationId || null } });
+        const sellerOrganizationId = seller?.organizationId || req.user?.organizationId || null;
+
+        const response = await db.$transaction(async (tx: any) => {
+            const requirement = await tx.buyerRequirement.findFirst({
+                where: { id, ...getPublicRequirementWhere() },
+                select: { id: true, buyerOrganizationId: true, createdById: true, lastDate: true, status: true }
+            });
+            if (!requirement) {
+                throw new Error('REQUIREMENT_NOT_OPEN');
+            }
+            if (requirement.createdById === Number(req.user?.id) || (sellerOrganizationId && requirement.buyerOrganizationId === sellerOrganizationId)) {
+                throw new Error('SELLER_CANNOT_RESPOND_TO_OWN_REQUIREMENT');
+            }
+
+            const existing = await tx.requirementResponse.findFirst({
+                where: {
+                    requirementId: id,
+                    sellerUserId: Number(req.user?.id),
+                    status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED'] }
+                },
+                select: { id: true, status: true }
+            });
+            if (existing) {
+                throw new Error('REQUIREMENT_RESPONSE_EXISTS');
+            }
+
+            return tx.requirementResponse.create({
+                data: { ...body, requirementId: id, sellerUserId: Number(req.user?.id), sellerOrganizationId },
+                select: { id: true, requirementId: true, sellerOrganizationId: true, sellerUserId: true, status: true, createdAt: true, updatedAt: true }
+            });
+        });
         return ok(res, response);
     } catch (error) {
+        if (error instanceof Error && error.message === 'REQUIREMENT_NOT_OPEN') {
+            return apiResponse.error(res, 404, 'Requirement not found or not open', 'REQUIREMENT_NOT_OPEN');
+        }
+        if (error instanceof Error && error.message === 'SELLER_CANNOT_RESPOND_TO_OWN_REQUIREMENT') {
+            return apiResponse.error(res, 403, 'You cannot submit a seller response to your own buyer requirement.', 'OWN_REQUIREMENT_RESPONSE_FORBIDDEN');
+        }
+        if (error instanceof Error && error.message === 'REQUIREMENT_RESPONSE_EXISTS') {
+            return apiResponse.error(res, 409, 'You have already submitted a response to this requirement.', 'REQUIREMENT_RESPONSE_EXISTS');
+        }
         console.error('[Requirement Response]', error);
         return apiResponse.error(res, 400, 'Unable to submit response', 'REQUIREMENT_RESPONSE_ERROR');
+    }
+});
+
+router.get('/buyer/requirements/:id/responses', authenticate, authorize('buyer', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+        const query = responseListQuery.parse(req.query);
+        const page = query.page || 1;
+        const pageSize = query.pageSize || 20;
+        const skip = (page - 1) * pageSize;
+        const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'master_admin';
+        const ownershipFilters: any[] = [{ createdById: Number(req.user?.id) }];
+        if (req.user?.organizationId) ownershipFilters.push({ buyerOrganizationId: req.user.organizationId });
+
+        const requirement = await db.buyerRequirement.findFirst({
+            where: {
+                id,
+                ...(isPrivileged ? {} : { OR: ownershipFilters })
+            },
+            select: ownerRequirementSelect
+        });
+        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+
+        const [responses, total] = await Promise.all([
+            db.requirementResponse.findMany({
+                where: { requirementId: id },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: pageSize,
+                select: buyerResponseSelect
+            }),
+            db.requirementResponse.count({ where: { requirementId: id } })
+        ]);
+
+        return ok(res, {
+            requirement: decorateRequirement(requirement),
+            responses: responses.map((response: any) => ({
+                ...response,
+                sellerUser: response.sellerUser
+                    ? { ...response.sellerUser, phone: response.sellerUser.mobile }
+                    : response.sellerUser
+            })),
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize)
+        });
+    } catch (error) {
+        console.error('[Buyer Requirement Responses]', error);
+        return apiResponse.error(res, 500, 'Failed to load seller responses', 'BUYER_REQUIREMENT_RESPONSES_ERROR');
+    }
+});
+
+router.get('/seller/requirement-responses', authenticate, authorize('seller', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
+    try {
+        const query = responseListQuery.parse(req.query);
+        const page = query.page || 1;
+        const pageSize = query.pageSize || 20;
+        const skip = (page - 1) * pageSize;
+        const responseFilters: any[] = [{ sellerUserId: Number(req.user?.id) }];
+        if (req.user?.organizationId) responseFilters.push({ sellerOrganizationId: req.user.organizationId });
+        const where = {
+            ...(req.user?.role === 'admin' || req.user?.role === 'master_admin' ? {} : { OR: responseFilters })
+        };
+        const [responses, total] = await Promise.all([
+            db.requirementResponse.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: pageSize,
+                select: sellerResponseSelect
+            }),
+            db.requirementResponse.count({ where })
+        ]);
+
+        return ok(res, {
+            responses: responses.map((response: any) => ({
+                ...response,
+                requirement: decorateRequirement(response.requirement)
+            })),
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize)
+        });
+    } catch (error) {
+        console.error('[Seller Requirement Responses]', error);
+        return apiResponse.error(res, 500, 'Failed to load submitted requirement responses', 'SELLER_REQUIREMENT_RESPONSES_ERROR');
     }
 });
 

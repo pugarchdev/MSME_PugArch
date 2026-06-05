@@ -3680,13 +3680,76 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
   const [records, total] = await Promise.all([
     db.user.findMany({
       where,
-      include: {
-        organization: true,
-        buyerProfile: true,
-        sellerProfile: true,
-        sessions: { orderBy: { createdAt: 'desc' }, take: 3 },
-        complianceViolations: { orderBy: { createdAt: 'desc' }, take: 5 },
-        fraudAlerts: { orderBy: { createdAt: 'desc' }, take: 5 }
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        email: true,
+        mobile: true,
+        role: true,
+        registrationStatus: true,
+        onboardingStatus: true,
+        sectionStatus: true,
+        adminFeedback: true,
+        organizationId: true,
+        companyId: true,
+        accountStatus: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        createdAt: true,
+        updatedAt: true,
+        organization: {
+          select: {
+            id: true,
+            organizationName: true,
+            gstin: true,
+            verificationStatus: true,
+            organizationType: true,
+            district: true,
+            state: true
+          }
+        },
+        buyerProfile: {
+          select: {
+            organizationName: true,
+            businessType: true,
+            gst: true,
+            pan: true,
+            industry: true,
+            city: true,
+            state: true,
+            annualBudget: true,
+            procurementCategories: true
+          }
+        },
+        sellerProfile: {
+          select: {
+            businessName: true,
+            gst: true,
+            pan: true,
+            udyamNumber: true,
+            industry: true,
+            city: true,
+            state: true,
+            annualTurnover: true,
+            productCategories: true
+          }
+        },
+        sessions: {
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+          select: { id: true, ipAddress: true, userAgent: true, createdAt: true }
+        },
+        complianceViolations: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, type: true, severity: true, status: true, description: true, createdAt: true }
+        },
+        fraudAlerts: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, alertType: true, severity: true, status: true, entityType: true, entityId: true, createdAt: true }
+        }
       },
       orderBy: { createdAt: 'desc' },
       skip: query.skip,
@@ -3770,7 +3833,21 @@ router.get('/admin/audit-logs', authenticate, authorizeAdmin, asyncRoute(async (
     ];
   }
   const [records, total] = await Promise.all([
-    db.auditLog.findMany({ where, include: { User: { select: { id: true, name: true, email: true, role: true } } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.auditLog.findMany({
+      where,
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        ipAddress: true,
+        createdAt: true,
+        User: { select: { id: true, name: true, email: true, role: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: query.skip,
+      take: query.take
+    }),
     db.auditLog.count({ where })
   ]);
   ok(res, { records, total, filters: query });
@@ -3793,7 +3870,27 @@ router.get('/admin/fraud-alerts', authenticate, authorizeAdmin, asyncRoute(async
     ];
   }
   const [records, total, openComplianceFlags, failedLogins] = await Promise.all([
-    db.fraudAlert.findMany({ where, include: { user: { select: { id: true, name: true, email: true, role: true } }, organization: true, reviewedBy: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.fraudAlert.findMany({
+      where,
+      select: {
+        id: true,
+        alertType: true,
+        severity: true,
+        status: true,
+        entityType: true,
+        entityId: true,
+        details: true,
+        reviewedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        user: { select: { id: true, name: true, email: true, role: true } },
+        organization: { select: { id: true, organizationName: true, verificationStatus: true } },
+        reviewedBy: { select: { id: true, name: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: query.skip,
+      take: query.take
+    }),
     db.fraudAlert.count({ where }),
     db.complianceViolation.count({ where: { status: 'open', severity: { in: ['high', 'critical'] } } }).catch(() => 0),
     db.loginEvent.count({ where: { success: false } }).catch(() => 0)
@@ -3826,7 +3923,27 @@ router.get('/admin/compliance-rules', authenticate, authorizeAdmin, asyncRoute(a
     ];
   }
   const [records, total] = await Promise.all([
-    db.complianceRule.findMany({ where, include: { violations: { orderBy: { createdAt: 'desc' }, take: 5 } }, orderBy: { createdAt: 'desc' }, skip: query.skip, take: query.take }),
+    db.complianceRule.findMany({
+      where,
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        description: true,
+        severity: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        violations: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, type: true, severity: true, status: true, createdAt: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: query.skip,
+      take: query.take
+    }),
     db.complianceRule.count({ where })
   ]);
   ok(res, { records, total, filters: query });

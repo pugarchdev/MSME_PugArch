@@ -45,7 +45,7 @@ export interface KpiTileProps {
     ariaLabel?: string;
 }
 
-export function KpiTile({
+function KpiTileBase({
     label,
     value,
     hint,
@@ -89,3 +89,5 @@ export function KpiTile({
         </Element>
     );
 }
+
+export const KpiTile = React.memo(KpiTileBase);

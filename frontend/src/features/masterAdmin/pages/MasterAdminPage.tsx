@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Archive,
@@ -11,17 +11,21 @@ import {
   FileClock,
   Filter,
   Grid2X2,
+  KeyRound,
   LayoutDashboard,
   List,
   Mail,
   Plus,
+  Power,
   RefreshCw,
   RotateCcw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
   ToggleLeft,
   ToggleRight,
+  UserPlus,
   Users
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,6 +39,7 @@ import { cn } from '../../../lib/utils';
 import { Pagination } from '../../shared/Pagination';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 import { useResponsiveViewMode, type ViewMode } from '../../shared/hooks';
+import { masterAdminApi } from '../masterAdminApi';
 
 type ApiPage<T> = { items: T[]; total: number; page: number; pageSize: number; summary?: Record<string, number> };
 type TabId = 'overview' | 'organizations' | 'users' | 'procurement' | 'payments' | 'features' | 'email' | 'audit' | 'security';
@@ -135,6 +140,21 @@ type AuditRecord = {
   User?: { name?: string | null; email?: string | null; role?: string | null } | null;
 };
 
+type ActionDialogState = {
+  entity: 'company' | 'organization' | 'user' | 'feature' | 'email';
+  action: string;
+  id?: number;
+  label: string;
+  danger?: boolean;
+  featureKey?: string;
+} | null;
+
+type EditorState = {
+  type: 'organization' | 'user' | 'email';
+  mode: 'create' | 'edit';
+  record?: any;
+} | null;
+
 const tabs: Array<{ id: TabId; label: string; icon: any }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'organizations', label: 'Organizations', icon: Building2 },
@@ -203,6 +223,9 @@ export default function MasterAdminPage() {
     audit: { page: 1, pageSize: 20 }
   });
   const [viewMode, setViewMode] = useResponsiveViewMode('master-admin:control-center:view-mode');
+  const [actionDialog, setActionDialog] = useState<ActionDialogState>(null);
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [mutating, setMutating] = useState(false);
   const debouncedFilters = useDebounce(filters, 350);
 
   const fetchJson = async <T,>(path: string): Promise<T> => {
@@ -458,6 +481,108 @@ export default function MasterAdminPage() {
     toast.warning(`${label} requires confirmation, reason capture, and audited backend support. Use suspend/archive before permanent deletion.`);
   };
 
+  const openAction = (dialog: NonNullable<ActionDialogState>) => setActionDialog(dialog);
+
+  const runAction = async (reason: string, confirmation?: string) => {
+    if (!actionDialog) return;
+    setMutating(true);
+    try {
+      const { entity, action, id, featureKey } = actionDialog;
+      if (entity === 'organization' && id) {
+        const actions: Record<string, () => Promise<any>> = {
+          activate: () => masterAdminApi.activateOrganization(id, reason),
+          inactivate: () => masterAdminApi.inactivateOrganization(id, reason),
+          suspend: () => masterAdminApi.suspendOrganization(id, reason),
+          reactivate: () => masterAdminApi.reactivateOrganization(id, reason),
+          archive: () => masterAdminApi.archiveOrganization(id, reason),
+          delete: () => confirmation === 'DELETE' ? masterAdminApi.deleteOrganization(id, reason) : Promise.reject(new Error('Type DELETE to confirm.'))
+        };
+        await actions[action]?.();
+        await loadOrganizations();
+      }
+      if (entity === 'company' && id) {
+        const path = `/api/master-admin/companies/${id}/${action}`;
+        const method = action === 'delete' ? 'DELETE' : 'POST';
+        const res = await api.fetch(action === 'delete' ? `/api/master-admin/companies/${id}` : path, {
+          method,
+          body: JSON.stringify({ reason, confirmation }),
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          skipCache: true
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.message || 'Request failed');
+        await loadCompanies();
+      }
+      if (entity === 'user' && id) {
+        const actions: Record<string, () => Promise<any>> = {
+          activate: () => masterAdminApi.activateUser(id, reason),
+          inactivate: () => masterAdminApi.inactivateUser(id, reason),
+          suspend: () => masterAdminApi.suspendUser(id, reason),
+          reactivate: () => masterAdminApi.reactivateUser(id, reason),
+          archive: () => masterAdminApi.archiveUser(id, reason),
+          delete: () => confirmation === 'DELETE' ? masterAdminApi.deleteUser(id, reason) : Promise.reject(new Error('Type DELETE to confirm.')),
+          invite: () => masterAdminApi.sendUserInvite(id, reason),
+          resetPassword: () => masterAdminApi.resetUserPassword(id, reason)
+        };
+        const result: any = await actions[action]?.();
+        if (action === 'resetPassword' && result?.temporaryPassword) {
+          toast.success(`Temporary password generated: ${result.temporaryPassword}`);
+        }
+        await loadUsers();
+      }
+      if (entity === 'feature' && selectedCompanyId && featureKey) {
+        const res = await api.fetch(`/api/master-admin/companies/${selectedCompanyId}/features/${featureKey}/${action}`, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          skipCache: true
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.message || 'Request failed');
+        await loadFeatures();
+      }
+      if (entity === 'email' && action === 'test') {
+        await masterAdminApi.sendTestEmail({ to: reason, reason: 'Master admin SMTP test' });
+      }
+      toast.success(`${labelize(action)} completed`);
+      setActionDialog(null);
+      await loadOverview();
+    } catch (err: any) {
+      toast.error(err.message || 'Action failed');
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const saveEditor = async (values: Record<string, any>) => {
+    if (!editor) return;
+    setMutating(true);
+    try {
+      if (editor.type === 'organization') {
+        if (editor.mode === 'create') await masterAdminApi.createOrganization(values);
+        else await masterAdminApi.updateOrganization(Number(editor.record.id), values);
+        await loadOrganizations();
+        await loadCompanies();
+      }
+      if (editor.type === 'user') {
+        if (editor.mode === 'create') await masterAdminApi.createUser(values);
+        else await masterAdminApi.updateUser(Number(editor.record.id), values);
+        await loadUsers();
+      }
+      if (editor.type === 'email') {
+        await masterAdminApi.updateEmailSettings(values);
+        await loadEmail();
+      }
+      toast.success(`${labelize(editor.type)} saved`);
+      setEditor(null);
+      await loadOverview();
+    } catch (err: any) {
+      toast.error(err.message || 'Save failed');
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return (
     <div className="min-h-full bg-slate-50">
       <div className="mx-auto max-w-[1560px] space-y-5 px-3 py-4 sm:px-5 lg:px-6">
@@ -472,7 +597,18 @@ export default function MasterAdminPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {quickActions.map(([label, tab, Icon]) => (
-                <Button key={label} type="button" variant="outline" onClick={() => setActiveTab(tab)} className="h-9 rounded-md text-xs font-black">
+                <Button
+                  key={label}
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setActiveTab(tab);
+                    if (label === 'Add Organization') setEditor({ type: 'organization', mode: 'create' });
+                    if (label === 'Add User') setEditor({ type: 'user', mode: 'create' });
+                    if (label === 'Configure Email') setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} });
+                  }}
+                  className="h-9 rounded-md text-xs font-black"
+                >
                   <Icon className="mr-2 h-4 w-4" />
                   {label}
                 </Button>
@@ -564,7 +700,17 @@ export default function MasterAdminPage() {
                 onPageChange={page => setPageState('companies', page)}
                 onPageSizeChange={size => setPageSizeState('companies', size)}
                 viewMode={viewMode}
-                actions={row => <SafeActions onAction={showUnsafeAction} label={row.name || 'company'} />}
+                actions={row => (
+                  <EntityActions
+                    label={row.name || 'company'}
+                    active={Boolean(row.isActive)}
+                    onEdit={() => toast.info('Company edit is available through portal settings and organization controls.')}
+                    onActivate={() => openAction({ entity: 'company', action: row.isActive ? 'inactivate' : 'activate', id: row.id, label: row.name || 'company' })}
+                    onSuspend={() => openAction({ entity: 'company', action: 'suspend', id: row.id, label: row.name || 'company' })}
+                    onArchive={() => openAction({ entity: 'company', action: 'archive', id: row.id, label: row.name || 'company', danger: true })}
+                    onDelete={() => openAction({ entity: 'company', action: 'delete', id: row.id, label: row.name || 'company', danger: true })}
+                  />
+                )}
               />
               <PaginatedTable
                 title="Organizations"
@@ -587,7 +733,17 @@ export default function MasterAdminPage() {
                 onPageChange={page => setPageState('organizations', page)}
                 onPageSizeChange={size => setPageSizeState('organizations', size)}
                 viewMode={viewMode}
-                actions={row => <SafeActions onAction={showUnsafeAction} label={row.organizationName || 'organization'} />}
+                actions={row => (
+                  <EntityActions
+                    label={row.organizationName || 'organization'}
+                    active={row.verificationStatus === 'VERIFIED' && !row.isBlacklisted}
+                    onEdit={() => setEditor({ type: 'organization', mode: 'edit', record: row })}
+                    onActivate={() => openAction({ entity: 'organization', action: row.verificationStatus === 'VERIFIED' && !row.isBlacklisted ? 'inactivate' : 'reactivate', id: row.id, label: row.organizationName || 'organization' })}
+                    onSuspend={() => openAction({ entity: 'organization', action: 'suspend', id: row.id, label: row.organizationName || 'organization' })}
+                    onArchive={() => openAction({ entity: 'organization', action: 'archive', id: row.id, label: row.organizationName || 'organization', danger: true })}
+                    onDelete={() => openAction({ entity: 'organization', action: 'delete', id: row.id, label: row.organizationName || 'organization', danger: true })}
+                  />
+                )}
               />
             </div>
           </section>
@@ -629,7 +785,19 @@ export default function MasterAdminPage() {
               onPageChange={page => setPageState('users', page)}
               onPageSizeChange={size => setPageSizeState('users', size)}
               viewMode={viewMode}
-              actions={row => <SafeActions onAction={showUnsafeAction} label={row.email || 'user'} />}
+              actions={row => (
+                <UserActions
+                  label={row.email || 'user'}
+                  active={row.accountStatus === 'ACTIVE'}
+                  onEdit={() => setEditor({ type: 'user', mode: 'edit', record: row })}
+                  onActivate={() => openAction({ entity: 'user', action: row.accountStatus === 'ACTIVE' ? 'inactivate' : 'reactivate', id: row.id, label: row.email || 'user' })}
+                  onSuspend={() => openAction({ entity: 'user', action: 'suspend', id: row.id, label: row.email || 'user' })}
+                  onArchive={() => openAction({ entity: 'user', action: 'archive', id: row.id, label: row.email || 'user', danger: true })}
+                  onDelete={() => openAction({ entity: 'user', action: 'delete', id: row.id, label: row.email || 'user', danger: true })}
+                  onInvite={() => openAction({ entity: 'user', action: 'invite', id: row.id, label: row.email || 'user' })}
+                  onResetPassword={() => openAction({ entity: 'user', action: 'resetPassword', id: row.id, label: row.email || 'user', danger: true })}
+                />
+              )}
             />
           </section>
         )}
@@ -748,7 +916,13 @@ export default function MasterAdminPage() {
                   <button
                     key={feature.id}
                     type="button"
-                    onClick={() => toast.info('Feature toggles are read-only in this control pass. Existing save endpoint remains protected for audited updates.')}
+                    onClick={() => openAction({
+                      entity: 'feature',
+                      action: feature.enabled ? 'disable' : 'enable',
+                      featureKey: feature.code,
+                      label: feature.name,
+                      danger: feature.enabled
+                    })}
                     className="min-h-24 rounded-md border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#12335f]/30 hover:bg-white"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -776,10 +950,16 @@ export default function MasterAdminPage() {
                 <Detail label="From Email" value={emailSettings?.smtp?.fromEmail || 'Not configured'} />
                 <Detail label="From Name" value={emailSettings?.smtp?.fromName} />
                 <StatusLine label="SMTP password configured" ok={Boolean(emailSettings?.smtp?.passwordConfigured)} />
-                <Button type="button" variant="outline" className="h-9 rounded-md text-xs font-black" onClick={() => toast.info('Send Test Email requires the protected backend test endpoint before enabling.')}>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} })}>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Save Email Setup
+                  </Button>
+                  <Button type="button" variant="outline" className="h-9 rounded-md text-xs font-black" onClick={() => openAction({ entity: 'email', action: 'test', label: 'SMTP test' })}>
                   <Mail className="mr-2 h-4 w-4" />
                   Send Test Email
-                </Button>
+                  </Button>
+                </div>
               </div>
             </Panel>
             <Panel title="Notification Templates" icon={Bell}>
@@ -851,6 +1031,24 @@ export default function MasterAdminPage() {
               <SafetyNotice text="Permanent deletion must require exact confirmation text, a reason, backend permission checks, and audit logging. Archive or suspend is the default." />
             </Panel>
           </section>
+        )}
+        {actionDialog && (
+          <ActionDialog
+            dialog={actionDialog}
+            busy={mutating}
+            onCancel={() => setActionDialog(null)}
+            onConfirm={runAction}
+          />
+        )}
+        {editor && (
+          <EntityEditor
+            editor={editor}
+            companies={companies.items}
+            organizations={organizations.items}
+            busy={mutating}
+            onCancel={() => setEditor(null)}
+            onSave={saveEditor}
+          />
         )}
       </div>
     </div>
@@ -1042,7 +1240,7 @@ function Panel({ title, icon: Icon, children, loading, error }: { title: string;
   );
 }
 
-function KpiCard({ label, value, subtext, icon: Icon, tone }: { label: string; value: number; subtext: string; icon: any; tone: string }) {
+const KpiCard = memo(function KpiCard({ label, value, subtext, icon: Icon, tone }: { label: string; value: number; subtext: string; icon: any; tone: string }) {
   const tones: Record<string, string> = {
     blue: 'bg-sky-50 text-[#12335f]',
     green: 'bg-emerald-50 text-emerald-700',
@@ -1063,9 +1261,9 @@ function KpiCard({ label, value, subtext, icon: Icon, tone }: { label: string; v
       </CardContent>
     </Card>
   );
-}
+});
 
-function MetricStrip({ summary, labels }: { summary?: Record<string, number>; labels: Array<[string, string]> }) {
+const MetricStrip = memo(function MetricStrip({ summary, labels }: { summary?: Record<string, number>; labels: Array<[string, string]> }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
       {labels.map(([key, label]) => (
@@ -1075,6 +1273,279 @@ function MetricStrip({ summary, labels }: { summary?: Record<string, number>; la
         </div>
       ))}
     </div>
+  );
+});
+
+const EntityActions = memo(function EntityActions({
+  label,
+  active,
+  onEdit,
+  onActivate,
+  onSuspend,
+  onArchive,
+  onDelete
+}: {
+  label: string;
+  active: boolean;
+  onEdit: () => void;
+  onActivate: () => void;
+  onSuspend: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black" onClick={onEdit}>
+        <Eye className="mr-1 h-3 w-3" />
+        Edit
+      </Button>
+      <Button type="button" variant="outline" className={cn('h-8 rounded-md px-2 text-[10px] font-black', active ? 'text-amber-700' : 'text-emerald-700')} onClick={onActivate}>
+        <Power className="mr-1 h-3 w-3" />
+        {active ? 'Inactive' : 'Active'}
+      </Button>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-amber-700" onClick={onSuspend}>
+        <Archive className="mr-1 h-3 w-3" />
+        Suspend
+      </Button>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-slate-700" onClick={onArchive}>
+        <Archive className="mr-1 h-3 w-3" />
+        Archive
+      </Button>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-red-700" onClick={onDelete} title={`Delete ${label}`}>
+        <Trash2 className="h-3 w-3" />
+      </Button>
+    </>
+  );
+});
+
+const UserActions = memo(function UserActions(props: Parameters<typeof EntityActions>[0] & { onInvite: () => void; onResetPassword: () => void }) {
+  return (
+    <>
+      <EntityActions {...props} />
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-[#12335f]" onClick={props.onInvite}>
+        <UserPlus className="mr-1 h-3 w-3" />
+        Invite
+      </Button>
+      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-[#12335f]" onClick={props.onResetPassword}>
+        <KeyRound className="mr-1 h-3 w-3" />
+        Reset
+      </Button>
+    </>
+  );
+});
+
+function ActionDialog({
+  dialog,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  dialog: NonNullable<ActionDialogState>;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string, confirmation?: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const isDelete = dialog.action === 'delete';
+  const isEmailTest = dialog.entity === 'email' && dialog.action === 'test';
+  const canSubmit = isEmailTest ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(reason) : reason.trim().length >= 4 && (!isDelete || confirmation === 'DELETE');
+  return (
+    <ModalShell title={`${labelize(dialog.action)} ${dialog.label}`} onCancel={onCancel}>
+      <SafetyNotice text={isDelete ? 'This action may affect historical records. Archive or suspend is recommended. Permanent deletion should be used only when legally approved.' : 'This sensitive action will be recorded in the audit log.'} />
+      <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+        {isEmailTest ? 'Test recipient email' : 'Reason'}
+        <textarea
+          value={reason}
+          onChange={event => setReason(event.target.value)}
+          rows={isEmailTest ? 1 : 4}
+          className="min-h-10 rounded-md border border-slate-200 p-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]"
+          placeholder={isEmailTest ? 'admin@example.com' : 'Required audit reason'}
+        />
+      </label>
+      {isDelete && (
+        <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+          Type DELETE
+          <input value={confirmation} onChange={event => setConfirmation(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal outline-none focus:border-[#12335f]" />
+        </label>
+      )}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" className="h-10 rounded-md text-xs font-black" onClick={onCancel}>Cancel</Button>
+        <Button type="button" disabled={!canSubmit || busy} className="h-10 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => onConfirm(reason.trim(), confirmation)}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Confirm
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function EntityEditor({
+  editor,
+  companies,
+  organizations,
+  busy,
+  onCancel,
+  onSave
+}: {
+  editor: NonNullable<EditorState>;
+  companies: Company[];
+  organizations: Organization[];
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (values: Record<string, any>) => void;
+}) {
+  const record = editor.record || {};
+  const [values, setValues] = useState<Record<string, any>>({
+    organizationName: record.organizationName || '',
+    organizationType: record.organizationType || 'MSME',
+    gstin: record.gstin || '',
+    panNumber: record.panNumber || record.pan || '',
+    contactPersonName: record.contactPersonName || record.contactPerson || '',
+    email: record.email || '',
+    mobile: record.mobile || '',
+    addressLine1: record.addressLine1 || record.address || '',
+    state: record.state || '',
+    district: record.district || '',
+    pincode: record.pincode || '',
+    verificationStatus: record.verificationStatus || 'PENDING',
+    companyId: record.companyId || companies[0]?.id || '',
+    name: record.name || '',
+    role: record.role || 'buyer',
+    accountStatus: record.accountStatus || 'ACTIVE',
+    organizationId: record.organizationId || record.organization?.id || '',
+    host: record.host || '',
+    port: record.port || 587,
+    secure: Boolean(record.secure),
+    username: record.username || record.user || '',
+    password: '',
+    fromEmail: record.fromEmail || '',
+    fromName: record.fromName || 'JsgSmile Portal',
+    replyToEmail: record.replyToEmail || '',
+    emailEnabled: record.emailEnabled ?? true,
+    reason: ''
+  });
+  const set = (key: string, value: any) => setValues(prev => ({ ...prev, [key]: value }));
+  const title = `${editor.mode === 'create' ? 'Add' : 'Edit'} ${labelize(editor.type)}`;
+  return (
+    <ModalShell title={title} onCancel={onCancel} wide>
+      <div className="grid gap-3 md:grid-cols-2">
+        {editor.type === 'organization' && (
+          <>
+            <FormField label="Organization name" value={values.organizationName} onChange={value => set('organizationName', value)} required />
+            <SelectField label="Type" value={values.organizationType} onChange={value => set('organizationType', value)} options={['MSME', 'PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'GOVERNMENT', 'PSU', 'STARTUP']} />
+            <FormField label="GSTN" value={values.gstin} onChange={value => set('gstin', value)} />
+            <FormField label="PAN" value={values.panNumber} onChange={value => set('panNumber', value)} />
+            <FormField label="Email" value={values.email} onChange={value => set('email', value)} />
+            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', value)} />
+            <FormField label="Address" value={values.addressLine1} onChange={value => set('addressLine1', value)} />
+            <FormField label="State" value={values.state} onChange={value => set('state', value)} />
+            <FormField label="District" value={values.district} onChange={value => set('district', value)} />
+            <FormField label="Pincode" value={values.pincode} onChange={value => set('pincode', value)} />
+            <SelectField label="Verification" value={values.verificationStatus} onChange={value => set('verificationStatus', value)} options={['PENDING', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED', 'SUSPENDED']} />
+            <CompanySelectField companies={companies} value={values.companyId} onChange={value => set('companyId', value)} />
+          </>
+        )}
+        {editor.type === 'user' && (
+          <>
+            <FormField label="Name" value={values.name} onChange={value => set('name', value)} required />
+            <FormField label="Email" value={values.email} onChange={value => set('email', value)} required />
+            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', value)} />
+            <SelectField label="Role" value={values.role} onChange={value => set('role', value)} options={['buyer', 'seller', 'admin', 'master_admin']} />
+            <SelectField label="Status" value={values.accountStatus} onChange={value => set('accountStatus', value)} options={['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']} />
+            <OrganizationSelectField organizations={organizations} value={values.organizationId} onChange={value => set('organizationId', value)} />
+            {editor.mode === 'create' && <FormField label="Temporary password" value={values.password} onChange={value => set('password', value)} placeholder="Auto-generated if blank" />}
+          </>
+        )}
+        {editor.type === 'email' && (
+          <>
+            <FormField label="SMTP host" value={values.host} onChange={value => set('host', value)} />
+            <FormField label="SMTP port" value={values.port} onChange={value => set('port', value)} />
+            <FormField label="Username" value={values.username} onChange={value => set('username', value)} />
+            <FormField label="New password" value={values.password} onChange={value => set('password', value)} placeholder="Leave blank to keep existing" />
+            <FormField label="From email" value={values.fromEmail} onChange={value => set('fromEmail', value)} />
+            <FormField label="From name" value={values.fromName} onChange={value => set('fromName', value)} />
+            <FormField label="Reply-to email" value={values.replyToEmail} onChange={value => set('replyToEmail', value)} />
+            <ToggleField label="Email enabled" value={Boolean(values.emailEnabled)} onChange={value => set('emailEnabled', value)} />
+          </>
+        )}
+      </div>
+      <FormField label="Audit reason" value={values.reason} onChange={value => set('reason', value)} required />
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" className="h-10 rounded-md text-xs font-black" onClick={onCancel}>Cancel</Button>
+        <Button type="button" disabled={busy || !String(values.reason || '').trim()} className="h-10 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => onSave(values)}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Save
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModalShell({ title, children, onCancel, wide }: { title: string; children: React.ReactNode; onCancel: () => void; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-slate-950/45 p-0 sm:items-center sm:justify-center sm:p-4">
+      <section className={cn('max-h-[92vh] w-full overflow-y-auto rounded-t-md bg-white p-4 shadow-xl sm:rounded-md', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg')}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-base font-black text-slate-950">{title}</h2>
+          <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-xs font-black" onClick={onCancel}>Close</Button>
+        </div>
+        <div className="space-y-4">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+function FormField({ label, value, onChange, placeholder, required }: { label: string; value: any; onChange: (value: string) => void; placeholder?: string; required?: boolean }) {
+  return (
+    <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+      {label}{required ? ' *' : ''}
+      <input value={value ?? ''} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]" />
+    </label>
+  );
+}
+
+function SelectField({ label, value, onChange, options }: { label: string; value: any; onChange: (value: string) => void; options: string[] }) {
+  return (
+    <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+      {label}
+      <select value={value ?? ''} onChange={event => onChange(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]">
+        {options.map(option => <option key={option} value={option}>{labelize(option)}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function CompanySelectField({ companies, value, onChange }: { companies: Company[]; value: any; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+      Company
+      <select value={value ?? ''} onChange={event => onChange(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]">
+        <option value="">No company</option>
+        {companies.map(company => <option key={company.id} value={company.id}>{company.portalDisplayName || company.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function OrganizationSelectField({ organizations, value, onChange }: { organizations: Organization[]; value: any; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+      Organization
+      <select value={value ?? ''} onChange={event => onChange(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]">
+        <option value="">No organization</option>
+        {organizations.map(org => <option key={org.id} value={org.id}>{org.organizationName}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <label className="flex h-10 items-center justify-between rounded-md border border-slate-200 px-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      {label}
+      <input type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} className="h-4 w-4" />
+    </label>
   );
 }
 
@@ -1110,16 +1581,16 @@ function CompanySelect({ companies, value, onChange }: { companies: Company[]; v
   );
 }
 
-function Detail({ label, value }: { label: string; value: unknown }) {
+const Detail = memo(function Detail({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-0.5 truncate text-sm font-bold text-slate-800">{formatCell(value)}</p>
     </div>
   );
-}
+});
 
-function StatusLine({ label, ok }: { label: string; ok: boolean }) {
+const StatusLine = memo(function StatusLine({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
       <span className="text-xs font-bold text-slate-700">{label}</span>
@@ -1129,7 +1600,7 @@ function StatusLine({ label, ok }: { label: string; ok: boolean }) {
       </span>
     </div>
   );
-}
+});
 
 function SimpleList({ rows, primary, secondary, meta }: { rows: any[]; primary: string; secondary: string; meta: string }) {
   if (!rows.length) return <EmptyState />;
@@ -1152,9 +1623,9 @@ function SkeletonCard() {
   return <div className="h-32 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm"><div className="m-4 h-4 w-24 rounded bg-slate-100" /><div className="m-4 h-8 w-16 rounded bg-slate-100" /></div>;
 }
 
-function TableSkeleton({ columns }: { columns: number }) {
+const TableSkeleton = memo(function TableSkeleton({ columns }: { columns: number }) {
   return <tr>{Array.from({ length: columns }).map((_, index) => <td key={index} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-slate-100" /></td>)}</tr>;
-}
+});
 
 function EmptyState() {
   return <div className="px-4 py-8 text-center text-sm font-bold text-slate-500">No records found for the current filters.</div>;

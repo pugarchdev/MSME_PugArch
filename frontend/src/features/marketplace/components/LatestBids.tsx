@@ -1,141 +1,252 @@
 'use client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-    MapPin, Package, Wrench, Clock, ArrowRight,
-    Flame, CheckCircle, Eye, ChevronRight, Landmark
+    ArrowRight,
+    CheckCircle,
+    ChevronRight,
+    Clock,
+    Eye,
+    Flame,
+    Landmark,
+    MapPin,
+    Package,
+    Send,
+    Wrench
 } from 'lucide-react';
+import { useAuth } from '../../../hooks/useAuth';
 import { BidDetailModal } from './BidDetailModal';
 import type { BuyerRequirement } from '../api';
-import { isProcurementDemoDataEnabled } from '../../procurementBid/api';
 
-/* ─── Sample bids ────────────────────────────────────────────────────────── */
-const SAMPLE_BIDS: BuyerRequirement[] = [
-    { id: 101, title: 'Supply of MS Steel Plates & Structural Steel', requirementType: 'PRODUCT', description: 'Requirement of IS 2062 grade MS steel plates, angles, channels and structural sections for plant expansion project. Material should conform to IS 2062 Grade A/B specifications. Inspection at supplier\'s works. Delivery at Jharsuguda plant site.', quantity: '250', unit: 'MT', location: 'Jharsuguda, Odisha', budgetMin: 1200000, budgetMax: 1800000, lastDate: new Date(Date.now() + 5 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: true, isUrgent: false, requiredDocuments: ['GST Certificate', 'ISO 9001 Certificate', 'Mill Test Certificate'], category: { id: 1, name: 'Raw Materials' }, buyerOrganization: { id: 1, organizationName: 'JSW Steel Limited', organizationType: 'PUBLIC_LIMITED', city: 'Jharsuguda', state: 'Odisha', verificationStatus: 'VERIFIED' }, _count: { responses: 4 } },
-    { id: 102, title: 'Annual Maintenance Contract – Industrial HVAC Systems', requirementType: 'SERVICE', description: 'AMC for 34 industrial HVAC units across factory premises. Scope includes preventive maintenance (quarterly), corrective maintenance (on-call), spare parts supply, and emergency breakdown support within 4 hours. Contract period: 1 year extendable to 3 years.', quantity: null, unit: null, location: 'Jharsuguda, Odisha', budgetMin: 480000, budgetMax: 720000, lastDate: new Date(Date.now() + 2 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: true, isUrgent: true, requiredDocuments: ['HVAC Service License', 'GST Certificate', 'PAN Card'], category: { id: 2, name: 'Repair & Maintenance' }, buyerOrganization: { id: 2, organizationName: 'NTPC Lara Super Thermal Power', organizationType: 'PSU', city: 'Raigarh', state: 'Chhattisgarh', verificationStatus: 'VERIFIED' }, _count: { responses: 7 } },
-    { id: 103, title: 'Supply of Safety Equipment & PPE Kit – Annual Rate Contract', requirementType: 'PRODUCT', description: 'Safety helmets (IS 2925), safety shoes (IS 15298), leather gloves, high-visibility vests (EN 471), ear muffs, and full-face shields. Delivery to 3 plant sites in Jharsuguda district. Rate contract for 12 months.', quantity: '1500', unit: 'Sets', location: 'Jharsuguda, Odisha', budgetMin: 600000, budgetMax: 900000, lastDate: new Date(Date.now() + 9 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: false, isUrgent: false, requiredDocuments: ['BIS License', 'GST Certificate', 'Udyam Certificate'], category: { id: 3, name: 'Safety Equipment' }, buyerOrganization: { id: 3, organizationName: 'Vedanta Aluminium Ltd', organizationType: 'PUBLIC_LIMITED', city: 'Jharsuguda', state: 'Odisha', verificationStatus: 'VERIFIED' }, _count: { responses: 2 } },
-    { id: 104, title: 'Office Furniture & Modular Workstation Supply', requirementType: 'PRODUCT', description: 'Requirement of modular office workstations (L-shape), executive chairs, glass-top conference table (12 seater), lateral filing cabinets, and storage units. Delivery and installation at District Collectorate, Sambalpur.', quantity: '80', unit: 'Units', location: 'Sambalpur, Odisha', budgetMin: 350000, budgetMax: 520000, lastDate: new Date(Date.now() + 14 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: false, isUrgent: false, requiredDocuments: ['GST Certificate', 'PAN Card'], category: { id: 4, name: 'Furniture' }, buyerOrganization: { id: 4, organizationName: 'District Collectorate, Sambalpur', organizationType: 'GOVERNMENT', city: 'Sambalpur', state: 'Odisha', verificationStatus: 'VERIFIED' }, _count: { responses: 1 } },
-    { id: 105, title: 'Electrical Wiring & Switchgear for New Workshop', requirementType: 'SERVICE', description: 'Complete electrical wiring, main LT panel (250A TPN), sub-distribution boards, MCBs, isolators, earthing system (IS 3043), and lighting installation for a 4000 sq ft workshop. Licensed electrical contractor required.', quantity: null, unit: null, location: 'Jharsuguda, Odisha', budgetMin: 280000, budgetMax: 420000, lastDate: new Date(Date.now() + 4 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: false, isUrgent: true, requiredDocuments: ['Electrical Contractor License', 'GST Certificate'], category: { id: 5, name: 'Electrical & Electronics' }, buyerOrganization: { id: 5, organizationName: 'Bhushan Power & Steel Ltd', organizationType: 'PUBLIC_LIMITED', city: 'Jharsuguda', state: 'Odisha', verificationStatus: 'VERIFIED' }, _count: { responses: 3 } },
-    { id: 106, title: 'IT Infrastructure – Server & Networking Equipment', requirementType: 'PRODUCT', description: 'Dell PowerEdge R750 servers (×4), Cisco Catalyst 2960-X managed switches (×8), APC Smart-UPS 3kVA (×6), structured cabling (Cat 6A), 42U server racks for data center upgrade. Full installation and configuration required. OEM warranty mandatory.', quantity: '1', unit: 'Lot', location: 'Bhubaneswar, Odisha', budgetMin: 2400000, budgetMax: 3600000, lastDate: new Date(Date.now() + 20 * 86400000).toISOString(), visibility: 'PUBLIC', status: 'OPEN', isFeatured: true, isUrgent: false, requiredDocuments: ['OEM Authorization', 'ISO 27001', 'GST Certificate'], category: { id: 6, name: 'IT Hardware & Software' }, buyerOrganization: { id: 6, organizationName: 'Odisha Computer Application Centre', organizationType: 'GOVERNMENT', city: 'Bhubaneswar', state: 'Odisha', verificationStatus: 'VERIFIED' }, _count: { responses: 9 } },
-];
+const dayMs = 24 * 60 * 60 * 1000;
 
-function daysLeft(iso: string) { return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000); }
+function daysLeft(iso: string) {
+    return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / dayMs));
+}
 
 function statusBadge(req: BuyerRequirement) {
-    const d = daysLeft(req.lastDate);
-    if (req.isUrgent || d <= 3) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
-    if (d <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
-    if ((req._count?.responses || 0) < 2) return { label: 'New', cls: 'bg-green-50 text-green-700 border-green-200', icon: <CheckCircle className="h-3 w-3" /> };
+    const status = String(req.computedStatus || req.statusLabel || req.status || '').toUpperCase();
+    const days = req.daysRemaining ?? daysLeft(req.lastDate);
+    if (status === 'AWARDED') return { label: 'Awarded', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle className="h-3 w-3" /> };
+    if (status === 'CLOSED' || days <= 0) return { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: null };
+    if (status === 'UNDER_EVALUATION' || status === 'UNDER REVIEW') return { label: 'Under Evaluation', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: null };
+    if (status === 'CLOSING_SOON' || req.isUrgent || days <= 7) return { label: 'Closing Soon', cls: 'bg-red-50 text-red-700 border-red-200', icon: <Flame className="h-3 w-3" /> };
     return { label: 'Open', cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: null };
 }
 
 function useFadeIn() {
     const ref = useRef<HTMLDivElement>(null);
     const [visible, setVisible] = useState(false);
+
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
-        const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } }, { threshold: 0.08 });
-        obs.observe(el);
-        return () => obs.disconnect();
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                setVisible(true);
+                observer.disconnect();
+            }
+        }, { threshold: 0.08 });
+        observer.observe(el);
+        return () => observer.disconnect();
     }, []);
+
     return { ref, visible };
 }
 
-function BidCard({ bid, index, visible, onView }: { bid: BuyerRequirement; index: number; visible: boolean; onView: (b: BuyerRequirement) => void }) {
-    const badge = statusBadge(bid);
-    const days = daysLeft(bid.lastDate);
-    const isSvc = bid.requirementType === 'SERVICE';
+function RequirementSkeleton() {
     return (
-        <div
-            className="group bg-white rounded-xl border border-slate-200 hover:border-[#0b2447]/30 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex flex-col overflow-hidden"
-            style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: `opacity 0.5s ease ${80 + index * 70}ms, transform 0.5s ease ${80 + index * 70}ms, box-shadow 0.25s, border-color 0.25s, translate 0.25s` }}
-        >
-            <div className={`h-1 w-full ${isSvc ? 'bg-purple-400' : 'bg-[#0b2447]'}`} />
-            <div className="p-4 flex-1 flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 min-w-0">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSvc ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
-                            {isSvc ? <Wrench className="h-4 w-4" /> : <Package className="h-4 w-4" />}
-                        </div>
-                        <h3 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-[#0b2447] transition">{bid.title}</h3>
-                    </div>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-bold shrink-0 ${badge.cls}`}>{badge.icon}{badge.label}</span>
-                </div>
-                {bid.buyerOrganization && (
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center shrink-0"><Landmark className="h-3 w-3 text-slate-500" /></div>
-                        <p className="text-[10px] font-semibold text-slate-600 truncate">{bid.buyerOrganization.organizationName}</p>
-                        {bid.buyerOrganization.verificationStatus === 'VERIFIED' && <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />}
-                    </div>
-                )}
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {bid.category && <span className="text-[9px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{bid.category.name}</span>}
-                    {bid.location && <span className="text-[9px] text-slate-400 inline-flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{bid.location}</span>}
-                    {bid.quantity && bid.unit && <span className="text-[9px] text-slate-400">{bid.quantity} {bid.unit}</span>}
-                </div>
-                {(bid.budgetMin || bid.budgetMax) && (
-                    <p className="text-[10px]">
-                        <span className="font-bold text-[#0b2447]">₹{Number(bid.budgetMin || bid.budgetMax).toLocaleString('en-IN')}{bid.budgetMax && bid.budgetMin && bid.budgetMax !== bid.budgetMin && <> – ₹{Number(bid.budgetMax).toLocaleString('en-IN')}</>}</span>
-                        <span className="text-slate-400 ml-1">est. budget</span>
-                    </p>
-                )}
-                {(bid._count?.responses || 0) > 0 && <p className="text-[9px] text-slate-400">{bid._count?.responses} response{(bid._count?.responses || 0) !== 1 ? 's' : ''} received</p>}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-auto">
-                    <span className={`flex items-center gap-1 text-[10px] font-semibold ${days <= 3 ? 'text-red-600' : days <= 7 ? 'text-amber-600' : 'text-slate-500'}`}>
-                        <Clock className="h-3 w-3" />{days <= 0 ? 'Closed' : `${days}d left`}
-                        <span className="text-[9px] font-normal text-slate-400 ml-0.5">· {new Date(bid.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
-                    </span>
-                    <button onClick={() => onView(bid)} className="inline-flex items-center gap-1 h-7 px-3 rounded-lg bg-[#0b2447] text-white text-[10px] font-bold hover:bg-[#12335f] active:scale-95 transition [&:not(:disabled):hover]:translate-y-0">
-                        <Eye className="h-3 w-3" /> View Details
-                    </button>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-4 flex items-start gap-3">
+                <div className="h-9 w-9 rounded-lg bg-slate-100 animate-pulse" />
+                <div className="flex-1 space-y-2">
+                    <div className="h-3 w-4/5 rounded bg-slate-100 animate-pulse" />
+                    <div className="h-3 w-2/3 rounded bg-slate-100 animate-pulse" />
                 </div>
             </div>
+            <div className="space-y-2">
+                <div className="h-3 w-full rounded bg-slate-100 animate-pulse" />
+                <div className="h-3 w-3/4 rounded bg-slate-100 animate-pulse" />
+            </div>
+            <div className="mt-5 h-8 rounded-lg bg-slate-100 animate-pulse" />
         </div>
     );
 }
 
-interface Props { requirements?: BuyerRequirement[]; }
+const RequirementCard = memo(function RequirementCard({
+    requirement,
+    index,
+    visible,
+    onView,
+    onSubmit,
+    actionLabel
+}: {
+    requirement: BuyerRequirement;
+    index: number;
+    visible: boolean;
+    onView: (requirement: BuyerRequirement) => void;
+    onSubmit: (requirement: BuyerRequirement) => void;
+    actionLabel: string;
+}) {
+    const badge = statusBadge(requirement);
+    const days = requirement.daysRemaining ?? daysLeft(requirement.lastDate);
+    const isService = requirement.requirementType === 'SERVICE';
+    const responseCount = requirement._count?.responses ?? 0;
+    const detailHref = `/marketplace/requirements/${requirement.id}`;
 
-export function LatestBids({ requirements }: Props) {
+    return (
+        <article
+            className="group flex min-h-[270px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-lg"
+            style={{
+                opacity: visible ? 1 : 0,
+                transform: visible ? 'translateY(0)' : 'translateY(20px)',
+                transition: `opacity 0.5s ease ${80 + index * 70}ms, transform 0.5s ease ${80 + index * 70}ms, box-shadow 0.25s, border-color 0.25s`
+            }}
+        >
+            <div className={`h-1 w-full ${isService ? 'bg-teal-500' : 'bg-[#0b2447]'}`} />
+            <div className="flex flex-1 flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-start gap-2">
+                        <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isService ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'}`}>
+                            {isService ? <Wrench className="h-4 w-4" /> : <Package className="h-4 w-4" />}
+                        </div>
+                        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-800 transition group-hover:text-[#0b2447]">
+                            {requirement.title}
+                        </h3>
+                    </div>
+                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                        {badge.icon}
+                        {badge.label}
+                    </span>
+                </div>
+
+                {requirement.buyerOrganization && (
+                    <div className="flex items-center gap-1.5">
+                        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100">
+                            <Landmark className="h-3 w-3 text-slate-500" />
+                        </div>
+                        <p className="truncate text-[11px] font-semibold text-slate-600">{requirement.buyerOrganization.organizationName}</p>
+                        {requirement.buyerOrganization.verificationStatus === 'VERIFIED' && <CheckCircle className="h-3 w-3 shrink-0 text-green-500" />}
+                    </div>
+                )}
+
+                <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{requirement.description}</p>
+
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {requirement.category && <span className="rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{requirement.category.name}</span>}
+                    {requirement.location && <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500"><MapPin className="h-3 w-3" />{requirement.location}</span>}
+                    {requirement.quantity && requirement.unit && <span className="text-[10px] text-slate-500">{requirement.quantity} {requirement.unit}</span>}
+                </div>
+
+                {(requirement.budgetMin || requirement.budgetMax) && (
+                    <p className="text-[11px]">
+                        <span className="font-bold text-[#0b2447]">
+                            Rs. {Number(requirement.budgetMin || requirement.budgetMax).toLocaleString('en-IN')}
+                            {requirement.budgetMax && requirement.budgetMin && Number(requirement.budgetMax) !== Number(requirement.budgetMin) && <> - Rs. {Number(requirement.budgetMax).toLocaleString('en-IN')}</>}
+                        </span>
+                        <span className="ml-1 text-slate-400">estimated budget</span>
+                    </p>
+                )}
+
+                <p className="text-[11px] font-semibold text-slate-500">
+                    {responseCount} seller response{responseCount === 1 ? '' : 's'}
+                </p>
+
+                <div className="mt-auto flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span className={`flex items-center gap-1 text-[11px] font-semibold ${days <= 3 ? 'text-red-600' : days <= 7 ? 'text-amber-600' : 'text-slate-500'}`}>
+                        <Clock className="h-3 w-3" />
+                        {badge.label === 'Closed' ? 'Closed' : badge.label === 'Awarded' ? 'Awarded' : `${days}d left`}
+                        <span className="ml-0.5 text-[10px] font-normal text-slate-400">
+                            {new Date(requirement.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                        </span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <Link href={detailHref} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-[11px] font-bold text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447]">
+                            <Eye className="h-3.5 w-3.5" />
+                            View
+                        </Link>
+                        <button onClick={() => badge.label === 'Closed' || badge.label === 'Awarded' ? onView(requirement) : onSubmit(requirement)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white transition hover:bg-[#12335f] active:scale-95">
+                            <Send className="h-3.5 w-3.5" />
+                            {badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : actionLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </article>
+    );
+});
+
+interface Props {
+    requirements?: BuyerRequirement[];
+    loading?: boolean;
+}
+
+export function LatestBids({ requirements, loading = false }: Props) {
     const { ref, visible } = useFadeIn();
-    const demoEnabled = isProcurementDemoDataEnabled();
-    const bids = (requirements && requirements.length > 0) ? requirements : demoEnabled ? SAMPLE_BIDS : [];
-    const isSampleData = demoEnabled && (!requirements || requirements.length === 0);
+    const router = useRouter();
+    const { user } = useAuth();
     const [selected, setSelected] = useState<BuyerRequirement | null>(null);
+
+    const liveRequirements = useMemo(() => requirements || [], [requirements]);
+    const isSeller = user?.role === 'seller' || user?.role === 'admin' || user?.role === 'master_admin';
+    const actionLabel = user ? (isSeller ? 'Submit Quote' : 'View Details') : 'Login to Submit';
+
+    const handleSubmit = (requirement: BuyerRequirement) => {
+        if (!user) {
+            router.push(`/login?redirect=${encodeURIComponent(`/marketplace/requirements/${requirement.id}`)}`);
+            return;
+        }
+        setSelected(requirement);
+    };
 
     return (
         <>
             {selected && <BidDetailModal bid={selected} onClose={() => setSelected(null)} />}
-            <section ref={ref} className="mt-2 bg-[#f8fafc] border-b border-slate-100" aria-labelledby="bids-heading">
-                <div className="max-w-7xl mx-auto px-4 py-10 sm:py-12">
-                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-7"
-                        style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(-10px)', transition: 'opacity 0.5s, transform 0.5s' }}>
+            <section ref={ref} className="mt-2 border-b border-slate-100 bg-[#f8fafc]" aria-labelledby="bids-heading">
+                <div className="mx-auto max-w-7xl px-4 py-10 sm:py-12">
+                    <div
+                        className="mb-7 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"
+                        style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(-10px)', transition: 'opacity 0.5s, transform 0.5s' }}
+                    >
                         <div>
-                            <span className="inline-block px-3 py-1 rounded-full bg-[#0b2447]/5 border border-[#0b2447]/10 text-[9px] font-bold text-[#0b2447] uppercase tracking-widest mb-2">Live Requirements</span>
-                            <h2 id="bids-heading" className="text-lg sm:text-xl font-bold text-[#0b2447]">Latest Buyer Requirements &amp; Bids</h2>
-                            <p className="text-[11px] text-slate-500 mt-1">
-                                Open procurement requirements from verified buyers — submit your response today.
-                                {isSampleData && <span className="ml-1.5 text-[10px] text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded">Sample data · live bids appear once connected to backend</span>}
-                            </p>
+                            <span className="mb-2 inline-block rounded-full border border-[#0b2447]/10 bg-[#0b2447]/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0b2447]">Live Requirements</span>
+                            <h2 id="bids-heading" className="text-lg font-bold text-[#0b2447] sm:text-xl">Latest Buyer Requirements &amp; Bids</h2>
+                            <p className="mt-1 text-xs text-slate-500">Open procurement requirements from verified buyers, with live seller response counts.</p>
                         </div>
-                        <Link href="/bids" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-[#0b2447] text-[#0b2447] text-xs font-bold hover:bg-[#0b2447] hover:text-white active:scale-95 transition shrink-0 self-start sm:self-end">
-                            View All Bids <ChevronRight className="h-3.5 w-3.5" />
+                        <Link href="/marketplace/requirements" className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-lg border border-[#0b2447] px-4 text-xs font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white active:scale-95 sm:self-end">
+                            View All Requirements <ChevronRight className="h-3.5 w-3.5" />
                         </Link>
                     </div>
-                    {bids.length ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {bids.map((bid, i) => <BidCard key={bid.id} bid={bid} index={i} visible={visible} onView={setSelected} />)}
+
+                    {loading ? (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {Array.from({ length: 6 }).map((_, index) => <RequirementSkeleton key={index} />)}
+                        </div>
+                    ) : liveRequirements.length ? (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {liveRequirements.map((requirement, index) => (
+                                <RequirementCard
+                                    key={requirement.id}
+                                    requirement={requirement}
+                                    index={index}
+                                    visible={visible}
+                                    onView={setSelected}
+                                    onSubmit={handleSubmit}
+                                    actionLabel={actionLabel}
+                                />
+                            ))}
                         </div>
                     ) : (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-                            <p className="text-sm font-bold text-slate-700">No bids available currently.</p>
-                            <p className="mt-1 text-xs text-slate-500">Live buyer requirements will appear here once the backend returns published records.</p>
+                            <p className="text-sm font-bold text-slate-700">No live buyer requirements are available right now.</p>
+                            <p className="mt-1 text-xs text-slate-500">New verified buyer requirements will appear here once published.</p>
                         </div>
                     )}
+
                     <div className="mt-6 text-center" style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease 600ms' }}>
-                        <Link href="/bids" className="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-[#0b2447] text-white text-xs font-bold hover:bg-[#12335f] active:scale-95 transition">
-                            View All Buyer Requirements &amp; Bids <ArrowRight className="h-3.5 w-3.5" />
+                        <Link href="/marketplace/requirements" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0b2447] px-6 text-xs font-bold text-white transition hover:bg-[#12335f] active:scale-95">
+                            View All Buyer Requirements <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                     </div>
                 </div>

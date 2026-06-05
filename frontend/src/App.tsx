@@ -249,7 +249,7 @@ export default function App() {
     if (pathname === '/marketplace/services') return <MarketplaceProductList />;
     if (pathname === '/marketplace/sellers') return <MarketplaceHome />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
-    if (pathname === '/marketplace/requirements') return <BidsListingPage />;
+    if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
     if (/^\/marketplace\/requirements\/\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
     if (pathname === '/bids') return <BidsListingPage />;
     if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;

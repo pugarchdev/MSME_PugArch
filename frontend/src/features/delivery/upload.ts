@@ -21,17 +21,10 @@ export interface UploadOptions {
   entityType?: string;
 }
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+import { BASE_URL } from '../../lib/api';
 
 const resolveUploadUrl = () => {
-  if (BASE_URL) return `${BASE_URL}/api/upload`;
-  if (typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      return `${protocol}//${hostname}:5000/api/upload`;
-    }
-  }
-  return '/api/upload';
+  return `${BASE_URL}/api/upload`;
 };
 
 export const uploadDeliveryFile = (file: File, opts: UploadOptions = {}): Promise<UploadedFileAsset> =>

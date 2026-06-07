@@ -1,4 +1,4 @@
-import { api, unwrapApiData } from './api';
+import { api, unwrapApiData, BASE_URL } from './api';
 
 export type DocumentPreviewMode = 'image' | 'pdf' | 'office' | 'google';
 
@@ -13,18 +13,7 @@ const getAbsoluteApiUrl = (endpoint: string) => {
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://') || endpoint.startsWith('data:')) {
     return endpoint;
   }
-  
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  let baseUrl = rawBaseUrl;
-  if (!baseUrl && typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      baseUrl = `${protocol}//${hostname}:5000`;
-    }
-  }
-  
-  const cleanBase = (baseUrl || '').replace(/\/$/, '');
-  return `${cleanBase}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  return `${BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 };
 
 export const getDocumentPreviewMode = (url: string, contentType = '', extension = ''): DocumentPreviewMode => {

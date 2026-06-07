@@ -340,7 +340,16 @@
 
     function getHealthUrl() {
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      return isLocal ? 'http://localhost:5000/api/health' : '/api/health';
+      if (isLocal) {
+        const port = window.location.port;
+        const parsedPort = parseInt(port, 10);
+        if (!isNaN(parsedPort) && parsedPort >= 3000 && parsedPort <= 3010) {
+          const backendPort = 5000 + (parsedPort - 3000);
+          return `http://localhost:${backendPort}/api/health`;
+        }
+        return 'http://localhost:5000/api/health';
+      }
+      return '/api/health';
     }
 
     async function checkHealth() {

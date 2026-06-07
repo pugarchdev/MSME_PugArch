@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
-import { api, unwrapApiData } from '../../lib/api';
+import { api, unwrapApiData, BASE_URL } from '../../lib/api';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -504,8 +504,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   useEffect(() => {
     if (!authToken) return;
 
-    const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-    const baseUrl = rawBaseUrl.replace(/\/$/, '');
+    const baseUrl = BASE_URL;
     const streamUrl = `${baseUrl}/api/notifications/stream?token=${encodeURIComponent(authToken)}`;
 
     let eventSource: EventSource | null = null;

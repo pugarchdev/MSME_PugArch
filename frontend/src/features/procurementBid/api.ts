@@ -1,4 +1,4 @@
-import { api, readJsonResponse, unwrapApiData } from '../../lib/api';
+import { api, readJsonResponse, unwrapApiData, BASE_URL } from '../../lib/api';
 import type { ProcurementBid, ProcurementBidParticipation } from './data';
 
 export const isProcurementDemoDataEnabled = () => {
@@ -11,17 +11,7 @@ const authHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const getApiBaseUrl = () => {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  if (rawBaseUrl) return rawBaseUrl.replace(/\/$/, '');
-  if (typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      return `${protocol}//${hostname}:5000`;
-    }
-  }
-  return '';
-};
+const getApiBaseUrl = () => BASE_URL;
 
 const readApiBody = async (res: Response) => {
   const body = await readJsonResponse(res);

@@ -1,6 +1,8 @@
 import { env } from './src/config/env.js';
 import https from 'https';
 import { pathToFileURL } from 'url';
+import fs from 'fs';
+import path from 'path';
 
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -5143,6 +5145,13 @@ app.post('/api/notifications/:id/read', authenticate, async (req: AuthRequest, r
 const startListening = (port: number) => {
   const server = app.listen(port, () => {
     logger.info({ port }, 'Server running');
+    try {
+      const portFilePath = path.resolve(process.cwd(), '../.backend-port');
+      fs.writeFileSync(portFilePath, String(port), 'utf8');
+      logger.info(`Wrote backend port ${port} to ${portFilePath}`);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to write backend port file');
+    }
   });
 
   server.on('error', (err: any) => {

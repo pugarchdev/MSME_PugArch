@@ -1,7 +1,10 @@
-const getBaseUrl = () => {
+export const getBaseUrl = () => {
   if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
     const { protocol, hostname, port } = window.location;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      if (process.env.NEXT_PUBLIC_BACKEND_PORT) {
+        return `${protocol}//${hostname}:${process.env.NEXT_PUBLIC_BACKEND_PORT}`;
+      }
       const parsedPort = parseInt(port, 10);
       if (!isNaN(parsedPort) && parsedPort >= 3000 && parsedPort <= 3010) {
         const backendPort = 5000 + (parsedPort - 3000);
@@ -15,7 +18,7 @@ const getBaseUrl = () => {
   return rawBaseUrl;
 };
 
-const BASE_URL = getBaseUrl().replace(/\/$/, '');
+export const BASE_URL = getBaseUrl().replace(/\/$/, '');
 // GET responses are kept in memory and used as instant render data when the
 // user navigates back to a page they have already visited. Background refresh
 // (see `shouldCache` block in api.fetch) keeps them up to date so we can pick

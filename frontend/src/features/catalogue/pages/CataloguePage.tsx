@@ -21,7 +21,7 @@ import { catalogueApi } from '../api';
 import { getFileAssetPreview, type DocumentPreview, openFileAsset } from '../../../lib/files';
 import { DocumentPreviewModal } from '../../../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, ITEM_CONDITIONS } from '../../../constants/dropdowns';
-import { api } from '../../../lib/api';
+import { api, BASE_URL } from '../../../lib/api';
 import { compressImage } from '../../../lib/compress';
 
 type CatalogueMode = 'buyer' | 'seller' | 'admin';
@@ -73,16 +73,7 @@ const actionKey = (sellerId: unknown) => String(sellerId || '');
 const getCatalogueImageUrl = (fileId: number | string | undefined) => {
   if (!fileId) return '';
   const token = localStorage.getItem('token') || '';
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  let baseUrl = rawBaseUrl;
-  if (!baseUrl && typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      baseUrl = `${protocol}//${hostname}:5000`;
-    }
-  }
-  const cleanBase = (baseUrl || '').replace(/\/$/, '');
-  return `${cleanBase}/api/files/${fileId}/view?token=${encodeURIComponent(token)}`;
+  return `${BASE_URL}/api/files/${fileId}/view?token=${encodeURIComponent(token)}`;
 };
 
 type CatalogueMedia = {

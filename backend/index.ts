@@ -2296,54 +2296,66 @@ app.post('/api/auctions/:id/override', authenticate, authorizeAdmin, async (req:
   }
 });
 
+let isFinalizerJobRunning = false;
+
 const finalizeEndedAuctionsJob = async () => {
+  if (isFinalizerJobRunning) {
+    logger.info('[AuctionFinalizer] Previous job execution still in progress, skipping');
+    return;
+  }
   if (!redis || !isRedisReady()) return;
-  const dueAuctions = await prisma.auction.findMany({
-    where: {
-      status: { in: ['active', 'scheduled'] },
-      endTime: { lte: new Date() }
-    },
-    select: { id: true },
-    take: 25
-  });
 
-  for (const dueAuction of dueAuctions) {
-    await withRedisLock(`${redisKeys.lockAuction(dueAuction.id)}:finalize`, 10_000, async () => {
-      const result = await prisma.$transaction(async (tx) => {
-        const auction = await tx.auction.findUnique({ where: { id: dueAuction.id } });
-        if (!auction || auction.status === 'finalized' || auction.status === 'cancelled') return null;
-        const winningBid = await tx.auctionBid.findFirst({
-          where: { auctionId: auction.id },
-          orderBy: [{ bidAmount: 'asc' }, { createdAt: 'asc' }]
-        });
-        const updatedAuction = await tx.auction.update({
-          where: { id: auction.id },
-          data: {
-            status: 'finalized',
-            finalizedAt: new Date(),
-            winnerSellerId: winningBid?.sellerId || null
-          }
-        });
-        return { auction: updatedAuction, winningBid };
-      });
+  isFinalizerJobRunning = true;
+  try {
+    const dueAuctions = await prisma.auction.findMany({
+      where: {
+        status: { in: ['active', 'scheduled'] },
+        endTime: { lte: new Date() }
+      },
+      select: { id: true },
+      take: 25
+    });
 
-      if (result) {
-        await auditLog({
-          action: 'auction.finalized_job',
-          entityType: 'auction',
-          entityId: result.auction.id,
-          metadata: { winnerSellerId: result.auction.winnerSellerId, winningBidId: result.winningBid?.id }
+    for (const dueAuction of dueAuctions) {
+      await withRedisLock(`${redisKeys.lockAuction(dueAuction.id)}:finalize`, 10_000, async () => {
+        const result = await prisma.$transaction(async (tx) => {
+          const auction = await tx.auction.findUnique({ where: { id: dueAuction.id } });
+          if (!auction || auction.status === 'finalized' || auction.status === 'cancelled') return null;
+          const winningBid = await tx.auctionBid.findFirst({
+            where: { auctionId: auction.id },
+            orderBy: [{ bidAmount: 'asc' }, { createdAt: 'asc' }]
+          });
+          const updatedAuction = await tx.auction.update({
+            where: { id: auction.id },
+            data: {
+              status: 'finalized',
+              finalizedAt: new Date(),
+              winnerSellerId: winningBid?.sellerId || null
+            }
+          });
+          return { auction: updatedAuction, winningBid };
         });
-        if (result.auction.winnerSellerId) {
+
+        if (result) {
           await auditLog({
-            action: 'auction.winner_selected',
+            action: 'auction.finalized_job',
             entityType: 'auction',
             entityId: result.auction.id,
-            metadata: { winnerSellerId: result.auction.winnerSellerId }
+            metadata: { winnerSellerId: result.auction.winnerSellerId, winningBidId: result.winningBid?.id }
           });
+          if (result.auction.winnerSellerId) {
+            await auditLog({
+              action: 'auction.winner_selected',
+              entityType: 'auction',
+              entityId: result.auction.id,
+              metadata: { winnerSellerId: result.auction.winnerSellerId }
+            });
+          }
         }
-      }
-    }).catch(logAuctionFinalizerSkipped);
+      }).catch(logAuctionFinalizerSkipped);
+    }
+  } finally {
+    isFinalizerJobRunning = false;
   }
 };
 

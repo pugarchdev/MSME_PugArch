@@ -2922,7 +2922,18 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
   const key = redisKeys.cacheTenderPublic(sha256(JSON.stringify(query)));
   const tenders = await getOrSetCache<any[]>(key, () => db.tender.findMany({
     where: { status: { in: ['published', 'bid_submission'] } },
-    include: {
+    select: {
+      id: true,
+      buyerId: true,
+      tenderId: true,
+      title: true,
+      category: true,
+      budget: true,
+      description: true,
+      documentUrl: true,
+      status: true,
+      closesAt: true,
+      createdAt: true,
       buyer: {
         select: {
           id: true,
@@ -2938,8 +2949,16 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
         }
       },
       tenderDocuments: {
-        include: {
-          fileAsset: true
+        select: {
+          id: true,
+          title: true,
+          documentType: true,
+          fileAssetId: true,
+          fileAsset: {
+            select: {
+              originalName: true
+            }
+          }
         }
       },
       _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } }
@@ -3078,8 +3097,15 @@ router.post('/tenders/:id/bids', authenticate, authorize('seller'), asyncRoute(a
   ok(res, bid, 201);
 }));
 
-router.get('/bids/my', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
-  const bids = await db.bid.findMany({ where: { sellerId: userId(req) }, include: { tender: true }, orderBy: { createdAt: 'desc' } });
+router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyncRoute(async (req, res) => {
+  const role = String(req.user?.role || '');
+  const currentUserId = userId(req);
+  const where: any = role === 'seller'
+    ? { sellerId: currentUserId }
+    : role === 'buyer'
+      ? { tender: { buyerId: currentUserId } }
+      : {};
+  const bids = await db.bid.findMany({ where, include: { tender: true }, orderBy: { createdAt: 'desc' } });
   res.json(maskSensitive(await attachBidFileAssets(bids)));
 }));
 
@@ -3119,8 +3145,6 @@ router.get('/bids/:id', authenticate, asyncRoute(async (req, res) => {
             select: {
               businessName: true,
               organizationType: true,
-              city: true,
-              state: true,
               offices: {
                 select: {
                   city: true,
@@ -3155,8 +3179,6 @@ router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), async
             select: {
               businessName: true,
               organizationType: true,
-              city: true,
-              state: true,
               offices: {
                 select: {
                   city: true,
@@ -3677,87 +3699,111 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
       { userId: { contains: query.q, mode: 'insensitive' } }
     ];
   }
+
+  const selectFields: any = {
+    id: true,
+    userId: true,
+    name: true,
+    email: true,
+    mobile: true,
+    role: true,
+    registrationStatus: true,
+    onboardingStatus: true,
+    sectionStatus: true,
+    adminFeedback: true,
+    organizationId: true,
+    companyId: true,
+    accountStatus: true,
+    emailVerified: true,
+    lastLoginAt: true,
+    createdAt: true,
+    updatedAt: true,
+    organization: {
+      select: {
+        id: true,
+        organizationName: true,
+        gstin: true,
+        panNumber: true,
+        udyamNumber: true,
+        annualTurnover: true,
+        verificationStatus: true,
+        organizationType: true,
+        city: true,
+        district: true,
+        state: true
+      }
+    },
+    buyerProfile: {
+      select: {
+        organizationName: true,
+        businessType: true,
+        gst: true,
+        pan: true,
+        industry: true,
+        city: true,
+        state: true,
+        annualBudget: true,
+        procurementCategories: true
+      }
+    },
+    sellerProfile: {
+      select: {
+        businessName: true,
+        pan: true,
+        productCategories: true
+      }
+    }
+  };
+
+  if (!query.organizationId) {
+    selectFields.sessions = {
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: { id: true, ipAddress: true, userAgent: true, createdAt: true }
+    };
+    selectFields.complianceViolations = {
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { id: true, type: true, severity: true, status: true, description: true, createdAt: true }
+    };
+    selectFields.fraudAlerts = {
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { id: true, alertType: true, severity: true, status: true, entityType: true, entityId: true, createdAt: true }
+    };
+  }
+
   const [records, total] = await Promise.all([
     db.user.findMany({
       where,
-      select: {
-        id: true,
-        userId: true,
-        name: true,
-        email: true,
-        mobile: true,
-        role: true,
-        registrationStatus: true,
-        onboardingStatus: true,
-        sectionStatus: true,
-        adminFeedback: true,
-        organizationId: true,
-        companyId: true,
-        accountStatus: true,
-        emailVerified: true,
-        lastLoginAt: true,
-        createdAt: true,
-        updatedAt: true,
-        organization: {
-          select: {
-            id: true,
-            organizationName: true,
-            gstin: true,
-            verificationStatus: true,
-            organizationType: true,
-            district: true,
-            state: true
-          }
-        },
-        buyerProfile: {
-          select: {
-            organizationName: true,
-            businessType: true,
-            gst: true,
-            pan: true,
-            industry: true,
-            city: true,
-            state: true,
-            annualBudget: true,
-            procurementCategories: true
-          }
-        },
-        sellerProfile: {
-          select: {
-            businessName: true,
-            gst: true,
-            pan: true,
-            udyamNumber: true,
-            industry: true,
-            city: true,
-            state: true,
-            annualTurnover: true,
-            productCategories: true
-          }
-        },
-        sessions: {
-          orderBy: { createdAt: 'desc' },
-          take: 3,
-          select: { id: true, ipAddress: true, userAgent: true, createdAt: true }
-        },
-        complianceViolations: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-          select: { id: true, type: true, severity: true, status: true, description: true, createdAt: true }
-        },
-        fraudAlerts: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-          select: { id: true, alertType: true, severity: true, status: true, entityType: true, entityId: true, createdAt: true }
-        }
-      },
+      select: selectFields,
       orderBy: { createdAt: 'desc' },
       skip: query.skip,
       take: query.take
     }),
     db.user.count({ where })
   ]);
-  ok(res, { records, total, filters: query });
+
+  const mappedRecords = records.map((user: any) => {
+    const rawProfile = user.buyerProfile || user.sellerProfile || {};
+    const profile = {
+      ...rawProfile,
+      businessName: rawProfile.businessName || rawProfile.organizationName || user.organization?.organizationName || null,
+      organizationName: rawProfile.organizationName || rawProfile.businessName || user.organization?.organizationName || null,
+      gst: rawProfile.gst || user.organization?.gstin || null,
+      pan: rawProfile.pan || user.organization?.panNumber || null,
+      city: rawProfile.city || user.organization?.city || null,
+      state: rawProfile.state || user.organization?.state || null,
+      udyamNumber: user.organization?.udyamNumber || null,
+      annualTurnover: user.organization?.annualTurnover || null
+    };
+    return {
+      ...user,
+      profile
+    };
+  });
+
+  ok(res, { records: mappedRecords, total, filters: query });
 }));
 
 router.put('/admin/users/:id/status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {

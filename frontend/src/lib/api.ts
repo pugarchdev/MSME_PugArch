@@ -1,14 +1,17 @@
 const getBaseUrl = () => {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  if (rawBaseUrl) return rawBaseUrl;
-
   if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
     const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      const parsedPort = parseInt(port, 10);
+      if (!isNaN(parsedPort) && parsedPort >= 3000 && parsedPort <= 3010) {
+        const backendPort = 5000 + (parsedPort - 3000);
+        return `${protocol}//${hostname}:${backendPort}`;
+      }
       return `${protocol}//${hostname}:5000`;
     }
   }
 
+  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
   return rawBaseUrl;
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -10,16 +10,14 @@ import {
   Building2,
   ChevronRight,
   FileText,
-  BadgeInfo,
   Paperclip,
   CheckCircle2,
   Eye,
   X,
-  Grid2X2,
-  List,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  IndianRupee
 } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
@@ -76,9 +74,33 @@ const formatShortDate = (value?: string | null) => {
   return parsed ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Date pending';
 };
 
+const PUBLIC_TENDERS_ENDPOINT = '/api/tenders/public?take=50';
+const PUBLIC_TENDERS_SESSION_KEY = 'seller.publicTenders.v1';
+
+const readStoredPublicTenders = (): PublicTender[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(PUBLIC_TENDERS_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const storePublicTenders = (rows: PublicTender[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(PUBLIC_TENDERS_SESSION_KEY, JSON.stringify(rows.slice(0, 50)));
+  } catch {
+    // Storage quota/private mode should never block rendering.
+  }
+};
+
 export default function SellerTenders() {
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
-  const cachedTenders = api.peek('/api/tenders/public', authOptions);
+  const cachedTenders = api.peek(PUBLIC_TENDERS_ENDPOINT, authOptions) || api.peek('/api/tenders/public', authOptions) || readStoredPublicTenders();
   const [tenders, setTenders] = useState<PublicTender[]>(cachedTenders || []);
   const [loading, setLoading] = useState(!cachedTenders);
 
@@ -127,10 +149,11 @@ export default function SellerTenders() {
 
   const fetchPublicTenders = async () => {
     try {
-      const res = await api.get('/api/tenders/public', authOptions);
+      const res = await api.get(PUBLIC_TENDERS_ENDPOINT, authOptions);
       if (res.ok) {
         const data = await res.json();
         setTenders(data);
+        storePublicTenders(data);
       }
     } catch (err: any) {
       console.error('Failed to fetch public tenders', err);
@@ -142,6 +165,23 @@ export default function SellerTenders() {
 
   const uniqueCategories = ['All', ...Array.from(new Set(tenders.map(t => t.category).filter(Boolean)))];
   const uniqueStates = ['All', ...Array.from(new Set(tenders.map(t => t.buyer?.buyerProfile?.state).filter(Boolean)))];
+  const tenderMetrics = useMemo(() => {
+    const now = Date.now();
+    const closingSoon = tenders.filter(tender => {
+      const closesAt = parseDate(tender.closesAt)?.getTime();
+      if (!closesAt) return false;
+      const days = Math.ceil((closesAt - now) / (1000 * 60 * 60 * 24));
+      return days >= 0 && days <= 7;
+    }).length;
+    const participated = tenders.filter(tender => tender.hasParticipated).length;
+    const totalBudget = tenders.reduce((sum, tender) => sum + Number(tender.budget || 0), 0);
+    return {
+      total: tenders.length,
+      participated,
+      closingSoon,
+      totalBudget
+    };
+  }, [tenders]);
   const activeFilterCount = [
     selectedCategory !== 'All',
     budgetRange !== 'All',
@@ -239,14 +279,6 @@ export default function SellerTenders() {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <Loader2 className="h-8 w-8" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-2 md:p-4">
       <div className="max-w-7xl mx-auto">
@@ -259,6 +291,12 @@ export default function SellerTenders() {
                 <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold">
                   {filteredTenders.length} Found
                 </span>
+                {loading && (
+                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Refreshing
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 font-medium">
                 Discover procurement opportunities.
@@ -286,6 +324,13 @@ export default function SellerTenders() {
 
               <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <MetricTile label="Open Tenders" value={tenderMetrics.total.toLocaleString('en-IN')} icon={FileText} />
+            <MetricTile label="My Bids" value={tenderMetrics.participated.toLocaleString('en-IN')} icon={CheckCircle2} />
+            <MetricTile label="Closing Soon" value={tenderMetrics.closingSoon.toLocaleString('en-IN')} icon={Clock} />
+            <MetricTile label="Visible Value" value={`Rs. ${tenderMetrics.totalBudget.toLocaleString('en-IN')}`} icon={IndianRupee} />
           </div>
 
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
@@ -350,7 +395,9 @@ export default function SellerTenders() {
         </div>
 
         {/* Tenders List/Grid Container */}
-        {filteredTenders.length === 0 ? (
+        {loading && tenders.length === 0 ? (
+          <TenderListSkeleton viewMode={viewMode} />
+        ) : filteredTenders.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
             <FileText className="h-10 w-10 text-slate-200 mx-auto mb-2" />
             <p className="text-base font-bold text-slate-900">No active tenders found</p>
@@ -915,6 +962,59 @@ export default function SellerTenders() {
         </div>
       )}
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
+    </div>
+  );
+}
+
+function MetricTile({ label, value, icon: Icon }: { label: string; value: string; icon: React.ElementType }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+          <p className="mt-1 truncate text-lg font-black text-slate-950">{value}</p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TenderListSkeleton({ viewMode }: { viewMode: 'grid' | 'list' }) {
+  if (viewMode === 'grid') {
+    return (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="h-4 w-24 rounded bg-slate-100" />
+            <div className="mt-6 h-4 w-3/4 rounded bg-slate-100" />
+            <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+            <div className="mt-2 h-3 w-5/6 rounded bg-slate-100" />
+            <div className="mt-8 h-3 w-1/2 rounded bg-slate-100" />
+            <div className="mt-6 flex justify-between">
+              <div className="h-5 w-24 rounded bg-slate-100" />
+              <div className="h-8 w-24 rounded bg-slate-100" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className="grid animate-pulse grid-cols-[56px_140px_1fr_140px_140px_120px] gap-4 border-b border-slate-100 px-4 py-4 last:border-b-0">
+          <div className="h-4 rounded bg-slate-100" />
+          <div className="h-4 rounded bg-slate-100" />
+          <div className="h-4 rounded bg-slate-100" />
+          <div className="h-4 rounded bg-slate-100" />
+          <div className="h-4 rounded bg-slate-100" />
+          <div className="h-4 rounded bg-slate-100" />
+        </div>
+      ))}
     </div>
   );
 }

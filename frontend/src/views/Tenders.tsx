@@ -350,9 +350,10 @@ export default function Tenders() {
       const res = await api.put(`/api/tenders/${editingTender.id}`, payload, authOptions);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || 'Failed to update tender');
+      const updatedTender = data?.data || data;
       toast.success('Tender updated successfully');
       setEditingTender(null);
-      setSelectedTender(data);
+      setSelectedTender(updatedTender);
       refreshAll();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
@@ -961,6 +962,7 @@ export default function Tenders() {
             saving={savingEdit}
             onClose={() => setEditingTender(null)}
             onSubmit={handleUpdateTender}
+            onPreviewDocument={handlePreviewDocument}
           />
         )}
         <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
@@ -1051,13 +1053,17 @@ function TenderEditModal({
   tender,
   saving,
   onClose,
-  onSubmit
+  onSubmit,
+  onPreviewDocument
 }: {
   tender: Tender;
   saving: boolean;
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onPreviewDocument: (url: string, label: string) => void;
 }) {
+  const documentName = tender.documentUrl ? tender.documentUrl.split('/').pop() || 'Specification document' : '';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
@@ -1125,6 +1131,33 @@ function TenderEditModal({
             Description
             <textarea name="description" rows={5} defaultValue={tender.description} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#12335f]/20" />
           </label>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Document</p>
+            {tender.documentUrl ? (
+              <div className="mt-3 flex flex-col gap-3 rounded-md border border-emerald-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                    <Paperclip className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-900">{documentName}</p>
+                    <p className="text-xs font-semibold text-emerald-700">Attached to this tender</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onPreviewDocument(tender.documentUrl!, `${tender.tenderId || `Tender #${tender.id}`} Specifications`)}
+                  className="h-9 shrink-0 rounded-md border-slate-200 text-xs font-black uppercase text-[#12335f]"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Open Document
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-white px-3 py-3 text-xs font-bold text-slate-500">No specification document is attached to this tender.</p>
+            )}
+          </div>
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="h-10 rounded-md border-slate-200 text-xs font-black uppercase">Cancel</Button>
             <Button type="submit" disabled={saving} className="h-10 rounded-md bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445]">

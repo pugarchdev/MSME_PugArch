@@ -42,7 +42,10 @@ export const isAllowedCorsOrigin = (origin?: string) => {
   if (!origin) return true;
 
   try {
-    new URL(origin);
+    const url = new URL(origin);
+    if (!isProduction && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
+      return true;
+    }
   } catch {
     return false;
   }

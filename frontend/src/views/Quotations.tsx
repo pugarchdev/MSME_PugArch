@@ -600,7 +600,7 @@ export default function Quotations() {
   const fetchMyTenders = async () => {
     if (tenders.length === 0) setLoading(true);
     try {
-      const res = await api.get('/api/tenders?take=1000', authOptions);
+      const res = await api.get('/api/tenders?take=500', authOptions);
       if (!res.ok) throw new Error('Failed to load tenders');
       const data = await res.json();
       const tenderList = normalizeList<any>(data);

@@ -36,6 +36,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Loader2 } from '../../../components/ui/loader';
 import { api } from '../../../lib/api';
 import { cn } from '../../../lib/utils';
+import PremiumLoader from '../../../components/PremiumLoader';
 import { Pagination } from '../../shared/Pagination';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 import { useResponsiveViewMode, type ViewMode } from '../../shared/hooks';
@@ -190,10 +191,20 @@ export default function MasterAdminPage() {
   const [procurement, setProcurement] = useState<ApiPage<BidRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
   const [payments, setPayments] = useState<ApiPage<PaymentRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
   const [features, setFeatures] = useState<Feature[]>([]);
+  const [loadedFeatureCompanyId, setLoadedFeatureCompanyId] = useState<number | null>(null);
   const [emailSettings, setEmailSettings] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<ApiPage<AuditRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
   const [security, setSecurity] = useState<any>(null);
-  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState<Record<string, boolean>>({
+    companies: true,
+    organizations: true,
+    users: true,
+    procurement: true,
+    payments: true,
+    email: true,
+    audit: true,
+    security: true
+  });
   const [error, setError] = useState<Record<string, string | null>>({});
   const [filters, setFilters] = useState<Record<TabId, Record<string, string>>>({
     overview: {},
@@ -352,14 +363,20 @@ export default function MasterAdminPage() {
   };
 
   const loadFeatures = async () => {
-    if (!selectedCompanyId) return;
+    if (!selectedCompanyId) {
+      setBusy('features', false);
+      setLoadedFeatureCompanyId(null);
+      return;
+    }
     setBusy('features', true);
     try {
       const data = await fetchJson<{ items: Feature[] }>(`/api/master-admin/companies/${selectedCompanyId}/features`);
       setFeatures(data.items || []);
+      setLoadedFeatureCompanyId(selectedCompanyId);
       setSectionError('features', null);
     } catch (err: any) {
       setSectionError('features', err.message);
+      setLoadedFeatureCompanyId(selectedCompanyId);
     } finally {
       setBusy('features', false);
     }
@@ -439,6 +456,18 @@ export default function MasterAdminPage() {
       (!module || feature.module.toLowerCase().includes(module))
     );
   }, [features, filters.features]);
+
+  const initialPageLoading = overviewLoading || [
+    loading.companies,
+    loading.organizations,
+    loading.users,
+    loading.procurement,
+    loading.payments,
+    loading.email,
+    loading.audit,
+    loading.security,
+    Boolean(selectedCompanyId && (loading.features || loadedFeatureCompanyId !== selectedCompanyId))
+  ].some(Boolean);
 
   const updateFilter = (tab: TabId, key: string, value: string) => {
     setFilters(prev => ({ ...prev, [tab]: { ...prev[tab], [key]: value } }));
@@ -589,6 +618,8 @@ export default function MasterAdminPage() {
     }
   };
 
+  if (initialPageLoading) return <PremiumLoader />;
+
   return (
     <div className="min-h-full bg-slate-50">
       <div className="mx-auto max-w-[1560px] space-y-5 px-3 py-4 sm:px-5 lg:px-6">
@@ -647,7 +678,7 @@ export default function MasterAdminPage() {
         {activeTab === 'overview' && (
           <section className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              {overviewLoading ? Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />) : summaryCards.map(([label, value, subtext, Icon, tone]: any) => (
+              {summaryCards.map(([label, value, subtext, Icon, tone]: any) => (
                 <KpiCard key={label} label={label} value={value ?? 0} subtext={subtext} icon={Icon} tone={tone} />
               ))}
             </div>
@@ -1212,7 +1243,7 @@ function PaginatedTable<T extends Record<string, any>>({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && rows.length === 0 ? Array.from({ length: 5 }).map((_, index) => <TableSkeleton key={index} columns={columns.length + (actions ? 2 : 1)} />) : rows.map((row, index) => (
+              {rows.map((row, index) => (
                 <tr key={row.id || index} className="hover:bg-slate-50">
                   <td className="px-4 py-3 text-xs font-black text-slate-400">{(page - 1) * pageSize + index + 1}</td>
                   {columns.map(([field]) => (
@@ -1624,14 +1655,6 @@ function SimpleList({ rows, primary, secondary, meta }: { rows: any[]; primary: 
     </div>
   );
 }
-
-function SkeletonCard() {
-  return <div className="h-32 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm"><div className="m-4 h-4 w-24 rounded bg-slate-100" /><div className="m-4 h-8 w-16 rounded bg-slate-100" /></div>;
-}
-
-const TableSkeleton = memo(function TableSkeleton({ columns }: { columns: number }) {
-  return <tr>{Array.from({ length: columns }).map((_, index) => <td key={index} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-slate-100" /></td>)}</tr>;
-});
 
 function EmptyState() {
   return <div className="px-4 py-8 text-center text-sm font-bold text-slate-500">No records found for the current filters.</div>;

@@ -4,6 +4,7 @@ import { authenticate, authorize, type AuthRequest } from '../../middleware/auth
 import { upload } from '../../config/storage.js';
 import prisma from '../../config/prisma.js';
 import { apiResponse } from '../../utils/apiResponse.js';
+import { maskSensitive } from '../../utils/maskSensitive.js';
 import { validate } from '../../middleware/validate.js';
 import * as service from './procurement-bid.service.js';
 import * as orderService from './procurement-order.service.js';
@@ -91,6 +92,65 @@ const invoiceParamSchema = orderIdParamSchema.extend({ invoiceId: z.coerce.numbe
 router.get('/bids', asyncRoute(async (req, res) => {
   const data = await service.listPublicBids(req.query);
   return apiResponse.success(res, data, 200, 'Bids fetched successfully');
+}));
+
+router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyncRoute(async (req, res) => {
+  const role = String(req.user?.role || '');
+  const currentUserId = Number(req.user?.id);
+  const where = role === 'seller'
+    ? { sellerId: currentUserId }
+    : role === 'buyer'
+      ? { tender: { buyerId: currentUserId } }
+      : {};
+
+  const bids = await prisma.bid.findMany({
+    where,
+    include: {
+      tender: {
+        include: {
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              mobile: true,
+              buyerProfile: {
+                select: {
+                  organizationName: true,
+                  organizationType: true,
+                  city: true,
+                  state: true
+                }
+              }
+            }
+          }
+        }
+      },
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          mobile: true,
+          sellerProfile: {
+            select: {
+              businessName: true,
+              organizationType: true,
+              offices: {
+                select: {
+                  city: true,
+                  state: true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  return res.json(maskSensitive(bids));
 }));
 
 router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {

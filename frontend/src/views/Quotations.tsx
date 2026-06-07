@@ -678,20 +678,21 @@ export default function Quotations() {
         .filter((bid: Quotation) => !selectedId || Number(bid.tenderId || bid.tender?.id) === selectedId)
         .map(bid => ({ ...bid, source: 'bid' as const }));
       const lowestByTender = new Map<number, number>();
+      const bidCountByTender = new Map<number, number>();
       tenderBids.forEach((bid) => {
         const key = Number(bid.tenderId || bid.tender?.id || 0);
         if (!key) return;
         const total = getQuotePricing(bid).totalAmount;
         const current = lowestByTender.get(key);
         if (current === undefined || total < current) lowestByTender.set(key, total);
+        bidCountByTender.set(key, (bidCountByTender.get(key) || 0) + 1);
       });
       let allBids: Quotation[] = tenderBids.map((bid) => {
         const key = Number(bid.tenderId || bid.tender?.id || 0);
-        const tenderBidCount = tenderBids.filter(item => Number(item.tenderId || item.tender?.id || 0) === key).length;
         return {
           ...bid,
           tender: bid.tender || tenders.find(item => item.id === key),
-          isLowest: key > 0 && tenderBidCount > 1 && getQuotePricing(bid).totalAmount === lowestByTender.get(key)
+          isLowest: key > 0 && (bidCountByTender.get(key) || 0) > 1 && getQuotePricing(bid).totalAmount === lowestByTender.get(key)
         };
       });
 

@@ -384,7 +384,9 @@ export default function MasterAdminPage() {
         ...pages.audit,
         search: debouncedFilters.audit.search,
         action: debouncedFilters.audit.action,
-        entityType: debouncedFilters.audit.entityType
+        entityType: debouncedFilters.audit.entityType,
+        sortBy: sorts.audit.field,
+        sortOrder: sorts.audit.direction
       }));
       setAuditLogs(data);
       setSectionError('audit', null);
@@ -415,7 +417,7 @@ export default function MasterAdminPage() {
   useEffect(() => { void loadPayments(); }, [pages.payments, debouncedFilters.payments, sorts.payments]);
   useEffect(() => { void loadFeatures(); }, [selectedCompanyId]);
   useEffect(() => { void loadEmail(); void loadSecurity(); }, []);
-  useEffect(() => { void loadAudit(); }, [pages.audit, debouncedFilters.audit]);
+  useEffect(() => { void loadAudit(); }, [pages.audit, debouncedFilters.audit, sorts.audit]);
 
   const summaryCards = useMemo(() => {
     const summary = overview?.summary || {};
@@ -486,6 +488,7 @@ export default function MasterAdminPage() {
   const runAction = async (reason: string, confirmation?: string) => {
     if (!actionDialog) return;
     setMutating(true);
+    let successMessage: string | undefined;
     try {
       const { entity, action, id, featureKey } = actionDialog;
       if (entity === 'organization' && id) {
@@ -520,13 +523,16 @@ export default function MasterAdminPage() {
           suspend: () => masterAdminApi.suspendUser(id, reason),
           reactivate: () => masterAdminApi.reactivateUser(id, reason),
           archive: () => masterAdminApi.archiveUser(id, reason),
-          delete: () => confirmation === 'DELETE' ? masterAdminApi.deleteUser(id, reason) : Promise.reject(new Error('Type DELETE to confirm.')),
+          delete: () => confirmation === 'DELETE' ? masterAdminApi.deleteUserWithMessage(id, reason) : Promise.reject(new Error('Type DELETE to confirm.')),
           invite: () => masterAdminApi.sendUserInvite(id, reason),
           resetPassword: () => masterAdminApi.resetUserPassword(id, reason)
         };
         const result: any = await actions[action]?.();
         if (action === 'resetPassword' && result?.temporaryPassword) {
           toast.success(`Temporary password generated: ${result.temporaryPassword}`);
+        }
+        if (action === 'delete' && result?.message) {
+          successMessage = result.message;
         }
         await loadUsers();
       }
@@ -544,7 +550,7 @@ export default function MasterAdminPage() {
       if (entity === 'email' && action === 'test') {
         await masterAdminApi.sendTestEmail({ to: reason, reason: 'Master admin SMTP test' });
       }
-      toast.success(`${labelize(action)} completed`);
+      toast.success(successMessage || `${labelize(action)} completed`);
       setActionDialog(null);
       await loadOverview();
     } catch (err: any) {

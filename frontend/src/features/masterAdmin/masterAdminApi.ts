@@ -27,10 +27,22 @@ const request = async <T>(path: string, init: RequestInit = {}) => {
   return unwrapApiData<T>(body);
 };
 
+const requestEnvelope = async <T>(path: string, init: RequestInit = {}) => {
+  const response = await api.fetch(path, {
+    ...init,
+    headers: { ...(authHeaders() || {}), ...(init.headers as Record<string, string> || {}) },
+    skipCache: init.method !== undefined && init.method !== 'GET'
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok) throw new Error(body?.message || 'Request failed');
+  return { data: unwrapApiData<T>(body), message: body?.message as string | undefined };
+};
+
 const get = <T>(path: string, params?: Params) => request<T>(query(path, params));
 const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const put = <T>(path: string, body: unknown = {}) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 const del = <T>(path: string, body: unknown = {}) => request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
+const delEnvelope = <T>(path: string, body: unknown = {}) => requestEnvelope<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
 
 export const masterAdminApi = {
   getMasterOverview: () => get('/api/master-admin/overview'),
@@ -57,6 +69,7 @@ export const masterAdminApi = {
   reactivateUser: (id: number, reason: string) => post(`/api/master-admin/users/${id}/reactivate`, { reason }),
   archiveUser: (id: number, reason: string) => post(`/api/master-admin/users/${id}/archive`, { reason }),
   deleteUser: (id: number, reason: string) => del(`/api/master-admin/users/${id}`, { reason, confirmation: 'DELETE' }),
+  deleteUserWithMessage: (id: number, reason: string) => delEnvelope(`/api/master-admin/users/${id}`, { reason, confirmation: 'DELETE' }),
   resetUserPassword: (id: number, reason = 'Master admin reset') => post(`/api/master-admin/users/${id}/reset-password`, { reason }),
   sendUserInvite: (id: number, reason = 'Master admin invite') => post(`/api/master-admin/users/${id}/invite`, { reason }),
   changeUserRole: (id: number, role: string, reason?: string) => post(`/api/master-admin/users/${id}/change-role`, { role, reason }),

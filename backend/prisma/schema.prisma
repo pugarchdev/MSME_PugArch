@@ -146,6 +146,8 @@ model User {
   @@index([accountStatus])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([onboardingStatus])
+  @@index([name])
 }
 
 model BuyerProfile {
@@ -354,6 +356,7 @@ model Organization {
   @@index([companyId])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([state])
 }
 
 model Company {
@@ -392,6 +395,7 @@ model Company {
   @@index([isActive])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([portalDisplayName])
 }
 
 model BuyerRequirement {
@@ -1397,6 +1401,7 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([entityId])
 }
 
 model ApiVerificationLog {
@@ -1988,6 +1993,9 @@ model PaymentTransaction {
   @@index([payeeId, status])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([amount])
+  @@index([currency])
+  @@index([gateway])
 }
 
 model PaymentWebhookEvent {
@@ -2489,6 +2497,11 @@ model ProcurementBid {
   @@index([endDate])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([estimatedValue])
+  @@index([approvalStatus])
+  @@index([status])
+  @@index([buyerOrganizationName])
+  @@index([title])
 }
 
 model ProcurementBidDocument {

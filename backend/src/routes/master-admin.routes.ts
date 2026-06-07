@@ -103,6 +103,39 @@ const safeFindMany = async <T>(delegate: any, args: any, fallback: T[] = []) => 
   }
 };
 
+const isForeignKeyConstraintError = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as any).code === 'P2003';
+
+const userDeleteBlockers = async (userId: number) => {
+  const checks: Array<[string, any, any]> = [
+    ['payments', (prisma as any).paymentTransaction, { where: { OR: [{ payerId: userId }, { payeeId: userId }] } }],
+    ['orders', (prisma as any).purchaseOrder, { where: { OR: [{ buyerId: userId }, { sellerId: userId }] } }],
+    ['invoices', (prisma as any).invoice, { where: { OR: [{ buyerId: userId }, { sellerId: userId }] } }],
+    ['products', (prisma as any).product, { where: { sellerId: userId } }],
+    ['services', (prisma as any).service, { where: { sellerId: userId } }],
+    ['requirements', (prisma as any).requirement, { where: { buyerId: userId } }],
+    ['directPurchases', (prisma as any).directPurchase, { where: { OR: [{ buyerId: userId }, { sellerId: userId }] } }],
+    ['quoteResponses', (prisma as any).quoteResponse, { where: { sellerId: userId } }],
+    ['tenders', (prisma as any).tender, { where: { buyerId: userId } }],
+    ['bids', (prisma as any).bid, { where: { sellerId: userId } }],
+    ['escrowAccounts', (prisma as any).escrowAccount, { where: { OR: [{ buyerId: userId }, { sellerId: userId }] } }],
+    ['procurementBids', (prisma as any).procurementBid, { where: { buyerId: userId } }],
+    ['procurementParticipations', (prisma as any).procurementBidParticipation, { where: { sellerId: userId } }],
+    ['carts', (prisma as any).cart, { where: { OR: [{ createdById: userId }, { approvedById: userId }, { rejectedById: userId }] } }]
+  ];
+  const counts = await Promise.all(checks.map(async ([key, delegate, args]) => [key, await safeCount(delegate, args)] as const));
+  return Object.fromEntries(counts) as Record<string, number>;
+};
+
+const hasDeleteBlockers = (blockers: Record<string, number>) =>
+  Object.values(blockers).some(count => count > 0);
+
+const archiveUserDeleteBlocked = async (req: AuthRequest, id: number, reason: string, metadata: Record<string, unknown>) => {
+  const user = await prisma.user.update({ where: { id }, data: { accountStatus: 'DELETED' as any, sessionVersion: { increment: 1 } }, select: userSelect });
+  await createAuditLog(req, { action: 'user.archive.deleteBlocked', entityType: 'user', entityId: id, metadata: { reason, ...metadata } });
+  return user;
+};
+
 const companyPayload = (body: Record<string, unknown>) => ({
   name: textOrNull(body.name) || textOrNull(body.companyName) || 'Untitled Company',
   shortName: textOrNull(body.shortName),
@@ -394,6 +427,7 @@ router.get('/master-admin/companies', ...masterOnly, wrap(async (req, res) => {
     portalDisplayName: 'portalDisplayName',
     district: 'district',
     state: 'state',
+    isActive: 'isActive',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   }, { updatedAt: 'desc' });
@@ -585,6 +619,7 @@ router.get('/master-admin/users', ...masterOnly, wrap(async (req, res) => {
     email: 'email',
     role: 'role',
     accountStatus: 'accountStatus',
+    onboardingStatus: 'onboardingStatus',
     createdAt: 'createdAt'
   }, { createdAt: 'desc' });
   const [items, total] = await Promise.all([
@@ -642,6 +677,7 @@ router.get('/master-admin/organizations', ...masterOnly, wrap(async (req, res) =
     organizationName: 'organizationName',
     organizationType: 'organizationType',
     verificationStatus: 'verificationStatus',
+    state: 'state',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   }, { updatedAt: 'desc' });
@@ -691,12 +727,18 @@ router.get('/master-admin/audit-logs', ...masterOnly, wrap(async (req, res) => {
     ...(entityType ? { entityType: { contains: entityType, mode: 'insensitive' } } : {}),
     ...(q ? { OR: [{ action: { contains: q, mode: 'insensitive' } }, { entityType: { contains: q, mode: 'insensitive' } }] } : {})
   };
+  const orderBy = sortableOrder(req.query as Record<string, unknown>, {
+    action: 'action',
+    entityType: 'entityType',
+    entityId: 'entityId',
+    createdAt: 'createdAt'
+  }, { createdAt: 'desc' });
   const [items, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       skip,
       take,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       select: {
         id: true,
         action: true,
@@ -1021,18 +1063,42 @@ router.delete('/master-admin/users/:id', ...masterOnly, requirePermission(PERMIS
   const reason = ensureReason(res, req.body, 'delete user');
   if (!reason) return;
   if (textOrNull(req.body?.confirmation) !== 'DELETE') return jsonError(res, 400, 'Type DELETE to confirm permanent deletion.', 'VALIDATION_ERROR');
-  const [payments, orders, bids, auditLogs] = await Promise.all([
-    safeCount((prisma as any).paymentTransaction, { where: { OR: [{ payerId: id }, { payeeId: id }] } }),
-    safeCount((prisma as any).purchaseOrder, { where: { OR: [{ buyerId: id }, { sellerId: id }] } }),
-    safeCount((prisma as any).procurementBid, { where: { createdById: id } }),
-    safeCount(prisma.auditLog, { where: { userId: id } })
+
+  // 1. Proactively clean up / nullify system metadata and non-critical relations to prevent constraint issues
+  await Promise.all([
+    prisma.userSession.deleteMany({ where: { userId: id } }),
+    prisma.complianceViolation.deleteMany({ where: { userId: id } }),
+    prisma.fraudAlert.deleteMany({ where: { userId: id } }),
+    (prisma as any).loginEvent?.deleteMany({ where: { userId: id } }).catch(() => null),
+    (prisma as any).apiVerificationLog?.deleteMany({ where: { userId: id } }).catch(() => null),
+    (prisma as any).apiLog?.deleteMany({ where: { userId: id } }).catch(() => null),
+    prisma.auditLog.updateMany({ where: { userId: id }, data: { userId: null } }),
+    (prisma as any).procurementAuditLog?.updateMany({ where: { userId: id }, data: { userId: null } }).catch(() => null),
+    (prisma as any).sellerDocument?.updateMany({ where: { verifiedById: id }, data: { verifiedById: null } }).catch(() => null),
+    (prisma as any).supplierRating?.deleteMany({ where: { OR: [{ buyerId: id }, { sellerId: id }] } }).catch(() => null),
+    (prisma as any).buyerRating?.deleteMany({ where: { OR: [{ buyerId: id }, { sellerId: id }] } }).catch(() => null),
+    (prisma as any).grievanceComment?.deleteMany({ where: { authorId: id } }).catch(() => null),
+    (prisma as any).message?.deleteMany({ where: { senderId: id } }).catch(() => null),
+    (prisma as any).disputeMessage?.deleteMany({ where: { senderId: id } }).catch(() => null),
+    (prisma as any).disputeEvidence?.deleteMany({ where: { uploadedById: id } }).catch(() => null)
   ]);
-  if (payments || orders || bids || auditLogs) {
-    const user = await prisma.user.update({ where: { id }, data: { accountStatus: 'DELETED' as any, sessionVersion: { increment: 1 } }, select: userSelect });
-    await createAuditLog(req, { action: 'user.archive.deleteBlocked', entityType: 'user', entityId: id, metadata: { reason, payments, orders, bids, auditLogs } });
+
+  // 2. Perform the blockers check (only critical transactional business records)
+  const blockers = await userDeleteBlockers(id);
+  if (hasDeleteBlockers(blockers)) {
+    const user = await archiveUserDeleteBlocked(req, id, reason, blockers);
     return jsonOk(res, user, 'User has dependencies, so the account was archived instead of permanently deleted.');
   }
-  await prisma.user.delete({ where: { id } });
+
+  // 3. Delete the user record
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch (error) {
+    if (!isForeignKeyConstraintError(error)) throw error;
+    const user = await archiveUserDeleteBlocked(req, id, reason, { constraintFallback: true });
+    return jsonOk(res, user, 'User is linked to protected historical records, so the account was archived instead of permanently deleted.');
+  }
+
   await createAuditLog(req, { action: 'user.delete', entityType: 'user', entityId: id, metadata: { reason } });
   jsonOk(res, { id }, 'User permanently deleted');
 }));
@@ -1095,6 +1161,8 @@ router.get('/master-admin/procurement', ...masterOnly, wrap(async (req, res) => 
     title: 'title',
     bidNumber: 'bidNumber',
     status: 'status',
+    buyerOrganizationName: 'buyerOrganizationName',
+    approvalStatus: 'approvalStatus',
     endDate: 'endDate',
     createdAt: 'createdAt',
     estimatedValue: 'estimatedValue'
@@ -1148,6 +1216,7 @@ router.get('/master-admin/payments', ...masterOnly, wrap(async (req, res) => {
     gateway: 'gateway',
     status: 'status',
     amount: 'amount',
+    currency: 'currency',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   }, { createdAt: 'desc' });

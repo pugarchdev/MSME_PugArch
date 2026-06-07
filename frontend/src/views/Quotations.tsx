@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AlertCircle,
@@ -515,6 +515,7 @@ function BidEditModal({
 export default function Quotations() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
   const cachedSellerBids = user?.role === 'seller' ? api.peek('/api/bids/my', authOptions) : null;
   const cachedBuyerTenders = user?.role === 'buyer' ? api.peek('/api/tenders', authOptions) : null;
@@ -534,6 +535,7 @@ export default function Quotations() {
   const [responding, setResponding] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [processedDeepLink, setProcessedDeepLink] = useState('');
 
   const [sortField, setSortField] = useState<'id' | 'title' | 'seller' | 'rate' | 'qty' | 'netValue' | 'status'>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -582,10 +584,23 @@ export default function Quotations() {
     if (user?.role === 'buyer' && buyerTendersReady) fetchBuyerBids();
   }, [user?.role, tenders.length, selectedTenderId, buyerTendersReady]);
 
+  useEffect(() => {
+    const bidId = Number(searchParams?.get('bidId') || 0);
+    const tenderId = Number(searchParams?.get('tenderId') || 0);
+    const deepLinkKey = bidId ? `bid:${bidId}` : tenderId ? `tender:${tenderId}` : '';
+    if (!deepLinkKey || processedDeepLink === deepLinkKey || quotes.length === 0) return;
+    const target = bidId
+      ? quotes.find(quote => quote.source !== 'rfq' && quote.id === bidId)
+      : quotes.find(quote => quote.source !== 'rfq' && Number(quote.tenderId || quote.tender?.id) === tenderId);
+    if (!target) return;
+    setProcessedDeepLink(deepLinkKey);
+    handleViewQuote(target);
+  }, [searchParams, quotes, processedDeepLink]);
+
   const fetchMyTenders = async () => {
     if (tenders.length === 0) setLoading(true);
     try {
-      const res = await api.get('/api/tenders', authOptions);
+      const res = await api.get('/api/tenders?take=1000', authOptions);
       if (!res.ok) throw new Error('Failed to load tenders');
       const data = await res.json();
       const tenderList = normalizeList<any>(data);
@@ -655,28 +670,31 @@ export default function Quotations() {
   const fetchBuyerBids = async () => {
     if (quotes.length === 0) setLoading(true);
     try {
-      const tenderIds = selectedTenderId === 'all'
-        ? tenders.map(tender => tender.id)
-        : [Number(selectedTenderId)];
-      let allBids: Quotation[] = [];
-
-      for (const tenderId of tenderIds) {
-        const res = await api.get(`/api/tenders/${tenderId}/bids`, authOptions);
-        if (!res.ok) continue;
-        const data = await res.json();
-        const bids = normalizeList<Quotation>(data);
-        const tender = tenders.find(item => item.id === tenderId);
-        const prices = bids.map((bid: Quotation) => getQuotePricing(bid).totalAmount);
-        const lowestPrice = prices.length > 0 ? Math.min(...prices) : null;
-        allBids = [
-          ...allBids,
-          ...bids.map((bid: Quotation) => ({
-            ...bid,
-            tender,
-            isLowest: lowestPrice !== null && getQuotePricing(bid).totalAmount === lowestPrice && bids.length > 1
-          }))
-        ];
-      }
+      const bidsRes = await api.get('/api/bids/my', authOptions);
+      if (!bidsRes.ok) throw new Error('Failed to load quotation bids');
+      const bidsData = await bidsRes.json();
+      const selectedId = selectedTenderId === 'all' ? null : Number(selectedTenderId);
+      const tenderBids = normalizeList<Quotation>(bidsData)
+        .filter((bid: Quotation) => !selectedId || Number(bid.tenderId || bid.tender?.id) === selectedId)
+        .map(bid => ({ ...bid, source: 'bid' as const }));
+      const lowestByTender = new Map<number, number>();
+      const bidCountByTender = new Map<number, number>();
+      tenderBids.forEach((bid) => {
+        const key = Number(bid.tenderId || bid.tender?.id || 0);
+        if (!key) return;
+        const total = getQuotePricing(bid).totalAmount;
+        const current = lowestByTender.get(key);
+        if (current === undefined || total < current) lowestByTender.set(key, total);
+        bidCountByTender.set(key, (bidCountByTender.get(key) || 0) + 1);
+      });
+      let allBids: Quotation[] = tenderBids.map((bid) => {
+        const key = Number(bid.tenderId || bid.tender?.id || 0);
+        return {
+          ...bid,
+          tender: bid.tender || tenders.find(item => item.id === key),
+          isLowest: key > 0 && (bidCountByTender.get(key) || 0) > 1 && getQuotePricing(bid).totalAmount === lowestByTender.get(key)
+        };
+      });
 
       if (selectedTenderId === 'all') {
         const rfqRes = await api.get('/api/quote-requests', authOptions).catch(() => null);

@@ -211,6 +211,16 @@ export default function SellerTenders() {
     }));
   };
 
+
+  const getTenderActionHref = (tender: PublicTender) => {
+    if (tender.hasParticipated) {
+      return tender.myBidId
+        ? `/quotations?bidId=${tender.myBidId}`
+        : `/quotations?tenderId=${tender.id}`;
+    }
+    return `/seller/tenders/${tender.id}/bid`;
+  };
+
   const SortHeader = ({ label, sortKey, className = '' }: { label: string; sortKey: string; className?: string }) => {
     const isActive = sortConfig?.key === sortKey;
     return (
@@ -471,7 +481,7 @@ export default function SellerTenders() {
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/seller/tenders/${tender.id}/bid`);
+                              router.push(getTenderActionHref(tender));
                             }}
                             className={cn(
                               "h-8 px-3 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm transition-colors",
@@ -590,7 +600,7 @@ export default function SellerTenders() {
                               <Eye className="h-4 w-4" />
                             </Button>
                             <Button
-                              onClick={(e) => { e.stopPropagation(); router.push(`/seller/tenders/${tender.id}/bid`); }}
+                              onClick={(e) => { e.stopPropagation(); router.push(getTenderActionHref(tender)); }}
                               className={cn(
                                 "h-8 px-3 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm transition-colors whitespace-nowrap",
                                 participated ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"
@@ -695,7 +705,7 @@ export default function SellerTenders() {
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button
-                            onClick={(e) => { e.stopPropagation(); router.push(`/seller/tenders/${tender.id}/bid`); }}
+                            onClick={(e) => { e.stopPropagation(); router.push(getTenderActionHref(tender)); }}
                             className={cn(
                               "h-8 px-4 text-white rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-colors",
                               participated ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"
@@ -890,7 +900,7 @@ export default function SellerTenders() {
               <Button
                 onClick={() => {
                   setSelectedTenderForDetails(null);
-                  router.push(`/seller/tenders/${selectedTenderForDetails.id}/bid`);
+                  router.push(getTenderActionHref(selectedTenderForDetails));
                 }}
                 className={cn(
                   "h-9 px-6 text-white rounded-md font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all active:scale-98 shadow-sm",

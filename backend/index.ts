@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 // Import Prisma Client
 import prisma from './src/lib/prisma.js';
-import { Role, RegistrationStatus } from '@prisma/client';
+import { Role, RegistrationStatus, TenderStatus } from '@prisma/client';
 import { authenticate, authorize, authorizeAdmin } from './src/middleware/auth.js';
 import type { AuthRequest } from './src/middleware/auth.js';
 import nodemailer from 'nodemailer';
@@ -790,6 +790,7 @@ const bidOpenStatuses = new Set([
   'closed'
 ]);
 const bidSubmissionStatuses = new Set(['published', 'bid_submission']);
+const bidSubmissionTenderStatuses: TenderStatus[] = [TenderStatus.published, TenderStatus.bid_submission];
 const terminalTenderStatuses = new Set(['awarded', 'po_generated', 'closed']);
 const validTenderStatuses = new Set([
   'draft',
@@ -1359,7 +1360,7 @@ app.get('/api/tenders/public', authenticate, authorize('seller', 'buyer', 'admin
     }
 
     const tenders = await prisma.tender.findMany({
-      where: { status: 'published' },
+      where: { status: { in: bidSubmissionTenderStatuses } },
       include,
       orderBy: { createdAt: 'desc' }
     });
@@ -1391,7 +1392,7 @@ app.get('/api/tenders/:id', authenticate, authorize('buyer', 'seller', 'admin'),
     if (!tender) return res.status(404).json({ message: 'Tender not found' });
 
     const isOwnerBuyer = req.user?.role === 'buyer' && tender.buyerId === Number(req.user.id);
-    const isPublishedForSeller = req.user?.role === 'seller' && tender.status === 'published';
+    const isPublishedForSeller = req.user?.role === 'seller' && bidSubmissionStatuses.has(String(tender.status));
     const isAdmin = req.user?.role === 'admin';
     if (!isOwnerBuyer && !isPublishedForSeller && !isAdmin) {
       return res.status(404).json({ message: 'Tender not found' });
@@ -1560,11 +1561,22 @@ app.get('/api/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), asyn
   }
 });
 
-app.get('/api/bids/my', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+app.get('/api/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
+    const role = String(req.user?.role || '');
+    const userId = Number(req.user?.id);
+    const where = role === 'seller'
+      ? { sellerId: userId }
+      : role === 'buyer'
+        ? { tender: { buyerId: userId } }
+        : {};
+
     const bids = await prisma.bid.findMany({
-      where: { sellerId: Number(req.user?.id) },
-      include: { tender: true },
+      where,
+      include: {
+        tender: { include: { buyer: { include: { buyerProfile: true } } } },
+        seller: { include: { sellerProfile: true } }
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.json(maskSensitive(await attachBidFileAssets(bids)));

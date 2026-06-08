@@ -23,6 +23,7 @@ import { validatePersonalVerification } from '../../utils/validationHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { notificationService } from '../../services/notification.service.js';
+import { onUserLinkedToOrganization } from '../../services/org-membership.service.js';
 
 // CreateNotificationSafe mock for backward compatibility if not globally service-ified yet
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
@@ -38,6 +39,75 @@ const createNotificationSafe = async (payload: { userId: number; title: string; 
     console.error('[Notification] Failed to create notification:', err);
   }
 };
+
+const clean = (value: unknown) => String(value || '').trim();
+
+const asObject = (value: unknown): Record<string, any> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+
+const firstValue = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = clean(value);
+    if (text) return text;
+  }
+  return '';
+};
+
+const roleHome = (role: 'buyer' | 'seller') => role === 'buyer' ? '/buyer/marketplace' : '/seller/marketplace';
+
+const onboardingPath = (role: 'buyer' | 'seller') => role === 'buyer' ? '/buyer/onboarding' : '/seller/onboarding';
+
+const getPrimarySellerOffice = (sellerProfile: any) =>
+  Array.isArray(sellerProfile?.offices) ? sellerProfile.offices[0] : null;
+
+const ensureOrganizationForDualRole = async (user: any, targetRole: 'buyer' | 'seller') => {
+  if (user.organization) return user.organization;
+  if (user.organizationId) {
+    const existing = await prisma.organization.findUnique({ where: { id: user.organizationId } });
+    if (existing) return existing;
+  }
+
+  const registration = asObject(user.registrationDetails);
+  const sellerOffice = getPrimarySellerOffice(user.sellerProfile);
+  const orgName = firstValue(
+    user.buyerProfile?.organizationName,
+    user.sellerProfile?.businessName,
+    user.sellerProfile?.nameAsInPan,
+    registration.businessName,
+    registration.accountName,
+    user.name,
+    'Organization'
+  );
+  const pan = firstValue(user.buyerProfile?.pan, user.sellerProfile?.pan, registration.pan);
+  const gst = firstValue(user.buyerProfile?.gst, sellerOffice?.gstNumber, registration.gstin);
+
+  return prisma.organization.create({
+    data: {
+      organizationName: orgName,
+      organizationType: targetRole === 'buyer' ? 'GOVERNMENT' : 'MSME',
+      panNumber: pan || null,
+      gstin: gst || null,
+      cinNumber: firstValue(user.buyerProfile?.cin, registration.cinNumber, registration.cin) || null,
+      website: firstValue(user.buyerProfile?.website, registration.website) || null,
+      state: firstValue(user.buyerProfile?.state, sellerOffice?.state, registration.state) || null,
+      district: firstValue(user.buyerProfile?.district, registration.district) || null,
+      city: firstValue(user.buyerProfile?.city, sellerOffice?.city, registration.city) || null,
+      pincode: firstValue(user.buyerProfile?.pincode, sellerOffice?.pincode, registration.pincode) || null,
+      addressLine1: firstValue(user.buyerProfile?.registeredAddress, sellerOffice?.address, registration.address) || null,
+      country: 'India',
+      verificationStatus: user.onboardingStatus === 'approved_for_procurement' ? 'VERIFIED' : 'PENDING'
+    }
+  });
+};
+
+const buildSafeAuthPayload = async (userId: number) => prisma.user.findUnique({
+  where: { id: userId },
+  include: {
+    buyerProfile: true,
+    sellerProfile: { include: { offices: true, bankAccounts: true, sellerDocuments: { include: { fileAsset: true } } } },
+    organization: true
+  }
+});
 
 export const authController = {
   sendEmailOtp: async (req: Request, res: Response) => {
@@ -272,7 +342,7 @@ export const authController = {
         return res.status(423).json({ message: 'Account is temporarily locked. Please try again later.' });
       }
 
-      if (user.accountStatus === 'BLOCKED' || user.accountStatus === 'SUSPENDED') {
+      if (user.accountStatus !== 'ACTIVE') {
         await recordLoginEvent({ req, userId: user.id, success: false, reason: 'account_disabled' });
         await auditLog({
           actorUserId: user.id,
@@ -628,7 +698,8 @@ export const authController = {
             }
           },
           buyerProfile: true,
-          organization: true
+          organization: true,
+          company: true
         }
       });
       if (!user) return res.status(404).json({ message: 'Not found' });
@@ -680,7 +751,9 @@ export const authController = {
         user: { 
           ...userData, 
           _id: user.id, 
-          permissions: req.user?.permissions || [] 
+          permissions: req.user?.permissions || [],
+          enabledFeatures: req.user?.enabledFeatures || [],
+          companyId: req.user?.companyId ?? userData.companyId ?? null
         },
         profile: enrichedProfile
       }));
@@ -733,6 +806,217 @@ export const authController = {
         userAgent: req.headers['user-agent']
       });
       res.json({ message: 'Password updated successfully' });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  switchRole: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = Number(req.user?.id);
+      const { role } = req.body;
+      if (role !== 'buyer' && role !== 'seller') {
+        return res.status(400).json({ message: 'Invalid role request. Must be buyer or seller.' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          buyerProfile: true,
+          sellerProfile: true,
+          organization: true
+        }
+      });
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      if (role === 'buyer' && !user.buyerProfile) {
+        return res.status(400).json({ message: 'Buyer profile is not active yet. Activate buyer profile first.' });
+      }
+      if (role === 'seller' && !user.sellerProfile) {
+        return res.status(400).json({ message: 'Seller profile is not active yet. Activate seller profile first.' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          role: role as Role,
+          isDualRole: Boolean(user.buyerProfile && user.sellerProfile),
+          sessionVersion: { increment: 1 }
+        }
+      });
+
+      const safeUser = await buildSafeAuthPayload(userId);
+      const tokens = issueAuthResponse(updatedUser);
+      await auditLog({
+        actorUserId: userId,
+        actorRole: user.role,
+        action: 'auth.role_switch',
+        entityType: 'user',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { fromRole: user.role, toRole: role }
+      });
+
+      res.json({
+        success: true,
+        ...tokens,
+        redirectUrl: roleHome(role),
+        user: toSafeUser(safeUser || updatedUser)
+      });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  activateDualRole: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = Number(req.user?.id);
+      const { roleToActivate } = req.body;
+
+      if (roleToActivate !== 'buyer' && roleToActivate !== 'seller') {
+        return res.status(400).json({ message: 'Invalid role activation request.' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          buyerProfile: true,
+          sellerProfile: { include: { offices: true } },
+          organization: true
+        }
+      });
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      if (user.role === 'admin') {
+        return res.status(400).json({ message: 'Admin accounts cannot activate buyer or seller profiles.' });
+      }
+
+      const registration = asObject(user.registrationDetails);
+      const sellerOffice = getPrimarySellerOffice(user.sellerProfile);
+      const org = await ensureOrganizationForDualRole(user, roleToActivate);
+      const mobile = firstValue(user.mobile, user.buyerProfile?.mobile, user.sellerProfile?.mobile, sellerOffice?.contactNumber, '0000000000');
+      const gst = firstValue(org.gstin, user.buyerProfile?.gst, sellerOffice?.gstNumber, registration.gstin);
+      const pan = firstValue(org.panNumber, user.buyerProfile?.pan, user.sellerProfile?.pan, registration.pan);
+      const orgName = firstValue(
+        org.organizationName,
+        user.buyerProfile?.organizationName,
+        user.sellerProfile?.businessName,
+        user.sellerProfile?.nameAsInPan,
+        registration.businessName,
+        user.name
+      );
+      let createdProfile = false;
+
+      if (roleToActivate === 'buyer') {
+        if (!user.buyerProfile) {
+          await prisma.buyerProfile.create({
+            data: {
+              userId: user.id,
+              organizationId: org.id,
+              organizationName: orgName || 'Buyer Organization',
+              businessType: firstValue(user.sellerProfile?.organizationType, registration.businessType, 'Government Buyer'),
+              organizationType: firstValue(user.sellerProfile?.organizationType, registration.businessType) || null,
+              msmeType: firstValue(user.sellerProfile?.msmeType, registration.msmeType) || null,
+              industry: firstValue(user.buyerProfile?.industry, registration.industry, 'Other') || null,
+              cin: firstValue(org.cinNumber, user.buyerProfile?.cin, registration.cinNumber, registration.cin) || null,
+              pan: pan || null,
+              gst: gst || null,
+              website: firstValue(org.website, user.buyerProfile?.website, registration.website) || null,
+              state: firstValue(org.state, user.buyerProfile?.state, sellerOffice?.state, registration.state) || null,
+              district: firstValue(org.district, user.buyerProfile?.district, registration.district) || null,
+              city: firstValue(org.city, user.buyerProfile?.city, sellerOffice?.city, registration.city) || null,
+              pincode: firstValue(org.pincode, user.buyerProfile?.pincode, sellerOffice?.pincode, registration.pincode) || null,
+              registeredAddress: firstValue(org.addressLine1, user.buyerProfile?.registeredAddress, sellerOffice?.address, registration.address) || null,
+              representativeName: firstValue(user.buyerProfile?.representativeName, registration.accountName, user.name),
+              email: user.email,
+              mobile,
+              procurementCategories: [],
+              preferredMethods: [],
+              declarationAccepted: true,
+              termsAccepted: true,
+              verificationStatusEnum: org.verificationStatus === 'VERIFIED' ? 'VERIFIED' : 'PENDING'
+            }
+          });
+          createdProfile = true;
+        } else if (!user.buyerProfile.organizationId) {
+          await prisma.buyerProfile.update({
+            where: { id: user.buyerProfile.id },
+            data: { organizationId: org.id }
+          });
+        }
+      } else {
+        if (!user.sellerProfile) {
+          const sellerPan = (pan || `PENDING${user.id}`).toUpperCase();
+          const duplicatePan = await prisma.sellerProfile.findFirst({
+            where: {
+              userId: { not: userId },
+              pan: sellerPan
+            },
+            select: { userId: true }
+          });
+          if (duplicatePan) {
+            return res.status(409).json({ message: 'This organization PAN is already associated with another seller account.' });
+          }
+
+          await prisma.sellerProfile.create({
+            data: {
+              userId: user.id,
+              organizationId: org.id,
+              pan: sellerPan,
+              nameAsInPan: firstValue(user.buyerProfile?.nameAsInPan, registration.accountName, orgName, user.name),
+              businessName: orgName || user.name,
+              organizationType: firstValue(user.buyerProfile?.organizationType, user.buyerProfile?.businessType, registration.businessType, 'Proprietorship'),
+              mobile,
+              msmeType: firstValue(user.buyerProfile?.msmeType, registration.msmeType) || null,
+              productCategories: [],
+              documents: {},
+              termsAccepted: true,
+              panVerified: Boolean(pan),
+              verificationStatusEnum: org.verificationStatus === 'VERIFIED' ? 'VERIFIED' : 'PENDING'
+            }
+          });
+          createdProfile = true;
+        } else if (!user.sellerProfile.organizationId) {
+          await prisma.sellerProfile.update({
+            where: { id: user.sellerProfile.id },
+            data: { organizationId: org.id }
+          });
+        }
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          organizationId: org.id,
+          isDualRole: true,
+          role: roleToActivate as Role,
+          sessionVersion: { increment: 1 }
+        }
+      });
+      await onUserLinkedToOrganization(user.id, org.id).catch(err => console.error('[Dual Role Membership] link failed', err));
+
+      const safeUser = await buildSafeAuthPayload(userId);
+      const tokens = issueAuthResponse(updatedUser);
+      await auditLog({
+        actorUserId: userId,
+        actorRole: user.role,
+        action: 'auth.activate_dual_role',
+        entityType: 'user',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { activatedRole: roleToActivate }
+      });
+
+      res.json({
+        success: true,
+        ...tokens,
+        createdProfile,
+        activatedRole: roleToActivate,
+        redirectUrl: createdProfile ? onboardingPath(roleToActivate) : roleHome(roleToActivate),
+        user: toSafeUser(safeUser || updatedUser)
+      });
     } catch (err: any) {
       handleSecureRouteError(res, err);
     }

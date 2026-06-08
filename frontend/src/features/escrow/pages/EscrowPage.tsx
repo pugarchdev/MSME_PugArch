@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Eye, Landmark, Loader2, LockKeyhole, RefreshCw, Receipt, Search, ShieldAlert, X, Filter, LayoutGrid, List } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2, Clock3, Eye, Landmark, LockKeyhole, RefreshCw, Receipt, Search, ShieldAlert, X, Filter, LayoutGrid, List } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -9,7 +11,10 @@ import { cn } from '../../../lib/utils';
 import { InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
-import { useResponsiveViewMode } from '../../shared/hooks';
+import { useResponsiveViewMode, usePaginatedFeatureQuery } from '../../shared/hooks';
+import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 
 type Milestone = {
   id: number;
@@ -29,6 +34,8 @@ type EscrowAccount = {
   status: string;
   buyerId: number;
   sellerId: number;
+  buyer?: { id: number; name: string; email?: string };
+  seller?: { id: number; name: string; email?: string };
   createdAt?: string;
   fundedAt?: string;
   frozenAt?: string;
@@ -38,6 +45,7 @@ type EscrowAccount = {
   milestones?: Milestone[];
   transactions?: Array<{ id: number; type: string; amount: string | number; createdAt?: string }>;
 };
+type EscrowSortKey = 'escrow' | 'parties' | 'amount' | 'reference' | 'status' | 'fundedAt';
 
 const statusClass = (status: string) => {
   const normalized = status.toLowerCase();
@@ -47,19 +55,22 @@ const statusClass = (status: string) => {
 };
 
 export default function EscrowPage() {
-  const { token, user } = useAuth();
-  const [escrows, setEscrows] = useState<EscrowAccount[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const router = useRouter();
+  const { token } = useAuth();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [fundingFilter, setFundingFilter] = useState('');
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode('phase7:escrow:view-mode');
+  const [sortKey, setSortKey] = useState<EscrowSortKey>('fundedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<EscrowAccount | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState(10);
-  const [total, setTotal] = useState(0);
+
+  const { records: escrows, loading, refreshing, error, reload: load, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<EscrowAccount>('/api/escrow', {
+    ...(query.trim() ? { q: query.trim() } : {}),
+    ...(status ? { status } : {}),
+    ...(fundingFilter ? { funding: fundingFilter } : {})
+  }, 10);
 
   const headers = useMemo((): Record<string, string> => {
     const nextHeaders: Record<string, string> = {};
@@ -67,46 +78,55 @@ export default function EscrowPage() {
     return nextHeaders;
   }, [token]);
 
-  const load = async () => {
-    if (!token) return;
-    setLoading(true);
-    setError('');
+  const handleTrackClick = async (escrow: EscrowAccount) => {
+    if (!escrow.purchaseOrder?.id) {
+      toast.error('No purchase order linked to this escrow account.');
+      return;
+    }
+    const id = toast.loading('Loading tracking details...');
     try {
-      const params = new URLSearchParams({ skip: String((page - 1) * pageSize), take: String(pageSize) });
-      if (query.trim()) params.set('q', query.trim());
-      if (status) params.set('status', status);
-      if (fundingFilter) params.set('funding', fundingFilter);
-      const res = await api.fetch(`/api/escrow?${params.toString()}`, { method: 'GET', headers, skipCache: true });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.message || 'Unable to load escrow accounts');
-      setEscrows(body.escrowAccounts || body.data?.escrowAccounts || body.data || []);
-      setTotal(Number(body.total ?? body.data?.total ?? 0));
+      const res = await api.get(`/api/delivery/by-purchase-order/${escrow.purchaseOrder.id}`, { headers });
+      const data = await res.json().catch(() => ({}));
+      toast.dismiss(id);
+      
+      const delivery = data?.data ?? data;
+      if (delivery && delivery.id) {
+        router.push(`/delivery/${delivery.id}`);
+      } else {
+        toast.error('No active delivery tracking found for this purchase order.');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load escrow accounts');
-    } finally {
-      setLoading(false);
+      toast.dismiss(id);
+      toast.error('Failed to load delivery tracking details.');
     }
   };
-
-  useEffect(() => {
-    void load();
-  }, [token, page, pageSize, query, status, fundingFilter]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query, status, fundingFilter]);
 
   const filtered = useMemo(() => {
     return escrows.filter(item => {
       if (fundingFilter === 'funded' && !item.fundedAt) return false;
       if (fundingFilter === 'pending' && item.fundedAt) return false;
       return true;
+    }).sort((a, b) => {
+      const valueFor = (item: EscrowAccount) => {
+        if (sortKey === 'escrow') return item.id;
+        if (sortKey === 'parties') return `${item.buyer?.name || ''} ${item.seller?.name || ''}`;
+        if (sortKey === 'amount') return Number(item.amount || 0);
+        if (sortKey === 'reference') return `${item.purchaseOrder?.poNumber || ''} ${item.paymentTransaction?.referenceId || ''}`;
+        if (sortKey === 'status') return item.status || '';
+        return new Date(item.fundedAt || item.createdAt || 0).getTime();
+      };
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDirection === 'asc' ? result : -result;
     });
-  }, [escrows, fundingFilter]);
+  }, [escrows, fundingFilter, sortDirection, sortKey]);
 
   const pagedEscrows = filtered;
-  const setPageSize = (nextPageSize: number) => {
-    setPageSizeState(nextPageSize);
+
+  const toggleSort = (field: EscrowSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
     setPage(1);
   };
 
@@ -140,7 +160,7 @@ export default function EscrowPage() {
           <h1 className="mt-1 text-2xl font-black text-slate-950">Escrow & Milestones</h1>
           <p className="mt-1 text-xs font-semibold text-slate-500">Held funds, freeze state, milestone completion, approval, and release events.</p>
         </div>
-        <Button onClick={load} className="w-fit bg-[#12335f] text-white hover:bg-[#0b2445]"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+        <Button onClick={load} className="w-fit bg-[#12335f] text-white hover:bg-[#0b2445]"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
       </div>
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
@@ -158,25 +178,23 @@ export default function EscrowPage() {
             <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] lg:grid-cols-[1.8fr_1fr_1fr]">
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+                <input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search escrow, payment reference, PO, buyer, seller..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
               </div>
-              <select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+              <select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
                 <option value="">All statuses</option>
                 <option value="held">Held</option>
                 <option value="released">Released</option>
                 <option value="frozen">Frozen</option>
                 <option value="refunded">Refunded</option>
               </select>
-              <select value={fundingFilter} onChange={event => setFundingFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+              <select value={fundingFilter} onChange={event => { setFundingFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
                 <option value="">All fund states</option>
                 <option value="funded">Funded</option>
                 <option value="pending">Pending funding</option>
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">View</span>
-              <Button variant={viewMode === 'grid' ? 'secondary' : 'outline'} onClick={() => setViewMode('grid')} className="h-10 rounded-lg px-3 text-xs font-black"><LayoutGrid className="mr-2 h-4 w-4" />Grid</Button>
-              <Button variant={viewMode === 'list' ? 'secondary' : 'outline'} onClick={() => setViewMode('list')} className="h-10 rounded-lg px-3 text-xs font-black"><List className="mr-2 h-4 w-4" />List</Button>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
             </div>
           </div>
         </CardContent>
@@ -190,11 +208,11 @@ export default function EscrowPage() {
                 <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Sr. No</th>
-                    <th className="px-4 py-3">Escrow</th>
-                    <th className="px-4 py-3">Buyer / Seller</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">PO / Reference</th>
-                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3"><SortableHeader label="Escrow" field="escrow" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Buyer / Seller" field="parties" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Amount" field="amount" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="PO / Reference" field="reference" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                    <th className="px-4 py-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -203,16 +221,25 @@ export default function EscrowPage() {
                     <tr key={escrow.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{(page - 1) * pageSize + index + 1}</td>
                       <td className="px-4 py-3">
-                        <p className="font-black text-slate-950">#{escrow.id}</p>
-                        <p className="text-xs text-slate-500">{formatCurrency(escrow.amount)}</p>
+                        <EntityIdLink
+                          label={`ESC-${escrow.id}`}
+                          id={escrow.id}
+                          size="sm"
+                          onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}
+                        />
+                        <p className="mt-1 text-xs text-slate-500">{formatCurrency(escrow.amount)}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs font-semibold text-slate-600">Buyer #{escrow.buyerId}<br />Seller #{escrow.sellerId}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-600">
+                        <span className="text-wrap-anywhere">{escrow.buyer?.name || `Buyer #${escrow.buyerId}`}</span>
+                        <br />
+                        <span className="text-wrap-anywhere">{escrow.seller?.name || `Seller #${escrow.sellerId}`}</span>
+                      </td>
                       <td className="px-4 py-3 text-xs font-semibold text-slate-700">{formatCurrency(escrow.amount)}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">PO {escrow.purchaseOrder?.poNumber || '-'}<br />Ref {escrow.paymentTransaction?.referenceId || '-'}</td>
                       <td className="px-4 py-3"><span className={cn('inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span></td>
                       <td className="px-4 py-3 space-x-2">
                         <Button size="sm" variant="outline" onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}>View</Button>
-                        <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { setDetailTab('timeline'); setSelected(escrow); }}>Track</Button>
+                        <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { void handleTrackClick(escrow); }}>Track</Button>
                       </td>
                     </tr>
                   ))}
@@ -226,15 +253,20 @@ export default function EscrowPage() {
                   <CardContent className="space-y-4 p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
-                        <p className="text-sm font-black text-slate-950">Escrow #{escrow.id}</p>
-                        <p className="mt-1 text-xs font-bold text-slate-500">{formatCurrency(escrow.amount)} | PO {escrow.purchaseOrder?.poNumber || '-'}</p>
-                        <p className="mt-2 text-xs text-slate-500">Ref {escrow.paymentTransaction?.referenceId || '-'} | Buyer #{escrow.buyerId} / Seller #{escrow.sellerId}</p>
+                        <EntityIdLink
+                          label={`ESC-${escrow.id}`}
+                          id={escrow.id}
+                          size="sm"
+                          onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}
+                        />
+                        <p className="mt-2 text-xs font-bold text-slate-500 text-wrap-anywhere">{formatCurrency(escrow.amount)} | PO {escrow.purchaseOrder?.poNumber || '-'}</p>
+                        <p className="mt-2 text-xs text-slate-500 text-wrap-anywhere">Ref {escrow.paymentTransaction?.referenceId || '-'} | {escrow.buyer?.name || `Buyer #${escrow.buyerId}`} → {escrow.seller?.name || `Seller #${escrow.sellerId}`}</p>
                       </div>
                       <div className="flex flex-col items-start gap-2 sm:items-end">
                         <span className={cn('rounded-full border px-3 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
                         <div className="flex flex-wrap gap-2">
                           <Button variant="outline" size="sm" onClick={() => { setDetailTab('receipt'); setSelected(escrow); }}>Details</Button>
-                          <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { setDetailTab('timeline'); setSelected(escrow); }}>Track</Button>
+                          <Button size="sm" className="bg-[#12335f] text-white" onClick={() => { void handleTrackClick(escrow); }}>Track</Button>
                         </div>
                       </div>
                     </div>
@@ -301,8 +333,8 @@ function EscrowDetail({ escrow, detailTab, onClose, onTabChange }: { escrow: Esc
         </div>
         <div className="space-y-4 p-5">
           <div className="grid gap-3 md:grid-cols-3">
-            <DetailMetric label="Buyer" value={`#${escrow.buyerId}`} />
-            <DetailMetric label="Seller" value={`#${escrow.sellerId}`} />
+            <DetailMetric label="Buyer" value={escrow.buyer?.name || `#${escrow.buyerId}`} />
+            <DetailMetric label="Seller" value={escrow.seller?.name || `#${escrow.sellerId}`} />
             <DetailMetric label="Funded" value={escrow.fundedAt ? formatDate(escrow.fundedAt) : 'Pending'} />
           </div>
 

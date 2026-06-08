@@ -60,6 +60,11 @@ export const buildNotificationEmailHtml = (opts: {
 export const notificationService = {
   /** Create in-app notification + publish via Redis */
   async notify(userId: number, opts: NotifyOpts) {
+    void this.notifyNow(userId, opts);
+    return null;
+  },
+
+  async notifyNow(userId: number, opts: NotifyOpts) {
     try {
       const notification = await db.notification.create({
         data: {
@@ -163,14 +168,17 @@ export const notificationService = {
     }
   },
 
-  /** Combo: in-app notification + email */
   async notifyWithEmail(userId: number, opts: NotifyOpts & { emailSubject?: string; emailHtml?: string }) {
-    const notification = await this.notify(userId, opts);
-    await this.sendEmail(userId, {
-      subject: opts.emailSubject || `${opts.title} - MSME Procurement Portal`,
-      html: opts.emailHtml || buildNotificationEmailHtml(opts)
+    void (async () => {
+      await this.notifyNow(userId, opts);
+      await this.sendEmail(userId, {
+        subject: opts.emailSubject || `${opts.title} - MSME Procurement Portal`,
+        html: opts.emailHtml || buildNotificationEmailHtml(opts)
+      });
+    })().catch(err => {
+      logger.warn({ err, userId }, 'Background notification failed');
     });
-    return notification;
+    return null;
   },
 
   /** Notify admins with email */

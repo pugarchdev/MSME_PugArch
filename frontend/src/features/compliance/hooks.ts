@@ -16,15 +16,17 @@ export const useComplianceRules = (
     useQuery({
         queryKey: [...KEY_BASE, 'list', params] as const,
         queryFn: () => fetchComplianceRules(params),
-        staleTime: 60_000
+        // Keep showing the previous filter's results while the next fetch
+        // is in flight. Without this, every KPI tile click clears the table
+        // and shows a skeleton, which feels like a full reload.
+        placeholderData: previous => previous
     });
 
 export const useRuleViolations = (id: number | undefined, page = 1, pageSize = 10) =>
     useQuery({
         queryKey: [...KEY_BASE, 'violations', id || 0, page, pageSize] as const,
         queryFn: () => fetchRuleViolations(id as number, page, pageSize),
-        enabled: !!id && id > 0,
-        staleTime: 30_000
+        enabled: !!id && id > 0
     });
 
 const invalidateAll = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY_BASE });

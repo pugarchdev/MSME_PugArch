@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
   LineChart, Line, PieChart, Pie, Cell
@@ -6,37 +7,45 @@ import {
 import { FileBarChart, Users, ClipboardCheck, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
 import { api } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { useAuth } from '../hooks/useAuth';
 
 const COLORS = ['#12335f', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export default function MISReports() {
-  const token = localStorage.getItem('token') || '';
-  const authOptions = { headers: { Authorization: `Bearer ${token}` } };
-  
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { token } = useAuth();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   
   const [timeframe, setTimeframe] = useState('30d');
   const [roleFilter, setRoleFilter] = useState('all');
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const queryParams = new URLSearchParams({ timeframe, role: roleFilter }).toString();
-        const res = await api.fetch(`/api/admin/reports/summary?${queryParams}`, authOptions);
-        if (res.ok) {
-          const body = await res.json();
-          setStats(body?.data ?? body);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, [token, timeframe, roleFilter]);
+  // 1. KPI Stats Query (shares key/cache with dashboard for instant load)
+  const { data: kpiData, isLoading: isKpiLoading } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/admin/reports/summary?kpiOnly=true', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch KPIs');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
 
+  // 2. Heavy Charts / Details Query (independent loading)
+  const { data: detailsData, isLoading: isDetailsLoading } = useQuery({
+    queryKey: ['adminStatsDetails', timeframe, roleFilter],
+    queryFn: async () => {
+      const queryParams = new URLSearchParams({ detailsOnly: 'true', timeframe, role: roleFilter }).toString();
+      const res = await api.fetch(`/api/admin/reports/summary?${queryParams}`, { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch details');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const stats = { ...kpiData, ...detailsData };
   const userGrowthData = stats?.userGrowth || [];
   const transactionData = stats?.transactions || [];
 
@@ -45,10 +54,6 @@ export default function MISReports() {
     { name: 'Active Buyers', value: stats?.activeBuyers || 0 },
     { name: 'Pending Review', value: stats?.pendingApproval || 0 },
   ];
-
-  if (loading) {
-    return <div className="flex h-[400px] items-center justify-center text-sm font-bold text-slate-400">Loading MIS Reports...</div>;
-  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -94,6 +99,7 @@ export default function MISReports() {
           icon={Users} 
           trend="+12% from last month" 
           trendUp={true} 
+          loading={isKpiLoading}
         />
         <KPI 
           title="Active Sellers" 
@@ -101,6 +107,7 @@ export default function MISReports() {
           icon={ClipboardCheck} 
           trend="+5% from last month" 
           trendUp={true} 
+          loading={isKpiLoading}
         />
         <KPI 
           title="Active Buyers" 
@@ -108,6 +115,7 @@ export default function MISReports() {
           icon={ClipboardCheck} 
           trend="-2% from last month" 
           trendUp={false} 
+          loading={isKpiLoading}
         />
         <KPI 
           title="Pending Approval" 
@@ -115,6 +123,7 @@ export default function MISReports() {
           icon={Activity} 
           trend="Needs immediate review" 
           trendUp={false} 
+          loading={isKpiLoading}
         />
       </div>
 
@@ -124,17 +133,23 @@ export default function MISReports() {
             <CardTitle className="text-sm font-black uppercase tracking-wide text-slate-900">User Registration Growth</CardTitle>
           </CardHeader>
           <CardContent className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={userGrowthData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 'bold' }} />
-                <Bar dataKey="sellers" name="Sellers" fill="#12335f" radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar dataKey="buyers" name="Buyers" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
+            {isDetailsLoading ? (
+              <div className="h-full w-full animate-pulse rounded-lg bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-400">
+                Loading growth stats...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={userGrowthData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 'bold' }} />
+                  <Bar dataKey="sellers" name="Sellers" fill="#12335f" radius={[4, 4, 0, 0]} barSize={20} />
+                  <Bar dataKey="buyers" name="Buyers" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -143,15 +158,21 @@ export default function MISReports() {
             <CardTitle className="text-sm font-black uppercase tracking-wide text-slate-900">Weekly Transaction Volume</CardTitle>
           </CardHeader>
           <CardContent className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={transactionData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Line type="monotone" dataKey="value" name="Volume (₹)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {isDetailsLoading ? (
+              <div className="h-full w-full animate-pulse rounded-lg bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-400">
+                Loading transaction volume...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={transactionData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Volume (₹)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -162,25 +183,31 @@ export default function MISReports() {
             <CardTitle className="text-sm font-black uppercase tracking-wide text-slate-900">Entity Distribution</CardTitle>
           </CardHeader>
           <CardContent className="h-[250px] flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distributionData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {distributionData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }} />
-              </PieChart>
-            </ResponsiveContainer>
+            {isDetailsLoading ? (
+              <div className="h-full w-full animate-pulse rounded-lg bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-400">
+                Loading distribution...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distributionData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {distributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -191,19 +218,35 @@ export default function MISReports() {
           <CardContent className="grid grid-cols-2 gap-4">
              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Average Onboarding Time</p>
-                <p className="mt-1 text-2xl font-black text-slate-900">{stats?.avgOnboardingTime || '0 Days'}</p>
+                {isKpiLoading ? (
+                  <div className="h-8 w-24 animate-pulse rounded bg-slate-200 mt-1" />
+                ) : (
+                  <p className="mt-1 text-2xl font-black text-slate-900">{stats?.avgOnboardingTime || '0 Days'}</p>
+                )}
              </div>
              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Approval Rate</p>
-                <p className="mt-1 text-2xl font-black text-slate-900">{stats?.approvalRate || '0%'}</p>
+                {isKpiLoading ? (
+                  <div className="h-8 w-20 animate-pulse rounded bg-slate-200 mt-1" />
+                ) : (
+                  <p className="mt-1 text-2xl font-black text-slate-900">{stats?.approvalRate || '0%'}</p>
+                )}
              </div>
              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Procurement Value</p>
-                <p className="mt-1 text-2xl font-black text-slate-900">{stats?.activeProcurementValue || '₹0Cr'}</p>
+                {isKpiLoading ? (
+                  <div className="h-8 w-28 animate-pulse rounded bg-slate-200 mt-1" />
+                ) : (
+                  <p className="mt-1 text-2xl font-black text-slate-900">{stats?.activeProcurementValue || '₹0Cr'}</p>
+                )}
              </div>
              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tender Success Rate</p>
-                <p className="mt-1 text-2xl font-black text-slate-900">{stats?.tenderSuccessRate || '0%'}</p>
+                {isKpiLoading ? (
+                  <div className="h-8 w-20 animate-pulse rounded bg-slate-200 mt-1" />
+                ) : (
+                  <p className="mt-1 text-2xl font-black text-slate-900">{stats?.tenderSuccessRate || '0%'}</p>
+                )}
              </div>
           </CardContent>
         </Card>
@@ -212,13 +255,15 @@ export default function MISReports() {
   );
 }
 
-function KPI({ title, value, icon: Icon, trend, trendUp }: any) {
+function KPI({ title, value, icon: Icon, trend, trendUp, loading }: any) {
   return (
     <Card className="shadow-sm">
       <CardContent className="flex items-start justify-between p-4 sm:p-5">
-        <div>
+        <div className="w-full">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
+          <p className={`mt-2 text-3xl font-black ${loading ? 'text-slate-300' : 'text-slate-950'}`}>
+            {loading ? "0" : value}
+          </p>
           <div className={`mt-2 flex items-center text-[10px] font-bold ${trendUp ? 'text-emerald-600' : 'text-amber-600'}`}>
             {trendUp ? <ArrowUpRight className="mr-1 h-3 w-3" /> : <ArrowDownRight className="mr-1 h-3 w-3" />}
             {trend}

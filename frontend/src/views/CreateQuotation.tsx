@@ -4,13 +4,13 @@ import { api, unwrapApiData } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { compressImage } from '../lib/compress';
-import { 
-  ChevronLeft, 
-  Send, 
-  IndianRupee, 
-  Package, 
-  Truck, 
-  ShieldCheck, 
+import {
+  ChevronLeft,
+  Send,
+  IndianRupee,
+  Package,
+  Truck,
+  ShieldCheck,
   CheckCircle2,
   Calendar,
   Building2,
@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { GstTaxPicker, calculateGstBreakdown } from '../features/shared/gstTax';
 
 interface Tender {
   id: number;
@@ -53,6 +54,10 @@ const getUploadedFileName = (file: { documentUrl?: string; originalName?: string
   }
 };
 
+const roundMoney = (value: number) => Number(value.toFixed(2));
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
+
 export default function CreateQuotation() {
   const pathname = usePathname() || '';
   const match = pathname.match(/\/seller\/tenders\/([^/]+)\/bid/);
@@ -68,6 +73,10 @@ export default function CreateQuotation() {
   const [formData, setFormData] = useState({
     unitPrice: '',
     quantity: '',
+    splitTaxRate: '',
+    igstTaxRate: '',
+    otherTaxRate: '',
+    discountPercent: '',
     deliveryDays: '',
     warranty: '',
     validTill: '',
@@ -76,6 +85,14 @@ export default function CreateQuotation() {
     fileAssetId: null as number | null,
     documentName: ''
   });
+  const subtotal = roundMoney(Number(formData.unitPrice || 0) * Number(formData.quantity || 0));
+  const discountPercent = Math.min(100, Math.max(0, Number(formData.discountPercent || 0)));
+  const discountAmount = roundMoney(subtotal * discountPercent / 100);
+  const taxableAmount = Math.max(0, roundMoney(subtotal - discountAmount));
+  const taxBreakdown = calculateGstBreakdown(taxableAmount, formData.splitTaxRate, formData.igstTaxRate, formData.otherTaxRate);
+  const taxRate = taxBreakdown.totalRate;
+  const taxAmount = taxBreakdown.totalTaxAmount;
+  const totalValue = roundMoney(taxableAmount + taxAmount);
 
   useEffect(() => {
     fetchTenderDetails();
@@ -165,12 +182,17 @@ export default function CreateQuotation() {
     if (!formData.unitPrice || !formData.quantity || !formData.deliveryDays) {
       return toast.error('Please fill in all required fields');
     }
+    if (discountPercent < 0 || discountPercent > 100) {
+      return toast.error('Discount must be a percentage between 0 and 100');
+    }
 
     setSubmitting(true);
     try {
       const res = await api.post(`/api/tenders/${id}/bids`, {
         unitPrice: Number(formData.unitPrice),
         quantity: Number(formData.quantity),
+        taxRate,
+        discountAmount,
         deliveryDays: Number(formData.deliveryDays),
         warranty: formData.warranty,
         validTill: formData.validTill ? new Date(formData.validTill).toISOString() : null,
@@ -199,14 +221,13 @@ export default function CreateQuotation() {
   if (!tender) return null;
 
   if (isSuccess) {
-    const totalValue = Number(formData.unitPrice) * Number(formData.quantity);
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-6 text-slate-900">
         <div className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 shadow-2xl p-8 text-center space-y-6 animate-in zoom-in-95 duration-300">
           <div className="mx-auto w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center border border-emerald-100 text-emerald-500 animate-bounce">
             <CheckCircle2 className="h-8 w-8" />
           </div>
-          
+
           <div className="space-y-2">
             <h2 className="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">Quotation Submitted</h2>
             <p className="text-sm text-slate-500 font-medium">Your proposal has been securely sent to the buyer.</p>
@@ -223,9 +244,9 @@ export default function CreateQuotation() {
                 <p className="text-xs font-mono font-bold text-slate-500">{tender.tenderId}</p>
               </div>
             </div>
-            
+
             <div className="h-px bg-slate-200" />
-            
+
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans">Unit Price</p>
@@ -243,20 +264,41 @@ export default function CreateQuotation() {
 
             <div className="h-px bg-slate-200" />
 
+            <div className="space-y-2 text-sm font-semibold text-slate-600">
+              <div className="flex items-center justify-between">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
+                <span>- {formatCurrency(discountAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Taxable Amount</span>
+                <span>{formatCurrency(taxableAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Tax ({taxBreakdown.label})</span>
+                <span>{formatCurrency(taxAmount)}</span>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-200" />
+
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider font-sans">Total Proposed Value</p>
-              <p className="text-xl font-black text-[#12335f]">₹{totalValue.toLocaleString()}</p>
+              <p className="text-xl font-black text-[#12335f]">{formatCurrency(totalValue)}</p>
             </div>
           </div>
 
           <div className="flex items-center justify-center gap-4 pt-2">
-            <Button 
+            <Button
               onClick={() => router.push('/seller/tenders')}
               className="bg-white border border-[#dadce0] text-slate-700 hover:bg-slate-50 h-10 px-5 rounded-md font-bold uppercase text-[10px] tracking-widest"
             >
               Browse Tenders
             </Button>
-            <Button 
+            <Button
               onClick={() => router.push('/quotations')}
               className="bg-[#12335f] hover:bg-[#0b2445] text-white h-10 px-5 rounded-md font-bold uppercase text-[10px] tracking-widest"
             >
@@ -271,7 +313,7 @@ export default function CreateQuotation() {
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="max-w-5xl mx-auto">
-        <button 
+        <button
           onClick={() => router.push('/seller/tenders')}
           className="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-bold text-xs uppercase tracking-widest mb-4 transition-colors"
         >
@@ -356,11 +398,11 @@ export default function CreateQuotation() {
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Unit Price (₹) *</label>
                       <div className="relative">
                         <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <input 
+                        <input
                           type="number"
                           placeholder="0.00"
                           value={formData.unitPrice}
-                          onChange={(e) => setFormData({...formData, unitPrice: e.target.value})}
+                          onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                           required
                         />
@@ -371,11 +413,11 @@ export default function CreateQuotation() {
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Quantity *</label>
                       <div className="relative">
                         <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <input 
+                        <input
                           type="number"
                           placeholder="e.g. 500"
                           value={formData.quantity}
-                          onChange={(e) => setFormData({...formData, quantity: e.target.value})}
+                          onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                           required
                         />
@@ -386,11 +428,11 @@ export default function CreateQuotation() {
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Delivery Time (Days) *</label>
                       <div className="relative">
                         <Truck className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <input 
+                        <input
                           type="number"
                           placeholder="e.g. 15"
                           value={formData.deliveryDays}
-                          onChange={(e) => setFormData({...formData, deliveryDays: e.target.value})}
+                          onChange={(e) => setFormData({ ...formData, deliveryDays: e.target.value })}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                           required
                         />
@@ -401,24 +443,56 @@ export default function CreateQuotation() {
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Warranty (Optional)</label>
                       <div className="relative">
                         <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <input 
+                        <input
                           type="text"
                           placeholder="e.g. 1 Year onsite"
                           value={formData.warranty}
-                          onChange={(e) => setFormData({...formData, warranty: e.target.value})}
+                          onChange={(e) => setFormData({ ...formData, warranty: e.target.value })}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-1 md:col-span-2">
+                      <GstTaxPicker
+                        splitRate={formData.splitTaxRate}
+                        igstRate={formData.igstTaxRate}
+                        additionalRate={formData.otherTaxRate}
+                        taxableAmount={taxableAmount}
+                        onChange={(next) => setFormData({ ...formData, splitTaxRate: next.splitRate, igstTaxRate: next.igstRate, otherTaxRate: next.additionalRate })}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Discount Percentage (Optional)</label>
+                      <div className="relative">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="0"
+                          value={formData.discountPercent}
+                          onChange={(e) => setFormData({ ...formData, discountPercent: e.target.value })}
+                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-3 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
+                        />
+                      </div>
+                      {discountPercent > 0 && (
+                        <p className="text-[10px] font-semibold text-slate-400">
+                          = {formatCurrency(discountAmount)} off subtotal
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Validity Date (Optional)</label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <input 
+                        <input
                           type="date"
                           value={formData.validTill}
-                          onChange={(e) => setFormData({...formData, validTill: e.target.value})}
+                          onChange={(e) => setFormData({ ...formData, validTill: e.target.value })}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all"
                         />
                       </div>
@@ -478,26 +552,76 @@ export default function CreateQuotation() {
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Additional Notes</label>
                     <div className="relative">
                       <FileText className="absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
-                      <textarea 
+                      <textarea
                         rows={3}
                         placeholder="Mention any special conditions, terms, or specifications..."
                         value={formData.note}
-                        onChange={(e) => setFormData({...formData, note: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all resize-none"
                       />
                     </div>
                   </div>
 
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Quotation Total</p>
+                    <div className="space-y-2 text-sm font-semibold text-slate-600">
+                      <div className="flex items-center justify-between">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ''}</span>
+                        <span>- {formatCurrency(discountAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Taxable Amount</span>
+                        <span>{formatCurrency(taxableAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Tax ({taxBreakdown.label})</span>
+                        <span>{formatCurrency(taxAmount)}</span>
+                      </div>
+                      {taxBreakdown.cgstAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>CGST ({taxBreakdown.cgstRate.toFixed(2)}%)</span>
+                          <span>{formatCurrency(taxBreakdown.cgstAmount)}</span>
+                        </div>
+                      )}
+                      {taxBreakdown.sgstAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>SGST ({taxBreakdown.sgstRate.toFixed(2)}%)</span>
+                          <span>{formatCurrency(taxBreakdown.sgstAmount)}</span>
+                        </div>
+                      )}
+                      {taxBreakdown.igstAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>IGST ({taxBreakdown.igstRate.toFixed(2)}%)</span>
+                          <span>{formatCurrency(taxBreakdown.igstAmount)}</span>
+                        </div>
+                      )}
+                      {taxBreakdown.additionalTaxAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>Other tax ({taxBreakdown.additionalRate.toFixed(2)}%)</span>
+                          <span>{formatCurrency(taxBreakdown.additionalTaxAmount)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-black text-[#12335f]">
+                        <span>Total</span>
+                        <span>{formatCurrency(totalValue)}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-2 flex items-center justify-end gap-3">
-                    <Button 
-                      type="button" 
+                    <Button
+                      type="button"
                       variant="ghost"
                       onClick={() => router.push('/seller/tenders')}
                       className="h-9 px-4 rounded-md font-bold uppercase text-[10px] tracking-widest text-slate-500 hover:text-slate-900 hover:bg-slate-100"
                     >
                       Cancel
                     </Button>
-                    <Button 
+                    <Button
                       type="submit"
                       disabled={submitting}
                       className="h-9 px-6 bg-[#12335f] hover:bg-[#0b2445] text-white rounded-md font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all active:scale-98 shadow-sm"

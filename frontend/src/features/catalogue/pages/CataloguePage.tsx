@@ -1,37 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import {
-  Boxes,
-  IndianRupee,
-  PackagePlus,
-  PackageSearch,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings2,
-  Store,
-  Wrench,
-  Grid,
-  List,
-  Eye,
-  ShoppingCart,
-  X,
-  Globe,
-  Tag,
-  Barcode,
-  Info,
-  FileText,
-  Mail,
-  MapPin,
-  ShieldCheck,
-  CalendarDays,
-  Building2,
-  Upload,
-  Trash2,
-  FileUp,
-  Loader2,
-  ImageIcon,
-  Paperclip
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -43,12 +13,15 @@ import { getApi, normalizeList, postApi } from '../../shared/apiClient';
 import { formatCurrency } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
+import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import type { CatalogueItemDto, CategoryDto } from '../../shared/types';
+import { GstTaxPicker, calculateGstBreakdown } from '../../shared/gstTax';
 import { catalogueApi } from '../api';
 import { getFileAssetPreview, type DocumentPreview, openFileAsset } from '../../../lib/files';
 import { DocumentPreviewModal } from '../../../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, ITEM_CONDITIONS } from '../../../constants/dropdowns';
-import { api } from '../../../lib/api';
+import { api, BASE_URL } from '../../../lib/api';
 import { compressImage } from '../../../lib/compress';
 
 type CatalogueMode = 'buyer' | 'seller' | 'admin';
@@ -64,6 +37,10 @@ const blankForm = {
   name: '',
   description: '',
   price: '',
+  splitTaxRate: '',
+  igstTaxRate: '0.00',
+  otherTaxRate: '',
+  discount: '0.00',
   hsnCode: '',
   unitOfMeasure: '',
   itemCondition: '',
@@ -96,16 +73,7 @@ const actionKey = (sellerId: unknown) => String(sellerId || '');
 const getCatalogueImageUrl = (fileId: number | string | undefined) => {
   if (!fileId) return '';
   const token = localStorage.getItem('token') || '';
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  let baseUrl = rawBaseUrl;
-  if (!baseUrl && typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      baseUrl = `${protocol}//${hostname}:5000`;
-    }
-  }
-  const cleanBase = (baseUrl || '').replace(/\/$/, '');
-  return `${cleanBase}/api/files/${fileId}/view?token=${encodeURIComponent(token)}`;
+  return `${BASE_URL}/api/files/${fileId}/view?token=${encodeURIComponent(token)}`;
 };
 
 type CatalogueMedia = {
@@ -240,6 +208,7 @@ const isProcurementApproved = (status?: string) =>
 
 export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode }) {
   const { user } = useAuth();
+  const router = useRouter();
   const [products, setProducts] = useState<CatalogueRecord[]>([]);
   const [services, setServices] = useState<CatalogueRecord[]>([]);
   const [categoryList, setCategoryList] = useState<CategoryDto[]>([]);
@@ -259,11 +228,14 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
   // Layout and modal states
   const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [sortKey, setSortKey] = useState<'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status'>('sr');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedDetailsItem, setSelectedDetailsItem] = useState<CatalogueRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<CatalogueRecord | null>(null);
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
   const [sellerLoading, setSellerLoading] = useState(false);
+  const [addingItemId, setAddingItemId] = useState<number | null>(null);
   const [buyerActions, setBuyerActions] = useState<Record<string, BuyerActionState>>({});
 
   // File upload state for catalogue form
@@ -274,7 +246,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'document') => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    
+
     setUploading(true);
     try {
       for (let i = 0; i < files.length; i++) {
@@ -283,7 +255,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           toast.error(`File ${file.name} is too large. Max size is 10MB.`);
           continue;
         }
-        
+
         const rawAsset = await uploadCatalogueAsset(file);
         if (!rawAsset.id) {
           toast.error(`Upload succeeded but ${file.name} was not saved with a file id.`);
@@ -345,7 +317,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         // A. Match by requirement item productId or name
         if (row.requirement?.items?.length) {
           const reqItem = row.requirement.items[0];
-          matchedItem = allItems.find(item => 
+          matchedItem = allItems.find(item =>
             (reqItem.productId && item.id === reqItem.productId) ||
             item.name.toLowerCase() === reqItem.itemName.toLowerCase()
           );
@@ -353,7 +325,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
         // B. Match by requirement title containing item name
         if (!matchedItem && row.requirement?.title) {
-          matchedItem = allItems.find(item => 
+          matchedItem = allItems.find(item =>
             row.requirement.title.includes(item.name)
           );
         }
@@ -380,8 +352,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       });
 
       normalizeList<any>(rfqRows).forEach(row => {
-        const matchedItem = allItems.find(item => 
-          (row.subject && row.subject.includes(item.name)) || 
+        const matchedItem = allItems.find(item =>
+          (row.subject && row.subject.includes(item.name)) ||
           (row.message && row.message.includes(item.name))
         );
 
@@ -453,7 +425,27 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       return matchesSearch && matchesKind && matchesStatus && matchesCategory && matchesPrice;
     });
   }, [categoryFilter, data, kindFilter, priceFilter, searchTerm, statusFilter]);
-  const { page, pageSize, pageItems: pagedItems, total, setPage, setPageSize } = usePagination(filtered, 18);
+
+  const sorted = useMemo(() => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    const valueOf = (item: CatalogueRecord): number | string => {
+      if (sortKey === 'name') return (item.name || '').toLowerCase();
+      if (sortKey === 'kind') return item.itemKind || '';
+      if (sortKey === 'category') return (item.category?.name || '').toLowerCase();
+      if (sortKey === 'seller') return (item.seller?.name || '').toLowerCase();
+      if (sortKey === 'price') return cataloguePrice(item);
+      if (sortKey === 'status') return (item.status || '').toLowerCase();
+      return Number(item.id || 0);
+    };
+    return [...filtered].sort((a, b) => {
+      const av = valueOf(a);
+      const bv = valueOf(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * direction;
+      return String(av).localeCompare(String(bv)) * direction;
+    });
+  }, [filtered, sortKey, sortDirection]);
+
+  const { page, pageSize, pageItems: pagedItems, total, setPage, setPageSize } = usePagination(sorted, 10);
 
   const averageValue = filtered.length ? filtered.reduce((sum, item) => sum + cataloguePrice(item), 0) / filtered.length : 0;
 
@@ -471,11 +463,14 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const openEditForm = (item: CatalogueRecord) => {
     setEditingItem(item);
     setFormKind(item.itemKind);
-    setShowForm(true);
     setForm({
       name: item.name || '',
       description: item.description || '',
       price: item.price === null || item.price === undefined ? '' : String(item.price),
+      splitTaxRate: '',
+      igstTaxRate: item.taxRate === null || item.taxRate === undefined ? '0.00' : String(item.taxRate),
+      otherTaxRate: '',
+      discount: item.discount === null || item.discount === undefined ? '0.00' : String(item.discount),
       hsnCode: item.hsnCode || '',
       unitOfMeasure: item.unitOfMeasure || '',
       itemCondition: item.itemCondition || '',
@@ -486,8 +481,16 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       categoryId: String(item.categoryId || '')
     });
     const media = catalogueMedia(item);
-    setUploadedImages(media.filter(file => file.kind === 'image').map(mediaToUploadedAsset));
-    setUploadedDocuments(media.filter(file => file.kind === 'document').map(mediaToUploadedAsset));
+    const mediaToAsset = (m: any) => ({
+      id: m.fileId,
+      fileId: m.fileId,
+      fileAssetId: m.fileId,
+      originalName: m.originalName || m.label,
+      mimeType: m.mimeType
+    });
+    setUploadedImages(media.filter(file => file.kind === 'image').map(mediaToAsset));
+    setUploadedDocuments(media.filter(file => file.kind === 'document').map(mediaToAsset));
+    setShowForm(true);
   };
 
   const openSellerProfile = async (seller: CatalogueRecord['seller']) => {
@@ -516,6 +519,25 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       return;
     }
     setSelectedPurchaseItem(item);
+  };
+
+  const handleAddToCart = async (item: CatalogueRecord) => {
+    if (buyerProcurementLocked) {
+      toast.error('Your buyer account must be approved by admin before purchase or RFQ actions are allowed.');
+      return;
+    }
+    setAddingItemId(item.id);
+    try {
+      const payload = item.itemKind === 'product'
+        ? { productId: item.id, quantity: 1 }
+        : { serviceId: item.id, quantity: 1 };
+      await postApi('/api/cart/items', payload);
+      toast.success(`${item.name} added to cart`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add to cart');
+    } finally {
+      setAddingItemId(null);
+    }
   };
 
   const deleteItem = async (item: CatalogueRecord) => {
@@ -552,7 +574,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     try {
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || undefined,
+        description: form.description.trim() || null,
         categoryId: form.categoryId ? Number(form.categoryId) : null,
         status: form.status,
         currency: 'INR',
@@ -560,16 +582,20 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         documentIds: uploadedAssetIds(uploadedDocuments),
         ...(formKind === 'product'
           ? {
-              price: form.price ? Number(form.price) : undefined,
-              hsnCode: form.hsnCode.trim() || undefined,
-              unitOfMeasure: form.unitOfMeasure.trim() || undefined,
-              itemCondition: form.itemCondition.trim() || undefined
-            }
+            price: form.price ? Number(form.price) : null,
+            taxRate: (form.splitTaxRate ? Number(form.splitTaxRate) : 0) + (form.igstTaxRate ? Number(form.igstTaxRate) : 0) + (form.otherTaxRate ? Number(form.otherTaxRate) : 0),
+            discount: form.discount ? Number(form.discount) : 0,
+            hsnCode: form.hsnCode.trim() || null,
+            unitOfMeasure: form.unitOfMeasure.trim() || null,
+            itemCondition: form.itemCondition.trim() || null
+          }
           : {
-              basePrice: form.basePrice ? Number(form.basePrice) : undefined,
-              pricingModel: form.pricingModel,
-              serviceArea: form.serviceArea.trim() || undefined
-            })
+            basePrice: form.basePrice ? Number(form.basePrice) : null,
+            taxRate: (form.splitTaxRate ? Number(form.splitTaxRate) : 0) + (form.igstTaxRate ? Number(form.igstTaxRate) : 0) + (form.otherTaxRate ? Number(form.otherTaxRate) : 0),
+            discount: form.discount ? Number(form.discount) : 0,
+            pricingModel: form.pricingModel,
+            serviceArea: form.serviceArea.trim() || null
+          })
       };
 
       if (editingItem) {
@@ -604,7 +630,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     }
   };
 
-  if (loading) return <LoadingState label="Loading marketplace..." />;
+  if (loading && products.length + services.length === 0) return <LoadingState label="Loading marketplace..." />;
 
   const title = mode === 'seller' ? 'Seller Marketplace' : mode === 'admin' ? 'Marketplace Review' : 'Buyer Marketplace';
   const subtitle = mode === 'seller'
@@ -614,7 +640,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       : 'Search approved products and services from active sellers.';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#059669]">{title}</p>
@@ -625,16 +651,19 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           {mode === 'seller' && (
             <>
               <Button disabled={!sellerApproved} onClick={() => openCreateForm('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <PackagePlus className="mr-2 h-4 w-4" />Product
+                <PackagePlus className="mr-2 h-4 w-4" /> Add Product
               </Button>
-              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} variant="outline" className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <Wrench className="mr-2 h-4 w-4" />Service
+              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
+                <Wrench className="mr-2 h-4 w-4" />Add Service
               </Button>
             </>
           )}
           <Button variant="outline" onClick={loadCatalogue} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">
-            <RefreshCw className="mr-2 h-4 w-4" />Refresh
+            <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />Refresh
           </Button>
+          {/* Standardised list/grid view toggle */}
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+
         </div>
       </div>
 
@@ -687,7 +716,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search name, seller, category..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
             </div>
-            
+
             <Button
               type="button"
               variant="outline"
@@ -697,60 +726,32 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               <Settings2 className="h-4 w-4 text-slate-500" />
               <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
             </Button>
-          </div>
 
-          <div className={cn(
-            "grid gap-3 items-center",
-            showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
-          )}>
-            <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="all">All types</option>
-              <option value="product">Products</option>
-              <option value="service">Services</option>
-            </select>
-            <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All categories</option>
-              {categories.map(category => <option key={category} value={category}>{category}</option>)}
-            </select>
-            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All statuses</option>
-              {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-            </select>
-            <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
-              <option value="">All prices</option>
-              <option value="high">Above Rs. 10k</option>
-              <option value="mid">Rs. 1k to 10k</option>
-              <option value="low">Below Rs. 1k</option>
-            </select>
-            
-            {/* Grid/List View switcher Toggle */}
-            <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-1 bg-slate-50 w-fit xl:ml-auto">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={cn(
-                  "p-1.5 rounded-md transition-all",
-                  viewMode === 'grid'
-                    ? "bg-white text-emerald-700 shadow-sm font-bold"
-                    : "text-slate-400 hover:text-slate-650"
-                )}
-                title="Grid View"
-              >
-                <Grid className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  "p-1.5 rounded-md transition-all",
-                  viewMode === 'list'
-                    ? "bg-white text-emerald-700 shadow-sm font-bold"
-                    : "text-slate-400 hover:text-slate-650"
-                )}
-                title="List View"
-              >
-                <List className="h-4 w-4" />
-              </button>
+            <div className={cn(
+              "grid gap-3 items-center",
+              showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
+            )}>
+              <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="all">All types</option>
+                <option value="product">Products</option>
+                <option value="service">Services</option>
+              </select>
+              <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All categories</option>
+                {categories.map(category => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All statuses</option>
+                {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+              </select>
+              <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                <option value="">All prices</option>
+                <option value="high">Above Rs. 10k</option>
+                <option value="mid">Rs. 1k to 10k</option>
+                <option value="low">Below Rs. 1k</option>
+              </select>
+
+
             </div>
           </div>
         </CardContent>
@@ -758,31 +759,267 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
       {filtered.length === 0 ? <EmptyState title="No marketplace items found matching filters" /> : (
         <>
-          <div className={cn(
-            viewMode === 'grid'
-              ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-              : "flex flex-col gap-3"
-          )}>
-            {pagedItems.map((item, index) => (
-              <CatalogueCard
-                key={`${item.itemKind}-${item.id}`}
-                item={item}
-                mode={mode}
-                viewMode={viewMode}
-                onEdit={openEditForm}
-                onDelete={deleteItem}
-                onViewDetails={setSelectedDetailsItem}
-                onPurchaseBid={openPurchaseBid}
-                canPurchase={buyerApproved}
-                onSellerClick={openSellerProfile}
-                actionState={buyerActions[`${item.itemKind}-${item.id}`]}
-                srNo={(page - 1) * pageSize + index + 1}
-              />
-            ))}
-          </div>
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
-          </div>
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {pagedItems.map((item, index) => (
+                <CatalogueCard
+                  key={`${item.itemKind}-${item.id}`}
+                  item={item}
+                  mode={mode}
+                  viewMode={viewMode}
+                  onEdit={openEditForm}
+                  onDelete={deleteItem}
+                  onViewDetails={setSelectedDetailsItem}
+                  onPurchaseBid={openPurchaseBid}
+                  onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
+                  addingToCart={addingItemId === item.id}
+                  canPurchase={buyerApproved}
+                  onSellerClick={openSellerProfile}
+                  actionState={buyerActions[`${item.itemKind}-${item.id}`]}
+                  srNo={(page - 1) * pageSize + index + 1}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="relative overflow-x-auto">
+                <table className="w-full min-w-[960px] table-auto text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      <th className="px-2 py-3 w-10 text-center">
+                        <CatalogueSortHead label="Sr." field="sr" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-14 text-center">Image</th>
+                      <th className="px-3 py-3 min-w-[180px]">
+                        <CatalogueSortHead label="Item" field="name" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-20 whitespace-nowrap">
+                        <CatalogueSortHead label="Type" field="kind" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-24 whitespace-nowrap">
+                        <CatalogueSortHead label="Category" field="category" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-20 whitespace-nowrap">
+                        <CatalogueSortHead label="HSN" field="hsn" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-28 whitespace-nowrap">
+                        <CatalogueSortHead label="Seller" field="seller" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="px-2 py-3 w-24 text-right whitespace-nowrap">
+                        <CatalogueSortHead label="Price" field="price" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} align="right" />
+                      </th>
+                      <th className="px-2 py-3 w-24 whitespace-nowrap">
+                        <CatalogueSortHead label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                      </th>
+                      <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pagedItems.map((item, index) => {
+                      const value = cataloguePrice(item);
+                      const status = item.status || 'DRAFT';
+                      const imgId = getItemImageId(item);
+                      const actionState = buyerActions[`${item.itemKind}-${item.id}`];
+                      const buyerStatusLabel = actionState?.purchase
+                        ? `Purchase ${String(actionState.purchase.status || 'requested').replace(/_/g, ' ')}`
+                        : actionState?.rfq
+                          ? `RFQ ${String(actionState.rfq.status || 'sent').replace(/_/g, ' ')}`
+                          : '';
+                      return (
+                        <tr key={`${item.itemKind}-${item.id}`} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-3 py-3 text-center text-xs font-black text-slate-400">
+                            {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetailsItem(item)}
+                              className="inline-block h-10 w-10 rounded-md overflow-hidden border border-slate-200 bg-slate-50 hover:opacity-85 transition-opacity"
+                              title="View details"
+                            >
+                              {imgId ? (
+                                <img src={getCatalogueImageUrl(imgId)} alt={item.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className={cn('flex h-full w-full items-center justify-center text-white', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
+                                  {item.itemKind === 'product' ? <PackageSearch className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
+                                </div>
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <EntityIdLink
+                                label={`${item.itemKind === 'product' ? 'PRD' : 'SVC'}-${item.id}`}
+                                id={item.id}
+                                size="sm"
+                                onClick={() => setSelectedDetailsItem(item)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetailsItem(item)}
+                              className="block text-left"
+                            >
+                              <p className="text-sm font-black text-neutral-900 hover:text-emerald-700 hover:underline text-wrap-anywhere leading-snug line-clamp-2">
+                                {item.name}
+                              </p>
+                            </button>
+                            <p className="mt-0.5 text-[11px] font-medium text-slate-500 line-clamp-1 text-wrap-anywhere">{item.description || 'No description'}</p>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-700">
+                              {item.itemKind}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 align-top  ">
+                            {item.category?.name ? (
+                              <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700 text-wrap-anywhere">
+                                {item.category.name}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">NA</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            {item.hsnCode ? (
+                              <span className="font-mono text-[11px] font-bold text-slate-700 text-wrap-anywhere">{item.hsnCode}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">NA</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            {item.seller?.name ? (
+                              mode === 'seller' ? (
+                                <span className="text-xs font-bold text-slate-700 text-wrap-anywhere">{item.seller.name}</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openSellerProfile(item.seller)}
+                                  className="inline-flex items-start gap-1 text-xs font-bold text-slate-700 hover:text-[#059669] hover:underline text-wrap-anywhere text-left"
+                                >
+                                  <Store className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
+                                  <span className="text-wrap-anywhere">{item.seller.name}</span>
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right whitespace-nowrap align-top">
+                            <p className="text-sm font-black text-emerald-700">{formatCurrency(value)}</p>
+                            {item.itemKind === 'product' && item.unitOfMeasure && (
+                              <p className="text-[10px] font-bold text-slate-400">/{item.unitOfMeasure}</p>
+                            )}
+                            {item.itemKind === 'service' && item.pricingModel && (
+                              <p className="text-[10px] font-bold text-slate-400">{item.pricingModel.replace(/_/g, ' ')}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top whitespace-nowrap min-w-[112px]">
+                            <Badge variant={status === 'ACTIVE' ? 'success' : status === 'ARCHIVED' || status === 'INACTIVE' ? 'warning' : 'default'}>
+                              {status.replace(/_/g, ' ')}
+                            </Badge>
+                            {buyerStatusLabel && (
+                              <p className="mt-1 text-[9px] font-black uppercase tracking-wide text-emerald-700">{buyerStatusLabel}</p>
+                            )}
+                          </td>
+                          <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
+                            <div className="inline-flex items-center justify-end gap-1">
+                              {mode === 'seller' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditForm(item)}
+                                    disabled={status === 'ARCHIVED'}
+                                    title="Edit item"
+                                    aria-label="Edit"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                                  >
+                                    <Settings2 className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteItem(item)}
+                                    title="Delete item"
+                                    aria-label="Delete"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {mode === 'admin' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDetailsItem(item)}
+                                    title="View details"
+                                    aria-label="Details"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                  {item.seller && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openSellerProfile(item.seller)}
+                                      title="View seller"
+                                      aria-label="Seller"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors shrink-0"
+                                    >
+                                      <Store className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {mode === 'buyer' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDetailsItem(item)}
+                                    title="View details"
+                                    aria-label="Details"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddToCart(item)}
+                                    disabled={!buyerApproved || addingItemId === item.id}
+                                    title={buyerApproved ? 'Add to cart' : 'Approval required'}
+                                    aria-label="Add to cart"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#12335f] text-[#12335f] hover:bg-[#12335f]/5 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shrink-0"
+                                  >
+                                    {addingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openPurchaseBid(item)}
+                                    disabled={!buyerApproved}
+                                    title={buyerApproved ? 'Purchase or request bid' : 'Approval required'}
+                                    aria-label="Purchase"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 transition-colors shrink-0"
+                                  >
+                                    <ShoppingCart className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
+            </div>
+          )}
+          {viewMode === 'grid' && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="marketplace items" />
+            </div>
+          )}
         </>
       )}
 
@@ -852,204 +1089,277 @@ function CatalogueForm({
   onChange: (field: keyof typeof blankForm, value: string) => void;
   onPreviewDocument: (preview: DocumentPreview) => void;
 }) {
+  const rawPrice = kind === 'product' ? toNumber(form.price) : toNumber(form.basePrice);
+  const discountPercent = toNumber(form.discount);
+
+  const subtotal = rawPrice;
+  const discountAmount = subtotal * (discountPercent / 100);
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxBreakdown = calculateGstBreakdown(taxableAmount, form.splitTaxRate, form.igstTaxRate, form.otherTaxRate);
+  const taxAmount = taxBreakdown.totalTaxAmount;
+  const finalTotal = taxableAmount + taxAmount;
+
   return (
-    <Card className="border-emerald-100 bg-emerald-50/15 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/10">
-      <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 pb-3">
-        <CardTitle className="text-sm font-black text-neutral-900 font-sans tracking-tight">
-          {isEdit ? `Edit ${kind === 'product' ? 'Product' : 'Service'}` : `Add New ${kind === 'product' ? 'Product' : 'Service'}`}
-        </CardTitle>
-        <Badge className={kind === 'product' ? 'bg-[#059669] text-white hover:bg-[#059669]' : 'bg-emerald-600 text-white hover:bg-emerald-600'}>
-          {kind}
-        </Badge>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-2">
-          <Input label={`${kind === 'product' ? 'Product' : 'Service'} Name`} value={form.name} onChange={event => onChange('name', event.target.value)} required placeholder="e.g. Structural Steel Beams, IT Advisory Services" className="bg-white" />
-          <Select label="Visibility Status" value={form.status} onChange={event => onChange('status', event.target.value)} className="bg-white">
-            <option value="ACTIVE">Active</option>
-            <option value="DRAFT">Draft</option>
-            <option value="INACTIVE">Inactive</option>
-          </Select>
-          <Select label="Category" value={form.categoryId} onChange={event => onChange('categoryId', event.target.value)} className="bg-white">
-            <option value="">Select Category</option>
-            {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
-          </Select>
-          {kind === 'product' ? (
-            <>
-              <Input label="Price (INR)" type="number" min="0" value={form.price} onChange={event => onChange('price', event.target.value)} placeholder="0.00" className="bg-white" />
-              <Select label="Unit Of Measure" value={form.unitOfMeasure} onChange={event => onChange('unitOfMeasure', event.target.value)} className="bg-white">
-                <option value="">Select Unit</option>
-                {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-              </Select>
-              <Select label="Item Condition" value={form.itemCondition} onChange={event => onChange('itemCondition', event.target.value)} className="bg-white">
-                <option value="">Select Condition</option>
-                {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </Select>
-              <Input label="HSN Code" value={form.hsnCode} onChange={event => onChange('hsnCode', event.target.value)} placeholder="8-digit HSN code" className="bg-white" />
-            </>
-          ) : (
-            <>
-              <Input label="Base Price (INR)" type="number" min="0" value={form.basePrice} onChange={event => onChange('basePrice', event.target.value)} placeholder="0.00" className="bg-white" />
-              <Select label="Pricing Model" value={form.pricingModel} onChange={event => onChange('pricingModel', event.target.value)} className="bg-white">
-                <option value="FIXED">Fixed</option>
-                <option value="HOURLY">Hourly</option>
-                <option value="DAILY">Daily</option>
-                <option value="MONTHLY">Monthly</option>
-                <option value="PER_PROJECT">Per Project</option>
-                <option value="CUSTOM">Custom</option>
-              </Select>
-              <Input label="Service Area" value={form.serviceArea} onChange={event => onChange('serviceArea', event.target.value)} placeholder="e.g. Delhi NCR, Pan-India" className="bg-white" />
-            </>
-          )}
-          <div className="lg:col-span-2">
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
-            <textarea value={form.description} onChange={event => onChange('description', event.target.value)} rows={3} placeholder="Provide descriptive details, technical specifications, and delivery terms..." className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20" />
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:p-4 animate-in fade-in duration-200">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-2xl sm:border sm:border-slate-200">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm', kind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
+              {kind === 'product' ? <PackageSearch className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#059669]">
+                {isEdit ? 'Edit Item' : 'New Listing'}
+              </p>
+              <h2 className="truncate text-base font-black leading-tight text-neutral-950 sm:text-lg">
+                {isEdit ? `Modify ${kind === 'product' ? 'Product' : 'Service'}` : `Add New ${kind === 'product' ? 'Product' : 'Service'}`}
+              </h2>
+            </div>
           </div>
+          <button onClick={onCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 border-t border-slate-250/80 pt-3">
-            {/* Image upload section */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Product/Service Images (Optional)
-              </label>
-              
-              {uploadedImages.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {uploadedImages.map(img => (
-                    <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
-                      <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              onPreviewDocument(await getFileAssetPreview({
-                                id: img.id,
-                                fileId: img.id,
-                                url: img.localUrl || getCatalogueImageUrl(img.id),
-                                originalName: img.originalName,
-                                mimeType: img.mimeType || 'image/png'
-                              }, img.originalName));
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : 'Unable to view image');
-                            }
-                          }}
-                          className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
-                          title="View image"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFile(img.id, 'image')}
-                          className="p-1.5 rounded bg-red-955 hover:bg-red-900 transition-colors cursor-pointer"
-                          title="Delete image"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-2">
+            <Input label={`${kind === 'product' ? 'Product' : 'Service'} Name`} value={form.name} onChange={event => onChange('name', event.target.value)} required placeholder="e.g. Structural Steel Beams, IT Advisory Services" className="bg-white" />
+            <Select label="Visibility Status" value={form.status} onChange={event => onChange('status', event.target.value)} className="bg-white">
+              <option value="ACTIVE">Active</option>
+              <option value="DRAFT">Draft</option>
+              <option value="INACTIVE">Inactive</option>
+            </Select>
+            <Select label="Category" value={form.categoryId} onChange={event => onChange('categoryId', event.target.value)} className="bg-white">
+              <option value="">Select Category</option>
+              {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
+            </Select>
+            {kind === 'product' ? (
+              <>
+                <Input label="Price (INR)" type="number" min="0" value={form.price} onChange={event => onChange('price', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Discount (%)" type="number" min="0" max="100" step="0.01" value={form.discount} onChange={event => onChange('discount', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Select label="Unit Of Measure" value={form.unitOfMeasure} onChange={event => onChange('unitOfMeasure', event.target.value)} className="bg-white">
+                  <option value="">Select Unit</option>
+                  {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                </Select>
+                <Select label="Item Condition" value={form.itemCondition} onChange={event => onChange('itemCondition', event.target.value)} className="bg-white">
+                  <option value="">Select Condition</option>
+                  {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </Select>
+                <Input label="HSN Code" value={form.hsnCode} onChange={event => onChange('hsnCode', event.target.value)} placeholder="8-digit HSN code" className="bg-white" />
+              </>
+            ) : (
+              <>
+                <Input label="Base Price (INR)" type="number" min="0" value={form.basePrice} onChange={event => onChange('basePrice', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Input label="Discount (%)" type="number" min="0" max="100" step="0.01" value={form.discount} onChange={event => onChange('discount', event.target.value)} placeholder="0.00" className="bg-white" />
+                <Select label="Pricing Model" value={form.pricingModel} onChange={event => onChange('pricingModel', event.target.value)} className="bg-white">
+                  <option value="FIXED">Fixed</option>
+                  <option value="HOURLY">Hourly</option>
+                  <option value="DAILY">Daily</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="PER_PROJECT">Per Project</option>
+                  <option value="CUSTOM">Custom</option>
+                </Select>
+                <Input label="Service Area" value={form.serviceArea} onChange={event => onChange('serviceArea', event.target.value)} placeholder="e.g. Delhi NCR, Pan-India" className="bg-white" />
+              </>
+            )}
+            <div className="lg:col-span-2">
+              <GstTaxPicker
+                splitRate={form.splitTaxRate}
+                igstRate={form.igstTaxRate}
+                additionalRate={form.otherTaxRate}
+                taxableAmount={taxableAmount}
+                onChange={next => {
+                  onChange('splitTaxRate', next.splitRate);
+                  onChange('igstTaxRate', next.igstRate);
+                  onChange('otherTaxRate', next.additionalRate);
+                }}
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
+              <textarea value={form.description} onChange={event => onChange('description', event.target.value)} rows={3} placeholder="Provide descriptive details, technical specifications, and delivery terms..." className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20" />
+            </div>
+
+            {/* Real-time Quotation Total Preview */}
+            <div className="lg:col-span-2 rounded-xl border border-emerald-100 bg-emerald-50/10 p-4 font-sans">
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 mb-3 flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                Quotation Total Summary
+              </h4>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Subtotal</p>
+                  <p className="text-sm font-black text-slate-900">{formatCurrency(subtotal)}</p>
                 </div>
-              )}
-              
-              <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
-                <Upload className="h-5 w-5 text-slate-400 mb-1" />
-                <span className="text-[10px] font-bold text-slate-500">Click to Upload Image</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={uploading}
-                  onChange={(e) => onFileUpload(e, 'image')}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Document upload section */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Specification Documents (Optional)
-              </label>
-              
-              {uploadedDocuments.length > 0 && (
-                <div className="space-y-1.5 mb-2">
-                  {uploadedDocuments.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <FileText className="h-3.5 w-3.5 text-[#059669] shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              onPreviewDocument(await getFileAssetPreview({
-                                id: doc.id,
-                                fileId: doc.id,
-                                url: doc.localUrl || getCatalogueImageUrl(doc.id),
-                                originalName: doc.originalName,
-                                mimeType: doc.mimeType
-                              }, doc.originalName));
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : 'Unable to view document');
-                            }
-                          }}
-                          className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
-                          title="View document"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFile(doc.id, 'document')}
-                          className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Discount ({discountPercent}%)</p>
+                  <p className="text-sm font-black text-red-650">-{formatCurrency(discountAmount)}</p>
                 </div>
-              )}
-              
-              <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
-                <FileUp className="h-5 w-5 text-slate-400 mb-1" />
-                <span className="text-[10px] font-bold text-slate-500">Click to Upload Document</span>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                  multiple
-                  disabled={uploading}
-                  onChange={(e) => onFileUpload(e, 'document')}
-                  className="hidden"
-                />
-              </label>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Taxable Amt</p>
+                  <p className="text-sm font-black text-slate-900">{formatCurrency(taxableAmount)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tax ({taxBreakdown.label})</p>
+                  <p className="text-sm font-black text-slate-950">+{formatCurrency(taxAmount)}</p>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Total</p>
+                  <p className="text-[10px] font-semibold text-slate-500">Estimated cost inclusive of tax & discount</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-black text-emerald-700">{formatCurrency(finalTotal)}</p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {uploading && (
-            <div className="lg:col-span-2 flex items-center justify-center gap-2 py-2 text-xs text-[#059669] font-bold bg-emerald-50 rounded-lg">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Uploading catalogue assets...</span>
+            <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 border-t border-slate-250/80 pt-3">
+              {/* Image upload section */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Product/Service Images (Optional)
+                </label>
+
+                {uploadedImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {uploadedImages.map(img => (
+                      <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
+                        <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                onPreviewDocument(await getFileAssetPreview({
+                                  id: img.id,
+                                  fileId: img.id,
+                                  url: img.localUrl || getCatalogueImageUrl(img.id),
+                                  originalName: img.originalName,
+                                  mimeType: img.mimeType || 'image/png'
+                                }, img.originalName));
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Unable to view image');
+                              }
+                            }}
+                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                            title="View image"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveFile(img.id, 'image')}
+                            className="p-1.5 rounded bg-red-955 hover:bg-red-900 transition-colors cursor-pointer"
+                            title="Delete image"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
+                  <Upload className="h-5 w-5 text-slate-400 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={uploading}
+                    onChange={(e) => onFileUpload(e, 'image')}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Document upload section */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Specification Documents (Optional)
+                </label>
+
+                {uploadedDocuments.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {uploadedDocuments.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileText className="h-3.5 w-3.5 text-[#059669] shrink-0" />
+                          <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                onPreviewDocument(await getFileAssetPreview({
+                                  id: doc.id,
+                                  fileId: doc.id,
+                                  url: doc.localUrl || getCatalogueImageUrl(doc.id),
+                                  originalName: doc.originalName,
+                                  mimeType: doc.mimeType
+                                }, doc.originalName));
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Unable to view document');
+                              }
+                            }}
+                            className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
+                            title="View document"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveFile(doc.id, 'document')}
+                            className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className="flex flex-col items-center justify-center border border-dashed border-slate-300 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-55 transition-colors">
+                  <FileUp className="h-5 w-5 text-slate-400 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Document</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                    multiple
+                    disabled={uploading}
+                    onChange={(e) => onFileUpload(e, 'document')}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
-          )}
 
-          <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 lg:col-span-2">
-            <Button type="button" variant="outline" onClick={onCancel} className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">Cancel</Button>
-            <Button type="submit" disabled={saving || uploading} className={cn("h-9 rounded-lg text-xs font-black uppercase tracking-wider text-white", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />{saving ? 'Saving...' : isEdit ? `Save Changes` : `Create ${kind}`}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            {uploading && (
+              <div className="lg:col-span-2 flex items-center justify-center gap-2 py-2 text-xs text-[#059669] font-bold bg-emerald-50 rounded-lg">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Uploading catalogue assets...</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 lg:col-span-2">
+              <Button type="button" variant="outline" onClick={onCancel} className="h-9 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">Cancel</Button>
+              <Button type="submit" disabled={saving || uploading} className={cn("h-9 rounded-lg text-xs font-black uppercase tracking-wider text-white", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />{saving ? 'Saving...' : isEdit ? `Save Changes` : `Create ${kind}`}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase = true, onEdit, onDelete, onViewDetails, onPurchaseBid, onSellerClick, srNo }: {
+function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase = true, onEdit, onDelete, onViewDetails, onPurchaseBid, onAddToCart, addingToCart, onSellerClick, srNo }: {
   item: CatalogueRecord;
   mode: CatalogueMode;
   viewMode?: 'grid' | 'list';
@@ -1059,6 +1369,8 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
   onDelete?: (item: CatalogueRecord) => void;
   onViewDetails?: (item: CatalogueRecord) => void;
   onPurchaseBid?: (item: CatalogueRecord) => void;
+  onAddToCart?: (item: CatalogueRecord) => void;
+  addingToCart?: boolean;
   onSellerClick?: (seller: CatalogueRecord['seller']) => void;
   srNo?: number;
 }) {
@@ -1090,7 +1402,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                 </div>
               )}
               {imgId ? (
-                <div 
+                <div
                   onClick={() => onViewDetails?.(item)}
                   className="h-12 w-12 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-85 transition-opacity"
                   title="Click to view details"
@@ -1104,7 +1416,13 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 
+                  <EntityIdLink
+                    label={`${item.itemKind === 'product' ? 'PRD' : 'SVC'}-${item.id}`}
+                    id={item.id}
+                    size="sm"
+                    onClick={() => onViewDetails?.(item)}
+                  />
+                  <h3
                     onClick={() => onViewDetails?.(item)}
                     className="break-words text-sm font-black text-neutral-900 leading-snug cursor-pointer hover:text-emerald-700 hover:underline"
                     title="Click to view details"
@@ -1121,7 +1439,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                   )}
                 </div>
                 <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500 leading-relaxed">{item.description || 'No description provided'}</p>
-                
+
                 {/* Info details */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-bold text-slate-400">
                   {mode === 'seller' ? (
@@ -1137,7 +1455,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                   )}
                   {item.itemKind === 'product' && item.itemCondition && (
                     <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] uppercase font-black tracking-wider">
-                      {item.itemCondition.replace(/_/g, ' ')}
+                      {ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')}
                     </span>
                   )}
                   {item.itemKind === 'service' && item.pricingModel && (
@@ -1146,13 +1464,13 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                 </div>
               </div>
             </div>
-            
+
             <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 shrink-0 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0">
               <div className="text-right">
                 <p className="text-sm font-black text-emerald-700 bg-emerald-50/50 border border-emerald-100 px-2.5 py-1 rounded inline-block">{formatCurrency(value)}</p>
                 {buyerStatusLabel && <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">{buyerStatusLabel}</p>}
               </div>
-              
+
               {/* Actions */}
               <div className="flex items-center gap-1.5">
                 {mode === 'seller' && onEdit && onDelete && (
@@ -1209,6 +1527,19 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                       <Eye className="mr-1 h-3 w-3 text-slate-400" />
                       Details
                     </Button>
+                    {onAddToCart && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onAddToCart(item)}
+                        disabled={!canPurchase || !!addingToCart}
+                        title={canPurchase ? 'Add to organisation cart' : 'Approval required'}
+                        className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider border-[#12335f] text-[#12335f] hover:bg-[#12335f]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ShoppingCart className="mr-1 h-3 w-3" />
+                        {addingToCart ? 'Adding...' : 'Add to Cart'}
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       onClick={() => onPurchaseBid?.(item)}
@@ -1236,7 +1567,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
         <div>
           <div className="flex items-start gap-3">
             {imgId ? (
-              <div 
+              <div
                 onClick={() => onViewDetails?.(item)}
                 className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-85 transition-opacity"
                 title="Click to view details"
@@ -1255,7 +1586,13 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                     Sr. No. {srNo}
                   </span>
                 )}
-                <h3 
+                <EntityIdLink
+                  label={`${item.itemKind === 'product' ? 'PRD' : 'SVC'}-${item.id}`}
+                  id={item.id}
+                  size="sm"
+                  onClick={() => onViewDetails?.(item)}
+                />
+                <h3
                   onClick={() => onViewDetails?.(item)}
                   className="break-words text-sm font-black text-neutral-900 leading-snug cursor-pointer hover:text-emerald-700 hover:underline"
                   title="Click to view details"
@@ -1389,6 +1726,47 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
   );
 }
 
+/**
+ * Sort header used in the marketplace table view. Toggles between ascending,
+ * descending, and unsorted states for the column it represents.
+ */
+function CatalogueSortHead({
+  label,
+  field,
+  sortKey,
+  sortDirection,
+  onToggle,
+  align = 'left'
+}: {
+  label: string;
+  field: 'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status' | 'hsn';
+  sortKey: string;
+  sortDirection: 'asc' | 'desc';
+  onToggle: (field: any) => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const active = sortKey === field;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(field)}
+      className={cn(
+        'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest hover:text-emerald-700 transition-colors',
+        active ? 'text-[#12335f]' : 'text-slate-500',
+        align === 'right' && 'justify-end w-full',
+        align === 'center' && 'justify-center w-full'
+      )}
+    >
+      {label}
+      {active ? (
+        sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
+  );
+}
+
 function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSellerClick, onPurchaseBid, onPreviewDocument, onClose }: {
   item: CatalogueRecord;
   mode: CatalogueMode;
@@ -1426,17 +1804,17 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
   const hasPrice = value > 0;
   const metaTiles = item.itemKind === 'product'
     ? [
-        { label: 'Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
-        { label: 'Unit of Measure', value: item.unitOfMeasure || 'Not specified' },
-        { label: 'HSN Code', value: item.hsnCode || 'Not specified' },
-        { label: 'Condition', value: item.itemCondition ? item.itemCondition.replace(/_/g, ' ') : 'Not specified' }
-      ]
+      { label: 'Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
+      { label: 'Unit of Measure', value: item.unitOfMeasure || 'Not specified' },
+      { label: 'HSN Code', value: item.hsnCode || 'Not specified' },
+      { label: 'Condition', value: item.itemCondition ? (ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')) : 'Not specified' }
+    ]
     : [
-        { label: 'Base Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
-        { label: 'Pricing Model', value: item.pricingModel ? item.pricingModel.replace(/_/g, ' ') : 'Not specified' },
-        { label: 'Service Area', value: item.serviceArea || 'Not specified' },
-        { label: 'Category', value: item.category?.name || 'Not specified' }
-      ];
+      { label: 'Base Price', value: hasPrice ? formatCurrency(value) : 'Price on request', tone: 'value' },
+      { label: 'Pricing Model', value: item.pricingModel ? item.pricingModel.replace(/_/g, ' ') : 'Not specified' },
+      { label: 'Service Area', value: item.serviceArea || 'Not specified' },
+      { label: 'Category', value: item.category?.name || 'Not specified' }
+    ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:p-4">
@@ -1540,6 +1918,56 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
                   {item.description || 'No description provided.'}
                 </p>
               </section>
+
+              {/* Pricing & Taxation Breakdown */}
+              {(() => {
+                const taxPercent = toNumber(item.taxRate || 0);
+                const discountPercent = toNumber(item.discount || 0);
+                const subtotal = value;
+                const discountAmount = subtotal * (discountPercent / 100);
+                const taxableAmount = Math.max(0, subtotal - discountAmount);
+                const taxAmount = taxableAmount * (taxPercent / 100);
+                const finalTotal = taxableAmount + taxAmount;
+
+                return (
+                  <section className="rounded-xl border border-emerald-100 bg-emerald-50/10 p-4 font-sans">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800 mb-3 flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                      Pricing & Quotation Breakdown
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Base Price</p>
+                        <p className="text-sm font-black text-slate-900">{hasPrice ? formatCurrency(subtotal) : 'Price on Request'}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-550">Discount ({discountPercent}%)</p>
+                        <p className="text-sm font-black text-red-650">-{formatCurrency(discountAmount)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Taxable Amt</p>
+                        <p className="text-sm font-black text-slate-900">{formatCurrency(taxableAmount)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">GST ({taxPercent}% total)</p>
+                        <p className="text-sm font-black text-slate-950">+{formatCurrency(taxAmount)}</p>
+                        {taxPercent > 0 && (
+                          <p className="text-[9px] font-bold text-slate-500">IGST {taxPercent}% or CGST+SGST {taxPercent / 2}% + {taxPercent / 2}%</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-800">Final Total</p>
+                        <p className="text-[9px] font-semibold text-slate-500">Estimated cost inclusive of tax & discount</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-emerald-700">{hasPrice ? formatCurrency(finalTotal) : 'Price on Request'}</p>
+                      </div>
+                    </div>
+                  </section>
+                );
+              })()}
 
               <section className="grid grid-cols-2 gap-2">
                 {metaTiles.map(tile => (
@@ -1828,7 +2256,7 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
                 {item.itemCondition && (
                   <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase">
                     <span>Condition</span>
-                    <span className="text-slate-700">{item.itemCondition.replace(/_/g, ' ')}</span>
+                    <span className="text-slate-700">{ITEM_CONDITIONS.find(c => c.value === item.itemCondition)?.label || item.itemCondition.replace(/_/g, ' ')}</span>
                   </div>
                 )}
                 {item.seller && (
@@ -1926,11 +2354,10 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
                   />
                   <label
                     htmlFor="rfq-quote-doc"
-                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${
-                      docUrl
-                        ? 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    }`}
+                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${docUrl
+                      ? 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
                   >
                     {isUploadingDoc ? 'Uploading...' : docUrl ? 'Change' : 'Upload'}
                   </label>

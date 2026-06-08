@@ -4,7 +4,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
-import { User, Lock, Mail, Shield, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { User, Lock, Mail, Shield, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import Link from 'next/link';
 
 export default function Profile() {

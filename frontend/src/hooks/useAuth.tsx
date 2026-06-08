@@ -6,7 +6,8 @@ interface User {
   name: string;
   email: string;
   mobile?: string;
-  role: 'seller' | 'buyer' | 'admin';
+  role: 'seller' | 'buyer' | 'admin' | 'master_admin';
+  isDualRole?: boolean;
   registrationStatus?: 'incomplete' | 'completed';
   onboardingStatus: 'pending' | 'pending_validation' | 'under_compliance_review' | 'resubmission_required' | 'approved_for_procurement' | 'approved' | 'rejected';
   status?: string;
@@ -15,9 +16,20 @@ interface User {
   twoFactorEnabled?: boolean;
   adminFeedback?: string;
   permissions?: string[];
+  enabledFeatures?: string[];
   sellerProfile?: any;
   buyerProfile?: any;
   organizationId?: number;
+  companyId?: number | null;
+  company?: {
+    id: number;
+    name: string;
+    shortName?: string | null;
+    portalDisplayName: string;
+    logoUrl?: string | null;
+    district?: string | null;
+    state?: string | null;
+  } | null;
   organization?: {
     id: number;
     organizationName: string;
@@ -51,7 +63,7 @@ interface AuthContextType {
   loading: boolean;
   login: (token: string, user: User, refreshToken?: string) => void;
   logout: () => void;
-  refreshUser: () => Promise<void>;
+  refreshUser: (options?: { skipCache?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -94,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     api.invalidate();
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (options?: { skipCache?: boolean }) => {
     let currentToken = localStorage.getItem('token');
     if (!currentToken) {
       setLoading(false);
@@ -108,15 +120,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     document.cookie = `token=${currentToken}; path=/; max-age=900; SameSite=Lax`;
 
     const headers = { Authorization: `Bearer ${currentToken}` };
-    const cachedMe = api.peek('/api/auth/me', { headers });
-    if (cachedMe?.user) {
-      setUser(cachedMe.user);
-      localStorage.setItem('msme_user_cache', JSON.stringify(cachedMe.user));
-      setLoading(false);
+    
+    if (!options?.skipCache) {
+      const cachedMe = api.peek('/api/auth/me', { headers });
+      if (cachedMe?.user) {
+        setUser(cachedMe.user);
+        localStorage.setItem('msme_user_cache', JSON.stringify(cachedMe.user));
+        setLoading(false);
+      }
     }
 
     try {
-      const res = await api.fetch('/api/auth/me', { headers });
+      const res = await api.fetch('/api/auth/me', { headers, skipCache: options?.skipCache });
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
@@ -195,6 +210,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(token);
     setUser(user);
     setLoading(false);
+    const guestCartToken = localStorage.getItem('jsg_guest_cart_token');
+    if (guestCartToken && user.role === 'buyer') {
+      void api.post('/api/cart/merge-guest', { cartToken: guestCartToken }, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        if (res.ok) localStorage.removeItem('jsg_guest_cart_token');
+      }).catch(() => undefined);
+    }
   }, []);
 
   return (

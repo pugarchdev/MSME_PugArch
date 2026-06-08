@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getApi, normalizeList, normalizePaginated } from './apiClient';
+import { getApi, normalizeList, normalizePaginated, peekApi } from './apiClient';
 
 export type ViewMode = 'list' | 'grid';
 
-export const useResponsiveViewMode = () => {
+export const useResponsiveViewMode = (storageKey?: string) => {
   const [viewMode, setViewModeState] = useState<ViewMode>('list');
   const hasManualSelection = useRef(false);
 
   useEffect(() => {
+    const savedMode = storageKey ? window.localStorage.getItem(storageKey) : null;
+    if (savedMode === 'list' || savedMode === 'grid') {
+      hasManualSelection.current = true;
+      setViewModeState(savedMode);
+      return;
+    }
+
     const mobileQuery = window.matchMedia('(max-width: 767px)');
     const applyDeviceDefault = () => {
       if (!hasManualSelection.current) {
@@ -19,12 +26,13 @@ export const useResponsiveViewMode = () => {
     applyDeviceDefault();
     mobileQuery.addEventListener('change', applyDeviceDefault);
     return () => mobileQuery.removeEventListener('change', applyDeviceDefault);
-  }, []);
+  }, [storageKey]);
 
   const setViewMode = useCallback((mode: ViewMode) => {
     hasManualSelection.current = true;
+    if (storageKey) window.localStorage.setItem(storageKey, mode);
     setViewModeState(mode);
-  }, []);
+  }, [storageKey]);
 
   return [viewMode, setViewMode] as const;
 };
@@ -50,11 +58,18 @@ export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
       const result = await getApi<T>(endpoint, false);
       return (isArray ? (normalizeList(result) as T) : (result as T));
     },
-    // Stale data is shown immediately; revalidation happens in the background.
-    // The React Query cache itself preserves last-known-good data across
-    // component unmounts, so navigation back to a page is instant.
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    placeholderData: (previous) => {
+      if (previous !== undefined) return previous;
+      const cached = peekApi<T>(endpoint);
+      if (cached !== null) {
+        return (isArray ? (normalizeList(cached) as any) : (cached as any));
+      }
+      return undefined;
+    },
+    // Inherit the global staleTime/gcTime defaults from QueryClient. Those
+    // are tuned (15 min stale, 60 min gc) so revisiting a feature page
+    // within a session is instant. Hardcoding shorter windows here would
+    // override that and reintroduce the spinner-on-back-nav behavior.
     retry: 2
   });
 
@@ -82,7 +97,7 @@ export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
   const loading = query.isLoading && query.data === undefined && override === null;
   const error = query.error instanceof Error ? query.error.message : query.error ? String(query.error) : null;
 
-  return useMemo(() => ({ data, loading, error, reload, setData }), [data, loading, error, reload, setData]);
+  return useMemo(() => ({ data, loading, refreshing: query.isFetching, error, reload, setData }), [data, loading, query.isFetching, error, reload, setData]);
 };
 
 const endpointWithParams = (endpoint: string, params: Record<string, string | number | undefined>) => {
@@ -121,9 +136,17 @@ export const usePaginatedFeatureQuery = <T,>(
       const body = await getApi<unknown>(requestEndpoint, false);
       return normalizePaginated<T>(body);
     },
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
-    placeholderData: previous => previous,
+    // Inherit global staleTime/gcTime so paginated lists stay cached for
+    // the session. placeholderData keeps the previous page visible while
+    // a new page loads, so pagination doesn't flash a blank state.
+    placeholderData: (previous) => {
+      if (previous !== undefined) return previous;
+      const cached = peekApi<unknown>(requestEndpoint);
+      if (cached !== null) {
+        return normalizePaginated<T>(cached);
+      }
+      return undefined;
+    },
     retry: 2
   });
 
@@ -164,6 +187,7 @@ export const usePaginatedFeatureQuery = <T,>(
     () => ({
       records,
       loading,
+      refreshing: query.isFetching,
       error,
       reload,
       setRecords,
@@ -173,7 +197,7 @@ export const usePaginatedFeatureQuery = <T,>(
       setPage,
       setPageSize
     }),
-    [records, loading, error, reload, setRecords, page, pageSize, total, setPageSize]
+    [records, loading, query.isFetching, error, reload, setRecords, page, pageSize, total, setPageSize]
   );
 };
 

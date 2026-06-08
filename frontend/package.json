@@ -3,12 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ../tools/dev-port-picker.js",
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "audit:deps": "npm audit --workspace=frontend --audit-level=high",
+    "audit:deps": "npm audit --audit-level=high",
     "security:check": "npm run typecheck && npm run audit:deps"
   },
   "dependencies": {
@@ -35,6 +35,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
+    "agentation": "^3.0.2",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2"

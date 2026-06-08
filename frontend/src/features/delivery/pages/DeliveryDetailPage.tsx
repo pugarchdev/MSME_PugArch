@@ -12,15 +12,17 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ClipboardList,
   FileText,
+  Package,
   RefreshCw,
   ShieldAlert,
   Star,
   Truck,
   Upload,
-  UploadCloud,
+  Wallet,
   X
 } from 'lucide-react';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -71,6 +73,89 @@ const fieldLabel = 'text-[10px] font-black uppercase tracking-widest text-slate-
 const sectionHeader = 'text-[11px] font-black uppercase tracking-widest text-[#12335f]';
 const inputBase = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#12335f]/30';
 const textareaBase = `${inputBase} h-24 py-2`;
+
+/**
+ * Curated list of logistics partners shown in the "Select logistics partner"
+ * dropdown. These are surfaced regardless of what the API returns so sellers
+ * always have the full national carrier roster to choose from.
+ */
+const LOGISTICS_PARTNER_NAMES = [
+  'Allcargo Logistics Ltd',
+  'Mahindra Logistics',
+  'TVS Supply Chain Solutions',
+  'TCI Express',
+  'Transport Corporation of India (TCI)',
+  'VRL Logistics',
+  'Safexpress',
+  'Navata Road Transport',
+  'Balmer Lawrie & Co. Ltd',
+  'Rhenus Logistics India',
+  'DB Schenker India',
+  'Jeena & Company',
+  'WheelsEye',
+  'LEAP India',
+  'Godamwale',
+  'Indialand Logipark',
+  'FM Logistic India',
+  'Gati Express & Supply Chain Pvt. Ltd.',
+  'DHL Supply Chain India',
+  'Kerry Indev Logistics',
+  'Om Logistics',
+  'Agarwal Packers and Movers Ltd',
+  'Future Supply Chain Solutions',
+  'ColdEX Logistics',
+  'Snowman Logistics',
+  'CJ Darcl Logistics',
+  'Container Corporation of India (CONCOR)',
+  'Blue Dart Express Ltd',
+  'Delhivery Ltd',
+  'Xpressbees',
+  'Ecom Express'
+];
+
+/**
+ * Collapsible section wrapper used across the delivery detail page. Renders a
+ * clickable header (with optional icon + meta) that expands/collapses the body.
+ */
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  defaultOpen = true,
+  meta,
+  children,
+  className
+}: {
+  title: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+  defaultOpen?: boolean;
+  meta?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card className={className}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2">
+          {Icon && <Icon className="h-4 w-4 text-[#12335f]" />}
+          <span className={sectionHeader}>{title}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          {meta}
+          <ChevronDown
+            className={cn('h-4 w-4 text-slate-400 transition-transform duration-200', open && 'rotate-180')}
+          />
+        </span>
+      </button>
+      {open && <div className="border-t border-slate-100 px-4 py-4">{children}</div>}
+    </Card>
+  );
+}
 
 interface DeliveryDetailPageProps {
   deliveryId: number;
@@ -135,7 +220,7 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
         <div className="flex items-center gap-2">
           {onClose && (
             <Button variant="outline" onClick={onClose} className="h-10 rounded-lg text-xs font-black uppercase">
-              Close
+              Back
             </Button>
           )}
           <Button
@@ -148,8 +233,8 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
         </div>
       </div>
 
-      <Card>
-        <CardContent className="grid grid-cols-1 gap-3 p-4 md:grid-cols-4">
+      <CollapsibleSection title="Delivery Overview" icon={Package} defaultOpen>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <Info label="Status">
             <DeliveryStatusBadge status={delivery.status} />
           </Info>
@@ -160,8 +245,8 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
           <Info label="Address" value={po?.deliveryAddress || 'Address not set'} />
           <Info label="PO Value" value={formatCurrency(po?.amount || po?.totalValue)} />
           <Info label="Settlement" value={delivery.settlement?.status || 'PENDING'} />
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleSection>
 
       {/* Rating CTA - only when delivery is in a rate-able state. */}
       {(accessRole === 'buyer' || accessRole === 'seller') && delivery.purchaseOrderId && (
@@ -184,19 +269,17 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              <h2 className={sectionHeader}>Tracking Timeline</h2>
-              <DeliveryTimeline status={delivery.status} events={delivery.events} statusLogs={delivery.statusLogs} />
-            </CardContent>
-          </Card>
+          <CollapsibleSection title="Tracking Timeline" icon={Truck} defaultOpen>
+            <DeliveryTimeline status={delivery.status} events={delivery.events} statusLogs={delivery.statusLogs} />
+          </CollapsibleSection>
 
-          <Card>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className={sectionHeader}>Documents</h2>
-                <span className="text-[10px] font-bold uppercase text-slate-400">{docs.length} files</span>
-              </div>
+          <CollapsibleSection
+            title="Documents"
+            icon={FileText}
+            defaultOpen
+            meta={<span className="text-[10px] font-bold uppercase text-slate-400">{docs.length} files</span>}
+          >
+            <div className="space-y-3">
               {docs.length === 0 ? (
                 <p className="text-xs font-semibold text-slate-500">No documents uploaded yet.</p>
               ) : (
@@ -230,8 +313,8 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
               {accessRole && accessRole !== 'dispute' && (
                 <DocumentUploadForm deliveryId={delivery.id} />
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </CollapsibleSection>
         </div>
 
         <div className="space-y-4">
@@ -334,15 +417,96 @@ function RatingCTACard({
 
 function SellerActions({ delivery, partners }: { delivery: DeliveryDetailDto; partners: LogisticsPartnerDto[] }) {
   const [rejectReason, setRejectReason] = useState('');
-  const [packForm, setPackForm] = useState({ packageWeightKg: '', packageDimensions: '', packageCount: '' });
+  const [packForm, setPackForm] = useState({
+    packageWeightKg: delivery.packageWeightKg != null ? String(delivery.packageWeightKg) : '',
+    packageDimensions: delivery.packageDimensions || '',
+    packageCount: delivery.packageCount != null ? String(delivery.packageCount) : ''
+  });
   const [dispatchForm, setDispatchForm] = useState({
     trackingNumber: delivery.trackingNumber || '',
     carrierName: delivery.carrierName || '',
-    logisticsPartnerId: delivery.logisticsPartnerId ? String(delivery.logisticsPartnerId) : '',
+    logisticsPartnerId: delivery.logisticsPartnerId
+      ? String(delivery.logisticsPartnerId)
+      : delivery.logisticsPartnerName
+        ? `name:${delivery.logisticsPartnerName}`
+        : '',
     ewayBillNumber: delivery.ewayBillNumber || '',
     courierReceiptNumber: delivery.courierReceiptNumber || '',
     expectedDelivery: delivery.expectedDelivery ? delivery.expectedDelivery.split('T')[0] : ''
   });
+
+  /**
+   * Snapshots of what is currently persisted on the server. We compare the
+   * live form against these to decide whether there are unsaved changes, so the
+   * Confirm / Save buttons can disable themselves once everything is saved.
+   */
+  const savedPack = useMemo(
+    () => ({
+      packageWeightKg: delivery.packageWeightKg != null ? String(delivery.packageWeightKg) : '',
+      packageDimensions: delivery.packageDimensions || '',
+      packageCount: delivery.packageCount != null ? String(delivery.packageCount) : ''
+    }),
+    [delivery.packageWeightKg, delivery.packageDimensions, delivery.packageCount]
+  );
+
+  const savedDispatch = useMemo(
+    () => ({
+      trackingNumber: delivery.trackingNumber || '',
+      carrierName: delivery.carrierName || '',
+      logisticsPartnerId: delivery.logisticsPartnerId
+        ? String(delivery.logisticsPartnerId)
+        : delivery.logisticsPartnerName
+          ? `name:${delivery.logisticsPartnerName}`
+          : '',
+      ewayBillNumber: delivery.ewayBillNumber || '',
+      courierReceiptNumber: delivery.courierReceiptNumber || '',
+      expectedDelivery: delivery.expectedDelivery ? delivery.expectedDelivery.split('T')[0] : ''
+    }),
+    [
+      delivery.trackingNumber,
+      delivery.carrierName,
+      delivery.logisticsPartnerId,
+      delivery.logisticsPartnerName,
+      delivery.ewayBillNumber,
+      delivery.courierReceiptNumber,
+      delivery.expectedDelivery
+    ]
+  );
+
+  const hasPackData = !!(packForm.packageWeightKg.trim() || packForm.packageDimensions.trim() || packForm.packageCount.trim());
+  const isPackDirty = JSON.stringify(savedPack) !== JSON.stringify(packForm);
+  const packSaved = hasPackData && !isPackDirty;
+
+  const hasDispatchData = Object.values(dispatchForm).some(v => v.trim());
+  const isDispatchDirty = JSON.stringify(savedDispatch) !== JSON.stringify(dispatchForm);
+  const dispatchSaved = hasDispatchData && !isDispatchDirty;
+
+  /**
+   * Build the dropdown options. Known partners from the API keep their numeric
+   * id (so the backend can link the record). Curated national carriers that the
+   * API doesn't know about are passed by name via a `name:` prefixed value.
+   */
+  const partnerOptions = useMemo(() => {
+    const byName = new Map<string, { value: string; name: string }>();
+    for (const p of partners) {
+      byName.set(p.name.trim().toLowerCase(), { value: String(p.id), name: p.name });
+    }
+    const options: { value: string; name: string }[] = [];
+    const seen = new Set<string>();
+    for (const name of LOGISTICS_PARTNER_NAMES) {
+      const key = name.trim().toLowerCase();
+      const existing = byName.get(key);
+      options.push(existing ?? { value: `name:${name}`, name });
+      seen.add(key);
+    }
+    // Surface any extra API partners not covered by the curated list.
+    for (const p of partners) {
+      if (!seen.has(p.name.trim().toLowerCase())) {
+        options.push({ value: String(p.id), name: p.name });
+      }
+    }
+    return options;
+  }, [partners]);
 
   const acceptMut = useSellerAcceptDelivery(delivery.id);
   const rejectMut = useSellerRejectDelivery(delivery.id);
@@ -376,24 +540,29 @@ function SellerActions({ delivery, partners }: { delivery: DeliveryDetailDto; pa
       { loading: 'Marking as packed...', success: 'Order packed', error: 'Failed to mark packed' }
     );
 
-  const submitDispatch = () =>
-    runWithToast(
+  const submitDispatch = () => {
+    const partnerValue = dispatchForm.logisticsPartnerId;
+    const isNamed = partnerValue.startsWith('name:');
+    const logisticsPartnerId = !isNamed && partnerValue ? Number(partnerValue) : undefined;
+    const logisticsPartnerName = isNamed ? partnerValue.slice('name:'.length) : undefined;
+    return runWithToast(
       () =>
         dispatchMut.mutateAsync({
           trackingNumber: dispatchForm.trackingNumber || undefined,
           carrierName: dispatchForm.carrierName || undefined,
-          logisticsPartnerId: dispatchForm.logisticsPartnerId ? Number(dispatchForm.logisticsPartnerId) : undefined,
+          logisticsPartnerId,
+          logisticsPartnerName,
           ewayBillNumber: dispatchForm.ewayBillNumber || undefined,
           courierReceiptNumber: dispatchForm.courierReceiptNumber || undefined,
           expectedDelivery: dispatchForm.expectedDelivery || undefined
         }),
       { loading: 'Saving dispatch details...', success: 'Dispatch details saved', error: 'Failed to save details' }
     );
+  };
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-4">
-        <h2 className={sectionHeader}>Seller Actions</h2>
+    <CollapsibleSection title="Seller Actions" icon={Truck} defaultOpen>
+      <div className="space-y-4">
         {delivery.status === 'CREATED' && (
           <div className="space-y-2">
             <Button
@@ -422,28 +591,52 @@ function SellerActions({ delivery, partners }: { delivery: DeliveryDetailDto; pa
 
         {(delivery.status === 'SELLER_ACCEPTED' || delivery.status === 'PACKED') && (
           <div className="space-y-2">
-            <p className={fieldLabel}>Mark as packed</p>
+            <div className="flex items-center justify-between">
+              <p className={fieldLabel}>Mark as packed</p>
+              {packSaved && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+                </span>
+              )}
+            </div>
             <Input placeholder="Weight (kg)" value={packForm.packageWeightKg} onChange={e => setPackForm(s => ({ ...s, packageWeightKg: e.target.value }))} />
             <Input placeholder="Dimensions (LxWxH)" value={packForm.packageDimensions} onChange={e => setPackForm(s => ({ ...s, packageDimensions: e.target.value }))} />
             <Input placeholder="Package count" value={packForm.packageCount} onChange={e => setPackForm(s => ({ ...s, packageCount: e.target.value }))} />
             <Button
-              className="w-full h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase text-white"
+              className="w-full h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase text-white disabled:bg-slate-300 disabled:text-slate-500"
               onClick={submitPack}
-              disabled={packMut.isPending}
+              disabled={packMut.isPending || !hasPackData || !isPackDirty}
             >
-              Confirm Packed
+              {packMut.isPending ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                </>
+              ) : packSaved ? (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Packed
+                </>
+              ) : (
+                'Confirm Packed'
+              )}
             </Button>
           </div>
         )}
 
         <div className="space-y-2">
-          <p className={fieldLabel}>Dispatch details</p>
+          <div className="flex items-center justify-between">
+            <p className={fieldLabel}>Dispatch details</p>
+            {dispatchSaved && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
           <Input placeholder="Tracking number" value={dispatchForm.trackingNumber} onChange={e => setDispatchForm(s => ({ ...s, trackingNumber: e.target.value }))} />
           <Input placeholder="Carrier name" value={dispatchForm.carrierName} onChange={e => setDispatchForm(s => ({ ...s, carrierName: e.target.value }))} />
           <Select value={dispatchForm.logisticsPartnerId} onChange={e => setDispatchForm(s => ({ ...s, logisticsPartnerId: e.target.value }))}>
             <option value="">Select logistics partner</option>
-            {partners.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            {partnerOptions.map(p => (
+              <option key={p.value} value={p.value}>{p.name}</option>
             ))}
           </Select>
           <Input placeholder="E-Way bill" value={dispatchForm.ewayBillNumber} onChange={e => setDispatchForm(s => ({ ...s, ewayBillNumber: e.target.value }))} />
@@ -451,11 +644,21 @@ function SellerActions({ delivery, partners }: { delivery: DeliveryDetailDto; pa
           <Input type="date" value={dispatchForm.expectedDelivery} onChange={e => setDispatchForm(s => ({ ...s, expectedDelivery: e.target.value }))} />
           <Button
             variant="outline"
-            className="w-full h-10 rounded-lg text-xs font-black uppercase"
+            className="w-full h-10 rounded-lg text-xs font-black uppercase disabled:opacity-60"
             onClick={submitDispatch}
-            disabled={dispatchMut.isPending}
+            disabled={dispatchMut.isPending || !hasDispatchData || !isDispatchDirty}
           >
-            Save Dispatch Details
+            {dispatchMut.isPending ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Saving...
+              </>
+            ) : dispatchSaved ? (
+              <>
+                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Saved
+              </>
+            ) : (
+              'Save Dispatch Details'
+            )}
           </Button>
         </div>
 
@@ -488,8 +691,8 @@ function SellerActions({ delivery, partners }: { delivery: DeliveryDetailDto; pa
             <Truck className="mr-2 h-4 w-4" /> Dispatch
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -515,9 +718,8 @@ function LogisticsActions({ delivery }: { delivery: DeliveryDetailDto }) {
   };
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        <h2 className={sectionHeader}>Logistics Update</h2>
+    <CollapsibleSection title="Logistics Update" icon={Truck} defaultOpen>
+      <div className="space-y-3">
         <Select value={form.status} onChange={e => setForm(s => ({ ...s, status: e.target.value as DeliveryStatus }))}>
           <option value="">Select status</option>
           {(['PICKUP_SCHEDULED', 'PICKED_UP', 'IN_TRANSIT', 'AT_HUB', 'OUT_FOR_DELIVERY', 'DELIVERED', 'DELAYED', 'DELIVERY_FAILED', 'REATTEMPT_SCHEDULED'] as DeliveryStatus[]).map(s => (
@@ -538,8 +740,8 @@ function LogisticsActions({ delivery }: { delivery: DeliveryDetailDto }) {
         >
           <ChevronRight className="mr-2 h-4 w-4" /> Update Status
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -580,9 +782,8 @@ function BuyerActions({ delivery }: { delivery: DeliveryDetailDto }) {
     );
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-4">
-        <h2 className={sectionHeader}>Receipt &amp; Acceptance</h2>
+    <CollapsibleSection title="Receipt & Acceptance" icon={CheckCircle2} defaultOpen>
+      <div className="space-y-4">
         {!canAcceptStage && (
           <p className="text-xs font-semibold text-slate-500">
             Acceptance becomes available once the delivery is marked as delivered.
@@ -634,8 +835,8 @@ function BuyerActions({ delivery }: { delivery: DeliveryDetailDto }) {
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -670,9 +871,8 @@ function FinanceActions({ delivery }: { delivery: DeliveryDetailDto }) {
   const selectedInvoice = invoices.find(inv => String(inv.id) === invoiceId);
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-4">
-        <h2 className={sectionHeader}>Finance / Payment</h2>
+    <CollapsibleSection title="Finance / Payment" icon={Wallet} defaultOpen>
+      <div className="space-y-4">
 
         {delivery.status === 'ACCEPTED' && (
           <div className="space-y-2">
@@ -804,8 +1004,8 @@ function FinanceActions({ delivery }: { delivery: DeliveryDetailDto }) {
             </p>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -822,11 +1022,12 @@ function AdminActions({ delivery }: { delivery: DeliveryDetailDto }) {
   const [override, setOverride] = useState({ status: delivery.status, reason: '', location: '' });
   const overrideMut = useAdminOverride(delivery.id);
   return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        <h2 className={sectionHeader}>
-          <ShieldAlert className="inline mr-1 h-3.5 w-3.5" /> Admin Override
-        </h2>
+    <CollapsibleSection
+      title="Admin Override"
+      icon={ShieldAlert}
+      defaultOpen={false}
+    >
+      <div className="space-y-3">
         <Select value={override.status} onChange={e => setOverride(s => ({ ...s, status: e.target.value as DeliveryStatus }))}>
           {ALL_STATUSES.map(status => (
             <option key={status} value={status}>{DELIVERY_STATUS_LABELS[status]}</option>
@@ -848,8 +1049,8 @@ function AdminActions({ delivery }: { delivery: DeliveryDetailDto }) {
         >
           Apply Override
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -867,11 +1068,8 @@ function DisputeActions({ delivery, accessRole }: { delivery: DeliveryDetailDto;
   if (!canRaise && !canResolve) return null;
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        <h2 className={sectionHeader}>
-          <AlertTriangle className="inline mr-1 h-3.5 w-3.5" /> Dispute
-        </h2>
+    <CollapsibleSection title="Dispute" icon={AlertTriangle} defaultOpen={false}>
+      <div className="space-y-3">
         {canRaise && (
           <div className="space-y-2">
             <Select value={category} onChange={e => setCategory(e.target.value)}>
@@ -916,8 +1114,8 @@ function DisputeActions({ delivery, accessRole }: { delivery: DeliveryDetailDto;
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 

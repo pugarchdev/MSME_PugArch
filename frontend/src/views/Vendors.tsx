@@ -1,31 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  MapPin,
-  Star,
-  Building2,
-  ChevronDown,
-  CheckCircle2,
-  X,
-  Phone,
-  Mail,
-  Globe,
-  Briefcase,
-  FileText,
-  Send,
-  Loader2,
-  Info,
-  ShieldCheck,
-  Clock,
-  Upload,
-  Paperclip,
-  LayoutGrid,
-  List,
-  Filter,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown
-} from 'lucide-react';
+import { Search, MapPin, Star, Building2, ChevronDown, CheckCircle2, X, Phone, Mail, Globe, Briefcase, FileText, Send, Info, ShieldCheck, Clock, Upload, Paperclip, LayoutGrid, List, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -33,9 +8,13 @@ import { toast } from 'sonner';
 import { compressImage } from '../lib/compress';
 import { indiaStatesDistricts } from '../data/indiaStatesDistricts';
 import { Pagination } from '../features/shared/Pagination';
-import { usePagination } from '../features/shared/hooks';
+import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
+import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { useSupplierSummary } from '../features/ratings/hooks';
 import { Star as StarIcon } from 'lucide-react';
+import { RfqCreator } from '../features/rfq/pages/RfqPage';
+import { cn } from '../lib/utils';
 
 interface Vendor {
   _id: string;
@@ -71,7 +50,7 @@ const Vendors = () => {
   const [selectedStateFilter, setSelectedStateFilter] = useState('All states');
   const [selectedDistrictFilter, setSelectedDistrictFilter] = useState('All districts');
   const [verifiedOnly, setVerifiedOnly] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const [sortKey, setSortKey] = useState<'name' | 'region' | 'gst' | 'capability'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -80,6 +59,7 @@ const Vendors = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [fetchingDetails, setFetchingDetails] = useState(false);
+  const [pressedAction, setPressedAction] = useState<string | null>(null);
 
   // Quote form state
   const [quoteForm, setQuoteForm] = useState({
@@ -176,7 +156,23 @@ const Vendors = () => {
     }
   };
 
+  const vendorActionKey = (vendor: Vendor, action: 'info' | 'quote') => `${action}-${vendor.id || vendor._id}`;
+
+  const pulseVendorAction = (vendor: Vendor, action: 'info' | 'quote') => {
+    const key = vendorActionKey(vendor, action);
+    setPressedAction(key);
+    window.setTimeout(() => {
+      setPressedAction(current => current === key ? null : current);
+    }, 260);
+  };
+
+  const vendorActionClass = (vendor: Vendor, action: 'info' | 'quote') =>
+    pressedAction === vendorActionKey(vendor, action)
+      ? 'scale-95 ring-2 ring-offset-1 ring-[#12335f]/40 shadow-lg'
+      : '';
+
   const handleViewProfile = async (vendor: Vendor) => {
+    pulseVendorAction(vendor, 'info');
     setFetchingDetails(true);
     try {
       const res = await api.get(`/api/vendors/${vendor.id || vendor._id}`, {
@@ -197,6 +193,7 @@ const Vendors = () => {
   };
 
   const handleOpenQuoteModal = (vendor: Vendor) => {
+    pulseVendorAction(vendor, 'quote');
     setSelectedVendor(vendor);
     setIsQuoteModalOpen(true);
   };
@@ -294,19 +291,8 @@ const Vendors = () => {
             <h1 className="text-2xl font-black tracking-tight text-[#1a1c21] uppercase">Supplier Registry</h1>
             <p className="text-xs text-slate-500 font-medium">Locate and engage verified MSME vendors across nationwide sectors.</p>
           </div>
-          <div className="flex items-center gap-2 bg-[#f1f3f4] p-1 rounded-lg border border-[#dadce0]">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${viewMode === 'grid' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" /> Grid
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${viewMode === 'list' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              <List className="h-3.5 w-3.5" /> List
-            </button>
+          <div className="flex items-center gap-2">
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
           </div>
         </div>
       </div>
@@ -436,8 +422,11 @@ const Vendors = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-0.5">
-                        <h3 className="font-black text-xs uppercase tracking-tight truncate text-[#1a1c21]">{vendor.sellerProfile?.businessName || vendor.name}</h3>
+                        <h3 className="font-black text-xs uppercase tracking-tight text-wrap-anywhere text-[#1a1c21]">{vendor.sellerProfile?.businessName || vendor.name}</h3>
                         {vendor.sellerProfile?.gst && <CheckCircle2 className="h-3 w-3 text-[#12335f] shrink-0" />}
+                      </div>
+                      <div className="mt-1 mb-1">
+                        <EntityIdLink label={`VND-${String(vendor.id || vendor._id).padStart(5, '0')}`} id={vendor.id || vendor._id} size="sm" onClick={() => handleViewProfile(vendor)} />
                       </div>
                       <p className="text-[10px] font-bold text-slate-500 flex items-center gap-1 uppercase">
                         <MapPin className="h-2.5 w-2.5 shrink-0" />
@@ -477,13 +466,19 @@ const Vendors = () => {
                     <button
                       onClick={() => handleViewProfile(vendor)}
                       disabled={fetchingDetails}
-                      className="h-8 border border-[#dadce0] text-[#12335f] rounded text-[10px] font-black uppercase tracking-wider hover:bg-[#f8f9fa] transition-all flex items-center justify-center"
+                      className={cn(
+                        "h-8 border border-[#dadce0] text-[#12335f] rounded text-[10px] font-black uppercase tracking-wider hover:bg-[#f8f9fa] hover:border-[#12335f]/40 hover:-translate-y-0.5 active:scale-95 active:translate-y-px transition-all duration-200 flex items-center justify-center disabled:opacity-60 disabled:hover:translate-y-0",
+                        vendorActionClass(vendor, 'info')
+                      )}
                     >
                       Profile
                     </button>
                     <button
                       onClick={() => handleOpenQuoteModal(vendor)}
-                      className="h-8 bg-[#12335f] text-white rounded text-[10px] font-black uppercase tracking-wider hover:bg-[#0b2445] shadow-sm shadow-[#12335f]/20 transition-all flex items-center justify-center"
+                      className={cn(
+                        "h-8 bg-[#12335f] text-white rounded text-[10px] font-black uppercase tracking-wider hover:bg-[#0b2445] hover:-translate-y-0.5 active:scale-95 active:translate-y-px shadow-sm shadow-[#12335f]/20 transition-all duration-200 flex items-center justify-center",
+                        vendorActionClass(vendor, 'quote')
+                      )}
                     >
                       Request Quote
                     </button>
@@ -515,8 +510,11 @@ const Vendors = () => {
                             {vendor.sellerProfile?.businessName?.charAt(0) || 'V'}
                           </div>
                           <div>
-                            <p className="font-black text-xs uppercase tracking-tight text-[#1a1c21]">{vendor.sellerProfile?.businessName || vendor.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <p className="font-black text-xs uppercase tracking-tight text-[#1a1c21] text-wrap-anywhere">{vendor.sellerProfile?.businessName || vendor.name}</p>
+                            <div className="mt-1">
+                              <EntityIdLink label={`VND-${String(vendor.id || vendor._id).padStart(5, '0')}`} id={vendor.id || vendor._id} size="sm" onClick={() => handleViewProfile(vendor)} />
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
                               <p className="text-[9px] font-bold text-[#12335f] uppercase">
                                 {vendor.sellerProfile?.msmeCategory || 'Registered'} Enterprise
                               </p>
@@ -553,13 +551,19 @@ const Vendors = () => {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleViewProfile(vendor)}
-                            className="h-7 px-3 border border-[#dadce0] text-[#12335f] rounded text-[9px] font-black uppercase tracking-wider hover:bg-[#f8f9fa]"
+                            className={cn(
+                              "h-7 px-3 border border-[#dadce0] text-[#12335f] rounded text-[9px] font-black uppercase tracking-wider hover:bg-[#f8f9fa] hover:border-[#12335f]/40 hover:-translate-y-0.5 active:scale-95 active:translate-y-px transition-all duration-200",
+                              vendorActionClass(vendor, 'info')
+                            )}
                           >
                             Info
                           </button>
                           <button
                             onClick={() => handleOpenQuoteModal(vendor)}
-                            className="h-7 px-3 bg-[#12335f] text-white rounded text-[9px] font-black uppercase tracking-wider hover:bg-[#0b2445]"
+                            className={cn(
+                              "h-7 px-3 bg-[#12335f] text-white rounded text-[9px] font-black uppercase tracking-wider hover:bg-[#0b2445] hover:-translate-y-0.5 active:scale-95 active:translate-y-px transition-all duration-200 shadow-sm shadow-[#12335f]/20",
+                              vendorActionClass(vendor, 'quote')
+                            )}
                           >
                             Quote
                           </button>
@@ -735,92 +739,10 @@ const Vendors = () => {
 
       {/* Request Quote Modal */}
       {isQuoteModalOpen && selectedVendor && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="p-6 space-y-5">
-              <div className="space-y-1">
-                <div className="h-9 w-9 rounded-lg bg-slate-50 text-[#12335f] flex items-center justify-center mb-2">
-                  <Send className="h-4 w-4" />
-                </div>
-                <h2 className="text-lg font-black tracking-tight text-slate-900 uppercase">Send Request</h2>
-                <p className="text-[11px] text-slate-500 font-bold">Requesting a quote from <span className="text-[#12335f]">{selectedVendor.sellerProfile?.businessName || selectedVendor.name}</span></p>
-              </div>
-
-              <form onSubmit={handleSubmitQuote} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 ml-1">Subject</label>
-                  <input
-                    required
-                    value={quoteForm.subject}
-                    onChange={(e) => setQuoteForm({ ...quoteForm, subject: e.target.value })}
-                    placeholder="e.g. Bulk Procurement for IT Hardware"
-                    className="w-full bg-slate-50 border-slate-200 border rounded-lg py-2 px-3 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] transition-all text-slate-900"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 ml-1">Message Details</label>
-                  <textarea
-                    required
-                    value={quoteForm.message}
-                    onChange={(e) => setQuoteForm({ ...quoteForm, message: e.target.value })}
-                    placeholder="Describe your requirements..."
-                    rows={3}
-                    className="w-full bg-slate-50 border-slate-200 border rounded-lg py-2 px-3 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] transition-all resize-none text-slate-900"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 ml-1">Specifications (Optional)</label>
-                  <div className={`relative flex items-center justify-between w-full bg-slate-50 border border-slate-200 border-dashed rounded-lg p-3 transition-all ${quoteForm.documentUrl ? 'bg-emerald-50/40 border-emerald-200' : ''}`}>
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-1.5 rounded-md ${quoteForm.documentUrl ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
-                        <Paperclip className="h-3.5 w-3.5" />
-                      </div>
-                      <span className={`text-xs font-semibold ${quoteForm.documentUrl ? 'text-emerald-700' : 'text-slate-600'}`}>
-                        {quoteForm.documentUrl ? "Document attached" : "Attach requirement PDF"}
-                      </span>
-                    </div>
-
-                    <input
-                      type="file"
-                      id="quote-doc"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx"
-                      className="hidden"
-                      onChange={handleUploadQuoteDoc}
-                      disabled={isUploadingQuoteDoc}
-                    />
-                    <label
-                      htmlFor="quote-doc"
-                      className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${quoteForm.documentUrl
-                        ? "bg-white border border-emerald-200 text-emerald-700"
-                        : "bg-[#12335f] text-white hover:bg-[#0b2445]"
-                        }`}
-                    >
-                      {isUploadingQuoteDoc ? "Wait..." : quoteForm.documentUrl ? "Change" : "Upload"}
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsQuoteModalOpen(false)}
-                    className="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 hover:text-slate-900 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Button
-                    disabled={submittingQuote}
-                    className="bg-[#12335f] hover:bg-[#0b2445] text-white border-0 h-9 px-6 rounded-lg font-bold uppercase text-[11px] tracking-wide transition-all shadow shadow-slate-200"
-                  >
-                    {submittingQuote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Send Request'}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+        <RfqCreator
+          onClose={() => setIsQuoteModalOpen(false)}
+          initialVendor={selectedVendor}
+        />
       )}
     </div>
   );

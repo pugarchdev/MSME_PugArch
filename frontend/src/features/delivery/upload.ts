@@ -21,17 +21,10 @@ export interface UploadOptions {
   entityType?: string;
 }
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+import { BASE_URL } from '../../lib/api';
 
 const resolveUploadUrl = () => {
-  if (BASE_URL) return `${BASE_URL}/api/upload`;
-  if (typeof window !== 'undefined') {
-    const { protocol, hostname, port } = window.location;
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
-      return `${protocol}//${hostname}:5000/api/upload`;
-    }
-  }
-  return '/api/upload';
+  return `${BASE_URL}/api/upload`;
 };
 
 export const uploadDeliveryFile = (file: File, opts: UploadOptions = {}): Promise<UploadedFileAsset> =>
@@ -64,9 +57,13 @@ export const uploadDeliveryFile = (file: File, opts: UploadOptions = {}): Promis
         // non-JSON body, ignore
       }
       if (xhr.status >= 200 && xhr.status < 300) {
-        const asset = body?.data ?? body;
-        if (asset?.id) {
-          resolve(asset as UploadedFileAsset);
+        const asset = body?.file ?? body?.data ?? body;
+        const assetId = asset?.id ?? body?.fileId;
+        if (assetId) {
+          resolve({
+            ...asset,
+            id: assetId
+          } as UploadedFileAsset);
           return;
         }
       }

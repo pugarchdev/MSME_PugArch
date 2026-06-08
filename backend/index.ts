@@ -1,13 +1,15 @@
 import { env } from './src/config/env.js';
 import https from 'https';
 import { pathToFileURL } from 'url';
+import fs from 'fs';
+import path from 'path';
 
 import type { Response } from 'express';
 import { z } from 'zod';
 
 // Import Prisma Client
 import prisma from './src/lib/prisma.js';
-import { Role, RegistrationStatus } from '@prisma/client';
+import { Role, RegistrationStatus, TenderStatus } from '@prisma/client';
 import { authenticate, authorize, authorizeAdmin } from './src/middleware/auth.js';
 import type { AuthRequest } from './src/middleware/auth.js';
 import nodemailer from 'nodemailer';
@@ -62,9 +64,11 @@ import {
 import { createMilestoneSchema, milestoneReasonSchema } from './src/modules/payments/payment.validation.js';
 import { createHashFingerprint, randomToken, sha256 } from './src/utils/crypto.js';
 import { ApiError } from './src/utils/ApiError.js';
+import { calculateBidPricing, quotedBidTotal } from './src/utils/bidPricing.js';
 import { STRICT_VERIFICATION } from './src/config/verification.js';
 import { maskAadhaar, maskBankAccount, maskGST, maskPAN, maskSensitive, maskValue } from './src/utils/maskSensitive.js';
 import { redisKeys } from './src/constants/redis-keys.js';
+import { invalidateByPattern } from './src/services/cache.service.js';
 
 // Cloudinary Configuration
 if (configureCloudinary()) {
@@ -72,6 +76,64 @@ if (configureCloudinary()) {
 }
 
 logger.info({ apiSetuConfigured: Boolean(env.APISETU_API_KEY) }, 'Backend environment loaded');
+
+const BACKGROUND_FAILURE_LOG_INTERVAL_MS = 5 * 60 * 1000;
+
+const compactBackgroundErrorMessage = (message: string) => {
+  if (message.includes("Can't reach database server")) {
+    return message
+      .split('\n')
+      .map(part => part.trim())
+      .find(part => part.includes("Can't reach database server")) || 'Database server is unreachable';
+  }
+
+  return message.replace(/\s+/g, ' ').trim();
+};
+
+const summarizeBackgroundError = (error: unknown) => {
+  if (error instanceof Error) {
+    const typedError = error as Error & { code?: string; clientVersion?: string };
+    return {
+      name: error.name,
+      message: compactBackgroundErrorMessage(error.message),
+      code: typedError.code,
+      clientVersion: typedError.clientVersion
+    };
+  }
+
+  return { message: compactBackgroundErrorMessage(String(error)) };
+};
+
+const createBackgroundFailureLogger = (label: string) => {
+  let lastLoggedAt = 0;
+  let lastMessage = '';
+  let suppressedCount = 0;
+
+  return (error: unknown) => {
+    const summary = summarizeBackgroundError(error);
+    const message = summary.message || 'Background job failed';
+    const now = Date.now();
+    const shouldLog =
+      message !== lastMessage ||
+      now - lastLoggedAt >= BACKGROUND_FAILURE_LOG_INTERVAL_MS;
+
+    if (!shouldLog) {
+      suppressedCount += 1;
+      return;
+    }
+
+    const suppressed = suppressedCount;
+    lastLoggedAt = now;
+    lastMessage = message;
+    suppressedCount = 0;
+
+    logger.warn({ err: summary, suppressed }, `${label}: ${message}`);
+  };
+};
+
+const logAuctionFinalizerFailure = createBackgroundFailureLogger('AuctionFinalizer failed');
+const logAuctionFinalizerSkipped = createBackgroundFailureLogger('AuctionFinalizer skipped auction finalization');
+const logDbKeepaliveFailure = createBackgroundFailureLogger('DB keepalive ping failed');
 
 const serverlessApp = createApp();
 
@@ -573,7 +635,6 @@ const sectionLabel = (role: unknown, section: string) => {
     additional: 'Additional Details',
     offices: 'Office Locations',
     bank: 'Bank Accounts',
-    einvoicing: 'E-Invoicing',
     ownership: 'Beneficial Ownership',
     documents: 'Documents Upload'
   };
@@ -629,6 +690,8 @@ const tenderStatusSchema = z.object({
 const bidSchema = z.object({
   unitPrice: positiveNumber.max(1_000_000_000),
   quantity: z.coerce.number().int().positive().max(10_000_000),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
+  discountAmount: z.coerce.number().nonnegative().max(1_000_000_000).optional(),
   deliveryDays: z.coerce.number().int().positive().max(3650),
   warranty: z.string().trim().max(500).optional().nullable(),
   validTill: z.coerce.date().optional().nullable(),
@@ -729,6 +792,7 @@ const bidOpenStatuses = new Set([
   'closed'
 ]);
 const bidSubmissionStatuses = new Set(['published', 'bid_submission']);
+const bidSubmissionTenderStatuses: TenderStatus[] = [TenderStatus.published, TenderStatus.bid_submission];
 const terminalTenderStatuses = new Set(['awarded', 'po_generated', 'closed']);
 const validTenderStatuses = new Set([
   'draft',
@@ -847,7 +911,7 @@ const flagSuspiciousBidPatterns = async (payload: {
 }) => {
   try {
     const flags: Array<Parameters<typeof createComplianceFlag>[0]> = [];
-    const bidValue = Number(payload.bid.unitPrice || payload.bid.bidAmount || 0) * Number(payload.bid.quantity || 1);
+    const bidValue = payload.bid.bidAmount ? Number(payload.bid.bidAmount) : quotedBidTotal(payload.bid);
 
     if (payload.ipAddress) {
       const sameIpBid = await prisma.bid.findFirst({
@@ -1005,8 +1069,9 @@ const validateSellerBankPayload = (body: any) => {
   else if (values.holderName.length < 2) errors.holderName = 'Account holder name must be at least 2 characters';
   else if (!holderRegex.test(values.holderName)) errors.holderName = 'Account holder name contains invalid characters';
 
+  const isMaskedAccount = /^\*+\d+$/.test(values.accountNumber);
   if (!values.accountNumber) errors.accountNumber = 'Bank account number is required';
-  else if (!accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits';
+  else if (!isMaskedAccount && !accountRegex.test(values.accountNumber)) errors.accountNumber = 'Account number must be 9 to 18 digits';
 
   return { values, errors, isValid: Object.keys(errors).length === 0 };
 };
@@ -1184,13 +1249,102 @@ app.get("/", (req, res) => {
 app.get("/api/test", (req, res) => res.json({ message: "API working" }));
 
 // --- Tender APIs ---
+app.get('/api/tenders/summary', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+    const where = role === 'admin' ? {} : { buyerId: userId };
+
+    const tenders = await prisma.tender.findMany({
+      where,
+      select: { status: true }
+    });
+
+    const draftCount = tenders.filter(t => t.status === 'draft').length;
+    const activeCount = tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin')).length;
+    const closedCount = tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated').length;
+
+    res.json({ success: true, draftCount, activeCount, closedCount });
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to load tenders summary');
+  }
+});
+
 app.get('/api/tenders', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusTab = req.query.status ? String(req.query.status).trim() : 'published';
+    const category = req.query.category ? String(req.query.category).trim() : 'All';
+    const budget = req.query.budget ? String(req.query.budget).trim() : 'All';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+    let where: any = role === 'admin' ? {} : { buyerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { tenderId: { contains: search, mode: 'insensitive' } },
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } }
+          ]
+        }
+      ];
+    }
+
+    if (category !== 'All') {
+      where.category = category;
+    }
+
+    if (budget === 'under_10l') {
+      where.budget = { lt: 1000000 };
+    } else if (budget === '10l_50l') {
+      where.budget = { gte: 1000000, lte: 5000000 };
+    } else if (budget === 'above_50l') {
+      where.budget = { gt: 5000000 };
+    }
+
+    if (statusTab === 'draft') {
+      where.status = 'draft';
+    } else if (statusTab === 'published') {
+      where.status = { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] };
+    } else if (statusTab === 'closed') {
+      where.status = { in: ['closed', 'awarded', 'po_generated'] };
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'tenderId') {
+      orderBy = { tenderId: sortOrder };
+    } else if (sortBy === 'title') {
+      orderBy = { title: sortOrder };
+    } else if (sortBy === 'category') {
+      orderBy = { category: sortOrder };
+    } else if (sortBy === 'budget') {
+      orderBy = { budget: sortOrder };
+    } else if (sortBy === 'bids') {
+      orderBy = { bidsCount: sortOrder };
+    } else if (sortBy === 'closes') {
+      orderBy = { closesAt: sortOrder };
+    } else if (sortBy === 'status') {
+      orderBy = { status: sortOrder };
+    } else {
+      orderBy = { createdAt: sortOrder };
+    }
+
+    const total = await prisma.tender.count({ where });
     const tenders = await prisma.tender.findMany({
-      where: req.user?.role === 'admin' ? {} : { buyerId: Number(req.user?.id) },
-      orderBy: { createdAt: 'desc' }
+      where,
+      orderBy,
+      skip,
+      take
     });
-    res.json(maskSensitive(tenders));
+    res.json({ success: true, tenders: maskSensitive(tenders), total });
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to load tenders');
   }
@@ -1208,7 +1362,7 @@ app.get('/api/tenders/public', authenticate, authorize('seller', 'buyer', 'admin
     }
 
     const tenders = await prisma.tender.findMany({
-      where: { status: 'published' },
+      where: { status: { in: bidSubmissionTenderStatuses } },
       include,
       orderBy: { createdAt: 'desc' }
     });
@@ -1240,7 +1394,7 @@ app.get('/api/tenders/:id', authenticate, authorize('buyer', 'seller', 'admin'),
     if (!tender) return res.status(404).json({ message: 'Tender not found' });
 
     const isOwnerBuyer = req.user?.role === 'buyer' && tender.buyerId === Number(req.user.id);
-    const isPublishedForSeller = req.user?.role === 'seller' && tender.status === 'published';
+    const isPublishedForSeller = req.user?.role === 'seller' && bidSubmissionStatuses.has(String(tender.status));
     const isAdmin = req.user?.role === 'admin';
     if (!isOwnerBuyer && !isPublishedForSeller && !isAdmin) {
       return res.status(404).json({ message: 'Tender not found' });
@@ -1303,6 +1457,7 @@ app.post('/api/tenders/:id/bids', authenticate, authorize('seller'), async (req:
     if (payload.validTill && payload.validTill < new Date()) {
       return res.status(400).json({ message: 'Bid validity date must be in the future' });
     }
+    const pricing = calculateBidPricing(payload);
 
     const bid = await prisma.$transaction(async (tx) => {
       const existing = await tx.bid.findUnique({
@@ -1315,6 +1470,7 @@ app.post('/api/tenders/:id/bids', authenticate, authorize('seller'), async (req:
 
       const bidData = {
         ...payload,
+        ...pricing,
         validTill: payload.validTill || null,
         warranty: payload.warranty || null,
         note: payload.note || null,
@@ -1407,11 +1563,22 @@ app.get('/api/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), asyn
   }
 });
 
-app.get('/api/bids/my', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+app.get('/api/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
+    const role = String(req.user?.role || '');
+    const userId = Number(req.user?.id);
+    const where = role === 'seller'
+      ? { sellerId: userId }
+      : role === 'buyer'
+        ? { tender: { buyerId: userId } }
+        : {};
+
     const bids = await prisma.bid.findMany({
-      where: { sellerId: Number(req.user?.id) },
-      include: { tender: true },
+      where,
+      include: {
+        tender: { include: { buyer: { include: { buyerProfile: true } } } },
+        seller: { include: { sellerProfile: true } }
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.json(maskSensitive(await attachBidFileAssets(bids)));
@@ -1461,11 +1628,13 @@ app.put('/api/bids/:id', authenticate, authorize('seller'), async (req: AuthRequ
     if (payload.validTill && payload.validTill < new Date()) {
       return res.status(400).json({ message: 'Bid validity date must be in the future' });
     }
+    const pricing = calculateBidPricing({ ...existingBid, ...payload });
 
     const bid = await prisma.bid.update({
       where: { id: bidId },
       data: {
         ...payload,
+        ...pricing,
         ...(payload.validTill !== undefined ? { validTill: payload.validTill || null } : {}),
         ...(payload.warranty !== undefined ? { warranty: payload.warranty || null } : {}),
         ...(payload.note !== undefined ? { note: payload.note || null } : {}),
@@ -1853,6 +2022,7 @@ app.put('/api/tenders/:id/status', authenticate, authorize('buyer', 'admin'), as
       where: { id: tenderId },
       data: { status }
     });
+    await invalidateByPattern('cache:tender_public:*');
 
     await auditLog({
       actorUserId: Number(req.user?.id),
@@ -2128,149 +2298,68 @@ app.post('/api/auctions/:id/override', authenticate, authorizeAdmin, async (req:
   }
 });
 
+let isFinalizerJobRunning = false;
+
 const finalizeEndedAuctionsJob = async () => {
-  if (!redis || !isRedisReady()) return;
-  const dueAuctions = await prisma.auction.findMany({
-    where: {
-      status: { in: ['active', 'scheduled'] },
-      endTime: { lte: new Date() }
-    },
-    select: { id: true },
-    take: 25
-  });
-
-  for (const dueAuction of dueAuctions) {
-    await withRedisLock(`${redisKeys.lockAuction(dueAuction.id)}:finalize`, 10_000, async () => {
-      const result = await prisma.$transaction(async (tx) => {
-        const auction = await tx.auction.findUnique({ where: { id: dueAuction.id } });
-        if (!auction || auction.status === 'finalized' || auction.status === 'cancelled') return null;
-        const winningBid = await tx.auctionBid.findFirst({
-          where: { auctionId: auction.id },
-          orderBy: [{ bidAmount: 'asc' }, { createdAt: 'asc' }]
-        });
-        const updatedAuction = await tx.auction.update({
-          where: { id: auction.id },
-          data: {
-            status: 'finalized',
-            finalizedAt: new Date(),
-            winnerSellerId: winningBid?.sellerId || null
-          }
-        });
-        return { auction: updatedAuction, winningBid };
-      });
-
-      if (result) {
-        await auditLog({
-          action: 'auction.finalized_job',
-          entityType: 'auction',
-          entityId: result.auction.id,
-          metadata: { winnerSellerId: result.auction.winnerSellerId, winningBidId: result.winningBid?.id }
-        });
-        if (result.auction.winnerSellerId) {
-          await auditLog({
-            action: 'auction.winner_selected',
-            entityType: 'auction',
-            entityId: result.auction.id,
-            metadata: { winnerSellerId: result.auction.winnerSellerId }
-          });
-        }
-      }
-    }).catch(error => console.warn('[AuctionFinalizer] Skipped auction finalization:', error instanceof Error ? error.message : error));
+  if (isFinalizerJobRunning) {
+    logger.info('[AuctionFinalizer] Previous job execution still in progress, skipping');
+    return;
   }
-};
+  if (!redis || !isRedisReady()) return;
 
-// --- Seed Data Logic ---
-try {
-  const userCount = await prisma.user.count();
-  if (userCount === 0 && env.NODE_ENV !== 'production') {
-    console.log('Seeding sample data for Prisma...');
-    const hashedPassword = await hashPassword('SampleData@12345');
-
-    // Admin
-    await prisma.user.create({
-      data: {
-        name: 'Admin User',
-        email: 'admin@jsgsmile.com',
-        password: hashedPassword,
-        role: 'admin',
-        registrationStatus: 'completed',
-        onboardingStatus: 'approved_for_procurement'
-      }
+  isFinalizerJobRunning = true;
+  try {
+    const dueAuctions = await prisma.auction.findMany({
+      where: {
+        status: { in: ['active', 'scheduled'] },
+        endTime: { lte: new Date() }
+      },
+      select: { id: true },
+      take: 25
     });
 
-    // Sample Users
-    const sampleUsers = [
-      { name: 'Rajesh Kumar', email: 'rajesh@texcorp.com', role: 'seller' as const },
-      { name: 'Suresh Raina', email: 'suresh@buildcon.com', role: 'buyer' as const },
-    ];
+    for (const dueAuction of dueAuctions) {
+      await withRedisLock(`${redisKeys.lockAuction(dueAuction.id)}:finalize`, 10_000, async () => {
+        const result = await prisma.$transaction(async (tx) => {
+          const auction = await tx.auction.findUnique({ where: { id: dueAuction.id } });
+          if (!auction || auction.status === 'finalized' || auction.status === 'cancelled') return null;
+          const winningBid = await tx.auctionBid.findFirst({
+            where: { auctionId: auction.id },
+            orderBy: [{ bidAmount: 'asc' }, { createdAt: 'asc' }]
+          });
+          const updatedAuction = await tx.auction.update({
+            where: { id: auction.id },
+            data: {
+              status: 'finalized',
+              finalizedAt: new Date(),
+              winnerSellerId: winningBid?.sellerId || null
+            }
+          });
+          return { auction: updatedAuction, winningBid };
+        });
 
-    for (const u of sampleUsers) {
-      const user = await prisma.user.create({
-        data: {
-          name: u.name,
-          email: u.email,
-          password: hashedPassword,
-          role: u.role,
-          registrationStatus: 'completed',
-          onboardingStatus: 'approved_for_procurement'
+        if (result) {
+          await auditLog({
+            action: 'auction.finalized_job',
+            entityType: 'auction',
+            entityId: result.auction.id,
+            metadata: { winnerSellerId: result.auction.winnerSellerId, winningBidId: result.winningBid?.id }
+          });
+          if (result.auction.winnerSellerId) {
+            await auditLog({
+              action: 'auction.winner_selected',
+              entityType: 'auction',
+              entityId: result.auction.id,
+              metadata: { winnerSellerId: result.auction.winnerSellerId }
+            });
+          }
         }
-      });
-
-      if (u.role === 'seller') {
-        await prisma.sellerProfile.create({
-          data: {
-            userId: user.id,
-            organizationType: 'Pvt Ltd',
-            pan: 'ABCDE1234F',
-            nameAsInPan: u.name,
-            panVerified: true,
-            businessName: 'TEXCORP',
-            productCategories: ['Textiles'],
-          }
-        });
-      } else {
-        await prisma.buyerProfile.create({
-          data: {
-            userId: user.id,
-            organizationName: 'BUILDCON',
-            businessType: 'Partnership',
-            industry: 'Construction',
-            pan: 'BCDEF2345G',
-            representativeName: u.name,
-            mobile: '9123456789',
-            state: 'Karnataka',
-            city: 'Bangalore',
-            pincode: '560001',
-            registeredAddress: '45, Tech Center, MG Road',
-            gst: '29BCDEF2345G1Z2',
-          }
-        });
-
-        // Add a tender for the buyer
-        await prisma.tender.create({
-          data: {
-            buyerId: user.id,
-            tenderId: 'T-2026-0001',
-            title: 'Office Furniture Supply',
-            category: 'Furniture',
-            budget: 500000,
-            description: 'Need ergonomic chairs and desks.',
-            status: 'published',
-            closesAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
-          }
-        });
-      }
+      }).catch(logAuctionFinalizerSkipped);
     }
-    console.log('Seeding completed.');
+  } finally {
+    isFinalizerJobRunning = false;
   }
-} catch (err: any) {
-  const message = String(err?.message || '');
-  if (message.includes("Can't reach database server")) {
-    console.warn('Seeding skipped: database server is unreachable.');
-  } else {
-    console.error('Seeding error:', err);
-  }
-}
+};
 
 const handleSecureUpload = async (req: AuthRequest & { file?: Express.Multer.File }, res: any, legacy = false) => {
   try {
@@ -2500,7 +2589,10 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
       mobile: rawData.mobile,
       dob: (rawData.dob && !isNaN(Date.parse(rawData.dob))) ? new Date(rawData.dob) : null,
       roleInOrg: rawData.roleInOrg,
-      termsAccepted: rawData.agreeTerms ?? false
+      termsAccepted: rawData.agreeTerms ?? false,
+      msmeType: rawData.msmeType || null,
+      vendorType: rawData.vendorType || null,
+      registrationTypes: Array.isArray(rawData.registrationTypes) ? rawData.registrationTypes : []
     };
 
     const isPanChanging = panToUse && (!existingProfile || (existingProfile.pan !== panToUse && !isPanMasked));
@@ -2514,9 +2606,13 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
         select: { userId: true }
       });
       if (duplicatePan) {
-        await flagDuplicateSellerIdentifiers({ userId, pan: panToUse });
-        await markUserForManualReview(userId);
-        return res.status(409).json({ message: 'PAN is already associated with another seller account. Application moved to compliance review.' });
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, pan: panToUse });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'PAN is already associated with another seller account. Application moved to compliance review.' });
+        }
       }
     }
 
@@ -2539,7 +2635,7 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
       create: { ...profileData, userId }
     });
     const completedSection = normalizeSpaces(rawData._completedSection);
-    const sellerSections = ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership', 'documents'];
+    const sellerSections = ['pan', 'details', 'additional', 'offices', 'bank', 'ownership', 'documents'];
     if (sellerSections.includes(completedSection)) {
       const existingUser = await prisma.user.findUnique({
         where: { id: userId },
@@ -2601,9 +2697,13 @@ app.post('/api/seller/profile/offices', authenticate, authorize('seller'), async
         select: { sellerProfile: { select: { userId: true } } }
       });
       if (duplicateGst) {
-        await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
-        await markUserForManualReview(userId);
-        return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        }
       }
     }
 
@@ -2616,6 +2716,73 @@ app.post('/api/seller/profile/offices', authenticate, authorize('seller'), async
       }
     });
     res.json({ success: true, office: maskSensitive(office) });
+  } catch (err: any) {
+    handleSecureRouteError(res, err);
+  }
+});
+
+app.put('/api/seller/profile/offices/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const editCheck = await ensureOnboardingEditable(userId);
+    if (!editCheck.editable) return res.status(editCheck.status || 403).json({ message: editCheck.message });
+    const officeId = Number(req.params.id);
+    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+
+    const office = await prisma.sellerOffice.findFirst({
+      where: { id: officeId, sellerProfileId: profile.id }
+    });
+    if (!office) return res.status(404).json({ message: 'Office not found' });
+
+    const gstNumber = normalizeSpaces(req.body?.gstNumber).toUpperCase();
+    const officeErrors: Record<string, string> = {};
+    if (!normalizeSpaces(req.body?.name)) officeErrors.name = 'Office name is required.';
+    if (!normalizeSpaces(req.body?.type)) officeErrors.type = 'Office type is required.';
+    if (!onboardingPatterns.pincode.test(normalizeSpaces(req.body?.pincode))) officeErrors.pincode = 'PIN code must be a valid 6 digit Indian PIN.';
+    if (!normalizeSpaces(req.body?.state)) officeErrors.state = 'State is required.';
+    if (!normalizeSpaces(req.body?.city)) officeErrors.city = 'City is required.';
+    if (normalizeSpaces(req.body?.address).length < 10) officeErrors.address = 'Complete office address is required.';
+    if (gstNumber && !onboardingPatterns.gst.test(gstNumber)) officeErrors.gstNumber = 'GSTIN must follow valid 15 character format.';
+    if (Object.keys(officeErrors).length > 0) {
+      return res.status(400).json({ message: Object.values(officeErrors)[0], errors: officeErrors });
+    }
+    if (gstNumber) {
+      const duplicateGst = await prisma.sellerOffice.findFirst({
+        where: {
+          gstNumber,
+          id: { not: officeId },
+          sellerProfile: { userId: { not: userId } }
+        },
+        select: { sellerProfile: { select: { userId: true } } }
+      });
+      if (duplicateGst) {
+        const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+        const isDuplicateEnforced = !dupRule || dupRule.isActive;
+        if (isDuplicateEnforced) {
+          await flagDuplicateSellerIdentifiers({ userId, gstNumbers: [gstNumber] });
+          await markUserForManualReview(userId);
+          return res.status(409).json({ message: 'GSTIN is already associated with another seller account. Application moved to compliance review.' });
+        }
+      }
+    }
+
+    const updatedOffice = await prisma.sellerOffice.update({
+      where: { id: officeId },
+      data: {
+        name: req.body.name,
+        type: req.body.type,
+        pincode: req.body.pincode,
+        state: req.body.state,
+        city: req.body.city,
+        address: req.body.address,
+        contactNumber: req.body.contactNumber,
+        gstNumber: gstNumber || req.body?.gstNumber || null,
+        ...sensitiveProfileFields({ gstNumber }),
+        isMandatory: req.body.type === 'Registered'
+      }
+    });
+    res.json({ success: true, office: maskSensitive(updatedOffice) });
   } catch (err: any) {
     handleSecureRouteError(res, err);
   }
@@ -2823,7 +2990,6 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
     if (!profile.dateOfIncorporation || !isPastOrToday(profile.dateOfIncorporation)) finalSellerErrors.dateOfIncorporation = 'Date of incorporation is required and cannot be future dated.';
     if (!profile.offices?.length) finalSellerErrors.offices = 'At least one registered office is required.';
     if (!profile.bankAccounts?.length) finalSellerErrors.bankAccounts = 'At least one bank account is required.';
-    if (!profile.eInvoicingExcluded && !normalizeSpaces(profile.turnoverMax3Yrs)) finalSellerErrors.turnoverMax3Yrs = 'Turnover declaration is required unless excluded from e-invoicing.';
     if (!profile.ownershipDeclarationAccepted) finalSellerErrors.ownershipDeclarationAccepted = 'Beneficial ownership declaration must be accepted.';
     if (Object.keys(finalSellerErrors).length > 0) {
       return res.status(400).json({ message: Object.values(finalSellerErrors)[0], errors: finalSellerErrors });
@@ -2834,6 +3000,10 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
 
     if (profile.isUdyamCertified || regDetails.udyamNumber) {
       requiredDocs.push('udyam_certificate');
+    }
+
+    if (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
+      requiredDocs.push('dipp_certificate');
     }
 
     const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gst);
@@ -2862,14 +3032,15 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
         udyam_certificate: 'Udyam Certificate',
         gst_certificate: 'GST Certificate',
         aadhaar_card: 'Aadhaar of Authorized Person',
-        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)'
+        business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
+        dipp_certificate: 'DIPP Certificate'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       return res.status(400).json({ message: `Missing required documents: ${missingLabels}. Please upload them before submitting.` });
     }
 
     const sectionStatus = (existingUser.sectionStatus as Record<string, any>) || {};
-    const sections = ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership', 'documents'];
+    const sections = ['pan', 'details', 'additional', 'offices', 'bank', 'ownership', 'documents'];
 
     const finalSectionStatus = { ...sectionStatus };
     for (const sec of sections) {
@@ -2940,6 +3111,112 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
   }
 });
 
+
+app.put('/api/seller/profile/bank/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const editCheck = await ensureOnboardingEditable(userId);
+    if (!editCheck.editable) return res.status(editCheck.status || 403).json({ message: editCheck.message });
+    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+
+    const bankId = Number(req.params.id);
+    const existingBank = await prisma.sellerBankAccount.findFirst({
+      where: { id: bankId, sellerProfileId: profile.id }
+    });
+    if (!existingBank) return res.status(404).json({ message: 'Bank account not found' });
+
+    const validation = validateSellerBankPayload(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({ message: 'Invalid bank account details', errors: validation.errors });
+    }
+
+    const existingAccounts = await prisma.sellerBankAccount.findMany({
+      where: { sellerProfileId: profile.id },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const isMaskedAccount = /^\*+\d+$/.test(validation.values.accountNumber);
+    let sensitiveFields: any = {};
+    if (isMaskedAccount) {
+      sensitiveFields = {
+        accountNumberMasked: existingBank.accountNumberMasked,
+        accountNumberHash: existingBank.accountNumberHash,
+        bankFingerprint: existingBank.bankFingerprint
+      };
+    } else {
+      // Check duplicate on same profile
+      const duplicate = existingAccounts.find(bank =>
+        bank.id !== bankId &&
+        bank.ifsc.toUpperCase() === validation.values.ifsc &&
+        (bank.bankFingerprint === createHashFingerprint(`${validation.values.ifsc}:${validation.values.accountNumber}`, 'bank') ||
+          bank.accountNumberHash === createHashFingerprint(`${validation.values.ifsc}:${validation.values.accountNumber}`, 'bank') ||
+          bank.accountNumber === validation.values.accountNumber)
+      );
+      if (duplicate) {
+        return res.status(409).json({ message: 'This bank account is already added for this seller profile' });
+      }
+
+      // Check duplicate across other profiles
+      const duplicateExternalBank = await flagDuplicateBankAccount({
+        userId,
+        sellerProfileId: profile.id,
+        ifsc: validation.values.ifsc,
+        accountNumber: validation.values.accountNumber
+      });
+      if (duplicateExternalBank) {
+        await markUserForManualReview(userId);
+        return res.status(409).json({ message: 'This bank account is already linked to another seller. Application moved to compliance review.' });
+      }
+
+      sensitiveFields = sensitiveProfileFields({
+        ifsc: validation.values.ifsc,
+        accountNumber: validation.values.accountNumber
+      });
+    }
+
+    const shouldBePrimary = existingAccounts.length <= 1 || validation.values.isPrimary;
+    const bank = await prisma.$transaction(async (tx) => {
+      if (shouldBePrimary) {
+        await tx.sellerBankAccount.updateMany({
+          where: { sellerProfileId: profile.id, id: { not: bankId } },
+          data: { isPrimary: false }
+        });
+      }
+      return tx.sellerBankAccount.update({
+        where: { id: bankId },
+        data: {
+          ifsc: validation.values.ifsc,
+          bankName: validation.values.bankName,
+          bankAddress: validation.values.bankAddress,
+          holderName: validation.values.holderName,
+          ...sensitiveFields,
+          isPrimary: shouldBePrimary
+        }
+      });
+    });
+
+    const bankAccounts = await prisma.sellerBankAccount.findMany({
+      where: { sellerProfileId: profile.id },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }]
+    });
+
+    await auditLog({
+      actorUserId: userId,
+      actorRole: req.user?.role,
+      action: 'sensitive_data.updated',
+      entityType: 'sellerBankAccount',
+      entityId: bank.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { fields: ['accountNumberMasked', 'accountNumberHash'] }
+    });
+
+    res.json({ success: true, bank: maskSensitive(bank), bankAccounts: maskSensitive(bankAccounts) });
+  } catch (err: any) {
+    handleSecureRouteError(res, err);
+  }
+});
 
 app.delete('/api/seller/profile/bank/:id', authenticate, authorize('seller'), async (req: AuthRequest, res) => {
   try {
@@ -3210,8 +3487,7 @@ app.post('/api/buyer/register', authenticate, authorize('buyer'), async (req: Au
   }
 });
 
-// --- Financial Workflow APIs ---
-app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+app.get('/api/purchase-orders/summary', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
   try {
     const userId = Number(req.user?.id);
     const role = String(req.user?.role);
@@ -3221,18 +3497,107 @@ app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admi
         ? { buyerId: userId }
         : { sellerId: userId };
 
+    const orders = await prisma.purchaseOrder.findMany({
+      where,
+      select: { amount: true, totalValue: true, status: true }
+    });
+
+    const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'];
+    const totalSpend = orders.filter(order => order.status !== 'cancelled').reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0);
+    const deliveredCount = orders.filter(order => order.status === 'delivered').length;
+    const openCount = orders.filter(order => openStatuses.includes(String(order.status || '').toLowerCase())).length;
+
+    res.json({ success: true, totalSpend, deliveredCount, openCount });
+  } catch (err: any) {
+    return handleFinancialRouteError(res, err);
+  }
+});
+
+app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusTab = req.query.status ? String(req.query.status).trim() : 'All';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+
+    let where: any = role === 'admin'
+      ? {}
+      : role === 'buyer'
+        ? { buyerId: userId }
+        : { sellerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { poNumber: { contains: search, mode: 'insensitive' } },
+            { title: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            { seller: { name: { contains: search, mode: 'insensitive' } } },
+            { buyer: { name: { contains: search, mode: 'insensitive' } } }
+          ]
+        }
+      ];
+    }
+
+    if (statusTab === 'Open') {
+      where.status = { in: ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'] };
+    } else if (statusTab === 'Delivered') {
+      where.status = 'delivered';
+    } else if (statusTab === 'Cancelled') {
+      where.status = 'cancelled';
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'value_high') {
+      orderBy = { amount: 'desc' };
+    } else if (sortBy === 'value_low') {
+      orderBy = { amount: 'asc' };
+    } else if (sortBy === 'po_asc') {
+      orderBy = { poNumber: 'asc' };
+    } else if (sortBy === 'po_desc') {
+      orderBy = { poNumber: 'desc' };
+    } else if (sortBy === 'title_asc') {
+      orderBy = { title: 'asc' };
+    } else if (sortBy === 'title_desc') {
+      orderBy = { title: 'desc' };
+    } else if (sortBy === 'party_asc') {
+      orderBy = role === 'buyer' ? { seller: { name: 'asc' } } : { buyer: { name: 'asc' } };
+    } else if (sortBy === 'party_desc') {
+      orderBy = role === 'buyer' ? { seller: { name: 'desc' } } : { buyer: { name: 'desc' } };
+    } else if (sortBy === 'expected_asc') {
+      orderBy = { expectedDelivery: 'asc' };
+    } else if (sortBy === 'expected_desc') {
+      orderBy = { expectedDelivery: 'desc' };
+    } else if (sortBy === 'status' || sortBy === 'status_asc') {
+      orderBy = { status: 'asc' };
+    } else if (sortBy === 'status_desc') {
+      orderBy = { status: 'desc' };
+    } else {
+      orderBy = { createdAt: 'desc' };
+    }
+
+    const total = await prisma.purchaseOrder.count({ where });
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where,
       include: {
         tender: { select: { id: true, tenderId: true, title: true, category: true, status: true } },
         deliveryWorkflow: true,
         inspectionRecord: true,
-        invoices: { orderBy: { createdAt: 'desc' } }
+        invoices: { orderBy: { createdAt: 'desc' } },
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } }
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100
+      orderBy,
+      skip,
+      take
     });
-    res.json({ success: true, purchaseOrders: maskSensitive(purchaseOrders) });
+    res.json({ success: true, purchaseOrders: maskSensitive(purchaseOrders), total });
   } catch (err: any) {
     return handleFinancialRouteError(res, err);
   }
@@ -3307,7 +3672,7 @@ app.post('/api/purchase-orders/:id/invoices', authenticate, authorize('seller', 
   }
 });
 
-app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+app.get('/api/invoices/summary', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
   try {
     const userId = Number(req.user?.id);
     const role = String(req.user?.role);
@@ -3319,14 +3684,119 @@ app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), as
 
     const invoices = await prisma.invoice.findMany({
       where,
-      include: {
-        purchaseOrder: { select: { id: true, poNumber: true, status: true, tenderId: true } },
-        payments: { orderBy: { createdAt: 'desc' } }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100
+      select: { amount: true, status: true, invoiceStatus: true }
     });
-    res.json({ success: true, invoices: maskSensitive(invoices) });
+
+    const statusOf = (inv: any) => String(inv.invoiceStatus || inv.status || 'draft').toLowerCase();
+    const totalValue = invoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    const pendingCount = invoices.filter(inv => ['draft', 'submitted', 'pending'].includes(statusOf(inv))).length;
+    const approvedCount = invoices.filter(inv => ['approved', 'paid'].includes(statusOf(inv))).length;
+
+    res.json({ success: true, totalValue, pendingCount, approvedCount });
+  } catch (err: any) {
+    return handleFinancialRouteError(res, err);
+  }
+});
+
+app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    const role = String(req.user?.role);
+
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const statusFilter = req.query.status ? String(req.query.status).trim() : '';
+    const acceptedPo = req.query.acceptedPo === 'true';
+    const scope = req.query.scope ? String(req.query.scope) : 'all';
+    const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    let where: any = role === 'admin'
+      ? {}
+      : role === 'buyer'
+        ? { buyerId: userId }
+        : { sellerId: userId };
+
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { invoiceNumber: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            {
+              purchaseOrder: {
+                OR: [
+                  { poNumber: { contains: search, mode: 'insensitive' } },
+                  { title: { contains: search, mode: 'insensitive' } }
+                ]
+              }
+            },
+            { buyer: { name: { contains: search, mode: 'insensitive' } } },
+            { seller: { name: { contains: search, mode: 'insensitive' } } }
+          ]
+        }
+      ];
+    }
+
+    if (statusFilter) {
+      where.OR = [
+        { status: { equals: statusFilter, mode: 'insensitive' } },
+        { invoiceStatus: { equals: statusFilter as any } }
+      ];
+    }
+
+    if (acceptedPo) {
+      where.purchaseOrder = {
+        ...where.purchaseOrder,
+        status: 'accepted'
+      };
+    }
+
+    if (scope === 'interstate') {
+      where.metadata = { path: ['interstate'], equals: true };
+    } else if (scope === 'domestic') {
+      where.NOT = { metadata: { path: ['interstate'], equals: true } };
+    }
+
+    let orderBy: any = {};
+    if (sortBy === 'invoiceNumber') {
+      orderBy = { invoiceNumber: sortOrder };
+    } else if (sortBy === 'poNumber') {
+      orderBy = { purchaseOrder: { poNumber: sortOrder } };
+    } else if (sortBy === 'party') {
+      orderBy = role === 'seller' ? { buyer: { name: sortOrder } } : { seller: { name: sortOrder } };
+    } else if (sortBy === 'taxableAmount') {
+      orderBy = { taxableAmount: sortOrder };
+    } else if (sortBy === 'totalTaxAmount') {
+      orderBy = { totalTaxAmount: sortOrder };
+    } else if (sortBy === 'tdsAmount') {
+      orderBy = { tdsAmount: sortOrder };
+    } else if (sortBy === 'totalAmount') {
+      orderBy = { amount: sortOrder };
+    } else if (sortBy === 'dueDate') {
+      orderBy = { createdAt: sortOrder };
+    } else if (sortBy === 'status') {
+      orderBy = { status: sortOrder };
+    } else {
+      orderBy = { createdAt: sortOrder };
+    }
+
+    const total = await prisma.invoice.count({ where });
+    const invoices = await prisma.invoice.findMany({
+      where,
+      include: {
+        purchaseOrder: { select: { id: true, poNumber: true, status: true, tenderId: true, title: true } },
+        payments: { orderBy: { createdAt: 'desc' } },
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } }
+      },
+      orderBy,
+      skip,
+      take
+    });
+    res.json({ success: true, invoices: maskSensitive(invoices), total });
   } catch (err: any) {
     return handleFinancialRouteError(res, err);
   }
@@ -3685,7 +4155,7 @@ app.post('/api/admin/status', authenticate, authorizeAdmin, async (req, res) => 
 
     if (status === 'approved_for_procurement') {
       const buyerSections = { org: 'approved', rep: 'approved', address: 'approved', procurement: 'approved', docs: 'approved' };
-      const sellerSections = { pan: 'approved', details: 'approved', additional: 'approved', offices: 'approved', bank: 'approved', einvoicing: 'approved', ownership: 'approved' };
+      const sellerSections = { pan: 'approved', details: 'approved', additional: 'approved', offices: 'approved', bank: 'approved', ownership: 'approved' };
 
       updateData.sectionStatus = user?.role === 'buyer' ? buyerSections : sellerSections;
     }
@@ -3783,6 +4253,31 @@ app.get('/api/vendors/:id', authenticate, authorize('buyer', 'admin'), async (re
       }));
     }
     res.json(maskSensitive({ ...vendorSafe, _id: vendor.id }));
+  } catch (err: any) {
+    handleSecureRouteError(res, err);
+  }
+});
+
+app.get('/api/vendors/:id/catalogue', authenticate, authorize('buyer', 'admin'), async (req, res) => {
+  try {
+    const sellerId = Number(req.params.id);
+    const [products, services] = await Promise.all([
+      prisma.product.findMany({
+        where: { sellerId, status: 'ACTIVE' },
+        include: { category: true }
+      }),
+      prisma.service.findMany({
+        where: { sellerId, status: 'ACTIVE' },
+        include: { category: true }
+      })
+    ]);
+    res.json({
+      success: true,
+      data: {
+        products,
+        services
+      }
+    });
   } catch (err: any) {
     handleSecureRouteError(res, err);
   }
@@ -3913,7 +4408,7 @@ app.post('/api/admin/section-status', authenticate, authorizeAdmin, async (req, 
     // Calculate overall onboarding status based on all sections
     const sections = user.role === 'buyer'
       ? ['org', 'rep', 'address', 'procurement', 'docs']
-      : ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership', 'documents'];
+      : ['pan', 'details', 'additional', 'offices', 'bank', 'ownership', 'documents'];
 
     const statuses = sections.map(s => sectionStatus[s] || 'pending');
 
@@ -4650,6 +5145,13 @@ app.post('/api/notifications/:id/read', authenticate, async (req: AuthRequest, r
 const startListening = (port: number) => {
   const server = app.listen(port, () => {
     logger.info({ port }, 'Server running');
+    try {
+      const portFilePath = path.resolve(process.cwd(), '../.backend-port');
+      fs.writeFileSync(portFilePath, String(port), 'utf8');
+      logger.info(`Wrote backend port ${port} to ${portFilePath}`);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to write backend port file');
+    }
   });
 
   server.on('error', (err: any) => {
@@ -4664,6 +5166,19 @@ const startListening = (port: number) => {
 };
 
 app.use(errorHandler);
+
+const checkStartupDatabaseConnection = async () => {
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1');
+    return true;
+  } catch (error) {
+    logger.warn(
+      { err: summarizeBackgroundError(error) },
+      'Database is unreachable on startup; skipping database background jobs. User login requires DATABASE_URL to reach the live database.'
+    );
+    return false;
+  }
+};
 
 export async function startServer() {
   await connectRedis().catch(error => {
@@ -4707,15 +5222,14 @@ export async function startServer() {
   const PORT = env.PORT;
   startListening(PORT);
 
+  const databaseAvailable = await checkStartupDatabaseConnection();
+  if (!databaseAvailable) return;
+
   const auctionFinalizerInterval = setInterval(() => {
-    void finalizeEndedAuctionsJob().catch(error =>
-      console.warn('[AuctionFinalizer] Failed:', error instanceof Error ? error.message : error)
-    );
+    void finalizeEndedAuctionsJob().catch(logAuctionFinalizerFailure);
   }, 60_000);
   auctionFinalizerInterval.unref?.();
-  void finalizeEndedAuctionsJob().catch(error =>
-    console.warn('[AuctionFinalizer] Initial run failed:', error instanceof Error ? error.message : error)
-  );
+  void finalizeEndedAuctionsJob().catch(logAuctionFinalizerFailure);
 
   // Neon serverless DB keepalive: a tiny query every 90 seconds prevents
   // the database from auto-suspending, which is what causes 8-12s cold starts
@@ -4723,9 +5237,7 @@ export async function startServer() {
   // We fire one ping immediately on startup so the very first user request
   // never hits a cold compute.
   if (process.env.NODE_ENV !== 'production' || process.env.DB_KEEPALIVE === 'true') {
-    const ping = () => prisma.$queryRawUnsafe('SELECT 1').catch(error =>
-      logger.warn({ err: error }, 'DB keepalive ping failed')
-    );
+    const ping = () => prisma.$queryRawUnsafe('SELECT 1').catch(logDbKeepaliveFailure);
     void ping(); // immediate warm-up
     const dbKeepaliveInterval = setInterval(() => { void ping(); }, 90_000);
     dbKeepaliveInterval.unref?.();

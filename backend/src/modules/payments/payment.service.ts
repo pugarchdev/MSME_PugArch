@@ -458,6 +458,10 @@ export const listEscrowAccounts = async (actor: Actor, window: { skip?: number; 
       include: {
         paymentTransaction: true,
         purchaseOrder: { select: { id: true, poNumber: true, status: true } },
+        // Include buyer and seller display info so the UI can show real names
+        // instead of "Buyer #12 / Seller #9". Limit fields to keep payload lean.
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } },
         milestones: { include: { approvals: true, transactions: true }, orderBy: { createdAt: 'asc' } },
         transactions: { orderBy: { createdAt: 'asc' } }
       },

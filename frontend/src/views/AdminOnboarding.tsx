@@ -1,8 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../lib/api";
-import { formatDate } from "../features/shared/format";
+import { formatDate, formatDateTime } from "../features/shared/format";
 import { Button } from "../components/ui/button";
 import { Pagination } from "../features/shared/Pagination";
+import { useResponsiveViewMode } from "../features/shared/hooks";
+import { ViewModeToggle } from "../features/shared/ViewModeToggle";
 import {
   Card,
   CardHeader,
@@ -45,6 +49,8 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -56,6 +62,9 @@ const SELLER_ONBOARDING_DOCUMENT_TYPES = new Set([
   "gst_certificate",
   "aadhaar_card",
   "business_registration_proof",
+  "dipp_certificate",
+  "itr_3_years",
+  "nsic_certificate",
 ]);
 
 const getDocumentFiles = (document: any) => {
@@ -64,7 +73,27 @@ const getDocumentFiles = (document: any) => {
 };
 
 const getDocumentUrl = (document: any) =>
-  typeof document === "string" ? document : document?.url || document?.signedUrl || "";
+  typeof document === "string"
+    ? document
+    : document?.url || document?.signedUrl || document?.fileAsset?.url || (document?.fileId ? `/api/files/${document.fileId}/view` : "");
+
+const DOCUMENT_LABELS: Record<string, string> = {
+  panCard: "PAN_COPY",
+  regCert: "REGISTRATION_CERTIFICATE",
+  gstCert: "GST_CERTIFICATE",
+  addressProof: "ADDRESS_PROOF",
+  authLetter: "AUTHORIZATION_LETTER",
+  uploaded_files: "UPLOADED_FILES",
+};
+
+const getDocumentLabel = (key: string) =>
+  DOCUMENT_LABELS[key] || String(key || "DOCUMENT").replace(/([a-z])([A-Z])/g, "$1_$2").replace(/[\s-]+/g, "_").toUpperCase();
+
+const getDocumentFileName = (file: any, fallback: string) =>
+  file?.originalName || file?.fileAsset?.originalName || file?.name || file?.fileName || fallback;
+
+const getDocumentUploadedAt = (file: any) =>
+  file?.uploadedAt || file?.createdAt || file?.fileAsset?.createdAt || file?.file?.createdAt || null;
 
 const getSellerOnboardingDocuments = (profile: any) => {
   const sellerDocuments = Array.isArray(profile?.sellerDocuments)
@@ -87,17 +116,48 @@ const getSellerOnboardingDocuments = (profile: any) => {
   return { sellerDocuments, legacyDocuments };
 };
 
+const MSME_TYPE_LABELS: Record<string, string> = {
+  MSME: 'MSME',
+  NON_MSME: 'Non-MSME',
+  LOCAL_MSME: 'Local MSME',
+  ANCILLARY_UNIT: 'Ancillary Unit',
+  STARTUP_MSME: 'Startup MSME'
+};
+
+const VENDOR_TYPE_LABELS: Record<string, string> = {
+  MANUFACTURER: 'Manufacturer',
+  TRADER: 'Trader',
+  DISTRIBUTOR: 'Distributor',
+  DEALER: 'Dealer',
+  SERVICE_PROVIDER: 'Service Provider',
+  CONTRACTOR: 'Contractor',
+  OEM: 'OEM',
+  RETAIL_SUPPLIER: 'Retail Supplier',
+  WHOLESALER: 'Wholesaler'
+};
+
+const REGISTRATION_TYPE_LABELS: Record<string, string> = {
+  GST_REGISTERED: 'GST Registered',
+  UDYAM_REGISTERED: 'UDYAM Registered',
+  NSIC_REGISTERED: 'NSIC Registered',
+  ISO_CERTIFIED: 'ISO Certified',
+  PAN_AVAILABLE: 'PAN Available'
+};
+
 export default function AdminOnboarding() {
+  const queryClient = useQueryClient();
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
+  const authHeaders = { Authorization: `Bearer ${token}` };
   const authOptions = {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: { Authorization: `Bearer ${token}` },
   };
-  const cachedRaw = api.peek("/api/admin/onboarding", authOptions);
-  const cachedData = cachedRaw?.data ?? cachedRaw;
-  const [sellers, setSellers] = useState<any[]>(cachedData?.sellers || []);
-  const [buyers, setBuyers] = useState<any[]>(cachedData?.buyers || []);
+
+  const [sellers, setSellers] = useState<any[]>([]);
+  const [buyers, setBuyers] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("sellers");
-  const [isLoading, setIsLoading] = useState(!cachedData);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [progressFilter, setProgressFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
@@ -118,52 +178,113 @@ export default function AdminOnboarding() {
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
 
-  /**
-   * Open the scrutiny modal with the lightweight list row for instant feedback,
-   * then fetch the heavy detail (full profile, offices, banks, certs, docs)
-   * from /admin/onboarding/:id and merge it in. Two-step pattern keeps the
-   * list endpoint lean while still showing complete data when a reviewer
-   * actually opens an application.
-   */
-  const openItemForReview = async (item: any) => {
-    setSelectedItem(item);
-    setFeedback(item.adminFeedback || "");
-    try {
-      const res = await api.fetch(`/api/admin/onboarding/${item._id || item.id}`, authOptions);
-      if (!res.ok) return;
-      const payload = await res.json();
-      const detail = payload?.data || payload;
-      if (detail) {
-        // Preserve the list-derived fields (e.g. cached profile from the list)
-        // and overlay the heavy detail. Detail wins because it's the
-        // authoritative deep copy.
-        setSelectedItem((prev: any) => (prev && (prev._id === item._id || prev._id === item.id)
-          ? { ...prev, ...detail }
-          : prev));
-      }
-    } catch {
-      // Modal already shows the lightweight row; silent failure is fine.
-    }
-  };
+  // View / Toolbar UI state
+  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const fetchData = async () => {
-    if (!cachedData) setIsLoading(true);
-    try {
+  // 1. Fetch KPI stats (shares key and cache with dashboard/MISReports)
+  const { data: adminStats, isLoading: isAdminStatsLoading } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/admin/reports/summary?kpiOnly=true', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  // 2. Fetch registrations list query
+  const { data: onboardingData, isLoading: isOnboardingLoading } = useQuery({
+    queryKey: ['adminOnboardingList'],
+    queryFn: async () => {
       const res = await api.fetch("/api/admin/onboarding", authOptions);
-      const payload = await res.json();
-      const data = payload?.data || payload || {};
-      setSellers(Array.isArray(data.sellers) ? data.sellers : []);
-      setBuyers(Array.isArray(data.buyers) ? data.buyers : []);
-    } catch (err) {
-      toast.error("Failed to load registrations");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      if (!res.ok) throw new Error("Failed to load onboarding records");
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const isLoading = isOnboardingLoading;
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (onboardingData) {
+      setSellers(Array.isArray(onboardingData.sellers) ? onboardingData.sellers : []);
+      setBuyers(Array.isArray(onboardingData.buyers) ? onboardingData.buyers : []);
+    }
+  }, [onboardingData]);
+
+  /**
+   * Open the scrutiny modal with the heavy detail (full profile, offices,
+   * banks, certs, docs) already in place so review data appears instantly.
+   *
+   * Detail is fetched from /admin/onboarding/:id, but we cache every fetched
+   * record in `detailCacheRef` and prefetch the visible rows (and on hover),
+   * so by the time a reviewer clicks "Review" the data is usually already
+   * resident — the modal renders complete immediately with no spinner/flash.
+   * If the cache misses, we still show the lightweight row instantly and merge
+   * the detail in as soon as it lands.
+   */
+  const detailCacheRef = useRef<Map<string, any>>(new Map());
+  const inFlightRef = useRef<Map<string, Promise<any>>>(new Map());
+
+  const fetchDetail = useCallback(async (item: any): Promise<any> => {
+    const key = String(item._id || item.id);
+    if (!key) return null;
+    if (detailCacheRef.current.has(key)) return detailCacheRef.current.get(key);
+    if (inFlightRef.current.has(key)) return inFlightRef.current.get(key);
+
+    const promise = (async () => {
+      try {
+        const res = await api.fetch(`/api/admin/onboarding/${key}`, { ...authOptions, skipCache: true });
+        if (!res.ok) return null;
+        const payload = await res.json();
+        const detail = payload?.data || payload;
+        if (detail) detailCacheRef.current.set(key, detail);
+        return detail;
+      } catch {
+        return null;
+      } finally {
+        inFlightRef.current.delete(key);
+      }
+    })();
+
+    inFlightRef.current.set(key, promise);
+    return promise;
+  }, [authOptions]);
+
+  // Warm the cache without opening the modal (hover / visible rows).
+  const prefetchDetail = useCallback((item: any) => {
+    const key = String(item?._id || item?.id || "");
+    if (!key || detailCacheRef.current.has(key) || inFlightRef.current.has(key)) return;
+    void fetchDetail(item);
+  }, [fetchDetail]);
+
+  const openItemForReview = async (item: any) => {
+    const key = String(item._id || item.id);
+    setFeedback(item.adminFeedback || "");
+
+    // If detail is already cached, render the complete record immediately.
+    const cached = detailCacheRef.current.get(key);
+    if (cached) {
+      setSelectedItem({ ...item, ...cached });
+      return;
+    }
+
+    // Otherwise show the lightweight row instantly, then merge detail in.
+    setSelectedItem(item);
+    const detail = await fetchDetail(item);
+    if (detail) {
+      setSelectedItem((prev: any) =>
+        prev && (prev._id === item._id || prev._id === item.id || prev.id === item.id)
+          ? { ...prev, ...detail }
+          : prev,
+      );
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -213,7 +334,6 @@ export default function AdminOnboarding() {
       "additional",
       "offices",
       "bank",
-      "einvoicing",
       "ownership",
       "documents",
     ];
@@ -260,8 +380,9 @@ export default function AdminOnboarding() {
 
     // 4. Make the backend API request
     try {
+      const numericId = Number(userId) || selectedItem?.id;
       const res = await api.post(
-        `/api/admin/onboarding/${userId}/status`,
+        `/api/admin/onboarding/${numericId}/status`,
         { onboardingStatus: status, adminFeedback: reason || undefined },
         {
           headers: {
@@ -271,17 +392,38 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`Complete application ${status}`);
-        fetchData();
+        // Keep the warmed detail cache in sync so reopening the modal shows
+        // the new status instantly instead of stale cached detail.
+        const cacheKey = String(userId);
+        const cachedDetail = detailCacheRef.current.get(cacheKey);
+        if (cachedDetail) {
+          detailCacheRef.current.set(cacheKey, {
+            ...cachedDetail,
+            onboardingStatus: status,
+            sectionStatus: updatedSectionStatus,
+            adminFeedback: reason || cachedDetail.adminFeedback,
+          });
+        }
+        queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
+        queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
-        toast.error("Failed to update status");
+        const errBody = await res.json().catch(() => ({} as any));
+        const detail = errBody?.message || errBody?.error || `HTTP ${res.status}`;
+        toast.error(`Failed to update status: ${detail}`);
+        if (typeof window !== 'undefined') {
+          console.error('[AdminOnboarding] status update failed', { status: res.status, body: errBody });
+        }
         // Revert to original state
+        detailCacheRef.current.delete(String(userId));
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
         setBuyers(previousBuyers);
       }
     } catch (err) {
       toast.error("Network error");
+      console.error('[AdminOnboarding] status network error', err);
       // Revert to original state
+      detailCacheRef.current.delete(String(userId));
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
       setBuyers(previousBuyers);
@@ -316,7 +458,6 @@ export default function AdminOnboarding() {
         additional: "pending",
         offices: "pending",
         bank: "pending",
-        einvoicing: "pending",
         ownership: "pending",
         documents: "pending",
       };
@@ -328,7 +469,12 @@ export default function AdminOnboarding() {
     };
 
     // 4. Compute onboardingStatus
-    const statuses = Object.values(updatedSectionStatus);
+    // Skip non-section meta keys like `submitted` that the seller-side
+    // /onboarding/submit endpoint stores in sectionStatus.
+    const sectionKeys = selectedItem.role === "buyer"
+      ? ["org", "rep", "address", "procurement", "docs"]
+      : ["pan", "details", "additional", "offices", "bank", "ownership", "documents"];
+    const statuses = sectionKeys.map((k) => updatedSectionStatus[k as keyof typeof updatedSectionStatus] || "pending");
     let newStatus = "under_compliance_review";
     if (statuses.every((s) => s === "approved")) {
       newStatus = "approved_for_procurement";
@@ -344,7 +490,7 @@ export default function AdminOnboarding() {
         ...(selectedItem.sectionRejectionReasons || {}),
         [section]: reason,
       }
-      : selectedItem.sectionRejectionReasons;
+      : (selectedItem.sectionRejectionReasons || {});
 
     const updatedItem = {
       ...selectedItem,
@@ -376,10 +522,21 @@ export default function AdminOnboarding() {
 
     // 7. Make the backend API request
     try {
+      // Strip non-section meta keys before sending so backend computation
+      // stays consistent and we don't accidentally persist stale flags.
+      const cleanSectionStatus: Record<string, string> = {};
+      for (const k of sectionKeys) {
+        cleanSectionStatus[k] = String(updatedSectionStatus[k as keyof typeof updatedSectionStatus] || "pending");
+      }
+      // Coerce userId to a number for the URL — backend's idParams uses
+      // z.coerce.number().int().positive() but we send what we have. Use the
+      // fallback to selectedItem.id (numeric) so even if _id was a string we
+      // still hit the right route.
+      const numericId = Number(userId) || selectedItem?.id;
       const res = await api.post(
-        `/api/admin/onboarding/${userId}/section-status`,
+        `/api/admin/onboarding/${numericId}/section-status`,
         {
-          sectionStatus: updatedSectionStatus,
+          sectionStatus: cleanSectionStatus,
           sectionRejectionReasons: updatedRejectionReasons,
         },
         {
@@ -390,17 +547,39 @@ export default function AdminOnboarding() {
       );
       if (res.ok) {
         toast.success(`${section} status updated to ${status}`);
-        fetchData();
+        // Keep prefetch cache in sync
+        const cacheKey = String(userId);
+        const cachedDetail = detailCacheRef.current.get(cacheKey);
+        if (cachedDetail) {
+          detailCacheRef.current.set(cacheKey, {
+            ...cachedDetail,
+            onboardingStatus: newStatus,
+            sectionStatus: updatedSectionStatus,
+            sectionRejectionReasons: updatedRejectionReasons,
+          });
+        }
+        queryClient.invalidateQueries({ queryKey: ['adminOnboardingList'] });
+        queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       } else {
-        toast.error("Failed to update section status");
+        // Try to surface the actual server message so reviewers know what
+        // went wrong instead of seeing the generic "failed to update".
+        const errBody = await res.json().catch(() => ({} as any));
+        const detail = errBody?.message || errBody?.error || `HTTP ${res.status}`;
+        toast.error(`Failed to update section status: ${detail}`);
+        if (typeof window !== 'undefined') {
+          console.error('[AdminOnboarding] section-status update failed', { status: res.status, body: errBody });
+        }
         // Revert to original state
+        detailCacheRef.current.delete(String(userId));
         setSelectedItem(previousSelectedItem);
         setSellers(previousSellers);
         setBuyers(previousBuyers);
       }
     } catch (err) {
       toast.error("Network error");
+      console.error('[AdminOnboarding] section-status network error', err);
       // Revert to original state
+      detailCacheRef.current.delete(String(userId));
       setSelectedItem(previousSelectedItem);
       setSellers(previousSellers);
       setBuyers(previousBuyers);
@@ -537,7 +716,6 @@ export default function AdminOnboarding() {
         "additional",
         "offices",
         "bank",
-        "einvoicing",
         "ownership",
         "documents",
       ];
@@ -552,15 +730,30 @@ export default function AdminOnboarding() {
   };
 
   const getDisplayText = (value: unknown, fallback: string) => {
-    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean") return String(value);
     return fallback;
   };
-  const getEntityName = (item: any) =>
-    getDisplayText(
-      item.profile?.businessName || item.profile?.organizationName,
-      "N/A",
-    );
+  // Pull the registered entity name from whichever profile the user has.
+  // Returns empty string if onboarding hasn't started yet, so the table can
+  // render a clear "Onboarding in progress" placeholder instead of "N/A".
+  const getEntityName = (item: any): string => {
+    const profile = item?.profile || {};
+    const candidate = profile.businessName
+      || profile.organizationName
+      || profile.officeZoneName
+      || (typeof item?.organization === "object" ? item.organization?.legalName || item.organization?.name : "");
+    return typeof candidate === "string" ? candidate.trim() : "";
+  };
+  // Combine city + state when present. Empty string when neither exists, so
+  // the caller can hide the row instead of printing "STATE N/A".
+  const getEntityLocation = (item: any): string => {
+    const profile = item?.profile || {};
+    const parts = [profile.city, profile.state]
+      .filter((part) => typeof part === "string" && part.trim().length > 0)
+      .map((part) => String(part).trim());
+    return parts.join(", ");
+  };
   const getPrimaryCategory = (item: any) => {
     const category =
       item.role === "buyer"
@@ -584,7 +777,7 @@ export default function AdminOnboarding() {
     );
 
   const filterData = (data: any[]) => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
     return data
       .filter((item) => {
         const name = (item.name || "").toLowerCase();
@@ -660,6 +853,18 @@ export default function AdminOnboarding() {
     setPageSizeState(nextPageSize);
     setPage(1);
   };
+
+  // Warm the detail cache for the rows currently on screen so opening the
+  // scrutiny modal is instant. Runs whenever the visible page changes.
+  // Prefetches are de-duped and capped per pass to avoid hammering the API.
+  useEffect(() => {
+    if (pagedCurrentData.length === 0) return;
+    const timer = setTimeout(() => {
+      pagedCurrentData.slice(0, pageSize).forEach(prefetchDetail);
+    }, 150);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, currentPage, pageSize, debouncedSearchTerm, statusFilter, progressFilter, sortBy, sellers, buyers]);
 
   useEffect(() => {
     setPage(1);
@@ -795,7 +1000,7 @@ export default function AdminOnboarding() {
       GST: item.profile?.gst || "",
       State: item.profile?.state || "",
       Category: getPrimaryCategory(item),
-      "Submitted Date": formatDate(item.createdAt),
+      "Submitted Date": formatDateTime(item.createdAt),
       Status: item.onboardingStatus || "pending",
       "Verification Progress": `${getProgress(item)}%`,
     }));
@@ -898,17 +1103,18 @@ export default function AdminOnboarding() {
                   key={stat.label}
                   type="button"
                   onClick={() => handleKpiClick(stat.target)}
-                  className="text-left"
+                  className="text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#12335f] focus:ring-offset-2 rounded-2xl"
+                  aria-label={`Filter by ${stat.label}`}
                 >
-                  <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                  <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 hover:border-[#12335f]/40 transition-all">
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                             {stat.label}
                           </p>
-                          <p className="text-2xl font-black text-slate-900 tracking-tighter">
-                            {stat.value}
+                          <p className={cn("text-2xl font-black tracking-tighter", isLoading ? "text-slate-300" : "text-slate-900")}>
+                            {isLoading ? "0" : stat.value}
                           </p>
                           <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                             {stat.sub}
@@ -969,48 +1175,52 @@ export default function AdminOnboarding() {
                 />
               </CardHeader>
               <CardContent className="p-0">
-                <div className="p-6 space-y-4 bg-slate-50/50">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-[#12335f]">
-                      <Filter className="h-4 w-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">
-                        Procurement Verification Filters
-                      </p>
-                    </div>
-                    <p className="text-xs font-medium text-slate-500">
-                      Showing {currentData.length}{" "}
-                      {activeTab === "sellers" ? "seller" : "buyer"} application
-                      {currentData.length === 1 ? "" : "s"} for the selected
-                      criteria.
+                <div className="p-4 md:p-6 space-y-4 bg-slate-50/50">
+                  <div className="flex items-center gap-2 text-[#12335f]">
+                    <Filter className="h-4 w-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">
+                      Procurement Verification Filters
                     </p>
                   </div>
-                  <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-                    <div className="relative w-full max-w-xl">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input
-                        placeholder="Search by company, PAN, GST, state, or applicant name..."
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 md:w-auto">
+                  <p className="text-xs font-medium text-slate-500">
+                    Showing {currentData.length}{" "}
+                    {activeTab === "sellers" ? "seller" : "buyer"} application
+                    {currentData.length === 1 ? "" : "s"} for the selected
+                    criteria.
+                  </p>
+
+                  {/* Toolbar — desktop: [search 80%] [status] [progress] [sort] [reset] [view-toggle].
+                      Mobile: only [search] + [filters button]; tapping the button reveals a drawer
+                      with every filter and a Reset Filters action. */}
+                  <div className="space-y-3">
+                    {/* Desktop layout: single row with search ~80% width */}
+                    <div className="hidden md:grid items-stretch gap-2 md:grid-cols-[minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+                      <div className="relative min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          placeholder="Search by company, PAN, GST, state, or applicant name..."
+                          className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          aria-label="Search applications"
+                        />
+                      </div>
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
+                        aria-label="Status filter"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Status</option>
                         <option value="pending">Pending / Review</option>
                         <option value="approved">Approved</option>
-                        <option value="resubmission">
-                          Correction Required
-                        </option>
+                        <option value="resubmission">Correction Required</option>
                         <option value="rejected">Rejected</option>
                       </select>
                       <select
                         value={progressFilter}
                         onChange={(e) => setProgressFilter(e.target.value)}
+                        aria-label="Progress filter"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">All Progress</option>
@@ -1021,6 +1231,7 @@ export default function AdminOnboarding() {
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort"
                         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="newest">Newest First</option>
@@ -1028,32 +1239,138 @@ export default function AdminOnboarding() {
                         <option value="progress">Progress High</option>
                         <option value="entity">Entity A-Z</option>
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setProgressFilter("all");
+                          setSortBy("newest");
+                        }}
+                        className="h-11 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 hover:text-[#12335f] shrink-0"
+                        title="Reset filters"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        <span className="hidden lg:inline">Reset</span>
+                      </button>
+                      {/* List / Grid view toggle sits to the RIGHT of Reset on desktop */}
+                      <div className="inline-flex shrink-0">
+                        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                      </div>
+                    </div>
+
+                    {/* Mobile layout: search on top, single Filters button below */}
+                    <div className="md:hidden space-y-2">
+                      <div className="relative min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          placeholder="Search applications..."
+                          className="w-full pl-10 pr-4 h-11 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          aria-label="Search applications"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowMobileFilters((v) => !v)}
+                        aria-expanded={showMobileFilters}
+                        aria-controls="admin-onboarding-mobile-filters"
+                        className={cn(
+                          "h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 text-[11px] font-black uppercase tracking-wide transition",
+                          showMobileFilters
+                            ? "border-[#12335f] text-[#12335f]"
+                            : "border-slate-200 text-slate-600 hover:border-[#12335f]/40 hover:text-[#12335f]"
+                        )}
+                      >
+                        <Filter className="h-3.5 w-3.5" />
+                        Filters
+                        {(statusFilter !== "all" || progressFilter !== "all" || sortBy !== "newest") && (
+                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#12335f] px-1.5 text-[9px] font-black text-white">
+                            {[statusFilter !== "all", progressFilter !== "all", sortBy !== "newest"].filter(Boolean).length}
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchTerm("");
-                        setStatusFilter("all");
-                        setProgressFilter("all");
-                        setSortBy("newest");
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 hover:text-[#12335f]"
+
+                  {/* Mobile filters drawer — only renders on mobile */}
+                  {showMobileFilters && (
+                    <div
+                      id="admin-onboarding-mobile-filters"
+                      className="md:hidden grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200"
                     >
-                      <RefreshCw className="h-3 w-3" /> Reset Filters
-                    </button>
-                    {adminView !== "applications" && (
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        aria-label="Status filter"
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending / Review</option>
+                        <option value="approved">Approved</option>
+                        <option value="resubmission">Correction Required</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <select
+                        value={progressFilter}
+                        onChange={(e) => setProgressFilter(e.target.value)}
+                        aria-label="Progress filter"
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">All Progress</option>
+                        <option value="not_started">0% Verified</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">100% Verified</option>
+                      </select>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort"
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="progress">Progress High</option>
+                        <option value="entity">Entity A-Z</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setProgressFilter("all");
+                          setSortBy("newest");
+                          setShowMobileFilters(false);
+                        }}
+                        className="h-11 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-600"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" /> Reset Filters
+                      </button>
+                    </div>
+                  )}
+
+                  {adminView !== "applications" && (
+                    <div className="flex flex-wrap gap-2">
                       <span className="rounded-full bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-[#12335f]">
                         View: {adminView.replace("_", " ")}
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {isLoading ? (
-                  <div className="py-20 text-center text-slate-400 animate-pulse">
-                    Scanning database registrations...
+                  <div className="p-6 space-y-4">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex items-center justify-between py-4 border-b border-slate-50 animate-pulse">
+                        <div className="h-4 w-8 bg-slate-100 rounded" />
+                        <div className="h-4 w-1/4 bg-slate-100 rounded" />
+                        <div className="h-4 w-1/4 bg-slate-100 rounded" />
+                        <div className="h-4.5 w-20 bg-slate-100 rounded" />
+                        <div className="h-4 w-16 bg-slate-100 rounded" />
+                        <div className="h-4 w-12 bg-slate-100 rounded" />
+                      </div>
+                    ))}
                   </div>
                 ) : currentData.length === 0 ? (
                   <div className="py-20 text-center text-slate-400 border-2 border-dashed border-slate-100 m-6 rounded-2xl">
@@ -1061,8 +1378,11 @@ export default function AdminOnboarding() {
                   </div>
                 ) : (
                   <>
-                    {/* Responsive Table for Desktop */}
-                    <div className="hidden md:block overflow-x-auto no-scrollbar">
+                    {/* Responsive Table for Desktop (List view) */}
+                    <div className={cn(
+                      "overflow-x-auto no-scrollbar",
+                      viewMode === "list" ? "hidden md:block" : "hidden"
+                    )}>
                       <Table>
                         <TableHeader className="bg-slate-50/80 border-y border-slate-100">
                           <TableRow className="hover:bg-transparent">
@@ -1084,6 +1404,7 @@ export default function AdminOnboarding() {
                           {pagedCurrentData.map((item, index) => (
                             <TableRow
                               key={item._id}
+                              onMouseEnter={() => prefetchDetail(item)}
                               className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50"
                             >
                               <TableCell className="px-6 py-8">
@@ -1092,27 +1413,45 @@ export default function AdminOnboarding() {
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
-                                <div className="font-bold text-slate-800 text-xs tracking-tight">
-                                  {item.name}
-                                </div>
-                                <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.role || activeTab.replace(/s$/, "")}
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openItemForReview(item);
+                                  }}
+                                  className="block text-left group/name cursor-pointer"
+                                  title="Click to view full personal details"
+                                >
+                                  <div className="font-bold text-slate-800 text-xs tracking-tight group-hover/name:text-[#12335f] group-hover/name:underline decoration-[#f9a825] underline-offset-2 transition-colors flex items-center gap-1.5">
+                                    <span className="text-wrap-anywhere">{item.name}</span>
+                                    <Eye className="h-3 w-3 opacity-0 group-hover/name:opacity-100 text-[#12335f] transition-opacity shrink-0" />
+                                  </div>
+                                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    {item.role || activeTab.replace(/s$/, "")}
+                                  </div>
+                                </button>
                               </TableCell>
                               <TableCell className="px-6 py-8">
-                                <div className="font-bold text-slate-600 text-xs underline decoration-indigo-200 underline-offset-4">
-                                  {getEntityName(item)}
-                                </div>
-                                <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.profile?.state || "State N/A"}
-                                </div>
+                                {getEntityName(item) ? (
+                                  <div className="font-bold text-slate-600 text-xs underline decoration-indigo-200 underline-offset-4 break-words">
+                                    {getEntityName(item)}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs font-semibold italic text-slate-400">
+                                    Onboarding in progress
+                                  </div>
+                                )}
+                                {getEntityLocation(item) && (
+                                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    {getEntityLocation(item)}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="space-y-1">
                                   <div className="text-[10px] font-black text-indigo-600 uppercase">
                                     {item.role === "buyer"
-                                      ? item.profile?.annualBudget ||
-                                      "Budget N/A"
+                                      ? getDisplayText(item.profile?.annualBudget, "Budget pending")
                                       : getPrimaryCategory(item)}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
@@ -1125,7 +1464,7 @@ export default function AdminOnboarding() {
                               </TableCell>
                               <TableCell className="px-6 py-8">
                                 <div className="text-xs font-bold text-slate-500 font-mono">
-                                  {formatDate(item.createdAt)}
+                                  {formatDateTime(item.createdAt)}
                                 </div>
                               </TableCell>
                               <TableCell className="px-6 py-8">
@@ -1185,71 +1524,287 @@ export default function AdminOnboarding() {
                       </Table>
                     </div>
 
-                    {/* Responsive Card Grid for Mobile */}
-                    <div className="md:hidden divide-y divide-slate-100">
-                      {pagedCurrentData.map((item, index) => (
-                        <div key={item._id} className="p-4 space-y-4">
-                          <div className="flex justify-between items-start">
-                            <div className="flex gap-3">
-                              <div className="font-mono text-[10px] font-black text-slate-400">
-                                {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
-                              </div>
-                              <div className="space-y-1">
-                                <div className="font-bold text-slate-800 text-xs tracking-tight">
-                                  {item.name}
-                                </div>
-                                <div className="font-bold text-slate-500 text-[10px] underline decoration-indigo-200 underline-offset-2">
-                                  {getEntityName(item)}
-                                </div>
-                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                                  {item.profile?.state || "State N/A"}
-                                </div>
-                              </div>
-                            </div>
-                            {getStatusBadge(item.onboardingStatus)}
-                          </div>
+                    {/* Desktop Grid view (alternative to table) */}
+                    {viewMode === "grid" && (
+                      <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 md:p-6 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+                        {pagedCurrentData.map((item, index) => {
+                          const getAvatarGradient = (status: string) => {
+                            switch (status) {
+                              case "approved_for_procurement":
+                                return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                              case "rejected":
+                                return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                              case "resubmission_required":
+                                return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                              default:
+                                return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                            }
+                          };
 
-                          <div className="flex justify-between items-end">
-                            <div className="space-y-2">
-                              <div className="text-[10px] font-black text-indigo-600 uppercase">
-                                {item.role === "buyer"
-                                  ? item.profile?.annualBudget || "Budget N/A"
-                                  : getPrimaryCategory(item)}
+                          return (
+                            <div
+                              key={item._id}
+                              onClick={() => void openItemForReview(item)}
+                              onMouseEnter={() => prefetchDetail(item)}
+                              className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#12335f]/25 transition-all duration-300 flex flex-col justify-between min-w-0"
+                            >
+                              <div>
+                                {/* Top Row - Meta & Badge */}
+                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+                                  <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                                    {item.role || activeTab.replace(/s$/, "")}
+                                    {" · #"}
+                                    {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
+                                  </div>
+                                  <div className="shrink-0">
+                                    {getStatusBadge(item.onboardingStatus)}
+                                  </div>
+                                </div>
+
+                                {/* Identity - Avatar & Names */}
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className={cn(
+                                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md text-sm font-extrabold text-white transition-all duration-300 group-hover:scale-105",
+                                    getAvatarGradient(item.onboardingStatus)
+                                  )}>
+                                    {String(item.name || "?").charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-bold text-slate-800 text-sm tracking-tight group-hover:text-[#12335f] transition-colors line-clamp-2">
+                                      {item.name}
+                                    </div>
+                                    <div className="mt-0.5 text-xs font-semibold text-slate-500 line-clamp-2" title={getEntityName(item) || undefined}>
+                                      {getEntityName(item) || (
+                                        <span className="font-medium italic text-slate-400">Onboarding in progress</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Metadata Grid */}
+                                <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                                    <div className="min-w-0">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                                      <p className="text-[11px] font-semibold text-slate-700 truncate" title={getEntityLocation(item) || undefined}>
+                                        {getEntityLocation(item) || "—"}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <Briefcase className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                                    <div className="min-w-0">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Category</p>
+                                      <p className="text-[11px] font-semibold text-slate-700 truncate" title={item.role === "buyer" ? getDisplayText(item.profile?.annualBudget, "Budget pending") : getPrimaryCategory(item)}>
+                                        {item.role === "buyer"
+                                          ? getDisplayText(item.profile?.annualBudget, "Budget pending")
+                                          : getPrimaryCategory(item)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                                    <div className="min-w-0">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                                      <p className="text-[11px] font-semibold text-slate-700 font-mono">
+                                        {formatDateTime(item.createdAt)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <ShieldCheck className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                                    <div className="min-w-0">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Verified</p>
+                                      <p className="text-[11px] font-bold text-[#12335f]">
+                                        {getProgress(item)}%
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-[10px] font-bold uppercase text-slate-400">
-                                Verification: {getProgress(item)}%
-                              </div>
-                              <div className="flex space-x-0.5">
-                                {getSections(item).map((section) => (
+
+                              {/* Progress bar */}
+                              <div className="mt-4">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                                   <div
-                                    key={section}
-                                    className={
-                                      cn(
-                                        "h-1 w-4 rounded-full",
-                                        item.sectionStatus?.[section] ===
-                                          "approved"
-                                          ? "bg-green-500"
-                                          : item.sectionStatus?.[section] ===
-                                            "rejected"
-                                            ? "bg-red-500"
-                                            : "bg-slate-200",
-                                      ) || ""
-                                    }
+                                    className="h-full rounded-full bg-[#12335f] transition-all duration-500"
+                                    style={{ width: `${getProgress(item)}%` }}
                                   />
-                                ))}
+                                </div>
+
+                                {/* Footer - Section Dots & CTA */}
+                                <div className="mt-3.5 flex items-center justify-between gap-2">
+                                  <div className="flex space-x-1">
+                                    {getSections(item).map((section) => {
+                                      const sectionStatus = item.sectionStatus?.[section];
+                                      const statusColors = {
+                                        approved: "bg-emerald-500 shadow-sm shadow-emerald-500/20",
+                                        rejected: "bg-red-500 shadow-sm shadow-red-500/20",
+                                        pending: "bg-slate-200",
+                                      };
+                                      const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                                      return (
+                                        <div
+                                          key={section}
+                                          className={cn("h-1.5 w-3 rounded-full transition-all duration-300", colorClass)}
+                                          title={`${section}: ${sectionStatus || "pending"}`}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-800 transition-colors flex items-center gap-1">
+                                    <span>REVIEW</span>
+                                    <span className="transform group-hover:translate-x-0.5 transition-transform duration-200">→</span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                            <button
-                              onClick={() => {
-                                void openItemForReview(item);
-                              }}
-                              className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase"
-                            >
-                              Review
-                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Responsive Card Grid for Mobile */}
+                    <div className="md:hidden grid grid-cols-1 gap-4 p-4">
+                      {pagedCurrentData.map((item, index) => {
+                        const getAvatarGradient = (status: string) => {
+                          switch (status) {
+                            case "approved_for_procurement":
+                              return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                            case "rejected":
+                              return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                            case "resubmission_required":
+                              return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                            default:
+                              return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                          }
+                        };
+
+                        return (
+                          <div
+                            key={item._id}
+                            onClick={() => void openItemForReview(item)}
+                            className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md active:bg-slate-50 transition-all flex flex-col justify-between min-w-0"
+                          >
+                            <div>
+                              {/* Top Row - Meta & Badge */}
+                              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+                                <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">
+                                  {item.role || activeTab.replace(/s$/, "")}
+                                  {" · #"}
+                                  {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
+                                </div>
+                                <div className="shrink-0 scale-90 origin-right">
+                                  {getStatusBadge(item.onboardingStatus)}
+                                </div>
+                              </div>
+
+                              {/* Identity - Avatar & Names */}
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={cn(
+                                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md text-xs font-extrabold text-white",
+                                  getAvatarGradient(item.onboardingStatus)
+                                )}>
+                                  {String(item.name || "?").charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-slate-800 text-xs tracking-tight line-clamp-2">
+                                    {item.name}
+                                  </div>
+                                  <div className="mt-0.5 text-[11px] font-semibold text-slate-500 line-clamp-2">
+                                    {getEntityName(item) || (
+                                      <span className="font-medium italic text-slate-400">Onboarding in progress</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Metadata Grid */}
+                              <div className="mt-3.5 grid grid-cols-2 gap-x-2.5 gap-y-1.5 border-t border-slate-100 pt-3">
+                                <div className="flex items-start gap-1.5 min-w-0">
+                                  <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                                  <div className="min-w-0">
+                                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                                    <p className="text-[10px] font-semibold text-slate-700 truncate">
+                                      {getEntityLocation(item) || "—"}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-start gap-1.5 min-w-0">
+                                  <Briefcase className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                                  <div className="min-w-0">
+                                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Category</p>
+                                    <p className="text-[10px] font-semibold text-slate-700 truncate">
+                                      {item.role === "buyer"
+                                        ? getDisplayText(item.profile?.annualBudget, "Budget pending")
+                                        : getPrimaryCategory(item)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-start gap-1.5 min-w-0">
+                                  <Clock className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                                  <div className="min-w-0">
+                                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                                    <p className="text-[10px] font-semibold text-slate-700 font-mono">
+                                      {formatDateTime(item.createdAt)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-start gap-1.5 min-w-0">
+                                  <ShieldCheck className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                                  <div className="min-w-0">
+                                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Verified</p>
+                                    <p className="text-[10px] font-bold text-[#12335f]">
+                                      {getProgress(item)}%
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="mt-3.5">
+                              <div className="h-1 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-[#12335f]"
+                                  style={{ width: `${getProgress(item)}%` }}
+                                />
+                              </div>
+
+                              {/* Footer - Section Dots & CTA */}
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <div className="flex space-x-0.5">
+                                  {getSections(item).map((section) => {
+                                    const sectionStatus = item.sectionStatus?.[section];
+                                    const statusColors = {
+                                      approved: "bg-emerald-500",
+                                      rejected: "bg-red-500",
+                                      pending: "bg-slate-200",
+                                    };
+                                    const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                                    return (
+                                      <div
+                                        key={section}
+                                        className={cn("h-1 w-2.5 rounded-full", colorClass)}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                                <div className="text-[9px] font-black text-indigo-600 uppercase">
+                                  Review →
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <Pagination
                       page={currentPage}
@@ -1304,7 +1859,7 @@ export default function AdminOnboarding() {
                       {selectedItem.registrationDetails?.userId || `MSME-${selectedItem._id?.toString().padStart(6, '0')}`}
                     </p>
                     <p className="text-[9px] font-bold text-slate-300">
-                      Submitted {selectedItem.createdAt ? formatDate(selectedItem.createdAt) : '—'}
+                      Submitted {selectedItem.createdAt ? formatDateTime(selectedItem.createdAt) : '—'}
                     </p>
                   </div>
                   <button
@@ -1515,61 +2070,76 @@ export default function AdminOnboarding() {
                             </button>
                           </div>
                         </div>
-                        <div className="grid md:grid-cols-2 gap-8">
-                          <InfoItem
-                            label="Organization Name"
-                            value={selectedItem.profile?.organizationName}
-                            highlight
-                          />
-                          <InfoItem
-                            label="Business Type"
-                            value={selectedItem.profile?.businessType || selectedItem.registrationDetails?.businessType}
-                          />
-                          <InfoItem
-                            label="Industry"
-                            value={selectedItem.profile?.industry}
-                          />
-                          <InfoItem
-                            label="PAN"
-                            value={selectedItem.profile?.pan || selectedItem.registrationDetails?.pan}
-                            mono
-                            highlight
-                          />
-                          <InfoItem
-                            label="CIN"
-                            value={selectedItem.profile?.cin}
-                          />
-                          <InfoItem
-                            label="GST"
-                            value={selectedItem.profile?.gst}
-                          />
-                          <InfoItem
-                            label="Udyam Number"
-                            value={selectedItem.registrationDetails?.udyamNumber || "N/A"}
-                          />
-                          <InfoItem
-                            label="Verification Method"
-                            value={selectedItem.registrationDetails?.verificationMethod?.toUpperCase() || "N/A"}
-                          />
-                          <InfoItem
-                            label="Website"
-                            value={selectedItem.profile?.website}
-                          />
-                          <InfoItem
-                            label="State"
-                            value={selectedItem.profile?.state}
-                            highlight
-                          />
-                          <InfoItem
-                            label="District"
-                            value={selectedItem.profile?.district}
-                            highlight
-                          />
-                          <InfoItem
-                            label="Office/Zone"
-                            value={selectedItem.profile?.officeZoneName}
-                          />
-                        </div>
+                        {(() => {
+                          const gstDetails = selectedItem.profile?.gstVerificationDetails || {};
+                          const gstin = selectedItem.profile?.gst || gstDetails.gstin || selectedItem.registrationDetails?.gstin;
+                          return (
+                            <div className="grid md:grid-cols-2 gap-8">
+                              <InfoItem
+                                label="Organization Name"
+                                value={selectedItem.profile?.organizationName}
+                                highlight
+                              />
+                              <InfoItem
+                                label="Business Type"
+                                value={selectedItem.profile?.businessType || selectedItem.registrationDetails?.businessType}
+                              />
+                              <InfoItem
+                                label="Industry"
+                                value={selectedItem.profile?.industry}
+                              />
+                              <InfoItem
+                                label="PAN"
+                                value={selectedItem.profile?.pan || selectedItem.registrationDetails?.pan}
+                                mono
+                                highlight
+                              />
+                              <InfoItem
+                                label="CIN"
+                                value={selectedItem.profile?.cin}
+                              />
+                              <InfoItem
+                                label="GST"
+                                value={gstin}
+                              />
+                              <InfoItem
+                                label="GST Verification"
+                                value={gstDetails.verified ? `Verified${gstDetails.source ? ` via ${gstDetails.source}` : ""}` : "Not Verified"}
+                                highlight={Boolean(gstDetails.verified)}
+                              />
+                              {gstDetails.legalName && (
+                                <InfoItem
+                                  label="GST Legal Name"
+                                  value={gstDetails.legalName}
+                                />
+                              )}
+                              {gstDetails.status && (
+                                <InfoItem
+                                  label="GST Status"
+                                  value={gstDetails.status}
+                                />
+                              )}
+                              {gstDetails.address && (
+                                <div className="md:col-span-2">
+                                  <InfoItem
+                                    label="GST Registered Address"
+                                    value={[
+                                      gstDetails.address,
+                                      gstDetails.city,
+                                      gstDetails.district,
+                                      gstDetails.state,
+                                      gstDetails.pincode,
+                                    ].filter(Boolean).join(", ")}
+                                  />
+                                </div>
+                              )}
+                              <InfoItem
+                                label="Website"
+                                value={selectedItem.profile?.website}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Buyer Section 2: Rep */}
@@ -1621,10 +2191,6 @@ export default function AdminOnboarding() {
                             highlight
                           />
                           <InfoItem
-                            label="Role In Organization"
-                            value={selectedItem.registrationDetails?.roleInOrg || "N/A"}
-                          />
-                          <InfoItem
                             label="Designation"
                             value={selectedItem.profile?.designation}
                           />
@@ -1644,14 +2210,6 @@ export default function AdminOnboarding() {
                           <InfoItem
                             label="Alternate Mobile"
                             value={selectedItem.profile?.alternateMobile}
-                          />
-                          <InfoItem
-                            label="Aadhaar Number (Masked)"
-                            value={selectedItem.registrationDetails?.aadhaarNumber ? selectedItem.registrationDetails.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : (selectedItem.profile?.aadhaarNumber ? selectedItem.profile.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : "N/A")}
-                          />
-                          <InfoItem
-                            label="Aadhaar Verification"
-                            value={selectedItem.registrationDetails?.isAadhaarVerified ? "VERIFIED" : (selectedItem.profile?.aadhaarVerified ? "VERIFIED" : "PENDING")}
                           />
                         </div>
                       </div>
@@ -1846,34 +2404,66 @@ export default function AdminOnboarding() {
                             </button>
                           </div>
                         </div>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {selectedItem.profile?.documents &&
-                            Object.entries(selectedItem.profile.documents).map(
-                              ([key, url]: [string, any]) => {
-                                const documentFiles = getDocumentFiles(url).filter(getDocumentUrl);
-                                return documentFiles.length > 0 && (
-                                  <div
-                                    key={key}
-                                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2"
-                                  >
-                                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                      {key}
-                                    </p>
-                                    {documentFiles.map((file: any, index: number) => (
-                                      <button
-                                        key={`${key}-${file?.fileId || file?.url || index}`}
-                                        type="button"
-                                        onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
-                                        className="text-xs font-bold text-[#12335f] hover:underline flex items-center gap-1"
+                        {(() => {
+                          const buyerDocumentEntries = selectedItem.profile?.documents && typeof selectedItem.profile.documents === 'object'
+                            ? Object.entries(selectedItem.profile.documents)
+                              .map(([key, url]: [string, any]) => [key, getDocumentFiles(url).filter(getDocumentUrl)] as [string, any[]])
+                              .filter(([, files]) => files.length > 0)
+                            : [];
+
+                          return (
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {buyerDocumentEntries.map(
+                                ([key, documentFiles]: [string, any[]]) =>
+                                  documentFiles.map((file: any, index: number) => {
+                                    const label = getDocumentLabel(key);
+                                    const fileName = getDocumentFileName(file, `${label} Document`);
+                                    const uploadedAt = getDocumentUploadedAt(file);
+                                    const cardKey = `${key}-${index}-${file?.fileId || file?.url || fileName}`;
+                                    return (
+                                      <div
+                                        key={cardKey}
+                                        className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 flex flex-col justify-between"
                                       >
-                                        <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
-                                      </button>
-                                    ))}
-                                  </div>
-                                );
-                              },
-                            )}
-                        </div>
+                                        <div>
+                                          <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                              {label}
+                                            </span>
+                                            <Badge variant="default" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-[9px] font-bold px-1.5 py-0.5">
+                                              VERIFIED
+                                            </Badge>
+                                          </div>
+                                          <p className="text-xs font-bold text-slate-700 mt-1 line-clamp-1" title={fileName}>
+                                            {fileName}
+                                          </p>
+                                          {uploadedAt && (
+                                            <p className="text-[9px] text-slate-400 mt-0.5">
+                                              Uploaded: {formatDate(uploadedAt)}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="pt-2 border-t border-slate-100 mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, label)}
+                                            className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"
+                                          >
+                                            <Eye className="h-3 w-3" /> View Document{documentFiles.length > 1 ? ` ${index + 1}` : ""}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }),
+                              )}
+                              {buyerDocumentEntries.length === 0 && (
+                                <div className="col-span-full py-4 text-center text-xs text-slate-400 font-medium">
+                                  No uploaded documents found for this buyer profile.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </>
                   ) : (
@@ -1922,6 +2512,11 @@ export default function AdminOnboarding() {
                         </div>
                         <div className="grid md:grid-cols-2 gap-8">
                           <InfoItem
+                            label="Organisation Type"
+                            value={selectedItem.profile?.organizationType || "N/A"}
+                            highlight
+                          />
+                          <InfoItem
                             label="PAN Number"
                             value={selectedItem.profile?.pan}
                             mono
@@ -1950,18 +2545,18 @@ export default function AdminOnboarding() {
                             }
                             highlight
                           />
-                          <InfoItem
+                          {/* <InfoItem
                             label="Verification Method"
                             value={selectedItem.registrationDetails?.verificationMethod?.toUpperCase() || "N/A"}
-                          />
-                          <InfoItem
+                          /> */}
+                          {/* <InfoItem
                             label="Aadhaar Number (Masked)"
                             value={selectedItem.registrationDetails?.aadhaarNumber ? selectedItem.registrationDetails.aadhaarNumber.replace(/.(?=.{4})/g, 'X') : "N/A"}
                           />
                           <InfoItem
                             label="Aadhaar Verification"
                             value={selectedItem.registrationDetails?.isAadhaarVerified ? "VERIFIED" : "PENDING"}
-                          />
+                          /> */}
                         </div>
                       </div>
 
@@ -2016,10 +2611,6 @@ export default function AdminOnboarding() {
                             highlight
                           />
                           <InfoItem
-                            label="Organization Type"
-                            value={selectedItem.profile?.organizationType || selectedItem.registrationDetails?.businessType || "N/A"}
-                          />
-                          <InfoItem
                             label="Date of Incorporation"
                             value={
                               selectedItem.profile?.dateOfIncorporation
@@ -2035,16 +2626,16 @@ export default function AdminOnboarding() {
                           />
                           <InfoItem
                             label="Registered Mobile"
-                            value={selectedItem.profile?.mobile || selectedItem.mobile || "N/A"}
+                            value={selectedItem.profile?.mobile || selectedItem.mobile || selectedItem.profile?.offices?.[0]?.contactNumber || "N/A"}
                           />
-                          <InfoItem
+                          {/* <InfoItem
                             label="Date of Birth"
                             value={
                               selectedItem.profile?.dob
                                 ? new Date(selectedItem.profile.dob).toLocaleDateString()
                                 : (selectedItem.dob ? new Date(selectedItem.dob).toLocaleDateString() : "N/A")
                             }
-                          />
+                          /> */}
                         </div>
                       </div>
 
@@ -2108,10 +2699,6 @@ export default function AdminOnboarding() {
                             }
                           />
                           <InfoItem
-                            label="Udyam Number"
-                            value={selectedItem.registrationDetails?.udyamNumber || "N/A"}
-                          />
-                          <InfoItem
                             label="Bid Participation"
                             value={
                               selectedItem.profile?.participateInBid
@@ -2121,16 +2708,30 @@ export default function AdminOnboarding() {
                           />
                           <InfoItem
                             label="MSME Type"
-                            value={selectedItem.profile?.msmeType || "N/A"}
+                            value={
+                              selectedItem.profile?.msmeType
+                                ? (MSME_TYPE_LABELS[selectedItem.profile.msmeType] || selectedItem.profile.msmeType)
+                                : "N/A"
+                            }
                           />
                           <InfoItem
                             label="Vendor Type"
-                            value={selectedItem.profile?.vendorType || "N/A"}
+                            value={
+                              selectedItem.profile?.vendorType
+                                ? (VENDOR_TYPE_LABELS[selectedItem.profile.vendorType] || selectedItem.profile.vendorType)
+                                : "N/A"
+                            }
                           />
                           <div className="md:col-span-2">
                             <InfoItem
                               label="Registration Types / Certifications"
-                              value={selectedItem.profile?.registrationTypes?.join(", ") || "N/A"}
+                              value={
+                                Array.isArray(selectedItem.profile?.registrationTypes) && selectedItem.profile.registrationTypes.length > 0
+                                  ? selectedItem.profile.registrationTypes
+                                    .map((type: string) => REGISTRATION_TYPE_LABELS[type] || type)
+                                    .join(", ")
+                                  : "N/A"
+                              }
                             />
                           </div>
                         </div>
@@ -2313,67 +2914,7 @@ export default function AdminOnboarding() {
                       </div>
 
                       {/* Section 6: e-Invoicing */}
-                      <div className="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm animate-in slide-in-from-bottom-4 duration-300">
-                        <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100 relative">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-9 h-9 rounded-md bg-slate-50 text-[#12335f] flex items-center justify-center shadow-sm">
-                              <FileText className="h-4 w-4" />
-                            </div>
-                            <h4 className="text-xs font-extrabold text-[#12335f] uppercase tracking-wide">
-                              6. e-Invoicing
-                            </h4>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() =>
-                                handleUpdateSectionStatus(
-                                  selectedItem._id,
-                                  "einvoicing",
-                                  "approved",
-                                )
-                              }
-                              className={cn(
-                                "w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all shadow-sm",
-                                selectedItem.sectionStatus?.einvoicing ===
-                                  "approved"
-                                  ? "bg-green-500 border-green-600 text-white"
-                                  : "bg-white border-slate-200 text-slate-300 hover:bg-green-50 hover:text-green-600 hover:border-green-300",
-                              )}
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => openRejectionModal("einvoicing")}
-                              className={cn(
-                                "w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all shadow-sm",
-                                selectedItem.sectionStatus?.einvoicing ===
-                                  "rejected"
-                                  ? "bg-red-500 border-red-600 text-white"
-                                  : "bg-white border-slate-200 text-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300",
-                              )}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="grid md:grid-cols-2 gap-8">
-                          <InfoItem
-                            label="Turnover (Last 3 yrs)"
-                            value={selectedItem.profile?.turnoverMax3Yrs}
-                            highlight
-                          />
-                          <InfoItem
-                            label="Excluded Status"
-                            value={
-                              selectedItem.profile?.eInvoicingExcluded
-                                ? "EXEMPT"
-                                : "APPLICABLE"
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      {/* Section 7: Ownership */}
+                      {/* Section 6: Ownership */}
                       <div className="group rounded-lg border border-slate-200 bg-white p-5 pb-6 shadow-sm animate-in slide-in-from-bottom-4 duration-300">
                         <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100 relative">
                           <div className="flex items-center space-x-3">
@@ -2381,7 +2922,7 @@ export default function AdminOnboarding() {
                               <ShieldCheck className="h-4 w-4" />
                             </div>
                             <h4 className="text-xs font-extrabold text-[#12335f] uppercase tracking-wide">
-                              7. Beneficial Ownership
+                              6. Beneficial Ownership
                             </h4>
                           </div>
                           <div className="flex items-center space-x-2">
@@ -2438,7 +2979,7 @@ export default function AdminOnboarding() {
                         </div>
                       </div>
 
-                      {/* Section 8: Submitted Verification Documents */}
+                      {/* Section 7: Submitted Verification Documents */}
                       <div className="group rounded-lg border border-slate-200 bg-white p-5 pb-6 shadow-sm animate-in slide-in-from-bottom-4 duration-300">
                         <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100 relative">
                           <div className="flex items-center space-x-3">
@@ -2446,7 +2987,7 @@ export default function AdminOnboarding() {
                               <FileText className="h-4 w-4" />
                             </div>
                             <h4 className="text-xs font-extrabold text-[#12335f] uppercase tracking-wide">
-                              8. Submitted Verification Documents
+                              7. Submitted Verification Documents
                             </h4>
                           </div>
                           <div className="flex items-center space-x-2">
@@ -2555,7 +3096,7 @@ export default function AdminOnboarding() {
                                         <div className="pt-2 border-t border-slate-100 mt-2">
                                           {documentFiles.map((file: any, index: number) => (
                                             <button
-                                              key={`${key}-${file?.fileId || file?.url || index}`}
+                                              key={`${key}-${index}-${file?.fileId || file?.url || ''}`}
                                               type="button"
                                               onClick={() => handleViewDocument({ fileId: file?.fileId, url: getDocumentUrl(file) }, key)}
                                               className="text-xs font-bold text-[#12335f] hover:underline inline-flex items-center gap-1"

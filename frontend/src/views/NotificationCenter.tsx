@@ -7,6 +7,9 @@ import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
 import { routeForNotification, type PortalNotification } from '../lib/notifications';
 import { Pagination } from '../features/shared/Pagination';
+import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { EntityDetailModal } from '../features/shared/EntityDetailModal';
+import { formatDateTime } from '../features/shared/format';
 
 export default function NotificationCenter() {
   const { token, user } = useAuth();
@@ -16,6 +19,7 @@ export default function NotificationCenter() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(20);
   const [total, setTotal] = useState(0);
+  const [detailRecord, setDetailRecord] = useState<PortalNotification | null>(null);
 
   const fetchNotifications = async () => {
     if (!token) return;
@@ -152,33 +156,36 @@ export default function NotificationCenter() {
               return (
                 <div
                   key={item.id}
-                  className={`p-5 flex flex-col sm:flex-row sm:items-start gap-4 transition-all duration-200 ${
-                    !item.isRead ? 'bg-slate-50/30 font-semibold' : 'bg-white opacity-85 hover:opacity-100'
-                  }`}
+                  className={`p-5 flex flex-col sm:flex-row sm:items-start gap-4 transition-all duration-200 ${!item.isRead ? 'bg-slate-50/30 font-semibold' : 'bg-white opacity-85 hover:opacity-100'
+                    }`}
                 >
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-100 shadow-sm ${
-                    isWarning ? 'text-red-500' : isSuccess ? 'text-emerald-600' : 'text-[#12335f]'
-                  }`}>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-100 shadow-sm ${isWarning ? 'text-red-500' : isSuccess ? 'text-emerald-600' : 'text-[#12335f]'
+                    }`}>
                     <Icon className="h-5 w-5" />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${
-                        isWarning ? 'text-red-600' : isSuccess ? 'text-emerald-700' : 'text-[#12335f]'
-                      }`}>
+                      <EntityIdLink
+                        label={`NTF-${item.id}`}
+                        id={item.id}
+                        size="sm"
+                        onClick={() => setDetailRecord(item)}
+                      />
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${isWarning ? 'text-red-600' : isSuccess ? 'text-emerald-700' : 'text-[#12335f]'
+                        }`}>
                         {item.title}
                       </span>
                       {!item.isRead && (
                         <span className="h-2 w-2 bg-[#f9a825] rounded-full" />
                       )}
                     </div>
-                    <p className="mt-1.5 text-sm text-slate-800 font-semibold leading-relaxed">
+                    <p className="mt-1.5 text-sm text-slate-800 font-semibold leading-relaxed text-wrap-anywhere">
                       {item.message}
                     </p>
                     {item.createdAt && (
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        {new Date(item.createdAt).toLocaleString()}
+                        {formatDateTime(item.createdAt)}
                       </p>
                     )}
                   </div>
@@ -216,6 +223,39 @@ export default function NotificationCenter() {
           </div>
         )}
       </div>
+
+      <EntityDetailModal
+        open={!!detailRecord}
+        title={detailRecord ? `Notification ${detailRecord.title}` : 'Notification'}
+        subtitle={detailRecord ? `NTF-${detailRecord.id}` : undefined}
+        entity={detailRecord}
+        onClose={() => setDetailRecord(null)}
+        footer={detailRecord && (
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (detailRecord) handleOpenNotification(detailRecord);
+                setDetailRecord(null);
+              }}
+            >
+              Open in module
+            </Button>
+            {!detailRecord.isRead && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (detailRecord) handleMarkAsRead(detailRecord.id);
+                  setDetailRecord(null);
+                }}
+              >
+                Mark as read
+              </Button>
+            )}
+          </div>
+        )}
+      />
     </div>
   );
 }

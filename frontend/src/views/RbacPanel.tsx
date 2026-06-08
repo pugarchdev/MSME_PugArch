@@ -166,7 +166,7 @@ export default function RbacPanel() {
     toast.info('Role changes discarded.');
   };
 
-  if (loading) {
+  if (loading && roles.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] p-8 text-slate-500 uppercase tracking-widest text-xs font-bold gap-4">
         <RefreshCw className="h-8 w-8 text-[#c5a556] animate-spin" />
@@ -200,7 +200,7 @@ export default function RbacPanel() {
             variant="outline"
             className="self-start md:self-center border-white/20 hover:border-white/50 hover:text-white text-black hover:bg-white/10 shrink-0 gap-2 text-xs font-bold uppercase tracking-wider h-10"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Reload Profiles
           </Button>
         </div>

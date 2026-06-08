@@ -35,9 +35,6 @@ import type { DeliveryStatus } from './types';
 
 export { useFeatureQuery } from '../shared/hooks';
 
-const STALE_DETAIL = 30_000;
-const STALE_LIST = 30_000;
-
 export const useDeliveryList = (
     params: {
         page?: number;
@@ -55,24 +52,23 @@ export const useDeliveryList = (
                 status: params.status,
                 q: params.q
             }),
-        placeholderData: previous => previous, // keeps last page visible while next page loads
-        staleTime: STALE_LIST
+        // Inherit global stale/gc times. placeholderData keeps the previous
+        // page visible during pagination so the table doesn't blank out.
+        placeholderData: previous => previous
     });
 
 export const useDeliveryDetail = (id: number | null | undefined) =>
     useQuery({
         queryKey: queryKeys.deliveries.detail(id || 0),
         queryFn: () => getDeliveryById(id as number),
-        enabled: Number.isFinite(id) && (id as number) > 0,
-        staleTime: STALE_DETAIL
+        enabled: Number.isFinite(id) && (id as number) > 0
     });
 
 export const useDeliveryByPO = (purchaseOrderId: number | null | undefined) =>
     useQuery({
         queryKey: ['deliveries', 'by-po', purchaseOrderId],
         queryFn: () => getDeliveryByPurchaseOrder(purchaseOrderId as number),
-        enabled: Number.isFinite(purchaseOrderId) && (purchaseOrderId as number) > 0,
-        staleTime: STALE_DETAIL
+        enabled: Number.isFinite(purchaseOrderId) && (purchaseOrderId as number) > 0
     });
 
 export const useDeliveryReport = (enabled = true) =>
@@ -80,14 +76,13 @@ export const useDeliveryReport = (enabled = true) =>
         queryKey: queryKeys.deliveries.summary,
         queryFn: () => fetchDeliveryReport(),
         enabled,
-        staleTime: 60_000
+        placeholderData: previous => previous // show cached KPIs instantly
     });
 
 export const useLogisticsPartners = () =>
     useQuery({
         queryKey: queryKeys.deliveries.logisticsPartners,
-        queryFn: () => listLogisticsPartners(),
-        staleTime: 5 * 60_000 // partners change rarely
+        queryFn: () => listLogisticsPartners()
     });
 
 const invalidateDelivery = (qc: ReturnType<typeof useQueryClient>, id?: number) => {

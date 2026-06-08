@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock3,
@@ -20,12 +20,15 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
-import { getApi } from '../../shared/apiClient';
+
 import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
-import { useResponsiveViewMode } from '../../shared/hooks';
+import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { useResponsiveViewMode, usePaginatedFeatureQuery } from '../../shared/hooks';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 
 type PaymentRow = {
   id: number;
@@ -59,62 +62,50 @@ type PaymentRow = {
     releasedAt?: string;
   };
 };
+type PaymentSortKey = 'reference' | 'parties' | 'gateway' | 'amount' | 'escrow' | 'status' | 'date';
 
 export default function PaymentHistoryPage({ admin = false }: { admin?: boolean }) {
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [gatewayFilter, setGatewayFilter] = useState('');
   const [escrowFilter, setEscrowFilter] = useState('');
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:payment-history:${admin ? 'admin' : 'user'}:view-mode`);
+  const [sortKey, setSortKey] = useState<PaymentSortKey>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<PaymentRow | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState(20);
-  const [total, setTotal] = useState(0);
+  const warning: string | null = null;
 
-  const reload = async () => {
-    setLoading(true);
-    setError(null);
-    setWarning(null);
-    try {
-      const params = new URLSearchParams({
-        skip: String((page - 1) * pageSize),
-        take: String(pageSize)
-      });
-      if (searchTerm.trim()) params.set('q', searchTerm.trim());
-      if (statusFilter) params.set('status', statusFilter);
-      if (gatewayFilter) params.set('gateway', gatewayFilter);
-      const body = await getApi<any>(`/api/payments?${params.toString()}`);
-      setPayments(Array.isArray(body) ? body : body.payments || body.data || []);
-      setTotal(Number(body?.total ?? body?.data?.total ?? 0));
-      setWarning(body?.warning || null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load payments');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { records: payments, loading, refreshing, error, reload, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<PaymentRow>('/api/payments', {
+    ...(searchTerm.trim() ? { q: searchTerm.trim() } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
+    ...(gatewayFilter ? { gateway: gatewayFilter } : {})
+  }, 20);
 
-  useEffect(() => {
-    void reload();
-  }, [gatewayFilter, page, pageSize, searchTerm, statusFilter]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [gatewayFilter, searchTerm, statusFilter]);
-
-  const filtered = payments.filter(payment => {
+  const filtered = useMemo(() => payments.filter(payment => {
     if (!escrowFilter) return true;
     const hasEscrow = Boolean(payment.escrowAccount);
     return escrowFilter === 'funded' ? hasEscrow : !hasEscrow;
-  });
+  }).sort((a, b) => {
+    const valueFor = (payment: PaymentRow) => {
+      if (sortKey === 'reference') return payment.referenceId || '';
+      if (sortKey === 'parties') return `${payment.payer?.name || ''} ${payment.payee?.name || ''}`;
+      if (sortKey === 'gateway') return `${payment.gateway || 'manual'} ${payment.method || ''}`;
+      if (sortKey === 'amount') return Number(payment.amount || 0);
+      if (sortKey === 'escrow') return payment.escrowAccount?.status || 'not_funded';
+      if (sortKey === 'status') return payment.status || '';
+      return new Date(payment.completedAt || payment.createdAt || 0).getTime();
+    };
+    const av = valueFor(a);
+    const bv = valueFor(b);
+    const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+    return sortDirection === 'asc' ? result : -result;
+  }), [escrowFilter, payments, sortDirection, sortKey]);
   const pagedPayments = filtered;
-  const setPageSize = (nextPageSize: number) => {
-    setPageSizeState(nextPageSize);
+
+  const toggleSort = (field: PaymentSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
     setPage(1);
   };
 
@@ -130,9 +121,13 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             Payment status, escrow linkage, tax/TDS summary, and immutable ledger entries.
           </p>
         </div>
-        <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-          <RefreshCw className="mr-2 h-4 w-4" />Refresh
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
+            <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -163,14 +158,14 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
+                onChange={event => { setSearchTerm(event.target.value); setPage(1); }}
                 placeholder="Search reference, invoice, PO, payer, payee..."
                 className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
               />
             </div>
             <select
               value={statusFilter}
-              onChange={event => setStatusFilter(event.target.value)}
+              onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">All statuses</option>
@@ -184,7 +179,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             </select>
             <select
               value={gatewayFilter}
-              onChange={event => setGatewayFilter(event.target.value)}
+              onChange={event => { setGatewayFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">All gateways</option>
@@ -194,7 +189,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
             </select>
             <select
               value={escrowFilter}
-              onChange={event => setEscrowFilter(event.target.value)}
+              onChange={event => { setEscrowFilter(event.target.value); setPage(1); }}
               className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
             >
               <option value="">Escrow / any</option>
@@ -202,26 +197,9 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               <option value="not_funded">Not funded</option>
             </select>
           </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-500">Showing {filtered.length} payments</div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'list' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className="h-9 rounded-lg px-3 text-[10px] font-black uppercase"
-              >
-                <List className="mr-1 h-4 w-4" /> List
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="h-9 rounded-lg px-3 text-[10px] font-black uppercase"
-              >
-                <LayoutGrid className="mr-1 h-4 w-4" /> Grid
-              </Button>
-            </div>
+
           </div>
         </CardContent>
       </Card>
@@ -246,7 +224,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Reference</p>
-                    <p className="text-sm font-black text-[#12335f]">{payment.referenceId}</p>
+                    <EntityIdLink label={payment.referenceId} id={payment.id} size="sm" onClick={() => { setDetailTab('receipt'); setSelected(payment); }} />
                     <p className="text-[10px] text-slate-500">Invoice {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}</p>
                   </div>
                   <div className="grid gap-2 text-[10px] text-slate-600">
@@ -273,21 +251,21 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
           })}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="p-3">Sr. No</th>
-                  <th className="p-3">Reference</th>
-                  <th className="p-3">Parties</th>
-                  <th className="p-3">Gateway</th>
-                  <th className="p-3">Amount</th>
+                  <th className="p-3"><SortableHeader label="Reference" field="reference" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Parties" field="parties" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Gateway" field="gateway" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Amount" field="amount" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Tax/TDS</th>
-                  <th className="p-3">Escrow Vault</th>
+                  <th className="p-3"><SortableHeader label="Escrow Vault" field="escrow" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Ledger Entries</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Date</th>
+                  <th className="p-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Date" field="date" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -301,8 +279,8 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                     <tr key={payment.id} className="hover:bg-slate-50">
                       <td className="p-3 text-xs font-black text-slate-700">{rowNumber}</td>
                       <td className="p-3">
-                        <p className="font-mono text-xs font-black text-[#12335f]">{payment.referenceId}</p>
-                        <p className="text-[10px] font-semibold text-slate-500">
+                        <EntityIdLink label={payment.referenceId} id={payment.id} size="sm" onClick={() => { setDetailTab('receipt'); setSelected(payment); }} />
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500">
                           Invoice {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}
                         </p>
                       </td>
@@ -320,11 +298,10 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                       </td>
                       <td className="p-3">
                         {payment.escrowAccount ? (
-                          <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[9px] font-black uppercase ${
-                            payment.escrowAccount.status === 'held'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
-                              : 'bg-slate-50 text-[#12335f] border border-blue-200/50'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[9px] font-black uppercase ${payment.escrowAccount.status === 'held'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
+                            : 'bg-slate-50 text-[#12335f] border border-blue-200/50'
+                            }`}>
                             <Lock className="h-2.5 w-2.5" /> #{payment.escrowAccount.id} {payment.escrowAccount.status}
                           </span>
                         ) : (
@@ -337,13 +314,12 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                         </span>
                       </td>
                       <td className="p-3">
-                        <span className={`rounded-lg border px-2.5 py-0.5 text-[9px] font-black uppercase ${
-                          isSuccess
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : payment.status === 'failed'
+                        <span className={`rounded-lg border px-2.5 py-0.5 text-[9px] font-black uppercase ${isSuccess
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : payment.status === 'failed'
                             ? 'border-red-200 bg-red-50 text-red-700'
                             : 'border-blue-200 bg-slate-50 text-[#12335f]'
-                        }`}>
+                          }`}>
                           {String(payment.status || 'initiated').replace(/_/g, ' ')}
                         </span>
                       </td>

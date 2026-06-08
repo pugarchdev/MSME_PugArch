@@ -1,7 +1,7 @@
 /**
  * Requirements API client.
  */
-import { getApi, postApi, putApi } from '../shared/apiClient';
+import { deleteApi, getApi, postApi, putApi } from '../shared/apiClient';
 import type {
     NewRequirementPayload,
     RequirementDto,
@@ -34,3 +34,6 @@ export const updateRequirement = (id: number, payload: Partial<NewRequirementPay
 
 export const submitRequirement = (id: number) =>
     postApi<RequirementDto>(`/api/buyer/requirements/${id}/submit`, {});
+
+export const deleteRequirement = (id: number) =>
+    deleteApi<{ success: boolean }>(`/api/buyer/requirements/${id}`);

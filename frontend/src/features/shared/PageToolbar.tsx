@@ -1,10 +1,13 @@
 /**
  * PageToolbar - the search box + filters + reset row used by every list page.
  *
- * Standardises the layout so search and all filters live on a single row on
- * desktop, collapse to a 2-column grid on tablet, and stack on phones. Keeps
- * pages from drifting into bespoke filter bars that look different on every
- * screen.
+ * Layout rules:
+ *   - Phones: search box on its own line, plus a "Filters" button. Tapping
+ *     the button reveals every filter stacked below. An active-count badge
+ *     sits on the button so applied filters stay visible when collapsed.
+ *   - Tablets: search wide, filters in a 2-column grid, all inline.
+ *   - Desktops: single row using a CSS grid template generated from the
+ *     filter count.
  *
  * Usage:
  *   <PageToolbar
@@ -17,8 +20,8 @@
  *   />
  */
 
-import React from 'react';
-import { Filter, RefreshCw, Search } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, Filter, RefreshCw, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 
@@ -46,6 +49,9 @@ export type ToolbarFilter =
         kind: 'custom';
         render: () => React.ReactNode;
         className?: string;
+        /** Optional callable that reports whether this custom filter is "active"
+         *  so the mobile Filters button can show an accurate applied-count. */
+        isActive?: () => boolean;
     };
 
 export interface PageToolbarProps {
@@ -66,6 +72,46 @@ export interface PageToolbarProps {
 const inputBase =
     'h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#12335f]/30';
 
+const renderFilter = (f: ToolbarFilter, idx: number) => {
+    if (f.kind === 'select') {
+        return (
+            <select
+                key={idx}
+                value={f.value}
+                onChange={e => f.onChange(e.target.value)}
+                aria-label={f.ariaLabel || 'Filter'}
+                className={cn(inputBase, 'px-3', f.className)}
+            >
+                {f.placeholder && <option value="">{f.placeholder}</option>}
+                {f.options.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+            </select>
+        );
+    }
+    if (f.kind === 'date') {
+        return (
+            <input
+                key={idx}
+                type="date"
+                value={f.value}
+                onChange={e => f.onChange(e.target.value)}
+                aria-label={f.ariaLabel || 'Date filter'}
+                placeholder={f.placeholder}
+                className={cn(inputBase, 'px-3', f.className)}
+            />
+        );
+    }
+    return (
+        <div key={idx} className={cn('min-w-0', f.className)}>{f.render()}</div>
+    );
+};
+
+const isFilterApplied = (f: ToolbarFilter) => {
+    if (f.kind === 'select' || f.kind === 'date') return Boolean(f.value);
+    return f.isActive ? f.isActive() : false;
+};
+
 export function PageToolbar({
     search,
     onSearchChange,
@@ -78,11 +124,17 @@ export function PageToolbar({
     embedded
 }: PageToolbarProps) {
     const hasSearch = onSearchChange !== undefined;
+    const [mobileOpen, setMobileOpen] = useState(false);
 
     // Build the grid template so search takes the lion's share, then each filter
     // gets a fixed minmax window, and the action cluster sits on the far right.
     const filterCount = filters.length;
     const cols = `${hasSearch ? 'minmax(0, 1.3fr) ' : ''}${'minmax(0, 1fr) '.repeat(filterCount)}auto${actions ? ' auto' : ''}`;
+
+    const appliedCount = useMemo(
+        () => filters.filter(isFilterApplied).length,
+        [filters]
+    );
 
     return (
         <div
@@ -98,19 +150,74 @@ export function PageToolbar({
                 </div>
             )}
 
-            <div
-                className="grid gap-3"
-                style={{ gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))` }}
-            >
-                {/* On wide screens, force a single row layout. The hidden md:grid block
-            below replaces the auto-fit with explicit columns once we have room. */}
+            {/* Mobile layout: search on top, "Filters" toggle below, drawer when open.
+                Hidden once we hit `sm` because the inline grid block below takes over. */}
+            <div className="space-y-3 sm:hidden">
+                {hasSearch && (
+                    <div className="relative min-w-0">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                            value={search ?? ''}
+                            onChange={e => onSearchChange?.(e.target.value)}
+                            placeholder={searchPlaceholder}
+                            aria-label="Search"
+                            className={cn(inputBase, 'pl-10 pr-3')}
+                        />
+                    </div>
+                )}
+
+                {(filters.length > 0 || onReset) && (
+                    <button
+                        type="button"
+                        onClick={() => setMobileOpen(prev => !prev)}
+                        aria-expanded={mobileOpen}
+                        aria-controls="page-toolbar-mobile-filters"
+                        className={cn(
+                            'flex h-10 w-full items-center justify-between rounded-lg border bg-white px-3 text-xs font-black uppercase tracking-wide transition',
+                            mobileOpen
+                                ? 'border-[#12335f] text-[#12335f]'
+                                : 'border-slate-200 text-slate-600 hover:border-[#12335f]/40 hover:text-[#12335f]'
+                        )}
+                    >
+                        <span className="inline-flex items-center gap-2">
+                            <Filter className="h-4 w-4" />
+                            Filters
+                            {appliedCount > 0 && (
+                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#12335f] px-1.5 text-[10px] font-black text-white">
+                                    {appliedCount}
+                                </span>
+                            )}
+                        </span>
+                        <ChevronDown className={cn('h-4 w-4 transition-transform', mobileOpen && 'rotate-180')} />
+                    </button>
+                )}
+
+                {mobileOpen && (
+                    <div id="page-toolbar-mobile-filters" className="space-y-2">
+                        {filters.map((f, idx) => renderFilter(f, idx))}
+                        {onReset && (
+                            <Button
+                                variant="outline"
+                                className="h-10 w-full rounded-lg text-xs font-black uppercase"
+                                onClick={() => {
+                                    onReset();
+                                    setMobileOpen(false);
+                                }}
+                                type="button"
+                            >
+                                <RefreshCw className="mr-2 h-3.5 w-3.5" /> Reset Filters
+                            </Button>
+                        )}
+                    </div>
+                )}
+
+                {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
             </div>
 
+            {/* Tablet+ layout: search + every filter inline. Hidden on phones. */}
             <div
                 className={cn(
-                    'grid gap-3 items-stretch',
-                    // Phones: stack everything
-                    'grid-cols-1',
+                    'hidden gap-3 items-stretch sm:grid',
                     // Tablets: search wide, filters in 2 columns
                     'sm:grid-cols-2',
                     // Desktops: single row using inline grid template below
@@ -131,40 +238,7 @@ export function PageToolbar({
                     </div>
                 )}
 
-                {filters.map((f, idx) => {
-                    if (f.kind === 'select') {
-                        return (
-                            <select
-                                key={idx}
-                                value={f.value}
-                                onChange={e => f.onChange(e.target.value)}
-                                aria-label={f.ariaLabel || 'Filter'}
-                                className={cn(inputBase, 'px-3', f.className)}
-                            >
-                                {f.placeholder && <option value="">{f.placeholder}</option>}
-                                {f.options.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        );
-                    }
-                    if (f.kind === 'date') {
-                        return (
-                            <input
-                                key={idx}
-                                type="date"
-                                value={f.value}
-                                onChange={e => f.onChange(e.target.value)}
-                                aria-label={f.ariaLabel || 'Date filter'}
-                                placeholder={f.placeholder}
-                                className={cn(inputBase, 'px-3', f.className)}
-                            />
-                        );
-                    }
-                    return (
-                        <div key={idx} className={cn('min-w-0', f.className)}>{f.render()}</div>
-                    );
-                })}
+                {filters.map((f, idx) => renderFilter(f, idx))}
 
                 {onReset && (
                     <Button

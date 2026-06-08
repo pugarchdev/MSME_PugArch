@@ -25,30 +25,14 @@ const configuredOrigins = [
 ].map(origin => origin.trim()).filter(Boolean);
 
 const isAllowedVercelFrontendOrigin = (origin: string) => {
+  if (isProduction) return false;
+
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:') return false;
 
     const hostname = url.hostname;
-
-    // Allow known production and static frontend domains
-    const staticDomains = [
-      'msme-pugarch-frontend.vercel.app',
-      'msme-portal-pug-arch-frontend.vercel.app',
-      'msme-frontend.vercel.app',
-      'msme-pugarch.vercel.app',
-      'msme-portal-pug-arch-frontend-onet.vercel.app'
-    ];
-    if (staticDomains.includes(hostname)) return true;
-
-    // Securely allow Vercel Preview Deployments for this specific project
-    // Disable wildcard previews in production: !isProduction && ...
-    const isLocalPreview = !isProduction && hostname.endsWith('.vercel.app');
-    const isVercelPreview = 
-      hostname.endsWith('.vercel.app') &&
-      (hostname.startsWith('msme-frontend') || hostname.startsWith('msme-backend'));
-
-    return isLocalPreview || isVercelPreview;
+    return hostname.endsWith('.vercel.app');
   } catch {
     return false;
   }
@@ -58,12 +42,15 @@ export const isAllowedCorsOrigin = (origin?: string) => {
   if (!origin) return true;
 
   try {
-    new URL(origin);
+    const url = new URL(origin);
+    if (!isProduction && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
+      return true;
+    }
   } catch {
     return false;
   }
 
-  return configuredOrigins.includes(origin) || isAllowedVercelFrontendOrigin(origin);
+  return configuredOrigins.includes(origin) || (!isProduction && isAllowedVercelFrontendOrigin(origin));
 };
 
 export const applyCorsHeaders = (req: Request, res: Response) => {

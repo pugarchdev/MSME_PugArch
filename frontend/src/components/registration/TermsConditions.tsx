@@ -4,7 +4,6 @@ import {
   Check,
   Download,
   FileText,
-  Loader2,
   Maximize2,
   Menu,
   MoreVertical,
@@ -14,6 +13,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import { Loader2 } from '../ui/loader';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 

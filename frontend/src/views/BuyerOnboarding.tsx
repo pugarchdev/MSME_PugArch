@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../lib/api';
+import { api, unwrapApiData } from '../lib/api';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
@@ -13,6 +13,9 @@ import { cn } from '../lib/utils';
 import { validateField, validateOptionalField, FieldType } from '../lib/validation';
 import { compressImage } from '../lib/compress';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
+
+const PRIMARY_USER_TYPES = ['Primary User (HOD)', 'Primary User (Co-operative)'];
 
 
 const SIDEBAR_SECTIONS = [
@@ -24,6 +27,19 @@ const SIDEBAR_SECTIONS = [
 ];
 
 const DEPARTMENT_OPTIONS = ['Procurement', 'Finance', 'Admin', 'Operations', 'Management', 'Others'];
+const DESIGNATION_OPTIONS = [
+  'Director',
+  'Managing Director',
+  'CEO / President',
+  'Proprietor',
+  'Partner',
+  'General Manager',
+  'Head of Procurement',
+  'Purchase Officer',
+  'Finance Controller',
+  'Executive',
+  'Others'
+];
 const PROCUREMENT_CATEGORY_OPTIONS = [
   'Cement Industry',
   'Steel & Metal Industry',
@@ -122,6 +138,7 @@ const SUBMITTED_REVIEW_STATUSES = new Set([
 ]);
 
 const hasSubmittedApplication = (userRecord: any) => userRecord?.sectionStatus?.submitted === true;
+const isPrimaryUserType = (businessType: unknown) => PRIMARY_USER_TYPES.includes(String(businessType || ''));
 
 const shouldShowSubmissionOverlay = (userRecord: any) =>
   hasSubmittedApplication(userRecord) && SUBMITTED_REVIEW_STATUSES.has(String(userRecord?.onboardingStatus || ''));
@@ -145,6 +162,7 @@ const DEFAULT_BUYER_FORM_DATA: any = {
   // Authorized Representative
   representativeName: '',
   designation: '',
+  customDesignation: '',
   department: 'Procurement',
   customDepartment: '',
   email: '',
@@ -154,6 +172,7 @@ const DEFAULT_BUYER_FORM_DATA: any = {
   // Address Details
   country: 'India',
   state: '',
+  district: '',
   city: '',
   pincode: '',
   registeredAddress: '',
@@ -196,10 +215,19 @@ const readBuyerDraft = () => {
 
 const buildBuyerFormData = (data: any, storedDraft: any, fallback: any = DEFAULT_BUYER_FORM_DATA) => {
   const regDetails = data?.user?.registrationDetails || {};
+  const resolvedBusinessType = data?.profile?.businessType || regDetails.businessType || fallback.businessType;
+  const primaryUser = isPrimaryUserType(resolvedBusinessType);
+  const registrationState = cleanPlaceholder(regDetails.state);
+  const registrationDistrict = cleanPlaceholder(regDetails.district);
   const profileDepartment = data?.profile?.department || '';
   const hasPresetDepartment = DEPARTMENT_OPTIONS.includes(profileDepartment) && profileDepartment !== 'Others';
   const draftDepartment = storedDraft?.formData?.department || '';
   const hasDraftPresetDepartment = DEPARTMENT_OPTIONS.includes(draftDepartment) && draftDepartment !== 'Others';
+
+  const profileDesignation = data?.profile?.designation || '';
+  const hasPresetDesignation = DESIGNATION_OPTIONS.includes(profileDesignation) && profileDesignation !== 'Others';
+  const draftDesignation = storedDraft?.formData?.designation || '';
+  const hasDraftPresetDesignation = DESIGNATION_OPTIONS.includes(draftDesignation) && draftDesignation !== 'Others';
 
   const profileProcurementCategories = Array.isArray(data?.profile?.procurementCategories) ? data.profile.procurementCategories : [];
   const savedPresetProcurementCategories = profileProcurementCategories.filter((category: string) => PROCUREMENT_CATEGORY_OPTIONS.includes(category) && category !== 'Others');
@@ -231,17 +259,26 @@ const buildBuyerFormData = (data: any, storedDraft: any, fallback: any = DEFAULT
       department: hasDraftPresetDepartment ? storedDraft.formData.department : 'Others',
       customDepartment: !hasDraftPresetDepartment ? storedDraft.formData.department : (storedDraft.formData.customDepartment || '')
     } : {}),
+    designation: profileDesignation ? (hasPresetDesignation ? profileDesignation : 'Others') : fallback.designation,
+    customDesignation: profileDesignation && !hasPresetDesignation ? profileDesignation : (fallback.customDesignation || ''),
+    ...(storedDraft?.formData?.designation ? {
+      designation: hasDraftPresetDesignation ? storedDraft.formData.designation : 'Others',
+      customDesignation: !hasDraftPresetDesignation ? storedDraft.formData.designation : (storedDraft.formData.customDesignation || '')
+    } : {}),
     email: storedDraft?.formData?.email || data?.user?.email || fallback.email,
     organizationName: data?.profile?.organizationName || regDetails.businessName || data?.user?.name || fallback.organizationName,
+    businessType: resolvedBusinessType,
     mobile: data?.profile?.mobile || data?.user?.mobile || fallback.mobile,
     representativeName: data?.profile?.representativeName || data?.user?.name || fallback.representativeName,
     officeZoneName: data?.profile?.officeZoneName || regDetails.officeZoneName || fallback.officeZoneName,
     aadhaarNumber: data?.profile?.aadhaarNumber || regDetails.aadhaarNumber || fallback.aadhaarNumber,
     aadhaarVerified: data?.profile?.aadhaarVerified || regDetails.isAadhaarVerified || fallback.aadhaarVerified,
-    
-    state: cleanPlaceholder(data?.profile?.state) || regDetails.state || fallback.state,
-    district: cleanPlaceholder(data?.profile?.district) || regDetails.district || fallback.district,
-    city: cleanPlaceholder(storedDraft?.formData?.city || data?.profile?.city || fallback.city),
+    gst: data?.profile?.gst || regDetails.gstin || fallback.gst,
+    pan: data?.profile?.pan || regDetails.pan || fallback.pan,
+
+    state: cleanPlaceholder(data?.profile?.state) || registrationState || fallback.state,
+    district: cleanPlaceholder(data?.profile?.district) || registrationDistrict || fallback.district,
+    city: cleanPlaceholder(storedDraft?.formData?.city || data?.profile?.city || (primaryUser ? registrationDistrict : '') || fallback.city),
     pincode: cleanPlaceholder(storedDraft?.formData?.pincode || data?.profile?.pincode || fallback.pincode),
     registeredAddress: cleanPlaceholder(storedDraft?.formData?.registeredAddress || data?.profile?.registeredAddress || fallback.registeredAddress),
   };
@@ -278,6 +315,7 @@ export default function BuyerOnboarding() {
   const [buyerSubmissionOtpSent, setBuyerSubmissionOtpSent] = useState(false);
   const [isSendingBuyerSubmissionOtp, setIsSendingBuyerSubmissionOtp] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState(cachedProfile?.user?.onboardingStatus || 'pending');
+  const [profileGstVerified, setProfileGstVerified] = useState(Boolean(cachedProfile?.profile?.gstFingerprint || cachedProfile?.profile?.gstMasked));
   const [hasFinalSubmission, setHasFinalSubmission] = useState(hasSubmittedApplication(cachedProfile?.user));
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedProfile?.user));
   const isSubmittedOrApproved = shouldLockBuyerProfile({
@@ -287,6 +325,14 @@ export default function BuyerOnboarding() {
   const activeGstinLookupRef = React.useRef('');
   const lastFetchedGstinRef = React.useRef('');
   const gstFetchedFieldsRef = React.useRef<Record<string, string>>({});
+  const registrationDetails = user?.registrationDetails || cachedProfile?.user?.registrationDetails || {};
+  const registrationVerifiedGstin = String(registrationDetails.gstin || '').trim().toUpperCase();
+  const profileVerifiedGstin = String(cachedProfile?.profile?.gst || formData.gst || '').trim().toUpperCase();
+  const hasVerifiedGst =
+    profileGstVerified ||
+    Boolean(cachedProfile?.profile?.gstFingerprint) ||
+    Boolean(registrationDetails.gstVerified && registrationVerifiedGstin) ||
+    Boolean(profileVerifiedGstin && cachedProfile?.profile?.gstMasked);
 
   useEffect(() => {
     const mappedSection = sectionParam ? DASHBOARD_SECTION_TO_BUYER_SECTION[sectionParam] : null;
@@ -320,6 +366,7 @@ export default function BuyerOnboarding() {
         const submitted = hasSubmittedApplication(userRecord);
         const profileLocked = shouldLockBuyerProfile(userRecord);
         setOnboardingStatus(currentStatus);
+        setProfileGstVerified(Boolean(data?.profile?.gstFingerprint || data?.profile?.gstMasked || data?.user?.registrationDetails?.gstVerified));
         setHasFinalSubmission(submitted);
         setIsProfileLocked(profileLocked);
         setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord));
@@ -336,6 +383,25 @@ export default function BuyerOnboarding() {
     };
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    if (!isPrimaryUserType(formData.businessType)) return;
+    const regState = cleanPlaceholder(registrationDetails.state);
+    const regDistrict = cleanPlaceholder(registrationDetails.district);
+    if (!regState && !regDistrict) return;
+    setFormData((prev: any) => {
+      const nextState = regState || prev.state;
+      const nextDistrict = regDistrict || prev.district;
+      const nextCity = prev.city || nextDistrict;
+      if (prev.state === nextState && prev.district === nextDistrict && prev.city === nextCity) return prev;
+      return {
+        ...prev,
+        state: nextState,
+        district: nextDistrict,
+        city: nextCity
+      };
+    });
+  }, [formData.businessType, registrationDetails.state, registrationDetails.district]);
 
   const fetchGstDetails = async () => {
     const gstin = String(formData.gst || '').trim().toUpperCase();
@@ -354,7 +420,11 @@ export default function BuyerOnboarding() {
       const cleared = { ...prev, gst: gstin };
       cleared.country = 'India';
       cleared.registeredAddress = '';
-      cleared.state = '';
+      // Preserve state and district for primary user types (auto-loaded from registration)
+      if (!isPrimaryUserType(prev.businessType)) {
+        cleared.state = '';
+        cleared.district = '';
+      }
       cleared.city = '';
       cleared.pincode = '';
       return cleared;
@@ -364,9 +434,16 @@ export default function BuyerOnboarding() {
       const res = await api.fetch(`/api/utils/gst-verify/${gstin}`, {
         skipCache: true
       } as RequestInit & { skipCache: boolean });
-      
+
       if (res.ok) {
         const data = await res.json();
+        // Guard against a masked/garbled PAN ever landing in the field. A valid
+        // PAN is ABCDE1234F; if the API returns a masked value ("AA***1P") we
+        // derive the PAN from the GSTIN instead (chars 3–12 are the PAN).
+        const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+        const apiPan = String(data.pan || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const gstinPan = gstin.slice(2, 12);
+        const resolvedPan = PAN_RE.test(apiPan) ? apiPan : (PAN_RE.test(gstinPan) ? gstinPan : '');
         setFormData((prev: any) => ({
           ...prev,
           organizationName: data.legalName?.trim() || prev.organizationName,
@@ -374,7 +451,7 @@ export default function BuyerOnboarding() {
           state: data.state?.trim() || prev.state,
           city: data.city?.trim() || prev.city,
           pincode: String(data.pincode || '').replace(/\D/g, '').slice(0, 6) || prev.pincode,
-          pan: data.pan || prev.pan,
+          pan: resolvedPan || prev.pan,
         }));
         if (data.partial) {
           toast.message(data.message || 'Partial GST details applied. Please verify manually.');
@@ -383,7 +460,10 @@ export default function BuyerOnboarding() {
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        toast.error(err?.message || 'Could not fetch GST details. Please enter manually.');
+        const msg = err?.message || 'Could not fetch GST details. Please enter manually.';
+        toast.error(msg);
+        setErrors(prev => ({ ...prev, gst: msg }));
+        setTouched(prev => ({ ...prev, gst: true }));
       }
     } catch (err) {
       toast.error('Live GST service is currently unreachable. Please try later or enter details manually.');
@@ -408,9 +488,11 @@ export default function BuyerOnboarding() {
       industry: 'Industry / Sector is required',
       country: 'Country is required',
       state: 'State is required',
+      district: 'District is required',
       city: 'City is required',
       registeredAddress: 'Registered office address is required',
       designation: 'Designation is required',
+      customDesignation: 'Please specify your designation',
       department: 'Department is required',
       customDepartment: 'Please specify your department'
     };
@@ -502,6 +584,7 @@ export default function BuyerOnboarding() {
     }
 
     if (['pan', 'gst', 'cin'].includes(name)) {
+      if (name === 'gst' && hasVerifiedGst) return;
       newValue = value.toUpperCase().trim();
       if (name === 'pan') newValue = newValue.slice(0, 10);
       if (name === 'gst') newValue = newValue.slice(0, 15);
@@ -520,6 +603,14 @@ export default function BuyerOnboarding() {
         department: newValue,
         customDepartment: newValue === 'Others' ? formData.customDepartment : ''
       });
+      if (touched[name] || submitAttempted) validate(name, newValue);
+    } else if (name === 'designation') {
+      setFormData({
+        ...formData,
+        designation: newValue,
+        customDesignation: newValue === 'Others' ? formData.customDesignation : ''
+      });
+      if (touched[name] || submitAttempted) validate(name, newValue);
     } else if (name === 'website') {
       setFormData({ ...formData, [name]: newValue.trim() });
       if (touched[name] || submitAttempted) validateWebsite(newValue);
@@ -698,24 +789,28 @@ export default function BuyerOnboarding() {
           throw new Error(errData.message || `Upload failed for ${file.name}`);
         }
 
-        const data = await res.json();
+        const data = unwrapApiData<any>(await res.json());
         uploadedFiles.push({
           url: data.url,
           fileId: data.fileId,
-          originalName: data.file?.originalName || file.name
+          originalName: data.file?.originalName || file.name,
+          mimeType: data.file?.mimeType || optimizedFile.type
         });
       }
 
       const fieldPath = fieldName.split('.');
+      let nextDocumentsForSave: any = null;
       setFormData((prev: any) => {
         if (fieldPath.length > 1) {
           const currentFiles = getDocumentFiles(prev[fieldPath[0]]?.[fieldPath[1]]);
+          const nextNested = {
+            ...prev[fieldPath[0]],
+            [fieldPath[1]]: [...currentFiles, ...uploadedFiles]
+          };
+          if (fieldPath[0] === 'documents') nextDocumentsForSave = nextNested;
           return {
             ...prev,
-            [fieldPath[0]]: {
-              ...prev[fieldPath[0]],
-              [fieldPath[1]]: [...currentFiles, ...uploadedFiles]
-            }
+            [fieldPath[0]]: nextNested
           };
         }
 
@@ -724,6 +819,15 @@ export default function BuyerOnboarding() {
           [fieldName]: [...getDocumentFiles(prev[fieldName]), ...uploadedFiles]
         };
       });
+      if (nextDocumentsForSave) {
+        const saveRes = await api.put('/api/buyer/onboarding', { documents: nextDocumentsForSave }, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (!saveRes.ok) {
+          const errData = await saveRes.json().catch(() => ({}));
+          throw new Error(errData.message || 'Document uploaded, but profile document save failed.');
+        }
+      }
       toast.success(files.length === 1 ? 'Document uploaded successfully' : `${files.length} documents uploaded successfully`);
     } catch (err: any) {
       console.error('Upload error:', err);
@@ -735,18 +839,26 @@ export default function BuyerOnboarding() {
     }
   };
 
-  const removeUploadedDocument = (fieldName: string, index: number) => {
+  const removeUploadedDocument = async (fieldName: string, index: number) => {
     if (isProfileLocked) return;
+    let nextDocumentsForSave: any = null;
     setFormData((prev: any) => {
       const nextFiles = getDocumentFiles(prev.documents?.[fieldName]).filter((_, fileIndex) => fileIndex !== index);
+      nextDocumentsForSave = {
+        ...prev.documents,
+        [fieldName]: nextFiles
+      };
       return {
         ...prev,
-        documents: {
-          ...prev.documents,
-          [fieldName]: nextFiles
-        }
+        documents: nextDocumentsForSave
       };
     });
+    if (nextDocumentsForSave) {
+      const saveRes = await api.put('/api/buyer/onboarding', { documents: nextDocumentsForSave }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!saveRes.ok) toast.error('Removed locally, but failed to save the document list.');
+    }
   };
 
   const getDocumentDisplayName = (document: any, fallback: string, index: number) => {
@@ -818,6 +930,7 @@ export default function BuyerOnboarding() {
       website: 'Website URL',
       country: 'Country',
       state: 'State',
+      district: 'District',
       city: 'City',
       pincode: 'PIN Code',
       registeredAddress: 'Registered Address',
@@ -828,8 +941,9 @@ export default function BuyerOnboarding() {
       mobile: 'Mobile Number',
       alternateMobile: 'Alternate Number',
       customDepartment: 'Department (specify)',
+      customDesignation: 'Designation (specify)',
     };
-    if (sectionId === 'org') fields = ['organizationName', 'businessType', 'industry', 'cin', 'pan', 'gst', 'website', 'country', 'state', 'city', 'pincode', 'registeredAddress'];
+    if (sectionId === 'org') fields = ['organizationName', 'businessType', 'industry', 'cin', 'pan', 'gst', 'website', 'country', 'state', 'district', 'city', 'pincode', 'registeredAddress'];
     if (sectionId === 'rep') fields = ['representativeName', 'designation', 'department', 'email', 'mobile', 'alternateMobile'];
 
     if (sectionId === 'account') fields = [];
@@ -849,6 +963,16 @@ export default function BuyerOnboarding() {
         if (!isCustomDepartmentValid) {
           isValid = false;
           errorFields.push(fieldLabels.customDepartment || 'Department (specify)');
+        }
+      }
+      if (field === 'designation' && formData.designation !== 'Others') {
+        setErrors(prev => ({ ...prev, customDesignation: '' }));
+      }
+      if (field === 'designation' && formData.designation === 'Others') {
+        const isCustomDesignationValid = validate('customDesignation', formData.customDesignation || '');
+        if (!isCustomDesignationValid) {
+          isValid = false;
+          errorFields.push(fieldLabels.customDesignation || 'Designation (specify)');
         }
       }
       const isFieldValid = field === 'website'
@@ -893,6 +1017,7 @@ export default function BuyerOnboarding() {
         hasValue(formData.pan) &&
         hasValue(formData.country) &&
         hasValue(formData.state) &&
+        hasValue(formData.district) &&
         hasValue(formData.city) &&
         !validateField('pincode', formData.pincode || '') &&
         hasValue(formData.registeredAddress);
@@ -906,9 +1031,10 @@ export default function BuyerOnboarding() {
 
     if (sectionId === 'rep') {
       const departmentValue = formData.department === 'Others' ? formData.customDepartment : formData.department;
+      const designationValue = formData.designation === 'Others' ? formData.customDesignation : formData.designation;
       return (
         hasValue(formData.representativeName) &&
-        hasValue(formData.designation) &&
+        hasValue(designationValue) &&
         hasValue(departmentValue) &&
         !validateField('email', formData.email || '') &&
         !validateField('mobile', formData.mobile || '')
@@ -919,6 +1045,7 @@ export default function BuyerOnboarding() {
       return (
         hasValue(formData.country) &&
         hasValue(formData.state) &&
+        hasValue(formData.district) &&
         hasValue(formData.city) &&
         !validateField('pincode', formData.pincode || '') &&
         hasValue(formData.registeredAddress)
@@ -1051,6 +1178,7 @@ export default function BuyerOnboarding() {
         const submissionData = {
           ...buyerSubmissionFormData,
           department: formData.department === 'Others' ? formData.customDepartment.trim() || 'Others' : formData.department,
+          designation: formData.designation === 'Others' ? formData.customDesignation.trim() || 'Others' : formData.designation,
           procurementCategories: [
             ...normalizedProcurementCategories,
             ...formData.customProcurementCategories
@@ -1201,7 +1329,7 @@ export default function BuyerOnboarding() {
               </p>
               {user?.onboardingStatus === 'approved_for_procurement' && (
                 <p className="mt-2 inline-flex rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-[#12335f] animate-pulse">
-Approved Profile: Unlocked for Manual Updates
+                  Approved Profile: Unlocked for Manual Updates
                 </p>
               )}
             </div>
@@ -1212,7 +1340,7 @@ Approved Profile: Unlocked for Manual Updates
                 {activeSection === 'org' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <Input label="Organization / Company Name" name="organizationName" value={formData.organizationName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('organizationName')} required className="h-10" />
-                    <Select label="Business Type" name="businessType" value={formData.businessType} onChange={handleChange} onBlur={handleBlur} error={getFieldError('businessType')} required className="h-10">
+                    <Select label="Business Type" name="businessType" value={formData.businessType} onChange={handleChange} onBlur={handleBlur} error={getFieldError('businessType')} required className="h-10" disabled={isPrimaryUserType(formData.businessType)}>
                       <option value="Private Limited Company">Private Limited Company</option>
                       <option value="Public Limited Company">Public Limited Company</option>
                       <option value="Partnership Firm">Partnership Firm</option>
@@ -1221,6 +1349,8 @@ Approved Profile: Unlocked for Manual Updates
                       <option value="Startup">Startup</option>
                       <option value="NGO / Trust">NGO / Trust</option>
                       <option value="Educational Institution">Educational Institution</option>
+                      <option value="Primary User (HOD)">Primary User (HOD)</option>
+                      <option value="Primary User (Co-operative)">Primary User (Co-operative)</option>
                     </Select>
                     <SearchableSelect
                       label="Industry / Sector"
@@ -1236,29 +1366,47 @@ Approved Profile: Unlocked for Manual Updates
                     <Input label="CIN / Registration Number (if applicable)" name="cin" value={formData.cin} onChange={handleChange} onBlur={handleBlur} error={getFieldError('cin')} placeholder="U12345KA2023PTC123456" className="h-10" />
                     <Input label="PAN of Organization" name="pan" value={formData.pan} onChange={handleChange} onBlur={handleBlur} error={getFieldError('pan')} placeholder="ABCDE1234F" required className="h-10" />
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-end gap-2">
-                        <div className="flex-1">
-                          <Input 
-                            label="GSTIN (Optional)" 
-                            name="gst" 
-                            value={formData.gst} 
-                            onChange={handleChange} 
-                            onBlur={handleBlur} 
-                            error={getFieldError('gst')} 
-                            placeholder="22ABCDE1234F1Z5" 
-                            className="h-10" 
+                      {hasVerifiedGst ? (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                          <Input
+                            label="GSTIN (Verified)"
+                            name="gst"
+                            value={formData.gst || registrationVerifiedGstin}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error=""
+                            disabled
+                            className="h-10 bg-white/80"
                           />
+                          <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                            GST details already verified. No re-verification is required here.
+                          </p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={fetchGstDetails}
-                          disabled={isFetchingGst || !formData.gst}
-                          className="h-10 px-3 rounded-lg border-slate-200 text-[#12335f] font-bold uppercase text-[9px] hover:bg-slate-50"
-                        >
-                          {isFetchingGst ? 'Wait...' : 'Fetch Details'}
-                        </Button>
-                      </div>
+                      ) : (
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1">
+                            <Input
+                              label="GSTIN (Optional)"
+                              name="gst"
+                              value={formData.gst}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              error={getFieldError('gst')}
+                              placeholder="22ABCDE1234F1Z5"
+                              className="h-10"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={fetchGstDetails}
+                            disabled={isFetchingGst || !formData.gst}
+                            className="h-10 px-3 rounded-lg border-slate-200 text-[#12335f] font-bold uppercase text-[9px] hover:bg-slate-50"
+                          >
+                            {isFetchingGst ? 'Wait...' : 'Fetch Details'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     <div className="md:col-span-2">
                       <Input type="url" label="Website URL (Optional)" name="website" value={formData.website} onChange={handleChange} onBlur={handleBlur} error={getFieldError('website')} placeholder="https://www.company.com" className="h-10" />
@@ -1272,7 +1420,26 @@ Approved Profile: Unlocked for Manual Updates
                       </h3>
                     </div>
                     <Input label="COUNTRY" name="country" value={formData.country} onChange={handleChange} onBlur={handleBlur} required className="h-10" />
-                    <Input label="STATE" name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} error={getFieldError('state')} required className="h-10" />
+                    {isPrimaryUserType(formData.businessType) ? (
+                      <Input label="STATE" name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} error={getFieldError('state')} required className="h-10" disabled />
+                    ) : (
+                      <Select label="STATE" name="state" value={formData.state} onChange={(e) => { if (!isProfileLocked) setFormData((prev: any) => ({ ...prev, state: e.target.value, district: '' })); }} onBlur={handleBlur} error={getFieldError('state')} required className="h-10">
+                        <option value="">Select State</option>
+                        {indiaStates.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </Select>
+                    )}
+                    {isPrimaryUserType(formData.businessType) ? (
+                      <Input label="DISTRICT" name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={getFieldError('district')} required className="h-10" disabled />
+                    ) : (
+                      <Select label="DISTRICT" name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={getFieldError('district')} required className="h-10" disabled={!formData.state}>
+                        <option value="">Select District</option>
+                        {(formData.state ? indiaStatesDistricts[formData.state] || [] : []).map((d: string) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </Select>
+                    )}
                     <Input label="CITY" name="city" value={formData.city} onChange={handleChange} onBlur={handleBlur} error={getFieldError('city')} required className="h-10" />
                     <Input label="PIN CODE" name="pincode" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={getFieldError('pincode')} required className="h-10" />
                     <div className="md:col-span-2">
@@ -1281,13 +1448,59 @@ Approved Profile: Unlocked for Manual Updates
                     <div className="md:col-span-2">
                       <Input label="CORPORATE OFFICE ADDRESS (Optional - if different)" name="corporateAddress" value={formData.corporateAddress} onChange={handleChange} onBlur={handleBlur} placeholder="Enter corporate address if different from registered address" className="h-10" />
                     </div>
+                    {/* Jharsuguda District MSME Identification */}
+                    <div className="md:col-span-2">
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <div className="flex items-start gap-3 mb-3">
+                          <span className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">JD</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-blue-900">Jharsuguda District Identification</h4>
+                            <p className="text-[11px] text-blue-700 mt-0.5">
+                              Identifies your organization as a Jharsuguda District entity — this helps the portal prioritise local supplier matching and opportunities.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200 font-medium text-gray-700">
+                          <span className="text-sm">Is your organization located in / procuring from <strong>Jharsuguda District</strong>, Odisha?</span>
+                          <div className="flex gap-4 shrink-0 ml-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="radio" name="isJharsugudaOrg" checked={formData['isJharsugudaOrg'] === true} onChange={() => setFormData((prev: any) => ({ ...prev, isJharsugudaOrg: true }))} className="accent-blue-600 h-4 w-4" />
+                              <span className="text-xs uppercase font-semibold text-green-700">Yes</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="radio" name="isJharsugudaOrg" checked={formData['isJharsugudaOrg'] === false} onChange={() => setFormData((prev: any) => ({ ...prev, isJharsugudaOrg: false }))} className="accent-blue-600 h-4 w-4" />
+                              <span className="text-xs uppercase font-semibold text-slate-500">No</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {activeSection === 'rep' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} required className="h-10" />
-                    <Input label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} required placeholder="e.g. Director" className="h-10" />
+                    <div className="space-y-3">
+                      <Select label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} className="h-10">
+                        <option value="" disabled>Select designation</option>
+                        {DESIGNATION_OPTIONS.map((designation) => (
+                          <option key={designation} value={designation}>{designation}</option>
+                        ))}
+                      </Select>
+                      {formData.designation === 'Others' && (
+                        <Input
+                          placeholder="Please specify your designation"
+                          name="customDesignation"
+                          value={formData.customDesignation}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={getFieldError('customDesignation')}
+                          required
+                          className="h-10 animate-in slide-in-from-top-2 duration-300"
+                        />
+                      )}
+                    </div>
                     <div className="space-y-3">
                       <Select label="DEPARTMENT" name="department" value={formData.department} onChange={handleChange} onBlur={handleBlur} error={getFieldError('department')} className="h-10">
                         {DEPARTMENT_OPTIONS.map((department) => (
@@ -1379,11 +1592,11 @@ Approved Profile: Unlocked for Manual Updates
                       </div>
 
                       <div className="space-y-5">
-                        <Select 
-                          label="ANNUAL PROCUREMENT BUDGET" 
-                          name="annualBudget" 
-                          value={formData.annualBudget} 
-                          onChange={handleChange} 
+                        <Select
+                          label="ANNUAL PROCUREMENT BUDGET"
+                          name="annualBudget"
+                          value={formData.annualBudget}
+                          onChange={handleChange}
                           error={submitAttempted ? errors.annualBudget : ''}
                           className="h-10"
                         >
@@ -1486,12 +1699,12 @@ Approved Profile: Unlocked for Manual Updates
                         const isInvalid = submitAttempted && isRequired && !hasFile;
 
                         return (
-                          <div 
-                            key={doc.field} 
+                          <div
+                            key={doc.field}
                             className={cn(
                               "p-4 rounded-xl border flex flex-col gap-3 transition-all",
-                              isInvalid 
-                                ? "border-red-400 bg-red-50/30" 
+                              isInvalid
+                                ? "border-red-400 bg-red-50/30"
                                 : "border-slate-100 bg-slate-50/50"
                             )}
                           >

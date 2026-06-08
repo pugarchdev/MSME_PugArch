@@ -40,6 +40,8 @@ authRoutes.post('/reset-password', forgotPasswordRateLimit, validate({ body: res
 authRoutes.post('/logout', authenticate, authController.logout);
 authRoutes.get('/me', authenticate, authController.me);
 authRoutes.post('/change-password', authenticate, validate({ body: changePasswordSchema }), authController.changePassword);
+authRoutes.post('/switch-role', authenticate, authController.switchRole);
+authRoutes.post('/activate-dual-role', authenticate, authController.activateDualRole);
 
 // Multi-Factor Setup
 authRoutes.post('/2fa/enable', authenticate, authController.enable2fa);

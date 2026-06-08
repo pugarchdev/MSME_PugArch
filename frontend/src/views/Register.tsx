@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../lib/api';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
@@ -22,9 +22,11 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get('returnUrl');
 
   const getPasswordError = (password: string) => {
     const errors: string[] = [];
@@ -112,13 +114,21 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     try {
       const res = await api.post('/api/auth/register', { ...formData, role: type });
       const data = await res.json();
-      
+
       if (res.ok) {
         login(data.accessToken || data.token, data.user, data.refreshToken);
         toast.success(type === 'admin' ? 'Admin account created!' : `Account created! Let's complete your onboarding.`);
-        if (type === 'seller') router.push('/seller/onboarding');
-        else if (type === 'buyer') router.push('/buyer/onboarding');
-        else router.push('/dashboard');
+
+        // If there's a returnUrl (e.g., from invite), go there after onboarding
+        if (returnUrl) {
+          if (type === 'seller') router.push(`/seller/onboarding?returnUrl=${encodeURIComponent(returnUrl)}`);
+          else if (type === 'buyer') router.push(`/buyer/onboarding?returnUrl=${encodeURIComponent(returnUrl)}`);
+          else router.push(decodeURIComponent(returnUrl));
+        } else {
+          if (type === 'seller') router.push('/seller/onboarding');
+          else if (type === 'buyer') router.push('/buyer/onboarding');
+          else router.push('/dashboard');
+        }
       } else {
         toast.error(getApiErrorMessage(data));
       }
@@ -161,7 +171,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               required
               className="rounded-xl border-slate-200 focus:border-indigo-500"
             />
-            
+
             <div className="space-y-1.5">
               <label className="text-xs font-black uppercase text-slate-400 tracking-widest  ml-1">Official Email</label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -178,9 +188,9 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                   />
                 </div>
                 {!isEmailVerified && !otpSent && (
-                  <Button 
-                    type="button" 
-                    onClick={handleSendOtp} 
+                  <Button
+                    type="button"
+                    onClick={handleSendOtp}
                     disabled={isSendingOtp}
                     variant="outline"
                     className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px]  border-indigo-100 text-indigo-600 hover:bg-indigo-50"
@@ -213,9 +223,9 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                         className="h-11 w-full rounded-xl border-2 border-indigo-100 pl-10 pr-4 text-center text-lg font-black tracking-[0.25em] transition-all placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:tracking-[0.5em]"
                       />
                     </div>
-                    <Button 
-                      type="button" 
-                      onClick={handleVerifyOtp} 
+                    <Button
+                      type="button"
+                      onClick={handleVerifyOtp}
                       disabled={isVerifyingOtp}
                       className="w-full sm:w-auto h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] px-6 "
                     >
@@ -242,30 +252,30 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               error={passwordError}
               className="rounded-xl border-slate-200"
             />
-            
-            <Button 
-              type="submit" 
-              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-[0.2em]  shadow-xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50" 
+
+            <Button
+              type="submit"
+              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-[0.2em]  shadow-xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50"
               disabled={isLoading || !isEmailVerified}
             >
               {isLoading ? 'Creating Account...' : 'Finish Registration'}
             </Button>
-            
+
             <div className="text-center mt-4">
               <p className="text-sm font-medium text-slate-500 ">
                 Already have an account?{' '}
                 <Link href="/login" className="text-indigo-600 font-black uppercase text-[10px] hover:underline underline-offset-4 tracking-widest">Sign in</Link>
               </p>
             </div>
-            
+
             {type !== 'admin' && (
               <div className="pt-4 mt-1 border-t border-slate-100 text-center">
-                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ">
                   Registering as the wrong role? {' '}
                   <Link href={type === 'seller' ? '/buyer/register' : '/seller/register'} className="text-indigo-600 underline decoration-indigo-200 underline-offset-4">
                     Switch to {type === 'seller' ? 'Buyer' : 'Seller'}
                   </Link>
-                 </p>
+                </p>
               </div>
             )}
           </form>

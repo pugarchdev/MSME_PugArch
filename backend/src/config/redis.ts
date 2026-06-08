@@ -10,8 +10,8 @@ const redisOptions = {
   enableReadyCheck: true,
   connectTimeout: 3000,
   retryStrategy(times: number) {
-    if (times > 3) return null;
-    return Math.min(times * 250, 1000);
+    // Retry indefinitely with backoff capped at 3000ms
+    return Math.min(times * 150, 3000);
   },
   tls: env.REDIS_TLS ? {} : undefined
 };
@@ -36,11 +36,21 @@ export const redis = getRedisInstance();
 let errorLogCount = 0;
 
 if (redis) {
+  redis.on('connect', () => {
+    logger.info('Redis client initiating connection');
+  });
+  redis.on('ready', () => {
+    errorLogCount = 0; // reset error log count on successful connection
+    logger.info({ prefix: env.REDIS_PREFIX, tls: env.REDIS_TLS }, 'Redis connection established and ready');
+  });
   redis.on('error', error => {
     errorLogCount += 1;
     if (errorLogCount <= 3) {
-      logger.warn({ err: error, tls: env.REDIS_TLS }, 'Redis connection failed; using in-memory fallback where available');
+      logger.warn({ err: error, tls: env.REDIS_TLS }, 'Redis connection failed or disconnected; using in-memory fallback where available');
     }
+  });
+  redis.on('end', () => {
+    logger.warn('Redis connection closed permanently');
   });
 }
 

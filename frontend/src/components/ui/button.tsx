@@ -22,7 +22,7 @@ const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HT
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center rounded-lg font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:pointer-events-none disabled:opacity-50 active:scale-95",
+          "inline-flex items-center justify-center rounded-lg font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:pointer-events-none disabled:opacity-50 active:scale-95 active:translate-y-px hover:-translate-y-0.5 disabled:hover:translate-y-0",
           "focus-visible:ring-brand-navy",
           variants[variant],
           sizes[size],

@@ -6,8 +6,11 @@ import { Card, CardContent } from '../../components/ui/card';
 import { cn } from '../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from './FeatureStates';
 import { Pagination } from './Pagination';
+import { EntityIdLink } from './EntityIdLink';
+import { ViewModeToggle } from './ViewModeToggle';
 import { formatCurrency, formatDate } from './format';
 import { usePaginatedFeatureQuery, useResponsiveViewMode } from './hooks';
+import { SortableHeader, type SortDirection } from './SortableHeader';
 import { deleteApi, postApi, putApi } from './apiClient';
 import { toast } from 'sonner';
 import { DocumentPreviewModal } from '../../components/DocumentPreviewModal';
@@ -17,6 +20,7 @@ import { compressImage } from '../../lib/compress';
 
 
 type GenericRecord = Record<string, any>;
+type GenericSortKey = 'record' | 'status' | 'value' | 'date';
 
 const valueOf = (record: GenericRecord, keys: string[]) => keys.map(key => record?.[key]).find(value => value !== undefined && value !== null && value !== '');
 const titleOf = (record: GenericRecord) => String(valueOf(record, ['title', 'name', 'subject', 'poNumber', 'invoiceNumber', 'ticketNumber', 'ruleCode']) || `Record #${record.id || '-'}`);
@@ -51,13 +55,15 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
   const [statusFilter, setStatusFilter] = useState('');
   const [valueFilter, setValueFilter] = useState('');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [viewMode, setViewMode] = useResponsiveViewMode();
+  const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:generic:${endpoint}:view-mode`);
+  const [sortKey, setSortKey] = useState<GenericSortKey>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedRecord, setSelectedRecord] = useState<GenericRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<GenericRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [saving, setSaving] = useState(false);
   const queryParams = useMemo(() => ({ q: searchTerm.trim(), status: statusFilter }), [searchTerm, statusFilter]);
-  const { records, loading, error, reload, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<GenericRecord>(endpoint, queryParams, 20);
+  const { records, loading, refreshing, error, reload, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<GenericRecord>(endpoint, queryParams, 20);
   const statusOptions = useMemo(() => Array.from(new Set(records.map(statusOf).filter(Boolean))).sort(), [records]);
   useEffect(() => {
     return () => {
@@ -79,14 +85,31 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
       const amount = Number(amountOf(record) || 0);
       const matchesValue = !valueFilter || (valueFilter === 'high' ? amount >= 100000 : valueFilter === 'medium' ? amount >= 25000 && amount < 100000 : amount < 25000);
       return matchesValue;
+    }).sort((a, b) => {
+      const valueFor = (record: GenericRecord) => {
+        if (sortKey === 'record') return titleOf(record);
+        if (sortKey === 'status') return statusOf(record);
+        if (sortKey === 'value') return Number(amountOf(record) || 0);
+        return new Date(dateOf(record) || 0).getTime();
+      };
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDirection === 'asc' ? result : -result;
     });
-  }, [records, valueFilter]);
+  }, [records, sortDirection, sortKey, valueFilter]);
   const pageItems = filtered;
   const totalValue = filtered.reduce<number>((sum, record) => sum + Number(amountOf(record) || 0), 0);
   const pendingCount = filtered.filter(record => /pending|draft|requested|sent|generated/i.test(statusOf(record))).length;
   const canMutate = endpoint === '/api/direct-purchases' || endpoint === '/api/quote-requests';
   const isRfqPage = endpoint === '/api/quote-requests';
   const canEditRecord = (record: GenericRecord) => canMutate && !(isRfqPage && Array.isArray(record.quoteResponses) && record.quoteResponses.length > 0);
+
+  const toggleSort = (field: GenericSortKey) => {
+    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+    setSortKey(field);
+    setPage(1);
+  };
 
   const handleDelete = async (record: GenericRecord) => {
     if (!window.confirm(`Delete ${titleOf(record)}?`)) return;
@@ -107,16 +130,16 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
     const form = new FormData(event.currentTarget);
     const payload = endpoint === '/api/quote-requests'
       ? {
-          sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
-          subject: String(form.get('subject') || '').trim(),
-          message: String(form.get('message') || '').trim(),
-          documentUrl: String(form.get('documentUrl') || '').trim() || undefined,
-          estimatedValue: form.get('estimatedValue') ? Number(form.get('estimatedValue')) : undefined
-        }
+        sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
+        subject: String(form.get('subject') || '').trim(),
+        message: String(form.get('message') || '').trim(),
+        documentUrl: String(form.get('documentUrl') || '').trim() || undefined,
+        estimatedValue: form.get('estimatedValue') ? Number(form.get('estimatedValue')) : undefined
+      }
       : {
-          sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
-          totalAmount: Number(form.get('totalAmount') || 0)
-        };
+        sellerId: Number(form.get('sellerId') || editingRecord.sellerId),
+        totalAmount: Number(form.get('totalAmount') || 0)
+      };
     setSaving(true);
     try {
       const updated = await putApi<GenericRecord>(`${endpoint}/${editingRecord.id}`, payload);
@@ -156,11 +179,8 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           <p className="mt-1 max-w-2xl text-xs font-semibold text-slate-500">{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => setViewMode('grid')} className={`flex h-8 w-8 items-center justify-center rounded-md ${viewMode === 'grid' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}><Grid className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setViewMode('list')} className={`flex h-8 w-8 items-center justify-center rounded-md ${viewMode === 'list' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}><List className="h-4 w-4" /></button>
-          </div>
-          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
         </div>
       </div>
 
@@ -177,9 +197,9 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           <div className="flex flex-col sm:flex-row gap-2 items-center">
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+              <input value={searchTerm} onChange={event => { setSearchTerm(event.target.value); setPage(1); }} placeholder={`Search ${title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
             </div>
-            
+
             <Button
               type="button"
               variant="outline"
@@ -197,12 +217,12 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           )}>
             <div className="relative w-full">
               <SlidersHorizontal className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
+              <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20">
                 <option value="">All statuses</option>
                 {statusOptions.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
               </select>
             </div>
-            <select value={valueFilter} onChange={event => setValueFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
+            <select value={valueFilter} onChange={event => { setValueFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full">
               <option value="">All values</option>
               <option value="high">Above Rs. 1 lakh</option>
               <option value="medium">Rs. 25k to 1 lakh</option>
@@ -232,17 +252,32 @@ export default function GenericFeaturePage({ title, eyebrow, description, endpoi
           </div>
         </>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr><th className="p-3 w-20">Sr. No.</th><th className="p-3">Record</th><th className="p-3">Status</th><th className="p-3">Value</th><th className="p-3">Date</th><th className="p-3 text-right">Actions</th></tr>
+                <tr>
+                  <th className="p-3 w-20">Sr. No.</th>
+                  <th className="p-3"><SortableHeader label="Record" field="record" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Value" field="value" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortableHeader label="Date" field="date" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pageItems.map((record, index) => (
                   <tr key={record.id || titleOf(record)} className="hover:bg-slate-50">
                     <td className="p-3 font-mono text-xs font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
-                    <td className="p-3"><p className="font-black text-slate-900">{titleOf(record)}</p><p className="mt-1 max-w-md truncate text-[10px] font-semibold text-slate-500">{detailOf(record)}</p></td>
+                    <td className="p-3">
+                      <p className="font-black text-slate-900 text-wrap-anywhere">{titleOf(record)}</p>
+                      {record.id && (
+                        <div className="mt-1">
+                          <EntityIdLink id={record.id} size="sm" onClick={() => setSelectedRecord(record)} />
+                        </div>
+                      )}
+                      <p className="mt-1 max-w-md text-[10px] font-semibold text-slate-500 text-wrap-anywhere line-clamp-2">{detailOf(record)}</p>
+                    </td>
                     <td className="p-3"><span className="rounded-lg border border-blue-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase text-[#12335f]">{statusOf(record).replace(/_/g, ' ')}</span></td>
                     <td className="p-3 text-xs font-black text-slate-900">{amountOf(record) ? formatCurrency(amountOf(record)) : '-'}</td>
                     <td className="p-3 text-xs font-bold text-slate-500">{formatDate(dateOf(record))}</td>
@@ -335,7 +370,7 @@ function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDele
             hour12: true
           });
         }
-      } catch {}
+      } catch { }
     }
     if (key.endsWith('At') || key.endsWith('Date') || key.endsWith('Time')) {
       try {
@@ -350,7 +385,7 @@ function GenericDetailsModal({ title, record, canMutate, onClose, onEdit, onDele
             hour12: true
           });
         }
-      } catch {}
+      } catch { }
     }
     return String(value);
   };
@@ -543,22 +578,21 @@ function GenericEditModal({ title, endpoint, record, saving, onClose, onSubmit }
                       {uploadedDocUrl ? getCleanFileName(uploadedDocUrl, "Document attached") : "Attach document file (PDF, Doc, Excel)"}
                     </span>
                   </div>
-                  
-                  <input 
-                    type="file" 
-                    id="edit-rfq-doc" 
-                    accept=".pdf,.doc,.docx,.xls,.xlsx" 
-                    className="hidden" 
+
+                  <input
+                    type="file"
+                    id="edit-rfq-doc"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
                     onChange={handleUploadDoc}
                     disabled={isUploading}
                   />
-                  <label 
+                  <label
                     htmlFor="edit-rfq-doc"
-                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${
-                      uploadedDocUrl 
-                        ? "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                        : "bg-[#12335f] text-white hover:bg-[#0b2445]"
-                    }`}
+                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${uploadedDocUrl
+                      ? "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                      : "bg-[#12335f] text-white hover:bg-[#0b2445]"
+                      }`}
                   >
                     {isUploading ? "Wait..." : uploadedDocUrl ? "Change" : "Upload"}
                   </label>

@@ -1,5 +1,5 @@
 import { ApiError } from '../../utils/ApiError.js';
-import { auditWorkflow, db, notifyWorkflow, numberSeries, roundMoney, type WorkflowActor } from './workflow-common.js';
+import { auditWorkflow, auditWorkflowSoon, db, notifyWorkflow, notifyWorkflowSoon, numberSeries, roundMoney, type WorkflowActor } from './workflow-common.js';
 import { statusTransitions, poStatusEnumFor } from './status-transition.service.js';
 
 type RequirementInput = {
@@ -60,8 +60,8 @@ export const procurementWorkflow = {
         totalAmount: input.totalAmount
       }
     });
-    await notifyWorkflow(input.sellerId, 'Direct purchase request', 'A buyer sent you a direct purchase request.', 'direct_purchase_requested', '/seller/orders');
-    await auditWorkflow(actor, 'workflow.direct_purchase.created', 'directPurchase', directPurchase.id);
+    notifyWorkflowSoon(input.sellerId, 'Direct purchase request', 'A buyer sent you a direct purchase request.', 'direct_purchase_requested', '/seller/orders');
+    auditWorkflowSoon(actor, 'workflow.direct_purchase.created', 'directPurchase', directPurchase.id);
     return directPurchase;
   },
 
@@ -74,15 +74,20 @@ export const procurementWorkflow = {
       where: { id: directPurchaseId },
       data: { status: accepted ? 'APPROVED' : 'REJECTED', approvedAt: accepted ? new Date() : null }
     });
-    await notifyWorkflow(directPurchase.buyerId, accepted ? 'Direct purchase accepted' : 'Direct purchase rejected', `Direct purchase ${directPurchase.purchaseNumber} was ${accepted ? 'accepted' : 'rejected'}.`, 'direct_purchase_response', '/buyer/direct-purchase');
-    await auditWorkflow(actor, accepted ? 'workflow.direct_purchase.accepted' : 'workflow.direct_purchase.rejected', 'directPurchase', directPurchaseId);
+    notifyWorkflowSoon(directPurchase.buyerId, accepted ? 'Direct purchase accepted' : 'Direct purchase rejected', `Direct purchase ${directPurchase.purchaseNumber} was ${accepted ? 'accepted' : 'rejected'}.`, 'direct_purchase_response', '/buyer/direct-purchase');
+    auditWorkflowSoon(actor, accepted ? 'workflow.direct_purchase.accepted' : 'workflow.direct_purchase.rejected', 'directPurchase', directPurchaseId);
     return updated;
   },
 
-  async createQuoteRequest(actor: WorkflowActor, input: { sellerId: number; subject: string; message: string; documentUrl?: string; estimatedValue?: number }) {
+  async createQuoteRequest(actor: WorkflowActor, input: { sellerId: number; subject: string; message: string; documentUrl?: string; estimatedValue?: number; deadlineDate?: Date }) {
     assertBuyer(actor);
     const quoteRequest = await db.quoteRequest.create({
-      data: { ...input, buyerId: actor.id, status: 'pending', statusEnum: 'SENT' }
+      data: { ...input, buyerId: actor.id, status: 'pending', statusEnum: 'SENT' },
+      include: {
+        buyer: { select: { id: true, name: true, email: true } },
+        seller: { select: { id: true, name: true, email: true } },
+        quoteResponses: true
+      }
     });
 
     if (input.documentUrl) {
@@ -101,7 +106,7 @@ export const procurementWorkflow = {
       }
     }
 
-    await notifyWorkflow(input.sellerId, 'New RFQ received', input.subject, 'quote_request_created', '/quotations');
+    notifyWorkflowSoon(input.sellerId, 'New RFQ received', input.subject, 'quote_request_created', '/quotations');
     await auditWorkflow(actor, 'workflow.rfq.created', 'quoteRequest', quoteRequest.id);
     return quoteRequest;
   },
@@ -139,8 +144,8 @@ export const procurementWorkflow = {
       }
     }
 
-    await notifyWorkflow(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
-    await auditWorkflow(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
+    notifyWorkflowSoon(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
+    auditWorkflowSoon(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
     return response;
   },
 
@@ -191,7 +196,7 @@ export const procurementWorkflow = {
     }, {
       timeout: 15000
     });
-    await notifyWorkflow(
+    notifyWorkflowSoon(
       result.quoteResponse.sellerId,
       result.reused ? 'RFQ purchase order reopened' : 'RFQ response accepted',
       `Your response for "${result.purchaseOrder.title}" was accepted${result.reused ? ' and the existing purchase order is available.' : ' and a purchase order was generated.'}`,
@@ -235,7 +240,7 @@ export const procurementWorkflow = {
     }, {
       timeout: 15000
     });
-    await notifyWorkflow(
+    notifyWorkflowSoon(
       result.purchaseOrder.sellerId,
       result.reused ? 'Direct purchase PO reopened' : 'Purchase order generated',
       `A purchase order was ${result.reused ? 'opened again' : 'generated'} for ${result.purchaseOrder.title}.`,

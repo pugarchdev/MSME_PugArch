@@ -32,3 +32,9 @@ export const deleteDirectPurchase = (id: number) =>
 
 export const generatePoFromDirectPurchase = (id: number) =>
     postApi<{ purchaseOrder: { id: number; poNumber?: string } }>(`/api/direct-purchases/${id}/generate-po`, {});
+
+export const acceptDirectPurchase = (id: number) =>
+    postApi<DirectPurchaseDto>(`/api/direct-purchases/${id}/accept`, {});
+
+export const rejectDirectPurchase = (id: number) =>
+    postApi<DirectPurchaseDto>(`/api/direct-purchases/${id}/reject`, {});

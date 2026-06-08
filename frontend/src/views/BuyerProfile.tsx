@@ -26,16 +26,17 @@ import {
   Plus,
   ShoppingBag
 } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { MSME_TYPES } from '../constants/dropdowns';
 
 const SIDEBAR_NAV = [
   { id: 'address', label: 'Organisation Address', icon: MapPin },
-  { id: 'hierarchy', label: 'Organisation Hierarchy', icon: Users },
-  { id: 'team', label: 'Secondary Users / Roles', icon: Shield },
-  { id: 'bank', label: 'Bank Account Detail', icon: Building2 },
-  { id: 'personal', label: 'Personal Information', icon: User },
+  // { id: 'hierarchy', label: 'Organisation Hierarchy', icon: Users },
+  // { id: 'team', label: 'Secondary Users / Roles', icon: Shield },
+  // { id: 'bank', label: 'Bank Account Detail', icon: Building2 },
+  // { id: 'personal', label: 'Personal Information', icon: User },
   { id: 'mobile', label: 'Update Mobile', icon: Phone },
   { id: 'email', label: 'Change Email', icon: Mail },
   { id: 'password', label: 'Change Password', icon: Lock },
@@ -51,6 +52,9 @@ export default function BuyerProfile() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [personalOtp, setPersonalOtp] = useState('');
   const [personalOtpSent, setPersonalOtpSent] = useState(false);
+  const [emailOtp, setEmailOtp] = useState('');
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -223,6 +227,84 @@ export default function BuyerProfile() {
     }
   };
 
+  const validateEmailChange = () => {
+    const newEmail = formData.newEmail.trim().toLowerCase();
+    const verifyEmail = formData.verifyEmail.trim().toLowerCase();
+    const errors: Record<string, string> = {};
+    if (!newEmail) errors.newEmail = 'New email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) errors.newEmail = 'Enter a valid email address';
+    if (!verifyEmail) errors.verifyEmail = 'Confirm the new email';
+    else if (newEmail !== verifyEmail) errors.verifyEmail = 'Email addresses do not match';
+    if (user?.email?.toLowerCase() === newEmail) errors.newEmail = 'New email must be different from current email';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSendEmailOtp = async () => {
+    if (!validateEmailChange()) return;
+
+    setIsSendingEmailOtp(true);
+    try {
+      const res = await api.fetch('/api/buyer/settings/change-email/send-otp', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: formData.newEmail.trim().toLowerCase() })
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.message || 'Failed to send OTP');
+
+      setEmailOtpSent(true);
+      setEmailOtp('');
+      if (body?.data?.deliveryConfigured === false) {
+        toast.warning('OTP generated, but email delivery is not configured. Check backend console/SMTP settings.');
+      } else {
+        toast.success('OTP sent to new email ID');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to send OTP');
+    } finally {
+      setIsSendingEmailOtp(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!validateEmailChange()) return;
+    if (!emailOtp.trim()) {
+      setFormErrors(prev => ({ ...prev, emailOtp: 'Enter the OTP sent to the new email' }));
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await api.fetch('/api/buyer/settings/change-email', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          newEmail: formData.newEmail.trim().toLowerCase(),
+          otp: emailOtp.trim()
+        })
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.message || 'Failed to update email');
+
+      toast.success('Email updated successfully');
+      setEmailOtp('');
+      setEmailOtpSent(false);
+      setFormData(prev => ({ ...prev, newEmail: '', verifyEmail: '' }));
+      await refreshUser();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update email');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -344,17 +426,12 @@ export default function BuyerProfile() {
       }
 
       if (activeSection === 'email') {
-        if (formData.newEmail !== formData.verifyEmail) {
-          setFormErrors({ verifyEmail: 'Email addresses do not match' });
-          setIsSaving(false);
-          return;
-        }
-        toast.success('OTP sent to new email ID');
         setIsSaving(false);
+        await handleSendEmailOtp();
         return;
       }
 
-      // Enrich payload with GeM-specific fields
+      // Enrich payload with portal-specific buyer fields.
       payload.organizationType = formData.organizationType;
       payload.ministry = formData.ministry;
       payload.division = formData.division;
@@ -406,7 +483,7 @@ export default function BuyerProfile() {
   if (loading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#12335f] border-t-transparent shadow-xl shadow-blue-500/20"></div>
+        <Loader2 className="h-10 w-10 shadow-xl shadow-blue-500/20" />
       </div>
     );
   }
@@ -484,7 +561,7 @@ export default function BuyerProfile() {
               <div className="space-y-4 animate-in fade-in duration-500">
                 <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                   <h3 className="text-lg font-black text-slate-900 uppercase ">Organisation Hierarchy</h3>
-                  <Badge className="bg-slate-100 text-slate-700 border-slate-200 rounded-lg px-4 py-1 text-[9px] font-black ">GE-M STRUCTURE</Badge>
+                  
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1016,11 +1093,11 @@ export default function BuyerProfile() {
                         label="Email (Official) *" 
                         value={formData.verifyingEmail} 
                         onChange={(e) => handleFieldChange('verifyingEmail', e.target.value)}
-                        placeholder="buycon5.gpmp.mh@gembuyer.in"
+                        placeholder="buyer@example.com"
                         error={formErrors.verifyingEmail}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
-                      <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with NIC/GeM.</p>
+                      <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with your official organization domain.</p>
                     </div>
                     <Input 
                       label="Mobile (Official) *" 
@@ -1213,7 +1290,11 @@ export default function BuyerProfile() {
                     <Input 
                       label="Official Email Id *" 
                       value={formData.newEmail} 
-                      onChange={(e) => handleFieldChange('newEmail', e.target.value)}
+                      onChange={(e) => {
+                        handleFieldChange('newEmail', e.target.value);
+                        setEmailOtpSent(false);
+                        setEmailOtp('');
+                      }}
                       placeholder="Enter Official email id"
                       error={formErrors.newEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
@@ -1221,21 +1302,54 @@ export default function BuyerProfile() {
                     <Input 
                       label="Verify Email Id *" 
                       value={formData.verifyEmail} 
-                      onChange={(e) => handleFieldChange('verifyEmail', e.target.value)}
+                      onChange={(e) => {
+                        handleFieldChange('verifyEmail', e.target.value);
+                        setEmailOtpSent(false);
+                        setEmailOtp('');
+                      }}
                       placeholder="Verify Official email id"
                       error={formErrors.verifyEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
+                    {emailOtpSent && (
+                      <Input
+                        label="OTP sent to new email *"
+                        value={emailOtp}
+                        onChange={(e) => {
+                          setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                          if (formErrors.emailOtp) {
+                            setFormErrors(prev => {
+                              const copy = { ...prev };
+                              delete copy.emailOtp;
+                              return copy;
+                            });
+                          }
+                        }}
+                        placeholder="Enter 6-digit OTP"
+                        error={formErrors.emailOtp}
+                        className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
+                      />
+                    )}
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-slate-50 flex justify-end">
+                <div className="pt-6 border-t border-slate-50 flex flex-wrap justify-end gap-3">
+                  {emailOtpSent && (
+                    <Button
+                      onClick={handleSendEmailOtp}
+                      disabled={isSendingEmailOtp || isSaving}
+                      variant="outline"
+                      className="font-black uppercase text-xs tracking-[0.2em] h-14 px-8 rounded-2xl shadow-sm"
+                    >
+                      {isSendingEmailOtp ? 'Sending...' : 'Resend OTP'}
+                    </Button>
+                  )}
                    <Button 
-                     onClick={handleSave}
-                     disabled={isSaving}
+                     onClick={emailOtpSent ? handleChangeEmail : handleSendEmailOtp}
+                     disabled={isSaving || isSendingEmailOtp}
                      className="bg-slate-200 hover:bg-slate-300 text-slate-600 font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-sm transition-all active:scale-[0.98]"
                    >
-                     {isSaving ? 'Sending...' : 'Send OTP'}
+                     {isSendingEmailOtp ? 'Sending...' : isSaving ? 'Updating...' : emailOtpSent ? 'Update Email' : 'Send OTP'}
                    </Button>
                 </div>
               </div>

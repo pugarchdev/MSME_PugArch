@@ -20,7 +20,8 @@ import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
@@ -54,6 +55,7 @@ const ALERT_TYPE_LABELS: Record<FraudAlertType, string> = {
     DOCUMENT_MISMATCH: 'Document Mismatch',
     MANUAL_FLAG: 'Manual Flag'
 };
+type FraudSortKey = 'type' | 'subject' | 'severity' | 'status' | 'reviewer' | 'createdAt';
 
 export default function FraudAlertsPage() {
     const [page, setPage] = useState(1);
@@ -63,6 +65,8 @@ export default function FraudAlertsPage() {
     const [severity, setSeverity] = useState('');
     const [type, setType] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
+    const [sortKey, setSortKey] = useState<FraudSortKey>('createdAt');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     const list = useFraudAlerts({
         q: q || undefined,
@@ -75,6 +79,29 @@ export default function FraudAlertsPage() {
 
     const records = list.data?.records || [];
     const total = list.data?.total || 0;
+    const sortedRecords = useMemo(() => {
+        return [...records].sort((a, b) => {
+            const subjectOf = (alert: FraudAlertDto) => alert.user?.name || alert.organization?.organizationName || (alert.entityType ? `${alert.entityType}#${alert.entityId}` : 'System-wide');
+            const valueFor = (alert: FraudAlertDto) => {
+                if (sortKey === 'type') return ALERT_TYPE_LABELS[alert.alertType] || alert.alertType;
+                if (sortKey === 'subject') return subjectOf(alert);
+                if (sortKey === 'severity') return alert.severity;
+                if (sortKey === 'status') return alert.status;
+                if (sortKey === 'reviewer') return alert.reviewedBy?.name || '';
+                return new Date(alert.createdAt || 0).getTime();
+            };
+            const av = valueFor(a);
+            const bv = valueFor(b);
+            const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+            return sortDirection === 'asc' ? result : -result;
+        });
+    }, [records, sortDirection, sortKey]);
+
+    const toggleSort = (field: FraudSortKey) => {
+        setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+        setSortKey(field);
+        setPage(1);
+    };
 
     const counters = useMemo(() => {
         const open = records.filter(a => a.status === 'OPEN').length;
@@ -102,29 +129,23 @@ export default function FraudAlertsPage() {
                 </Button>
             </div>
 
-            {list.isLoading && !list.data ? (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {[1, 2, 3, 4].map(i => <MetricCardSkeleton key={i} />)}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={Flag} />
-                    <Metric label="Open" value={counters.open} hint="Need triage" tone="negative" icon={ShieldAlert} />
-                    <Metric label="Under Review" value={counters.review} hint="With an admin" tone="warning" icon={Eye} />
-                    <Metric label="Critical" value={counters.critical} hint="Top severity" tone="negative" icon={ShieldX} />
-                </div>
-            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={Flag} loading={list.isLoading && !list.data} />
+                <Metric label="Open" value={counters.open} hint="Need triage" tone="negative" icon={ShieldAlert} loading={list.isLoading && !list.data} />
+                <Metric label="Under Review" value={counters.review} hint="With an admin" tone="warning" icon={Eye} loading={list.isLoading && !list.data} />
+                <Metric label="Critical" value={counters.critical} hint="Top severity" tone="negative" icon={ShieldX} loading={list.isLoading && !list.data} />
+            </div>
 
             <PageToolbar
                 eyebrow="Filters"
                 search={q}
-                onSearchChange={setQ}
+                onSearchChange={value => { setQ(value); setPage(1); }}
                 searchPlaceholder="Search user, organization, entity"
                 filters={[
                     {
                         kind: 'select',
                         value: status,
-                        onChange: setStatus,
+                        onChange: value => { setStatus(value); setPage(1); },
                         placeholder: 'All statuses',
                         options: [
                             { value: 'OPEN', label: 'Open' },
@@ -137,7 +158,7 @@ export default function FraudAlertsPage() {
                     {
                         kind: 'select',
                         value: severity,
-                        onChange: setSeverity,
+                        onChange: value => { setSeverity(value); setPage(1); },
                         placeholder: 'All severities',
                         options: [
                             { value: 'CRITICAL', label: 'Critical' },
@@ -149,7 +170,7 @@ export default function FraudAlertsPage() {
                     {
                         kind: 'select',
                         value: type,
-                        onChange: setType,
+                        onChange: value => { setType(value); setPage(1); },
                         placeholder: 'All types',
                         options: Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => ({ value, label }))
                     }
@@ -159,6 +180,7 @@ export default function FraudAlertsPage() {
                     setStatus('');
                     setSeverity('');
                     setType('');
+                    setPage(1);
                 }}
             />
 
@@ -181,17 +203,17 @@ export default function FraudAlertsPage() {
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
                                         <th className="px-4 py-2.5 text-left w-12">#</th>
-                                        <th className="px-4 py-2.5 text-left">Alert Type</th>
-                                        <th className="px-4 py-2.5 text-left">Subject</th>
-                                        <th className="px-4 py-2.5 text-left w-28">Severity</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Status</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Reviewer</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Raised</th>
+                                        <th className="px-4 py-2.5 text-left"><SortableHeader label="Alert Type" field="type" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left"><SortableHeader label="Subject" field="subject" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-28"><SortableHeader label="Severity" field="severity" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Reviewer" field="reviewer" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Raised" field="createdAt" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                                         <th className="px-4 py-2.5 text-right w-24">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {records.map((alert, idx) => (
+                                    {sortedRecords.map((alert, idx) => (
                                         <tr key={alert.id} className="hover:bg-slate-50/60 cursor-pointer" onClick={() => setOpenId(alert.id)}>
                                             <td className="px-4 py-3 text-xs font-mono text-slate-400">
                                                 {String((page - 1) * pageSize + idx + 1).padStart(2, '0')}
@@ -452,13 +474,15 @@ function Metric({
     value,
     hint,
     tone,
-    icon: Icon
+    icon: Icon,
+    loading
 }: {
     label: string;
     value: number;
     hint: string;
     tone: 'positive' | 'negative' | 'warning' | 'neutral';
     icon: any;
+    loading?: boolean;
 }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
@@ -471,7 +495,7 @@ function Metric({
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                    <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white', toneStyle[tone])}>

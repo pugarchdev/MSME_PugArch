@@ -8,28 +8,24 @@
  */
 
 import { useMemo, useState } from 'react';
-import {
-    ClipboardCheck,
-    FileText,
-    Loader2,
-    Plus,
-    RefreshCw,
-    Send,
-    Trash2,
-    X
-} from 'lucide-react';
+import { ClipboardCheck, Eye, FileText, Plus, RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
-import { ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { useResponsiveViewMode } from '../../shared/hooks';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import { cn } from '../../../lib/utils';
 import {
     useCreateRequirement,
+    useDeleteRequirement,
     useRequirement,
     useRequirements,
     useSubmitRequirement,
@@ -59,6 +55,7 @@ const PROCUREMENT_METHOD_LABELS: Record<ProcurementMethod, string> = {
     REVERSE_AUCTION: 'Reverse Auction',
     RATE_CONTRACT: 'Rate Contract'
 };
+type RequirementSortKey = 'requirementNumber' | 'title' | 'procurementMethod' | 'status' | 'estimatedValue' | 'requiredBy' | 'updatedAt';
 
 export default function RequirementsPage() {
     const [page, setPage] = useState(1);
@@ -67,8 +64,13 @@ export default function RequirementsPage() {
     const [status, setStatus] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
+    const [viewMode, setViewMode] = useResponsiveViewMode('phase7:requirements:view-mode');
+    const [sortKey, setSortKey] = useState<RequirementSortKey>('updatedAt');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     const list = useRequirements({ q: q || undefined, status: status || undefined, page, pageSize });
+    const submitMut = useSubmitRequirement();
+    const deleteMut = useDeleteRequirement();
 
     const records = list.data?.records || [];
     const total = list.data?.total || 0;
@@ -79,6 +81,41 @@ export default function RequirementsPage() {
         const approved = records.filter(r => r.status === 'APPROVED' || r.status === 'CONVERTED_TO_TENDER').length;
         return { drafts, submitted, approved };
     }, [records]);
+
+    const sortedRecords = useMemo(() => {
+        return [...records].sort((a, b) => {
+            const valueFor = (req: RequirementDto) => {
+                if (sortKey === 'requirementNumber') return req.requirementNumber || '';
+                if (sortKey === 'title') return req.title || '';
+                if (sortKey === 'procurementMethod') return req.procurementMethod || '';
+                if (sortKey === 'status') return req.status || '';
+                if (sortKey === 'estimatedValue') return Number(req.estimatedValue || 0);
+                if (sortKey === 'requiredBy') return new Date(req.requiredBy || 0).getTime();
+                return new Date(req.updatedAt || 0).getTime();
+            };
+            const av = valueFor(a);
+            const bv = valueFor(b);
+            const result = typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).localeCompare(String(bv));
+            return sortDirection === 'asc' ? result : -result;
+        });
+    }, [records, sortDirection, sortKey]);
+
+    const toggleSort = (field: RequirementSortKey) => {
+        setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
+        setSortKey(field);
+    };
+
+    const setSearchAndReset = (value: string) => {
+        setQ(value);
+        setPage(1);
+    };
+
+    const setStatusAndReset = (value: string) => {
+        setStatus(value);
+        setPage(1);
+    };
 
     return (
         <div className="space-y-4">
@@ -104,29 +141,23 @@ export default function RequirementsPage() {
                 </div>
             </div>
 
-            {list.isLoading && !list.data ? (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {[1, 2, 3, 4].map(i => <MetricCardSkeleton key={i} />)}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ClipboardCheck} />
-                    <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={FileText} />
-                    <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} />
-                    <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} />
-                </div>
-            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
+                <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={FileText} loading={list.isLoading && !list.data} />
+                <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} loading={list.isLoading && !list.data} />
+                <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
+            </div>
 
             <PageToolbar
                 eyebrow="Filters"
                 search={q}
-                onSearchChange={setQ}
+                onSearchChange={setSearchAndReset}
                 searchPlaceholder="Search by title, description, ID"
                 filters={[
                     {
                         kind: 'select',
                         value: status,
-                        onChange: setStatus,
+                        onChange: setStatusAndReset,
                         placeholder: 'All statuses',
                         options: [
                             { value: 'DRAFT', label: 'Draft' },
@@ -142,7 +173,9 @@ export default function RequirementsPage() {
                 onReset={() => {
                     setQ('');
                     setStatus('');
+                    setPage(1);
                 }}
+                actions={<ViewModeToggle value={viewMode} onChange={setViewMode} />}
             />
 
             {list.error && (
@@ -156,6 +189,68 @@ export default function RequirementsPage() {
                 <ListSkeleton rows={4} />
             ) : records.length === 0 ? (
                 <EmptyState title="No requirements yet" description="Create your first requirement to start a procurement." />
+            ) : viewMode === 'grid' ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {sortedRecords.map((req, idx) => (
+                        <article key={req.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-lg">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <button
+                                        type="button"
+                                        className="text-[10px] font-black uppercase tracking-widest text-[#c86413] hover:underline"
+                                        onClick={() => setOpenId(req.id)}
+                                    >
+                                        {req.requirementNumber}
+                                    </button>
+                                    <h2 className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{req.title}</h2>
+                                    <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                                        Sr. {String((page - 1) * pageSize + idx + 1).padStart(2, '0')} / {req.items?.length || 0} line item{(req.items?.length || 0) === 1 ? '' : 's'}
+                                    </p>
+                                </div>
+                                <Badge className={cn('rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wide', STATUS_TONE[req.status] || STATUS_TONE.DRAFT)}>
+                                    {req.status.replace(/_/g, ' ')}
+                                </Badge>
+                            </div>
+                            <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-600">
+                                <p><span className="font-black text-slate-900">Method:</span> {PROCUREMENT_METHOD_LABELS[req.procurementMethod] || req.procurementMethod}</p>
+                                <p><span className="font-black text-slate-900">Estimated:</span> {formatCurrency(req.estimatedValue)}</p>
+                                <p><span className="font-black text-slate-900">Required by:</span> {formatDate(req.requiredBy)}</p>
+                                <p><span className="font-black text-slate-900">Updated:</span> {formatRelative(req.updatedAt)}</p>
+                            </div>
+                            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+                                <button type="button" onClick={() => setOpenId(req.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-[#12335f] hover:bg-slate-50">
+                                    <Eye className="h-3.5 w-3.5" /> View
+                                </button>
+                                {req.status === 'DRAFT' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            runWithToast(() => submitMut.mutateAsync(req.id), {
+                                                loading: 'Submitting...',
+                                                success: 'Requirement submitted for review',
+                                                error: 'Submit failed'
+                                            });
+                                        }}
+                                        disabled={submitMut.isPending}
+                                        className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-600 px-3 text-[10px] font-black text-white disabled:opacity-50"
+                                    >
+                                        <Send className="h-3.5 w-3.5" /> Submit
+                                    </button>
+                                )}
+                            </div>
+                        </article>
+                    ))}
+                    <div className="md:col-span-2 xl:col-span-3">
+                        <Pagination
+                            page={page}
+                            pageSize={pageSize}
+                            total={total}
+                            onPageChange={setPage}
+                            onPageSizeChange={setPageSize}
+                            label="requirements"
+                        />
+                    </div>
+                </div>
             ) : (
                 <Card>
                     <CardContent className="p-0">
@@ -164,17 +259,18 @@ export default function RequirementsPage() {
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
                                         <th className="px-4 py-2.5 text-left w-12">#</th>
-                                        <th className="px-4 py-2.5 text-left w-40">Requirement ID</th>
-                                        <th className="px-4 py-2.5 text-left">Title</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Method</th>
-                                        <th className="px-4 py-2.5 text-left w-32">Status</th>
-                                        <th className="px-4 py-2.5 text-right w-32">Estimated Value</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Required By</th>
-                                        <th className="px-4 py-2.5 text-left w-44">Updated</th>
+                                        <th className="px-4 py-2.5 text-left w-40"><SortableHeader label="Requirement ID" field="requirementNumber" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left"><SortableHeader label="Title" field="title" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Method" field="procurementMethod" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-32"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-right w-32"><SortableHeader label="Estimated Value" field="estimatedValue" activeField={sortKey} direction={sortDirection} onSort={toggleSort} className="justify-end" /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Required By" field="requiredBy" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-left w-44"><SortableHeader label="Updated" field="updatedAt" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
+                                        <th className="px-4 py-2.5 text-right w-44">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {records.map((req, idx) => (
+                                    {sortedRecords.map((req, idx) => (
                                         <tr
                                             key={req.id}
                                             className="hover:bg-slate-50/60 cursor-pointer"
@@ -228,6 +324,55 @@ export default function RequirementsPage() {
                                             <td className="px-4 py-3 text-xs font-semibold text-slate-700">
                                                 <p>{formatDateTime(req.updatedAt)}</p>
                                                 <p className="text-[10px] text-slate-400">{formatRelative(req.updatedAt)}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setOpenId(req.id)}
+                                                        title="View details"
+                                                        className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-[#12335f] hover:bg-slate-50"
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    {req.status === 'DRAFT' && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    runWithToast(() => submitMut.mutateAsync(req.id), {
+                                                                        loading: 'Submitting...',
+                                                                        success: 'Requirement submitted for review',
+                                                                        error: 'Submit failed'
+                                                                    });
+                                                                }}
+                                                                disabled={submitMut.isPending}
+                                                                title="Submit for review"
+                                                                className="flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                                                            >
+                                                                {submitMut.isPending && submitMut.variables === req.id
+                                                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                    : <Send className="h-3.5 w-3.5" />}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!window.confirm(`Delete requirement "${req.title}"? This cannot be undone.`)) return;
+                                                                    runWithToast(() => deleteMut.mutateAsync(req.id), {
+                                                                        loading: 'Deleting...',
+                                                                        success: 'Requirement deleted',
+                                                                        error: 'Delete failed'
+                                                                    });
+                                                                }}
+                                                                disabled={deleteMut.isPending}
+                                                                title="Delete draft"
+                                                                className="flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -596,13 +741,15 @@ function Metric({
     value,
     hint,
     tone,
-    icon: Icon
+    icon: Icon,
+    loading
 }: {
     label: string;
     value: number;
     hint: string;
     tone: 'positive' | 'negative' | 'warning' | 'neutral';
     icon: any;
+    loading?: boolean;
 }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
@@ -615,7 +762,7 @@ function Metric({
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                    <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white', toneStyle[tone])}>

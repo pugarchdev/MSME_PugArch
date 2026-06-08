@@ -30,7 +30,7 @@ import { Button } from '../../../components/ui/button';
 import { Input, Select } from '../../../components/ui/input';
 import { useAuth } from '../../../hooks/useAuth';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
-import { TableSkeleton, ListSkeleton, MetricCardSkeleton } from '../../../components/ui/skeleton';
+import { TableSkeleton, ListSkeleton } from '../../../components/ui/skeleton';
 import { Pagination } from '../../shared/Pagination';
 import { formatCurrency, formatDate } from '../../shared/format';
 import { useResponsiveViewMode } from '../../shared/hooks';
@@ -81,8 +81,16 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
   const records = (listQuery.data?.records || []) as DeliveryDetailDto[];
   const total = listQuery.data?.total || 0;
 
-  // Lightweight client-side counters from whatever the current page has.
+  // Use server-side report data for KPIs when available, fall back to client-side counters
   const counters = useMemo(() => {
+    if (reportQuery.data) {
+      return {
+        inMovement: reportQuery.data.inMovement || 0,
+        completed: reportQuery.data.completed || 0,
+        risk: reportQuery.data.risk || 0
+      };
+    }
+    // Fallback: lightweight client-side counters from current page
     const inMovement = records.filter(r =>
       ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'AT_HUB', 'PICKED_UP'].includes(r.status)
     ).length;
@@ -93,7 +101,7 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
       ['DELAYED', 'DELIVERY_FAILED', 'DISPUTE_RAISED', 'RETURNED', 'CANCELLED'].includes(r.status)
     ).length;
     return { inMovement, completed, risk };
-  }, [records]);
+  }, [records, reportQuery.data]);
 
   const startIndex = (page - 1) * pageSize;
   const isInitialLoading = listQuery.isLoading && !listQuery.data;
@@ -129,31 +137,13 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         </div>
       </div>
 
-      {isInitialLoading ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
-            <MetricCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} />
-          <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} />
-          <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} />
-          <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} />
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} loading={isInitialLoading} />
+        <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} loading={isInitialLoading} />
+        <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} loading={isInitialLoading} />
+        <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} loading={isInitialLoading} />
+      </div>
 
-      {scope === 'admin' && reportQuery.data && (
-        <Card>
-          <CardContent className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-            <Info label="Pending Payment" value={String(reportQuery.data.paymentPendingAfterAcceptance)} />
-            <Info label="Disputed" value={String(reportQuery.data.disputed)} />
-            <Info label="Delayed" value={String(reportQuery.data.delayed)} />
-            <Info label="Returned" value={String(reportQuery.data.returned)} />
-          </CardContent>
-        </Card>
-      )}
 
       {listQuery.error && (
         <InlineError
@@ -426,13 +416,13 @@ function GridView({ records, startIndex, page, pageSize, total, onSelect, onPage
 
 /* ---------- Small helpers ---------- */
 
-function MetricCard({ label, value, hint, icon: Icon }: { label: string; value: number; hint: string; icon: any }) {
+function MetricCard({ label, value, hint, icon: Icon, loading }: { label: string; value: number; hint: string; icon: any; loading?: boolean }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between p-4">
         <div>
           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+          <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
           <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{hint}</p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">

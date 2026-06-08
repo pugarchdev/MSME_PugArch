@@ -28,6 +28,7 @@ export const redisKeys = {
   cacheVendorSearch: (hash: string) => `cache:vendor_search:${routeKey(hash)}`,
   cacheProductSearch: (hash: string) => `cache:product_search:${routeKey(hash)}`,
   cacheTenderPublic: (hash: string) => `cache:tender_public:${routeKey(hash)}`,
+  cacheDashboardSummary: (userId: string | number) => `cache:dashboard:summary:${userId}`,
   actionBudget: (scope: string, identity: string) => `rate:api:${routeKey(scope)}:${hashed(identity)}`,
   notificationsUser: (userId: string | number) => `notifications:user:${userId}`
 };

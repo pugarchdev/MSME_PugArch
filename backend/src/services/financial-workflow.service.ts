@@ -3,6 +3,7 @@ import { auditLog } from '../modules/audit/audit.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { randomToken } from '../utils/crypto.js';
 import { maskSensitive } from '../utils/maskSensitive.js';
+import { quotedBidTotal } from '../utils/bidPricing.js';
 
 type Actor = {
   id: number;
@@ -40,7 +41,7 @@ export const acceptBidAndGeneratePurchaseOrder = async (bidId: number, actor: Ac
     const existingPo = await tx.purchaseOrder.findUnique({ where: { bidId } });
     if (existingPo) return { bid, purchaseOrder: existingPo, reused: true };
 
-    const amount = money(Number(bid.unitPrice) * Number(bid.quantity));
+    const amount = quotedBidTotal(bid);
     const updatedBid = await tx.bid.update({
       where: { id: bidId },
       data: { status: 'accepted' }
@@ -77,6 +78,11 @@ export const acceptBidAndGeneratePurchaseOrder = async (bidId: number, actor: Ac
           tenderId: bid.tender.tenderId,
           unitPrice: bid.unitPrice,
           quantity: bid.quantity,
+          subtotal: bid.subtotal,
+          taxRate: bid.taxRate,
+          taxAmount: bid.taxAmount,
+          discountAmount: bid.discountAmount,
+          totalAmount: amount,
           deliveryDays: bid.deliveryDays
         }
       }

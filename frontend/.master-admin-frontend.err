@@ -1,0 +1,8 @@
+ ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path C:\Pugarch\MSME_Portal_PugArch\MSME_PugArch\frontend
+npm error workspace frontend-nextjs@1.0.0
+npm error location C:\Pugarch\MSME_Portal_PugArch\MSME_PugArch\frontend
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c next start -p 3000

@@ -7,9 +7,11 @@ import { Check } from 'lucide-react';
 export default function SellerRegistrationFlow() {
   const [step, setStep] = useState(1);
   const [businessType, setBusinessType] = useState('');
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
 
-  const handlePrerequisitesProceed = (type: string) => {
+  const handlePrerequisitesProceed = (type: string, documents: string[] = []) => {
     setBusinessType(type);
+    setSelectedDocuments(documents);
     setStep(2);
   };
 
@@ -37,7 +39,7 @@ export default function SellerRegistrationFlow() {
         <div className="min-h-0 flex-1 animate-in fade-in duration-700">
           {step === 1 && <Prerequisites onProceed={handlePrerequisitesProceed} role="seller" />}
           {step === 2 && <TermsConditions onAccept={handleTermsAccept} onBack={handleBackToPrerequisites} role="seller" />}
-          {step === 3 && <RegistrationDetailsFlow businessType={businessType} onBack={() => setStep(2)} role="seller" />}
+          {step === 3 && <RegistrationDetailsFlow businessType={businessType} onBack={() => setStep(2)} role="seller" prereqSelectedDocuments={selectedDocuments} />}
         </div>
 
         <div className="mt-4 shrink-0 px-2 text-center text-[9px] font-black uppercase  tracking-[0.18em] text-slate-300 sm:text-[10px] sm:tracking-[0.3em]">

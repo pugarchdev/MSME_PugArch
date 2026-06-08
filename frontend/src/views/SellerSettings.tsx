@@ -6,7 +6,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { ShieldCheck, Mail, Lock, UserX, Info, Loader2, AlertTriangle, PlayCircle } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, UserX, Info, AlertTriangle, PlayCircle } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { GeMSettingsSidebar } from '../components/GeMSettingsSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
 
@@ -444,9 +445,7 @@ export default function SellerSettings() {
               <div className="p-5 sm:p-8 space-y-6 sm:space-y-8 animate-in fade-in duration-300">
                 <h2 className="text-2xl font-bold text-gray-800">Update Aadhaar</h2>
 
-                <div className="bg-sky-50 border border-sky-100 p-4 rounded-lg text-sky-800 text-sm font-medium">
-                  On Aadhaar update, Pan Validation has to be reverified
-                </div>
+            
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8">
                   <Input label="Aadhaar Number / Virtual ID*" placeholder="Enter Aadhaar number / Virtual ID" value={aadhaarForm.number} onChange={e => setAadhaarForm({...aadhaarForm, number: e.target.value})} />
@@ -461,7 +460,7 @@ export default function SellerSettings() {
                         I, the holder of the above Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for JsgSmile Portal registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
                       </p>
                       <p className="font-medium">
-                        मैं, उपर्युक्त आधार का धारक, भारतीय विशिष्ट पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को जेम पंजीकरण हेतु प्रयोग में लाने हेतु जेम (गवर्नमेंट ई-मार्केटप्लेस) को एतद्द्वारा अपनी सहमति प्रदान करता हूँ। जेम (गवर्नमेंट ई-मार्केटप्लेस) ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
+                        Please read this consent carefully before continuing.
                       </p>
                     </div>
                   </div>
@@ -520,7 +519,7 @@ export default function SellerSettings() {
             {currentSection === 'email' && (
               <div className="p-5 sm:p-8 space-y-6 sm:space-y-8 animate-in fade-in duration-300">
                 <h2 className="text-2xl font-bold text-gray-800">Change Email</h2>
-                <p className="text-gray-500">Please note that the new email ID will be used for business done on GeM</p>
+                <p className="text-gray-500">Please note that the new email ID will be used for business done on JsgSmile.</p>
 
                 <div className="bg-sky-50 border border-sky-100 p-4 sm:p-6 rounded-lg space-y-4">
                   <h3 className="font-bold text-red-600 uppercase tracking-tight">Important Update on Bid Notifications</h3>
@@ -595,7 +594,7 @@ export default function SellerSettings() {
 
                 <div className="bg-sky-50 border border-sky-100 p-4 sm:p-6 rounded-lg">
                   <p className="text-sm text-sky-800 leading-relaxed">
-                    You are advised to check and validate your bank account detail before closing your seller account at GeM. The bank account details cannot be updated once the account is closed which may hamper refund of the caution money.
+                    You are advised to check and validate your bank account details before closing your seller account on JsgSmile. The bank account details cannot be updated once the account is closed, which may affect pending refunds or settlements.
                   </p>
                 </div>
 

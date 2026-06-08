@@ -1,4 +1,23 @@
-export type DirectPurchaseStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'ORDERED' | 'CANCELLED';
+export type DirectPurchaseStatus = 'DRAFT' | 'REQUESTED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'ORDERED' | 'CANCELLED';
+
+export type DirectPurchasePartyDto = {
+    id: number;
+    name?: string;
+    email?: string;
+    mobile?: string;
+    buyerProfile?: {
+        organizationName?: string | null;
+        organizationType?: string | null;
+        city?: string | null;
+        district?: string | null;
+        state?: string | null;
+    } | null;
+    sellerProfile?: {
+        businessName?: string | null;
+        organizationType?: string | null;
+        offices?: Array<{ city?: string | null; state?: string | null }>;
+    } | null;
+};
 
 export interface DirectPurchaseDto {
     id: number;
@@ -13,8 +32,8 @@ export interface DirectPurchaseDto {
     approvedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
-    buyer?: { id: number; name?: string; email?: string };
-    seller?: { id: number; name?: string; email?: string };
+    buyer?: DirectPurchasePartyDto;
+    seller?: DirectPurchasePartyDto;
     requirement?: { id: number; requirementNumber?: string; title?: string };
 }
 

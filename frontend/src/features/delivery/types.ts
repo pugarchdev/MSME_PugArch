@@ -233,6 +233,9 @@ export interface DeliveryReportSummary {
   paymentPendingAfterAcceptance: number;
   disputed: number;
   slaBreaches: number;
+  inMovement?: number;
+  completed?: number;
+  risk?: number;
 }
 
 // Backwards compatibility alias used by ParcelTracking and others.

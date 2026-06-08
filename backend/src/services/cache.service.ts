@@ -67,13 +67,26 @@ export const deleteCache = async (key: string) => {
   memoryCache.delete(key);
 };
 
+const pendingLoads = new Map<string, Promise<any>>();
+
 export const getOrSetCache = async <T>(key: string, loader: () => Promise<T>, ttlSeconds?: number): Promise<T> => {
   const cached = await getCache<T>(key);
   if (cached !== null) return cached;
 
-  const value = await loader();
-  await setCache(key, value, ttlSeconds);
-  return value;
+  let loadPromise = pendingLoads.get(key);
+  if (!loadPromise) {
+    loadPromise = loader().then(async (value) => {
+      await setCache(key, value, ttlSeconds);
+      pendingLoads.delete(key);
+      return value;
+    }).catch((error) => {
+      pendingLoads.delete(key);
+      throw error;
+    });
+    pendingLoads.set(key, loadPromise);
+  }
+
+  return loadPromise;
 };
 
 export const invalidateByPattern = async (pattern: string) => {

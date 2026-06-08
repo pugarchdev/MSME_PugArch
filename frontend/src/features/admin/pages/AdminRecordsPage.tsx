@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Eye, Filter, RefreshCw, Search, ShieldCheck, Users, X, Grid, List, Save, Edit3, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -7,6 +7,8 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/FeatureStates
 import { Pagination } from '../../shared/Pagination';
 import { formatDate } from '../../shared/format';
 import { useFeatureQuery, useResponsiveViewMode } from '../../shared/hooks';
+import { EntityIdLink } from '../../shared/EntityIdLink';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -59,6 +61,14 @@ const rowTitle = (kind: AdminKind, record: RecordMap) => {
   return record.title || record.code || `Rule #${record.id}`;
 };
 
+const rowIdLabel = (kind: AdminKind, record: RecordMap) => {
+  const id = record.id ?? '-';
+  if (kind === 'users') return `USR-${id}`;
+  if (kind === 'audit') return `AUD-${id}`;
+  if (kind === 'fraud') return `FRD-${id}`;
+  return `RUL-${id}`;
+};
+
 const rowSubtitle = (kind: AdminKind, record: RecordMap) => {
   if (kind === 'users') return [record.email, record.mobile, record.organization?.name, record.registrationStatus && `registration: ${record.registrationStatus}`, record.onboardingStatus && `onboarding: ${record.onboardingStatus}`].filter(Boolean).join(' | ');
   if (kind === 'audit') return [record.User?.email, record.entityType && `${record.entityType} #${record.entityId || '-'}`].filter(Boolean).join(' | ');
@@ -95,7 +105,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
   const [pageSize, setPageSizeState] = useState(20);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [viewMode, setViewMode] = useResponsiveViewMode();
-  
+
   const [sortKey, setSortKey] = useState<string>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -108,10 +118,10 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
     setPage(1);
   }, [query, role, status, severity, kind]);
 
-  const setPageSize = (nextPageSize: number) => {
+  const setPageSize = useCallback((nextPageSize: number) => {
     setPageSizeState(nextPageSize);
     setPage(1);
-  };
+  }, []);
 
   const handleToggleUserStatus = async (record: RecordMap) => {
     const currentUserId = currentUser?.id;
@@ -121,7 +131,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
     }
 
     const newStatus = record.accountStatus === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
-    
+
     // Optimistic UI Update
     setData((current: any) => {
       if (!current) return current;
@@ -175,7 +185,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
       toast.error("You cannot delete your own account!");
       return;
     }
-    
+
     if (!window.confirm(`Are you sure you want to permanently delete user "${record.name || record.email}"? This will clean up all active sessions, compliance violations, and fraud alerts for this user.`)) {
       return;
     }
@@ -215,7 +225,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
 
   const handleUpdateUser = async (updatedFields: { name: string; email: string; mobile: string; role: string }) => {
     if (!editingUser) return;
-    
+
     // Optimistic UI Update
     setData((current: any) => {
       if (!current) return current;
@@ -252,62 +262,53 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
     }
   };
 
-  const params = new URLSearchParams();
-  params.set('skip', String((page - 1) * pageSize));
-  params.set('take', String(pageSize));
-  if (query.trim()) params.set('q', query.trim());
-  if (role) params.set('role', role);
-  if (status) params.set('status', status);
-  if (kind === 'users' && status) {
-    if (['completed', 'incomplete'].includes(status)) params.set('registrationStatus', status);
-    else params.set('accountStatus', status);
-  }
-  if (severity) params.set('severity', severity);
-  const endpoint = `${cfg.endpoint}${params.toString() ? `?${params.toString()}` : ''}`;
-  const { data, loading, error, reload, setData } = useFeatureQuery<any>(endpoint, { records: [] });
-  let records = readRecords(data);
+  const endpoint = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('skip', String((page - 1) * pageSize));
+    params.set('take', String(pageSize));
+    if (query.trim()) params.set('q', query.trim());
+    if (role) params.set('role', role);
+    if (status) params.set('status', status);
+    if (kind === 'users' && status) {
+      if (['completed', 'incomplete'].includes(status)) params.set('registrationStatus', status);
+      else params.set('accountStatus', status);
+    }
+    if (severity) params.set('severity', severity);
+    const queryString = params.toString();
+    return `${cfg.endpoint}${queryString ? `?${queryString}` : ''}`;
+  }, [cfg.endpoint, kind, page, pageSize, query, role, severity, status]);
 
-  const total = totalOf(data, records.length);
+  const { data, loading, refreshing, error, reload, setData } = useFeatureQuery<any>(endpoint, { records: [] });
+  const rawRecords = useMemo(() => readRecords(data), [data]);
+
+  const total = totalOf(data, rawRecords.length);
   const Icon = cfg.icon;
 
-  const valueForSort = (record: RecordMap) => {
-    if (sortKey === 'record') return rowTitle(kind, record);
-    if (sortKey === 'status') return String(statusOf(kind, record));
-    if (sortKey === 'severity') return record.severity || record.role || record.alertType || '';
-    if (sortKey === 'date') return new Date(record.createdAt || record.updatedAt || 0).getTime();
-    return '';
-  };
+  const records = useMemo(() => {
+    const valueForSort = (record: RecordMap) => {
+      if (sortKey === 'record') return rowTitle(kind, record);
+      if (sortKey === 'status') return String(statusOf(kind, record));
+      if (sortKey === 'severity') return record.severity || record.role || record.alertType || '';
+      if (sortKey === 'date') return new Date(record.createdAt || record.updatedAt || 0).getTime();
+      return '';
+    };
 
-  records = [...records].sort((a, b) => {
-    const aVal = valueForSort(a);
-    const bVal = valueForSort(b);
-    const res = typeof aVal === 'number' && typeof bVal === 'number' 
-      ? aVal - bVal 
-      : String(aVal).localeCompare(String(bVal));
-    return sortDirection === 'asc' ? res : -res;
-  });
+    return [...rawRecords].sort((a, b) => {
+      const aVal = valueForSort(a);
+      const bVal = valueForSort(b);
+      const res = typeof aVal === 'number' && typeof bVal === 'number'
+        ? aVal - bVal
+        : String(aVal).localeCompare(String(bVal));
+      return sortDirection === 'asc' ? res : -res;
+    });
+  }, [kind, rawRecords, sortDirection, sortKey]);
 
-  const toggleSort = (key: string) => {
+  const toggleSort = useCallback((key: string) => {
     setSortDirection(prev => sortKey === key && prev === 'asc' ? 'desc' : 'asc');
     setSortKey(key);
-  };
+  }, [sortKey]);
 
-  const SortHead = ({ label, field }: { label: string; field: string }) => (
-    <button
-      type="button"
-      onClick={() => toggleSort(field)}
-      className="inline-flex items-center gap-1 text-left hover:text-slate-700"
-    >
-      {label}
-      <span className="text-slate-400">
-        {sortKey === field ? (
-          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-        ) : (
-          <ArrowUpDown className="h-3 w-3 opacity-50" />
-        )}
-      </span>
-    </button>
-  );
+  const currentUserId = useMemo(() => currentUser ? Number(currentUser.id) : null, [currentUser]);
 
   const metrics = useMemo(() => {
     if (kind === 'users') {
@@ -339,11 +340,8 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
           <p className="mt-1 max-w-3xl text-xs font-semibold text-slate-500">{cfg.description}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => setViewMode('grid')} className={`flex h-8 w-8 items-center justify-center rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><Grid className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setViewMode('list')} className={`flex h-8 w-8 items-center justify-center rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><List className="h-4 w-4" /></button>
-          </div>
-          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
         </div>
       </div>
 
@@ -361,7 +359,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${cfg.title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900" />
             </div>
-            
+
             <div className={cn(
               "flex-col sm:flex-row gap-2 w-full lg:w-auto shrink-0",
               showMobileFilters ? "flex" : "hidden lg:flex"
@@ -399,7 +397,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                 onToggleStatus={handleToggleUserStatus}
                 onEdit={setEditingUser}
                 onDelete={handleDeleteUser}
-                currentUserId={currentUser ? Number(currentUser.id) : null}
+                currentUserId={currentUserId}
               />
             ))}
           </div>
@@ -408,16 +406,16 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
           </div>
         </>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[940px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="p-3 w-16">Sr. No.</th>
-                  <th className="p-3"><SortHead label="Record" field="record" /></th>
-                  <th className="p-3"><SortHead label="Status" field="status" /></th>
-                  <th className="p-3"><SortHead label="Severity/Role" field="severity" /></th>
-                  <th className="p-3"><SortHead label="Date" field="date" /></th>
+                  <th className="p-3"><SortHeadButton label="Record" field="record" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Severity/Role" field="severity" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
+                  <th className="p-3"><SortHeadButton label="Date" field="date" sortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3">Action</th>
                 </tr>
               </thead>
@@ -425,7 +423,16 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                 {records.map((record, index) => (
                   <tr key={`${kind}-${record.id || rowTitle(kind, record)}`} className="hover:bg-slate-50">
                     <td className="p-3 font-mono text-xs font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
-                    <td className="p-3"><p className="font-black text-slate-900">{rowTitle(kind, record)}</p><p className="max-w-md truncate text-[10px] font-semibold text-slate-500">{rowSubtitle(kind, record) || `#${record.id || '-'}`}</p></td>
+                    <td className="p-3">
+                      <EntityIdLink
+                        label={rowIdLabel(kind, record)}
+                        id={record.id}
+                        size="sm"
+                        onClick={() => setSelected(record)}
+                      />
+                      <p className="mt-1 font-black text-slate-900 text-wrap-anywhere">{rowTitle(kind, record)}</p>
+                      <p className="text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{rowSubtitle(kind, record) || `#${record.id || '-'}`}</p>
+                    </td>
                     <td className="p-3">
                       {kind === 'users' ? (
                         <div className="flex items-center gap-2">
@@ -463,7 +470,7 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                         {kind === 'users' && (
                           <>
                             <Button variant="outline" onClick={() => setEditingUser(record)} className="h-9 rounded-lg text-xs font-black text-blue-600 hover:text-blue-700 border-blue-100 hover:bg-blue-50/50"><Edit3 className="mr-2 h-4 w-4" />Edit</Button>
-                            <Button variant="outline" onClick={() => handleDeleteUser(record)} className="h-9 rounded-lg text-xs font-black text-rose-600 hover:text-rose-700 border-rose-100 hover:bg-rose-50/50" disabled={Number(record.id) === Number(currentUser?.id)}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
+                            <Button variant="outline" onClick={() => handleDeleteUser(record)} className="h-9 rounded-lg text-xs font-black text-rose-600 hover:text-rose-700 border-rose-100 hover:bg-rose-50/50" disabled={Number(record.id) === Number(currentUserId)}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
                           </>
                         )}
                       </div>
@@ -480,10 +487,10 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
 
       {selected && <DetailPanel kind={kind} record={selected} onClose={() => setSelected(null)} />}
       {editingUser && (
-        <UserEditModal 
-          user={editingUser} 
-          onClose={() => setEditingUser(null)} 
-          onSave={handleUpdateUser} 
+        <UserEditModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={handleUpdateUser}
         />
       )}
     </div>
@@ -501,22 +508,53 @@ function formatDateTime(dateVal: any) {
   if (!dateVal) return '—';
   const d = new Date(dateVal);
   if (isNaN(d.getTime())) return '—';
-  
+
   const dateStr = d.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric'
   });
-  
+
   const timeStr = d.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hour12: true
   });
-  
+
   return `${dateStr} ${timeStr}`;
 }
+
+const SortHeadButton = memo(function SortHeadButton({
+  label,
+  field,
+  sortKey,
+  sortDirection,
+  onSort
+}: {
+  label: string;
+  field: string;
+  sortKey: string;
+  sortDirection: 'asc' | 'desc';
+  onSort: (field: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className="inline-flex items-center gap-1 text-left hover:text-slate-700"
+    >
+      {label}
+      <span className="text-slate-400">
+        {sortKey === field ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-50" />
+        )}
+      </span>
+    </button>
+  );
+});
 
 function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: RecordMap; onClose: () => void }) {
   const safeRecord = { ...record };
@@ -609,12 +647,11 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
                   {Object.entries(sectionStatus).map(([section, status]) => (
                     <div key={section} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-600">{section}</span>
-                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${
-                        status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : status === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700'
-                        : status === 'resubmission_required' ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-blue-200 bg-slate-50 text-[#12335f]'
-                      }`}>{label(String(status))}</span>
+                          : status === 'resubmission_required' ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-blue-200 bg-slate-50 text-[#12335f]'
+                        }`}>{label(String(status))}</span>
                     </div>
                   ))}
                 </div>
@@ -709,11 +746,11 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
   );
 }
 
-function DetailMetric({ label, value }: { label: string; value: string }) {
+const DetailMetric = memo(function DetailMetric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-sm font-black text-slate-900">{value}</p></div>;
-}
+});
 
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+const DetailSection = memo(function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">
@@ -722,9 +759,9 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
       <div className="p-4">{children}</div>
     </div>
   );
-}
+});
 
-function DetailField({ label, value }: { label: string; value?: string | number | null }) {
+const DetailField = memo(function DetailField({ label, value }: { label: string; value?: string | number | null }) {
   const display = value != null && value !== '' ? String(value) : '—';
   return (
     <div className="space-y-0.5">
@@ -732,22 +769,22 @@ function DetailField({ label, value }: { label: string; value?: string | number 
       <p className="text-xs font-bold text-slate-700 break-all">{display}</p>
     </div>
   );
-}
+});
 
-function AdminRecordCard({ 
-  kind, 
-  record, 
-  srNo, 
-  onView, 
+const AdminRecordCard = memo(function AdminRecordCard({
+  kind,
+  record,
+  srNo,
+  onView,
   onToggleStatus,
   onEdit,
   onDelete,
   currentUserId
-}: { 
-  kind: AdminKind; 
-  record: RecordMap; 
-  srNo: number; 
-  onView: () => void; 
+}: {
+  kind: AdminKind;
+  record: RecordMap;
+  srNo: number;
+  onView: () => void;
   onToggleStatus?: (record: RecordMap) => void;
   onEdit?: (record: RecordMap) => void;
   onDelete?: (record: RecordMap) => void;
@@ -787,10 +824,18 @@ function AdminRecordCard({
               <span className={`rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase ${severityClass(statusOf(kind, record))}`}>{label(statusOf(kind, record))}</span>
             )}
           </div>
-          <h3 className="mt-3 line-clamp-2 text-sm font-black text-slate-900">{rowTitle(kind, record)}</h3>
-          <p className="mt-1 line-clamp-2 text-[10px] font-semibold text-slate-500">{rowSubtitle(kind, record) || `#${record.id || '-'}`}</p>
+          <h3 className="mt-3 line-clamp-2 text-sm font-black text-slate-900 text-wrap-anywhere">{rowTitle(kind, record)}</h3>
+          <p className="mt-1 line-clamp-2 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{rowSubtitle(kind, record) || `#${record.id || '-'}`}</p>
+          <div className="mt-3">
+            <EntityIdLink
+              label={rowIdLabel(kind, record)}
+              id={record.id}
+              size="sm"
+              onClick={onView}
+            />
+          </div>
         </div>
-        
+
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
           <span className="text-[9px] font-bold text-slate-400">{formatDateTime(record.createdAt || record.updatedAt)}</span>
           <div className="flex items-center gap-1.5">
@@ -806,15 +851,15 @@ function AdminRecordCard({
       </CardContent>
     </Card>
   );
-}
+});
 
-function UserEditModal({ 
-  user, 
-  onClose, 
-  onSave 
-}: { 
-  user: RecordMap; 
-  onClose: () => void; 
+function UserEditModal({
+  user,
+  onClose,
+  onSave
+}: {
+  user: RecordMap;
+  onClose: () => void;
   onSave: (data: { name: string; email: string; mobile: string; role: string }) => void;
 }) {
   const [name, setName] = useState(user.name || '');
@@ -851,11 +896,11 @@ function UserEditModal({
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Full Name</label>
-            <input 
-              type="text" 
-              value={name} 
-              onChange={e => setName(e.target.value)} 
-              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900" 
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900"
               placeholder="Enter full name"
               required
             />
@@ -863,11 +908,11 @@ function UserEditModal({
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Email Address</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900" 
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900"
               placeholder="email@example.com"
               required
             />
@@ -875,20 +920,20 @@ function UserEditModal({
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Mobile Number</label>
-            <input 
-              type="text" 
-              value={mobile} 
-              onChange={e => setMobile(e.target.value)} 
-              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900" 
+            <input
+              type="text"
+              value={mobile}
+              onChange={e => setMobile(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900"
               placeholder="10-digit mobile number"
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">System Role</label>
-            <select 
-              value={role} 
-              onChange={e => setRole(e.target.value)} 
+            <select
+              value={role}
+              onChange={e => setRole(e.target.value)}
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold bg-white text-slate-900 outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all"
             >
               <option value="admin">Administrator</option>

@@ -1,8 +1,12 @@
+import '../src/config/env.js';
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { MASTER_FEATURES } from '../src/constants/permissions.js';
 
 const prisma = new PrismaClient();
 
 const roles = [
+  ['MASTER_ADMIN', 'Master Admin', 'Super owner for all companies, features, content, and permissions'],
   ['SUPER_ADMIN', 'Super Admin', 'Full platform administration'],
   ['ADMIN', 'Admin', 'Operational platform administration'],
   ['VERIFICATION_OFFICER', 'Verification Officer', 'KYC/KYB verification review'],
@@ -14,7 +18,21 @@ const roles = [
 ] as const;
 
 const permissions = [
+  ['user.view', 'user', 'View users'],
   ['user.create', 'user', 'Create platform users'],
+  ['user.update', 'user', 'Update users'],
+  ['user.delete', 'user', 'Delete or deactivate users'],
+  ['role.assign', 'role', 'Assign roles to users'],
+  ['permission.manage', 'permission', 'Manage permission matrix'],
+  ['buyer.approve', 'buyer', 'Approve buyer onboarding'],
+  ['seller.verify', 'seller', 'Verify seller onboarding'],
+  ['report.export', 'reports', 'Export reports'],
+  ['feature.toggle', 'features', 'Enable or disable company features'],
+  ['company.manage', 'company', 'Manage companies and districts'],
+  ['content.update', 'content', 'Update CMS content'],
+  ['branding.update', 'branding', 'Update branding settings'],
+  ['organization.manage', 'organization', 'Manage organizations'],
+  ['override', 'system', 'Override normal portal restrictions'],
   ['user.block', 'user', 'Block or suspend users'],
   ['onboarding.review', 'onboarding', 'Review onboarding submissions'],
   ['seller.catalogue.create', 'catalogue', 'Create seller catalogue entries'],
@@ -38,6 +56,7 @@ const permissions = [
 ] as const;
 
 const rolePermissionCodes: Record<string, string[]> = {
+  MASTER_ADMIN: permissions.map(([code]) => code),
   SUPER_ADMIN: permissions.map(([code]) => code),
   ADMIN: permissions.map(([code]) => code).filter((code) => code !== 'escrow.release'),
   VERIFICATION_OFFICER: ['onboarding.review', 'compliance.review', 'fraud.review', 'audit.view'],
@@ -59,18 +78,21 @@ const complianceRules = [
   ['POLICY_VIOLATION', 'Policy violation', 'A platform policy or procurement control was violated.', 'HIGH']
 ] as const;
 
-const categories = [
-  ['IT Equipment', 'it-equipment', 'PRODUCT'],
-  ['Office Supplies', 'office-supplies', 'PRODUCT'],
-  ['Machinery', 'machinery', 'PRODUCT'],
-  ['Services', 'services', 'SERVICE'],
-  ['Construction', 'construction', 'BOTH'],
-  ['Consulting', 'consulting', 'SERVICE'],
-  ['Furniture', 'furniture', 'PRODUCT'],
-  ['Medical Supplies', 'medical-supplies', 'PRODUCT'],
-  ['Logistics', 'logistics', 'SERVICE'],
-  ['Software & Cloud', 'software-cloud', 'BOTH']
+const marketplaceCategories = [
+  { name: 'Raw Materials', type: 'PRODUCT', displayOrder: 10 },
+  { name: 'Machinery & Equipment', type: 'PRODUCT', displayOrder: 20 },
+  { name: 'Electrical & Electronics', type: 'PRODUCT', displayOrder: 30 },
+  { name: 'Construction & Fabrication', type: 'PRODUCT', displayOrder: 40 },
+  { name: 'Packaging & Printing', type: 'PRODUCT', displayOrder: 50 },
+  { name: 'IT Hardware & Software', type: 'BOTH', displayOrder: 60 },
+  { name: 'Consulting & Advisory', type: 'SERVICE', displayOrder: 70 },
+  { name: 'Repair & Maintenance', type: 'SERVICE', displayOrder: 80 },
+  { name: 'Logistics & Transport', type: 'SERVICE', displayOrder: 90 },
+  { name: 'Testing & Certification', type: 'SERVICE', displayOrder: 100 }
 ] as const;
+
+const slugFor = (name: string) =>
+  name.trim().toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 async function main() {
   const roleRecords = new Map<string, { id: number }>();
@@ -79,23 +101,67 @@ async function main() {
   for (const [code, name, description] of roles) {
     const role = await prisma.rbacRole.upsert({
       where: { code },
-      update: { name, description, isSystemRole: true },
-      create: { code, name, description, isSystemRole: true },
+      update: { name, description, isSystemRole: true, scope: 'GLOBAL' },
+      create: { code, name, description, isSystemRole: true, scope: 'GLOBAL' },
       select: { id: true }
     });
     roleRecords.set(code, role);
   }
 
   for (const [code, module, description] of permissions) {
+    const action = code.includes('.') ? code.split('.').pop() : null;
     const permission = await prisma.permission.upsert({
       where: { code },
-      update: { module, description },
-      create: { code, module, description },
+      update: { module, description, action },
+      create: { code, module, description, action },
       select: { id: true }
     });
     permissionRecords.set(code, permission);
   }
 
+  const masterEmail = process.env.MASTER_ADMIN_EMAIL;
+  const masterPassword = process.env.MASTER_ADMIN_PASSWORD;
+  if (masterEmail && masterPassword) {
+    const passwordHash = await bcrypt.hash(masterPassword, 12);
+    const masterUser = await prisma.user.upsert({
+      where: { email: masterEmail },
+      update: {
+        name: process.env.MASTER_ADMIN_NAME || 'Master Admin',
+        password: passwordHash,
+        role: 'master_admin' as any,
+        registrationStatus: 'completed',
+        onboardingStatus: 'approved_for_procurement',
+        accountStatus: 'ACTIVE',
+        companyId: null
+      },
+      create: {
+        name: process.env.MASTER_ADMIN_NAME || 'Master Admin',
+        email: masterEmail,
+        userId: 'MASTER_ADMIN',
+        password: passwordHash,
+        role: 'master_admin' as any,
+        registrationStatus: 'completed',
+        onboardingStatus: 'approved_for_procurement',
+        accountStatus: 'ACTIVE',
+        companyId: null
+      },
+      select: { id: true }
+    });
+    const masterRole = roleRecords.get('MASTER_ADMIN');
+    if (masterRole) {
+      const existingAssignment = await (prisma as any).userRole.findFirst({
+        where: { userId: masterUser.id, roleId: masterRole.id, companyId: null, organizationId: null },
+        select: { id: true }
+      });
+      if (existingAssignment) {
+        await (prisma as any).userRole.update({ where: { id: existingAssignment.id }, data: { isActive: true } });
+      } else {
+        await (prisma as any).userRole.create({ data: { userId: masterUser.id, roleId: masterRole.id, isActive: true } });
+      }
+    }
+  }
+
+  const rolePermissionRows: Array<{ roleId: number; permissionId: number }> = [];
   for (const [roleCode, permissionCodes] of Object.entries(rolePermissionCodes)) {
     const role = roleRecords.get(roleCode);
     if (!role) continue;
@@ -103,22 +169,13 @@ async function main() {
     for (const permissionCode of permissionCodes) {
       const permission = permissionRecords.get(permissionCode);
       if (!permission) continue;
-
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: role.id,
-            permissionId: permission.id
-          }
-        },
-        update: {},
-        create: {
-          roleId: role.id,
-          permissionId: permission.id
-        }
-      });
+      rolePermissionRows.push({ roleId: role.id, permissionId: permission.id });
     }
   }
+  await prisma.rolePermission.createMany({
+    data: rolePermissionRows,
+    skipDuplicates: true
+  });
 
   for (const [code, title, description, severity] of complianceRules) {
     await prisma.complianceRule.upsert({
@@ -128,21 +185,79 @@ async function main() {
     });
   }
 
-  for (const [name, slug, type] of categories) {
-    await prisma.category.upsert({
-      where: { slug },
-      update: { name, type, isActive: true },
-      create: { name, slug, type, isActive: true }
+  for (const [code, name, module] of MASTER_FEATURES) {
+    await prisma.feature.upsert({
+      where: { code },
+      update: { name, module, isSystem: true },
+      create: { code, name, module, isSystem: true }
     });
   }
+
+  for (const category of marketplaceCategories) {
+    await prisma.category.upsert({
+      where: { slug: slugFor(category.name) },
+      update: {
+        name: category.name,
+        type: category.type,
+        displayOrder: category.displayOrder,
+        isActive: true
+      },
+      create: {
+        name: category.name,
+        slug: slugFor(category.name),
+        type: category.type,
+        displayOrder: category.displayOrder,
+        isActive: true
+      }
+    });
+  }
+
+  const preservedPlatformUsers = await prisma.user.findMany({
+    where: { role: { in: ['admin', 'master_admin'] as any } },
+    select: { id: true, role: true }
+  });
+
+  for (const user of preservedPlatformUsers) {
+    const roleCode = String(user.role).toUpperCase();
+    const role = roleRecords.get(roleCode);
+    if (!role) continue;
+    const existingAssignment = await (prisma as any).userRole.findFirst({
+      where: { userId: user.id, roleId: role.id, companyId: null, organizationId: null },
+      select: { id: true }
+    });
+    if (existingAssignment) {
+      await (prisma as any).userRole.update({ where: { id: existingAssignment.id }, data: { isActive: true } });
+    } else {
+      await (prisma as any).userRole.create({ data: { userId: user.id, roleId: role.id, isActive: true } });
+    }
+  }
+
+  const counts = await Promise.all([
+    prisma.rbacRole.count(),
+    prisma.permission.count(),
+    prisma.rolePermission.count(),
+    (prisma as any).userRole.count(),
+    prisma.complianceRule.count(),
+    prisma.feature.count(),
+    prisma.category.count()
+  ]);
+
+  console.log(JSON.stringify({
+    roles: counts[0],
+    permissions: counts[1],
+    rolePermissions: counts[2],
+    userRoles: counts[3],
+    complianceRules: counts[4],
+    features: counts[5],
+    categories: counts[6]
+  }, null, 2));
 }
 
 main()
+  .catch((error) => {
+    console.error('Seed failed', error);
+    process.exitCode = 1;
+  })
   .finally(async () => {
     await prisma.$disconnect();
-  })
-  .catch(async (error) => {
-    console.error('Seed failed', error);
-    await prisma.$disconnect();
-    process.exit(1);
   });

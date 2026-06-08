@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AlertCircle,
@@ -25,17 +25,22 @@ import {
   Paperclip,
   Upload
 } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { Pagination } from '../features/shared/Pagination';
+import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { normalizeList } from '../features/shared/apiClient';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 import { compressImage } from '../lib/compress';
+import { GstTaxPicker } from '../features/shared/gstTax';
+import { useQueryClient } from '@tanstack/react-query';
 
 type BidStatus = 'pending' | 'submitted' | 'technical_qualified' | 'technical_rejected' | 'financial_evaluated' | 'accepted' | 'rejected' | 'withdrawn' | 'draft' | 'modified';
 
@@ -48,6 +53,11 @@ interface Quotation {
   tenderId?: number;
   unitPrice: number;
   quantity: number;
+  taxRate?: number;
+  discountAmount?: number;
+  subtotal?: number;
+  taxAmount?: number;
+  totalAmount?: number;
   deliveryDays: number;
   warranty?: string;
   validTill?: string;
@@ -88,6 +98,12 @@ interface Quotation {
   };
   buyer?: {
     name: string;
+    buyerProfile?: {
+      organizationName?: string;
+      organizationType?: string;
+      city?: string;
+      state?: string;
+    };
   };
   quoteResponses?: Array<{
     id: number;
@@ -143,7 +159,8 @@ const quoteRequestToRecord = (rfq: any): Quotation => {
       tenderId: `RFQ-${String(rfq.id).padStart(4, '0')}`,
       title: rfq.subject || `RFQ #${rfq.id}`,
       category: 'Request for Quote',
-      status: rfq.status
+      status: rfq.status,
+      closesAt: rfq.deadlineDate
     },
     seller: rfq.seller,
     buyer: rfq.buyer,
@@ -205,7 +222,16 @@ const getStatusLabel = (status: BidStatus) => {
 };
 
 const formatMoney = (value?: number) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
-const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+const getQuotePricing = (quote: Quotation) => {
+  const subtotal = Number(quote.subtotal ?? (Number(quote.unitPrice || 0) * Number(quote.quantity || 0)));
+  const taxRate = Number(quote.taxRate || 0);
+  const taxAmount = Number(quote.taxAmount ?? (subtotal * taxRate / 100));
+  const discountAmount = Number(quote.discountAmount || 0);
+  const totalAmount = Number(quote.totalAmount ?? (subtotal + taxAmount - discountAmount));
+  const discountPercent = subtotal > 0 ? Number((discountAmount / subtotal * 100).toFixed(2)) : 0;
+  return { subtotal, taxRate, taxAmount, discountAmount, discountPercent, totalAmount };
+};
+const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', hour12: true }) : '-';
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
 const getQuoteUpdatedAt = (q: Quotation) => (q as any).updatedAt || (q as any).lastModified;
@@ -272,8 +298,8 @@ function QuotationDetailsModal({
 }) {
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
-  const buyerName = quote.buyer?.name || '-';
-  const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+  const buyerName = quote.buyer?.buyerProfile?.organizationName || quote.buyer?.name || '-';
+  const pricing = getQuotePricing(quote);
   const quoteDocument = getQuoteDocument(quote);
 
   return (
@@ -310,14 +336,17 @@ function QuotationDetailsModal({
             <InfoBox label={role === 'seller' ? 'Buyer' : 'Supplier'} value={role === 'seller' ? buyerName : sellerName} />
             <InfoBox label="Category" value={quote.tender?.category || 'General Procurement'} />
             <InfoBox label="Unit Rate" value={formatMoney(quote.unitPrice)} />
-            <InfoBox label="Net Value" value={formatMoney(totalValue)} strong />
+            <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
+            <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
+            <InfoBox label="Discount" value={`${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`} />
+            <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
             <InfoBox label="Quantity" value={quote.quantity || '-'} />
             <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
             <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
             <InfoBox label="Valid Till" value={formatDateTime(quote.validTill)} />
             <InfoBox label="Submitted Date & Time" value={formatDateTime(getQuoteSubmittedAt(quote))} />
             <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
-            <InfoBox label="Tender Closing" value={formatDateTime(quote.tender?.closesAt)} />
+            <InfoBox label={quote.source === 'rfq' ? 'RFQ Deadline' : 'Tender Closing'} value={formatDateTime(quote.tender?.closesAt)} />
 
             {/* Buyer RFQ Document */}
             {quote.rfqDocumentUrl ? (
@@ -397,6 +426,11 @@ function BidEditModal({
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [splitTaxRate, setSplitTaxRate] = useState('');
+  const [igstTaxRate, setIgstTaxRate] = useState(quote.taxRate ? String(quote.taxRate) : '');
+  const [otherTaxRate, setOtherTaxRate] = useState('');
+  const taxableAmount = Number(quote.subtotal ?? (Number(quote.unitPrice || 0) * Number(quote.quantity || 0)));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
@@ -424,6 +458,30 @@ function BidEditModal({
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
               Delivery Days
               <input name="deliveryDays" type="number" min="1" required defaultValue={quote.deliveryDays || ''} className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <GstTaxPicker
+                splitRate={splitTaxRate}
+                igstRate={igstTaxRate}
+                additionalRate={otherTaxRate}
+                taxableAmount={taxableAmount}
+                totalInputName="taxRate"
+                onChange={next => {
+                  setSplitTaxRate(next.splitRate);
+                  setIgstTaxRate(next.igstRate);
+                  setOtherTaxRate(next.additionalRate);
+                }}
+              />
+            </div>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Discount Percentage
+              <div className="relative mt-1">
+                <input name="discountPercent" type="number" min="0" max="100" step="0.01" defaultValue={taxableAmount > 0 && quote.discountAmount ? Number((Number(quote.discountAmount) / taxableAmount * 100).toFixed(2)) : ''} className="h-11 w-full rounded-md border border-slate-200 px-3 pr-8 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+              </div>
             </label>
           </div>
 
@@ -457,7 +515,9 @@ function BidEditModal({
 
 export default function Quotations() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
   const cachedSellerBids = user?.role === 'seller' ? api.peek('/api/bids/my', authOptions) : null;
   const cachedBuyerTenders = user?.role === 'buyer' ? api.peek('/api/tenders', authOptions) : null;
@@ -477,6 +537,7 @@ export default function Quotations() {
   const [responding, setResponding] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [processedDeepLink, setProcessedDeepLink] = useState('');
 
   const [sortField, setSortField] = useState<'id' | 'title' | 'seller' | 'rate' | 'qty' | 'netValue' | 'status'>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -525,20 +586,39 @@ export default function Quotations() {
     if (user?.role === 'buyer' && buyerTendersReady) fetchBuyerBids();
   }, [user?.role, tenders.length, selectedTenderId, buyerTendersReady]);
 
+  useEffect(() => {
+    const bidId = Number(searchParams?.get('bidId') || 0);
+    const tenderId = Number(searchParams?.get('tenderId') || 0);
+    const deepLinkKey = bidId ? `bid:${bidId}` : tenderId ? `tender:${tenderId}` : '';
+    if (!deepLinkKey || processedDeepLink === deepLinkKey || quotes.length === 0) return;
+    const target = bidId
+      ? quotes.find(quote => quote.source !== 'rfq' && quote.id === bidId)
+      : quotes.find(quote => quote.source !== 'rfq' && Number(quote.tenderId || quote.tender?.id) === tenderId);
+    if (!target) return;
+    setProcessedDeepLink(deepLinkKey);
+    handleViewQuote(target);
+  }, [searchParams, quotes, processedDeepLink]);
+
   const fetchMyTenders = async () => {
     if (tenders.length === 0) setLoading(true);
     try {
-      const res = await api.get('/api/tenders', authOptions);
+      const res = await api.get('/api/tenders?take=500', authOptions);
       if (!res.ok) throw new Error('Failed to load tenders');
       const data = await res.json();
       const tenderList = normalizeList<any>(data);
       setTenders(tenderList);
-      if (tenderList.length === 0) setQuotes([]);
+      if (tenderList.length === 0) {
+        // No tenders → no bids to load. Safe to clear loading and quotes here.
+        setQuotes([]);
+        setLoading(false);
+      }
+      // If tenders exist, leave `loading=true` so the spinner stays visible
+      // until fetchBuyerBids() resolves (avoids the empty-state flash).
     } catch {
       toast.error('Failed to load your tenders');
+      setLoading(false);
     } finally {
       setBuyerTendersReady(true);
-      setLoading(false);
     }
   };
 
@@ -592,28 +672,31 @@ export default function Quotations() {
   const fetchBuyerBids = async () => {
     if (quotes.length === 0) setLoading(true);
     try {
-      const tenderIds = selectedTenderId === 'all'
-        ? tenders.map(tender => tender.id)
-        : [Number(selectedTenderId)];
-      let allBids: Quotation[] = [];
-
-      for (const tenderId of tenderIds) {
-        const res = await api.get(`/api/tenders/${tenderId}/bids`, authOptions);
-        if (!res.ok) continue;
-        const data = await res.json();
-        const bids = normalizeList<Quotation>(data);
-        const tender = tenders.find(item => item.id === tenderId);
-        const prices = bids.map((bid: Quotation) => Number(bid.unitPrice || 0)).filter(Boolean);
-        const lowestPrice = prices.length > 0 ? Math.min(...prices) : null;
-        allBids = [
-          ...allBids,
-          ...bids.map((bid: Quotation) => ({
-            ...bid,
-            tender,
-            isLowest: lowestPrice !== null && Number(bid.unitPrice) === lowestPrice && bids.length > 1
-          }))
-        ];
-      }
+      const bidsRes = await api.get('/api/bids/my', authOptions);
+      if (!bidsRes.ok) throw new Error('Failed to load quotation bids');
+      const bidsData = await bidsRes.json();
+      const selectedId = selectedTenderId === 'all' ? null : Number(selectedTenderId);
+      const tenderBids = normalizeList<Quotation>(bidsData)
+        .filter((bid: Quotation) => !selectedId || Number(bid.tenderId || bid.tender?.id) === selectedId)
+        .map(bid => ({ ...bid, source: 'bid' as const }));
+      const lowestByTender = new Map<number, number>();
+      const bidCountByTender = new Map<number, number>();
+      tenderBids.forEach((bid) => {
+        const key = Number(bid.tenderId || bid.tender?.id || 0);
+        if (!key) return;
+        const total = getQuotePricing(bid).totalAmount;
+        const current = lowestByTender.get(key);
+        if (current === undefined || total < current) lowestByTender.set(key, total);
+        bidCountByTender.set(key, (bidCountByTender.get(key) || 0) + 1);
+      });
+      let allBids: Quotation[] = tenderBids.map((bid) => {
+        const key = Number(bid.tenderId || bid.tender?.id || 0);
+        return {
+          ...bid,
+          tender: bid.tender || tenders.find(item => item.id === key),
+          isLowest: key > 0 && (bidCountByTender.get(key) || 0) > 1 && getQuotePricing(bid).totalAmount === lowestByTender.get(key)
+        };
+      });
 
       if (selectedTenderId === 'all') {
         const rfqRes = await api.get('/api/quote-requests', authOptions).catch(() => null);
@@ -647,6 +730,16 @@ export default function Quotations() {
         throw new Error(data?.message || 'Update failed');
       }
       toast.success(`Quotation ${status === 'accepted' ? 'accepted' : 'rejected'} successfully`);
+      if (status === 'accepted') {
+        // Clear both caching layers so the PO page shows fresh data:
+        // 1. Low-level fetch cache (api.ts in-memory Map)
+        api.invalidate('/api/purchase-orders');
+        // 2. React Query cache
+        queryClient.invalidateQueries({ predicate: (query) => {
+          const key = query.queryKey[1];
+          return typeof key === 'string' && key.includes('/api/purchase-orders');
+        }});
+      }
       fetchBuyerBids();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
@@ -655,14 +748,19 @@ export default function Quotations() {
 
   const handleViewQuote = async (quote: Quotation) => {
     setDetailsTarget(quote);
-    if (quote.source === 'rfq') return;
-
     try {
-      const res = await api.get(`/api/bids/${quote.id}`, authOptions);
+      const endpoint = quote.source === 'rfq'
+        ? `/api/quote-requests/${quote.id}`
+        : `/api/bids/${quote.id}`;
+      const res = await api.get(endpoint, authOptions);
       if (res.ok) {
         const body = await res.json();
         const data = body?.data || body;
-        setDetailsTarget({ ...quote, ...data, source: 'bid' });
+        if (quote.source === 'rfq') {
+          setDetailsTarget(quoteRequestToRecord(data));
+        } else {
+          setDetailsTarget({ ...quote, ...data, source: 'bid' });
+        }
       }
     } catch {
       // Keep row-level details visible if the full detail endpoint is unavailable.
@@ -683,9 +781,15 @@ export default function Quotations() {
     if (!editTarget) return;
 
     const form = new FormData(event.currentTarget);
+    const unitPrice = Number(form.get('unitPrice') || 0);
+    const quantity = Number(form.get('quantity') || 0);
+    const discountPercent = Math.min(100, Math.max(0, Number(form.get('discountPercent') || 0)));
+    const discountAmount = Number((unitPrice * quantity * discountPercent / 100).toFixed(2));
     const payload = {
-      unitPrice: Number(form.get('unitPrice') || 0),
-      quantity: Number(form.get('quantity') || 0),
+      unitPrice,
+      quantity,
+      taxRate: Number(form.get('taxRate') || 0),
+      discountAmount,
       deliveryDays: Number(form.get('deliveryDays') || 0),
       warranty: String(form.get('warranty') || '').trim() || null,
       validTill: String(form.get('validTill') || '') || null,
@@ -760,8 +864,8 @@ export default function Quotations() {
         aVal = Number(a.quantity || 0);
         bVal = Number(b.quantity || 0);
       } else if (sortField === 'netValue') {
-        aVal = Number(a.unitPrice || 0) * Number(a.quantity || 0);
-        bVal = Number(b.unitPrice || 0) * Number(b.quantity || 0);
+        aVal = getQuotePricing(a).totalAmount;
+        bVal = getQuotePricing(b).totalAmount;
       } else if (sortField === 'status') {
         aVal = a.status || '';
         bVal = b.status || '';
@@ -782,7 +886,7 @@ export default function Quotations() {
     const pending = quotes.filter(quote => evaluableStatuses.includes(quote.status)).length;
     const accepted = quotes.filter(quote => quote.status === 'accepted').length;
     const rejected = quotes.filter(quote => quote.status === 'rejected' || quote.status === 'technical_rejected').length;
-    const totalValue = quotes.reduce((sum, quote) => sum + Number(quote.unitPrice || 0) * Number(quote.quantity || 0), 0);
+    const totalValue = quotes.reduce((sum, quote) => sum + getQuotePricing(quote).totalAmount, 0);
     return { total, pending, accepted, rejected, totalValue };
   }, [quotes]);
 
@@ -860,28 +964,7 @@ export default function Quotations() {
 
                 <div className="h-10 w-px bg-slate-200 mx-1 hidden md:block" />
 
-                <div className="flex items-center gap-1 rounded-lg bg-[#f1f3f4] p-1 border border-[#dadce0] h-10">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('grid')}
-                    className={cn(
-                      "flex h-8 w-9 items-center justify-center rounded transition-all",
-                      viewMode === 'grid' ? "bg-white shadow-sm border border-[#dadce0] text-[#12335f]" : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('list')}
-                    className={cn(
-                      "flex h-8 w-9 items-center justify-center rounded transition-all",
-                      viewMode === 'list' ? "bg-white shadow-sm border border-[#dadce0] text-[#12335f]" : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                </div>
+                <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
             </div>
           </CardContent>
@@ -890,7 +973,9 @@ export default function Quotations() {
         {loading && quotes.length === 0 ? (
           <div className="flex min-h-[300px] items-center justify-center rounded-lg border border-slate-200 bg-white">
             <div className="space-y-3 text-center">
-              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-[#12335f] border-t-transparent" />
+              <div className="flex justify-center">
+                <Loader2 className="h-9 w-9" />
+              </div>
               <p className="text-sm font-semibold text-slate-600">Loading bid records...</p>
             </div>
           </div>
@@ -901,7 +986,7 @@ export default function Quotations() {
             onPrimary={() => router.push(user?.role === 'seller' ? '/seller/marketplace' : '/buyer/tenders')}
           />
         ) : viewMode === 'list' ? (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-clip">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left min-w-[1150px]">
                 <colgroup>
@@ -931,18 +1016,24 @@ export default function Quotations() {
                 <tbody className="divide-y divide-slate-200 text-xs">
                   {pagedQuotes.map((quote, index) => {
                     const StatusIcon = statusIcons[quote.status] || Clock;
-                    const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+                    const totalValue = getQuotePricing(quote).totalAmount;
                     return (
                       <tr key={`${quote.source || 'bid'}-${quote.id}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="px-3 py-4 font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
                         <td className="px-3 py-4 font-mono font-bold text-[#12335f]">
-                          {quote.source === 'rfq' ? 'RFQ' : 'BID'}-{String(quote.id).padStart(4, '0')}
+                          <EntityIdLink
+                            label={`${quote.source === 'rfq' ? 'RFQ' : 'BID'}-${String(quote.id).padStart(4, '0')}`}
+                            id={quote.id}
+                            size="sm"
+                            onClick={() => handleViewQuote(quote)}
+                          />
                         </td>
                         <td className="px-4 py-4">
                           <div className="break-words font-bold text-slate-800">{quote.tender?.title || '-'}</div>
                           <div className="break-words text-[10px] font-medium text-slate-500">{quote.tender?.tenderId} | {quote.tender?.category}</div>
                           <div className="mt-1 text-[10px] font-semibold text-slate-400">
                             Delivery: {quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} | Valid: {formatDateTime(quote.validTill)}
+                            {quote.tender?.closesAt && <> | {quote.source === 'rfq' ? 'Deadline' : 'Closing'}: {formatDateTime(quote.tender.closesAt)}</>}
                           </div>
                         </td>
                         <td className="px-3 py-4">
@@ -1131,7 +1222,7 @@ function QuotationCard({
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || 'Submitted Bid';
   const counterpartyName = role === 'seller' && quote.source === 'rfq' ? quote.buyer?.name || 'Buyer RFQ' : sellerName;
-  const totalValue = Number(quote.unitPrice || 0) * Number(quote.quantity || 0);
+  const pricing = getQuotePricing(quote);
   const isUnansweredRfq = role === 'seller' && quote.source === 'rfq' && (!quote.quoteResponses || quote.quoteResponses.length === 0);
 
   return (
@@ -1175,11 +1266,15 @@ function QuotationCard({
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <InfoBox label={quote.source === 'rfq' ? 'Quoted Amount' : 'Unit Price'} value={quote.unitPrice ? formatMoney(quote.unitPrice) : 'Awaiting response'} />
             <InfoBox label="Quantity" value={quote.quantity || '-'} />
-            <InfoBox label="Total Value" value={formatMoney(totalValue)} strong />
+            <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
             <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
+            <InfoBox label={quote.source === 'rfq' ? 'RFQ Deadline' : 'Tender Closing'} value={formatDateTime(quote.tender?.closesAt)} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+            <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
+            <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
+            <InfoBox label="Discount" value={`${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`} />
             <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
             <InfoBox label="Valid Till" value={quote.validTill ? new Date(quote.validTill).toLocaleDateString() : 'Not Provided'} />
           </div>

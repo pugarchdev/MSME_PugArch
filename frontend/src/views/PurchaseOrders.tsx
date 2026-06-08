@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -10,28 +10,92 @@ import { cn } from '../lib/utils';
 import { postApi } from '../features/shared/apiClient';
 import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 import { formatCurrency, formatDate, maskEmail } from '../features/shared/format';
-import { useFeatureQuery, usePagination, useResponsiveViewMode } from '../features/shared/hooks';
+import { useFeatureQuery, usePaginatedFeatureQuery, useResponsiveViewMode } from '../features/shared/hooks';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
 const readableStatus = (value?: string) => String(value || 'generated').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'];
+const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'invoice_submitted'];
+const purchaseOrderStatusParam = (tab: 'Open' | 'Delivered' | 'Cancelled' | 'All') => {
+  if (tab === 'Delivered') return 'delivered';
+  if (tab === 'Cancelled') return 'cancelled';
+  return undefined;
+};
+const isOpenPurchaseOrder = (order: PurchaseOrderDto) => openStatuses.includes(String(order.status || 'generated').toLowerCase());
 
 export default function PurchaseOrders() {
   const { user } = useAuth();
   const router = useRouter();
   const isSeller = user?.role === 'seller';
   const isBuyer = user?.role === 'buyer';
-  const { data: orders, loading, error, reload, setData } = useFeatureQuery<PurchaseOrderDto[]>('/api/purchase-orders', []);
+
   const [activeTab, setActiveTab] = useState<'Open' | 'Delivered' | 'Cancelled' | 'All'>('Open');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const {
+    records: pagedOrders,
+    loading,
+    refreshing,
+    error,
+    reload,
+    setRecords: setPagedOrders,
+    page,
+    pageSize,
+    total,
+    setPage,
+    setPageSize
+  } = usePaginatedFeatureQuery<PurchaseOrderDto>(
+    '/api/purchase-orders',
+    {
+      q: debouncedSearch,
+      status: purchaseOrderStatusParam(activeTab),
+      sortBy
+    },
+    10
+  );
+
+  const { data: allOrders, reload: reloadAllOrders } = useFeatureQuery<PurchaseOrderDto[]>(
+    '/api/purchase-orders?take=500',
+    []
+  );
+
+  const visibleOrders = useMemo(() => {
+    if (activeTab === 'Open') return pagedOrders.filter(isOpenPurchaseOrder);
+    return pagedOrders;
+  }, [activeTab, pagedOrders]);
+
+  const totalSpend = useMemo(
+    () => allOrders.reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0),
+    [allOrders]
+  );
+  const deliveredCount = useMemo(
+    () => allOrders.filter(order => String(order.status || '').toLowerCase() === 'delivered').length,
+    [allOrders]
+  );
+  const openCount = useMemo(
+    () => allOrders.filter(isOpenPurchaseOrder).length,
+    [allOrders]
+  );
+
+  const refreshPurchaseOrders = async () => {
+    await Promise.all([reload(), reloadAllOrders()]);
+  };
 
   const handleConvertToInvoice = (order: PurchaseOrderDto) => {
     const amountVal = order.amount || order.totalValue || 0;
@@ -69,7 +133,7 @@ export default function PurchaseOrders() {
     }
   };
 
-  const SortHeader = ({ label, columnKey, className = '' }: { label: string, columnKey: string, className?: string }) => {
+  const SortHeader = ({ label, columnKey, className = '' }: { label: string; columnKey: string; className?: string }) => {
     let isActive = false;
     let isAsc = true;
 
@@ -113,54 +177,6 @@ export default function PurchaseOrders() {
     );
   };
 
-  const filteredOrders = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return orders
-      .filter(order => {
-        const status = String(order.status || '').toLowerCase();
-        const matchesTab = activeTab === 'All' ||
-          (activeTab === 'Open' && openStatuses.includes(status)) ||
-          (activeTab === 'Delivered' && status === 'delivered') ||
-          (activeTab === 'Cancelled' && status === 'cancelled');
-        const haystack = [order.poNumber, order.title, order.seller?.name, order.buyer?.name, order.status, order.poStatus].filter(Boolean).join(' ').toLowerCase();
-        return matchesTab && (!term || haystack.includes(term));
-      })
-      .sort((a, b) => {
-        if (sortBy === 'value_high') return Number(b.amount || b.totalValue || 0) - Number(a.amount || a.totalValue || 0);
-        if (sortBy === 'value_low') return Number(a.amount || a.totalValue || 0) - Number(b.amount || b.totalValue || 0);
-
-        if (sortBy === 'status' || sortBy === 'status_asc') return String(a.status || '').localeCompare(String(b.status || ''));
-        if (sortBy === 'status_desc') return String(b.status || '').localeCompare(String(a.status || ''));
-
-        if (sortBy === 'po_asc') return String(a.poNumber || '').localeCompare(String(b.poNumber || ''));
-        if (sortBy === 'po_desc') return String(b.poNumber || '').localeCompare(String(a.poNumber || ''));
-
-        if (sortBy === 'title_asc') return String(a.title || '').localeCompare(String(b.title || ''));
-        if (sortBy === 'title_desc') return String(b.title || '').localeCompare(String(a.title || ''));
-
-        if (sortBy === 'party_asc') {
-          const aParty = a.seller?.name || a.buyer?.name || '';
-          const bParty = b.seller?.name || b.buyer?.name || '';
-          return aParty.localeCompare(bParty);
-        }
-        if (sortBy === 'party_desc') {
-          const aParty = a.seller?.name || a.buyer?.name || '';
-          const bParty = b.seller?.name || b.buyer?.name || '';
-          return bParty.localeCompare(aParty);
-        }
-
-        if (sortBy === 'expected_asc') return new Date(a.expectedDelivery || 0).getTime() - new Date(b.expectedDelivery || 0).getTime();
-        if (sortBy === 'expected_desc') return new Date(b.expectedDelivery || 0).getTime() - new Date(a.expectedDelivery || 0).getTime();
-
-        return String(b.createdAt || b.poNumber).localeCompare(String(a.createdAt || a.poNumber));
-      });
-  }, [activeTab, orders, searchTerm, sortBy]);
-  const { page, pageSize, pageItems: pagedOrders, total, setPage, setPageSize } = usePagination(filteredOrders, 10);
-
-  const totalSpend = orders.filter(order => order.status !== 'cancelled').reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0);
-  const deliveredCount = orders.filter(order => order.status === 'delivered').length;
-  const openCount = orders.filter(order => openStatuses.includes(String(order.status || '').toLowerCase())).length;
-
   const completeAction = async () => {
     if (!confirming) return;
     try {
@@ -168,7 +184,7 @@ export default function PurchaseOrders() {
         ? `/api/purchase-orders/${confirming.order.id}/acknowledge`
         : `/api/purchase-orders/${confirming.order.id}/cancel`;
       const updated = await postApi<PurchaseOrderDto>(endpoint, {});
-      setData(current => current.map(order => order.id === updated.id ? { ...order, ...updated } : order));
+      setPagedOrders(current => current.map(order => order.id === updated.id ? { ...order, ...updated } : order));
       toast.success(`PO ${readableStatus(updated.status)}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to update purchase order');
@@ -230,7 +246,7 @@ export default function PurchaseOrders() {
     toast.success('PO PDF generated');
   };
 
-  if (loading && orders.length === 0) return <LoadingState label="Loading purchase orders..." />;
+  if (loading && pagedOrders.length === 0) return <LoadingState label="Loading purchase orders..." />;
 
   return (
     <div className="space-y-4">
@@ -240,7 +256,7 @@ export default function PurchaseOrders() {
           <h1 className="text-2xl font-black tracking-tight text-slate-950">Purchase Orders</h1>
           <p className="mt-1 text-xs font-semibold text-slate-500">Live PO register from backend procurement workflows.</p>
         </div>
-        <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+        <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -287,33 +303,16 @@ export default function PurchaseOrders() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 ml-auto sm:ml-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'list' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
-                  title="List view"
-                >
-                  <List className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={cn('flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition', viewMode === 'grid' ? 'bg-[#12335f] text-white' : 'hover:bg-slate-50 hover:text-[#12335f]')}
-                  title="Grid view"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
-              </div>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} className="ml-auto sm:ml-0" />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {filteredOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
+      {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {pagedOrders.map(order => (
+            {visibleOrders.map(order => (
               <Card key={order.id} className="border-slate-200 bg-white shadow-sm">
                 <CardContent className="space-y-4 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -348,7 +347,7 @@ export default function PurchaseOrders() {
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -364,7 +363,7 @@ export default function PurchaseOrders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pagedOrders.map((order, index) => {
+                {visibleOrders.map((order, index) => {
                   const rowIndex = (page - 1) * pageSize + index + 1;
                   return (
                     <tr key={order.id} className="hover:bg-slate-50">

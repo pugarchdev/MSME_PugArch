@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CreditCard, Landmark, Loader2, LockKeyhole, RefreshCw, ShieldCheck, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { CheckCircle2, CreditCard, Landmark, LockKeyhole, RefreshCw, ShieldCheck, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
@@ -39,6 +40,8 @@ type EscrowAccount = {
   status: string;
   buyerId: number;
   sellerId: number;
+  buyer?: { id: number; name: string; email: string };
+  seller?: { id: number; name: string; email: string };
   paymentTransaction?: Payment;
   milestones?: Milestone[];
 };
@@ -220,133 +223,148 @@ export default function PaymentsEscrow() {
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        {[
-          { label: 'Payments', value: payments.length, icon: CreditCard },
-          { label: 'Confirmed', value: confirmedPayments, icon: CheckCircle2 },
-          { label: 'Escrow Held', value: money(totalHeld), icon: LockKeyhole }
-        ].map(item => (
-          <Card key={item.label} className="rounded-lg border-slate-200 shadow-none">
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{item.label}</p>
-                <p className="mt-1 text-xl font-black text-slate-950">{item.value}</p>
-              </div>
-              <item.icon className="h-5 w-5 text-[#12335f]" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="flex gap-2">
-        {[
-          { key: 'payments', label: 'Payment Initiation & History', icon: CreditCard },
-          { key: 'escrow', label: 'Escrow & Milestones', icon: Landmark }
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-black uppercase tracking-wide',
-              activeTab === tab.key ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-600'
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'payments' && (
-        <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <Card className="rounded-lg border-slate-200 shadow-none">
-            <CardContent className="space-y-3 p-4">
-              <h2 className="text-sm font-black text-slate-950">Initiate Payment</h2>
-              <input value={invoiceId} onChange={event => setInvoiceId(event.target.value)} placeholder="Invoice ID" className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#12335f]" />
-              <select value={gateway} onChange={event => setGateway(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none">
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="razorpay">Razorpay</option>
-                <option value="cashfree">Cashfree</option>
-              </select>
-              <select value={method} onChange={event => setMethod(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none">
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="upi">UPI</option>
-                <option value="card">Card via Gateway</option>
-                <option value="netbanking">Net Banking via Gateway</option>
-              </select>
-              <Button onClick={initiate} className="w-full bg-[#12335f] text-white hover:bg-[#0b2445]">
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                Create Gateway Order
-              </Button>
-            </CardContent>
-          </Card>
-
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3"><SortHeader label="Reference" field="referenceId" /></th>
-                  <th className="px-4 py-3"><SortHeader label="Invoice" field="invoiceId" /></th>
-                  <th className="px-4 py-3"><SortHeader label="Gateway" field="gateway" /></th>
-                  <th className="px-4 py-3"><SortHeader label="Amount" field="amount" /></th>
-                  <th className="px-4 py-3"><SortHeader label="Status" field="status" /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedPayments.map(payment => (
-                  <tr key={payment.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 font-bold text-slate-900">{payment.referenceId}</td>
-                    <td className="px-4 py-3 text-slate-600">{payment.invoiceId || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{payment.gateway || 'pending'}</td>
-                    <td className="px-4 py-3 font-bold">{money(payment.amount, payment.currency)}</td>
-                    <td className="px-4 py-3"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(payment.status))}>{payment.status}</span></td>
-                  </tr>
-                ))}
-                {sortedPayments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
-              </tbody>
-            </table>
-            <Pagination page={paymentsPage} pageSize={paymentsPageSize} total={paymentsTotal} onPageChange={setPaymentsPage} onPageSizeChange={setPaymentsPageSize} label="payments" />
+      {loading && !payments.length && !escrowAccounts.length ? (
+        <div className="flex h-64 items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#12335f]" />
+            <p className="mt-3 text-sm font-bold text-slate-500">Loading payment data...</p>
           </div>
         </div>
-      )}
-
-      {activeTab === 'escrow' && (
-        <div className="space-y-3">
-          {pagedEscrowAccounts.map(escrow => (
-            <Card key={escrow.id} className="rounded-lg border-slate-200 shadow-none">
-              <CardContent className="space-y-4 p-4">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { label: 'Payments', value: payments.length, icon: CreditCard },
+              { label: 'Confirmed', value: confirmedPayments, icon: CheckCircle2 },
+              { label: 'Escrow Held', value: money(totalHeld), icon: LockKeyhole }
+            ].map(item => (
+              <Card key={item.label} className="rounded-lg border-slate-200 shadow-none">
+                <CardContent className="flex items-center justify-between p-4">
                   <div>
-                    <p className="text-sm font-black text-slate-950">Escrow #{escrow.id}</p>
-                    <p className="text-xs font-bold text-slate-500">{money(escrow.amount, escrow.currency)} held for payment {escrow.paymentTransaction?.referenceId}</p>
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{item.label}</p>
+                    <p className="mt-1 text-xl font-black text-slate-950">{item.value}</p>
                   </div>
-                  <span className={cn('w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
-                </div>
-                <div className="grid gap-2">
-                  {(escrow.milestones || []).map(milestone => (
-                    <div key={milestone.id} className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-slate-950">{milestone.title}</p>
-                        <p className="text-xs text-slate-500">{money(milestone.amount, milestone.currency)} · {milestone.status}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        {user?.role === 'seller' && milestone.status === 'pending' && <Button size="sm" onClick={() => completeMilestone(milestone.id)}>Complete</Button>}
-                        {user?.role !== 'seller' && milestone.status === 'completed' && <Button size="sm" onClick={() => approveMilestone(milestone.id)} className="bg-[#12335f] text-white">Approve</Button>}
-                      </div>
-                    </div>
-                  ))}
-                  {(escrow.milestones || []).length === 0 && <p className="rounded-md bg-slate-50 px-3 py-4 text-sm text-slate-500">No milestones created yet.</p>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          {escrowAccounts.length === 0 && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">No escrow accounts yet.</div>}
-          {escrowAccounts.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <Pagination page={escrowPage} pageSize={escrowPageSize} total={escrowTotal} onPageChange={setEscrowPage} onPageSizeChange={setEscrowPageSize} label="escrow accounts" />
+                  <item.icon className="h-5 w-5 text-[#12335f]" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            {[
+              { key: 'payments', label: 'Payment Initiation & History', icon: CreditCard },
+              { key: 'escrow', label: 'Escrow & Milestones', icon: Landmark }
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-black uppercase tracking-wide',
+                  activeTab === tab.key ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-600'
+                )}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'payments' && (
+            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+              <Card className="rounded-lg border-slate-200 shadow-none">
+                <CardContent className="space-y-3 p-4">
+                  <h2 className="text-sm font-black text-slate-950">Initiate Payment</h2>
+                  <input value={invoiceId} onChange={event => setInvoiceId(event.target.value)} placeholder="Invoice ID" className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#12335f]" />
+                  <select value={gateway} onChange={event => setGateway(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none">
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="razorpay">Razorpay</option>
+                    <option value="cashfree">Cashfree</option>
+                  </select>
+                  <select value={method} onChange={event => setMethod(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none">
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="upi">UPI</option>
+                    <option value="card">Card via Gateway</option>
+                    <option value="netbanking">Net Banking via Gateway</option>
+                  </select>
+                  <Button onClick={initiate} className="w-full bg-[#12335f] text-white hover:bg-[#0b2445]">
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Create Gateway Order
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3"><SortHeader label="Reference" field="referenceId" /></th>
+                      <th className="px-4 py-3"><SortHeader label="Invoice" field="invoiceId" /></th>
+                      <th className="px-4 py-3"><SortHeader label="Gateway" field="gateway" /></th>
+                      <th className="px-4 py-3"><SortHeader label="Amount" field="amount" /></th>
+                      <th className="px-4 py-3"><SortHeader label="Status" field="status" /></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedPayments.map(payment => (
+                      <tr key={payment.id} className="border-t border-slate-100">
+                        <td className="px-4 py-3 font-bold text-slate-900">{payment.referenceId}</td>
+                        <td className="px-4 py-3 text-slate-600">{payment.invoiceId || '-'}</td>
+                        <td className="px-4 py-3 text-slate-600">{payment.gateway || 'pending'}</td>
+                        <td className="px-4 py-3 font-bold">{money(payment.amount, payment.currency)}</td>
+                        <td className="px-4 py-3"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(payment.status))}>{payment.status}</span></td>
+                      </tr>
+                    ))}
+                    {sortedPayments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
+                  </tbody>
+                </table>
+                <Pagination page={paymentsPage} pageSize={paymentsPageSize} total={paymentsTotal} onPageChange={setPaymentsPage} onPageSizeChange={setPaymentsPageSize} label="payments" />
+              </div>
             </div>
           )}
-        </div>
+
+          {activeTab === 'escrow' && (
+            <div className="space-y-3">
+              {pagedEscrowAccounts.map(escrow => (
+                <Card key={escrow.id} className="rounded-lg border-slate-200 shadow-none">
+                  <CardContent className="space-y-4 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-slate-950">Escrow #{escrow.id}</p>
+                        <p className="text-xs font-bold text-slate-500">{money(escrow.amount, escrow.currency)} held for payment {escrow.paymentTransaction?.referenceId}</p>
+                        <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold text-slate-600">
+                          <span>Buyer: <span className="font-black text-[#12335f]">{escrow.buyer?.name || `Buyer #${escrow.buyerId}`}</span></span>
+                          <span>Seller: <span className="font-black text-slate-900">{escrow.seller?.name || `Seller #${escrow.sellerId}`}</span></span>
+                        </div>
+                      </div>
+                      <span className={cn('w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(escrow.status))}>{escrow.status}</span>
+                    </div>
+                    <div className="grid gap-2">
+                      {(escrow.milestones || []).map(milestone => (
+                        <div key={milestone.id} className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-950">{milestone.title}</p>
+                            <p className="text-xs text-slate-500">{money(milestone.amount, milestone.currency)} · {milestone.status}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {user?.role === 'seller' && milestone.status === 'pending' && <Button size="sm" onClick={() => completeMilestone(milestone.id)}>Complete</Button>}
+                            {user?.role !== 'seller' && milestone.status === 'completed' && <Button size="sm" onClick={() => approveMilestone(milestone.id)} className="bg-[#12335f] text-white">Approve</Button>}
+                          </div>
+                        </div>
+                      ))}
+                      {(escrow.milestones || []).length === 0 && <p className="rounded-md bg-slate-50 px-3 py-4 text-sm text-slate-500">No milestones created yet.</p>}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {escrowAccounts.length === 0 && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">No escrow accounts yet.</div>}
+              {escrowAccounts.length > 0 && (
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <Pagination page={escrowPage} pageSize={escrowPageSize} total={escrowTotal} onPageChange={setEscrowPage} onPageSizeChange={setEscrowPageSize} label="escrow accounts" />
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

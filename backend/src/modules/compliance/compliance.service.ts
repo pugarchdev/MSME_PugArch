@@ -14,6 +14,46 @@ export type ComplianceFlagInput = {
 
 export const createComplianceFlag = async (input: ComplianceFlagInput) => {
   const metadata = input.metadata ? maskSensitive(input.metadata) : undefined;
+  
+  let ruleId: number | null = null;
+  try {
+    const typeToRuleCodeMap: Record<string, string> = {
+      'duplicate_pan': 'DUPLICATE_IDENTIFIER',
+      'duplicate_gst': 'DUPLICATE_IDENTIFIER',
+      'duplicate_aadhaar_hash': 'DUPLICATE_IDENTIFIER',
+      'duplicate_bank_account': 'DUPLICATE_IDENTIFIER',
+      'same_ip_multiple_sellers_bidding': 'SUSPICIOUS_REGISTRATION',
+      'similar_price_seconds_apart': 'SUSPICIOUS_REGISTRATION',
+      'suspicious_lowball_bid': 'SUSPICIOUS_REGISTRATION',
+      'sudden_bid_withdrawal_pattern': 'SUSPICIOUS_REGISTRATION',
+      'same_ip_multiple_sellers_auction': 'SUSPICIOUS_REGISTRATION',
+      'KYC_PAN_REQUIRED': 'KYC_PAN_REQUIRED',
+      'GSTIN_FORMAT_CHECK': 'GSTIN_FORMAT_CHECK',
+      'BANK_ACCOUNT_DUPLICATE': 'BANK_ACCOUNT_DUPLICATE',
+      'BID_DEADLINE_ENFORCEMENT': 'BID_DEADLINE_ENFORCEMENT',
+      'MISSING_REQUIRED_DOCUMENT': 'MISSING_REQUIRED_DOCUMENT',
+      'EXPIRED_CERTIFICATE': 'EXPIRED_CERTIFICATE',
+      'INVALID_GST': 'INVALID_GST',
+      'INVALID_PAN': 'INVALID_PAN',
+      'INVALID_BANK': 'INVALID_BANK',
+      'POLICY_VIOLATION': 'POLICY_VIOLATION'
+    };
+    const ruleCode = typeToRuleCodeMap[input.type] || input.type.toUpperCase();
+    const rule = await prisma.complianceRule.findFirst({
+      where: {
+        OR: [
+          { code: ruleCode },
+          { code: input.type }
+        ]
+      }
+    });
+    if (rule) {
+      ruleId = rule.id;
+    }
+  } catch (err) {
+    console.error('[Compliance] Failed to resolve ruleId for flag:', err);
+  }
+
   return prisma.complianceViolation.create({
     data: {
       userId: input.userId || null,
@@ -21,7 +61,8 @@ export const createComplianceFlag = async (input: ComplianceFlagInput) => {
       severity: input.severity || 'medium',
       status: input.status || 'open',
       description: input.description,
-      metadata: metadata as any
+      metadata: metadata as any,
+      ruleId
     }
   });
 };
@@ -37,6 +78,16 @@ export const flagDuplicateSellerIdentifiers = async (payload: {
   gstNumbers?: string[];
   aadhaarNumber?: string;
 }) => {
+  try {
+    const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
+    if (dupRule && !dupRule.isActive) {
+      console.log('[Compliance] Skipping duplicate identifier checks because DUPLICATE_IDENTIFIER rule is inactive.');
+      return [];
+    }
+  } catch (err) {
+    console.error('[Compliance] Error checking compliance rule DUPLICATE_IDENTIFIER:', err);
+  }
+
   const flags: ComplianceFlagInput[] = [];
   const pan = normalizeSpaces(payload.pan).toUpperCase();
 
@@ -123,6 +174,21 @@ export const flagDuplicateBankAccount = async (payload: {
   ifsc: string;
   accountNumber: string;
 }) => {
+  try {
+    const dupRule = await prisma.complianceRule.findFirst({
+      where: {
+        code: { in: ['BANK_ACCOUNT_DUPLICATE', 'DUPLICATE_IDENTIFIER'] },
+        isActive: true
+      }
+    });
+    if (!dupRule) {
+      console.log('[Compliance] Skipping duplicate bank account checks because bank rules are inactive.');
+      return null;
+    }
+  } catch (err) {
+    console.error('[Compliance] Error checking compliance rules for bank accounts:', err);
+  }
+
   const accountHash = hashIdentifier(`${payload.ifsc}:${payload.accountNumber}`);
   const bankFingerprint = createHashFingerprint(`${payload.ifsc}:${payload.accountNumber}`, 'bank');
   const existing = await prisma.sellerBankAccount.findFirst({

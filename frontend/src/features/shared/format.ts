@@ -22,28 +22,31 @@ export const formatDate = (value: unknown): string => {
 export const formatDateTime = (value: unknown): string => {
   const d = safeDate(value);
   if (!d) return '—';
-  // 24 May 2026, 14:32
+  // 24 May 2026, 02:32 PM — 12-hour format with AM/PM is the standard the
+  // procurement portal uses on every page (admin queues, notifications,
+  // audit panels, etc.). Keep this in one place so the format stays consistent.
   return `${d.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric'
-  })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+  })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
 };
 
-/** Distance from now in friendly form: "5 minutes ago", "2 days ago". */
+/** Distance from now in friendly form, supports both past and future dates. */
 export const formatRelative = (value: unknown): string => {
   const d = safeDate(value);
   if (!d) return '—';
   const diffMs = Date.now() - d.getTime();
-  const sec = Math.round(diffMs / 1000);
-  if (sec < 0) return 'just now';
-  if (sec < 60) return `${sec}s ago`;
+  const isFuture = diffMs < 0;
+  const sec = Math.abs(Math.round(diffMs / 1000));
+  
+  if (sec < 60) return isFuture ? 'soon' : 'just now';
   const min = Math.round(sec / 60);
-  if (min < 60) return `${min} min${min === 1 ? '' : 's'} ago`;
+  if (min < 60) return isFuture ? `in ${min} min${min === 1 ? '' : 's'}` : `${min} min${min === 1 ? '' : 's'} ago`;
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr} hr${hr === 1 ? '' : 's'} ago`;
+  if (hr < 24) return isFuture ? `in ${hr} hr${hr === 1 ? '' : 's'}` : `${hr} hr${hr === 1 ? '' : 's'} ago`;
   const day = Math.round(hr / 24);
-  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
+  if (day < 30) return isFuture ? `${day} day${day === 1 ? '' : 's'} left` : `${day} day${day === 1 ? '' : 's'} ago`;
   return formatDate(d);
 };
 

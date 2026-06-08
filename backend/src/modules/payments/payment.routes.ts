@@ -42,13 +42,31 @@ const listPaymentsForActor = async (where: Record<string, unknown>, window: { sk
     const [payments, total] = await Promise.all([
       prisma.paymentTransaction.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          referenceId: true,
+          invoiceId: true,
+          purchaseOrderId: true,
+          payerId: true,
+          payeeId: true,
+          amount: true,
+          currency: true,
+          status: true,
+          gateway: true,
+          method: true,
+          metadata: true,
+          createdAt: true,
+          completedAt: true,
           invoice: { select: { id: true, invoiceNumber: true, status: true, taxableAmount: true, totalTaxAmount: true, tdsAmount: true } },
           purchaseOrder: { select: { id: true, poNumber: true, title: true, status: true } },
           payer: { select: { id: true, name: true, email: true, role: true } },
           payee: { select: { id: true, name: true, email: true, role: true } },
-          escrowAccount: { include: { milestones: true, transactions: true } },
-          ledgerEntries: { orderBy: { createdAt: 'asc' } }
+          escrowAccount: { select: { id: true, status: true, amount: true, fundedAt: true, releasedAt: true } },
+          ledgerEntries: {
+            orderBy: { createdAt: 'asc' },
+            take: 20,
+            select: { id: true, debitAccount: true, creditAccount: true, entryType: true, amount: true, createdAt: true }
+          }
         },
         orderBy: { createdAt: 'desc' },
         skip: window.skip,

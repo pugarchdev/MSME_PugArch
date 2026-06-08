@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -7,11 +8,14 @@ import {
   ArrowUp,
   ArrowUpDown,
   BarChart3,
+  Briefcase,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   Download,
   FileSearch,
   Filter,
+  MapPin,
   Search,
   ShieldCheck,
   Users
@@ -20,7 +24,10 @@ import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Pagination } from '../features/shared/Pagination';
+import { formatDate, formatDateTime } from '../features/shared/format';
 import { cn } from '../lib/utils';
+import { useResponsiveViewMode } from '../features/shared/hooks';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 
 type AdminSection = 'procurement' | 'compliance' | 'reports';
 type SortKey = 'name' | 'role' | 'status' | 'date' | 'entity';
@@ -33,13 +40,13 @@ const sectionConfig = {
   procurement: {
     label: 'Procurement & Compliance Desk',
     eyebrow: 'Stakeholder Governance',
-    description: 'Monitor procurement readiness, compliance risk, review queues, and approved buyer-seller capacity from one desk.',
+    description: 'Monitor procurement readiness, risks, reviews, and buyer-seller capacity in one place.',
     icon: ClipboardCheck
   },
   compliance: {
     label: 'Procurement & Compliance Desk',
     eyebrow: 'Stakeholder Governance',
-    description: 'Monitor procurement readiness, compliance risk, review queues, and approved buyer-seller capacity from one desk.',
+    description: 'Monitor procurement readiness, risks, reviews, and buyer-seller capacity in one place.',
     icon: ClipboardCheck
   },
   reports: {
@@ -61,11 +68,39 @@ const statusTone = (status = 'pending') => {
 
 const pendingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
 
+// Entity column: prefer the registered legal/business name. If the user
+// has not yet completed onboarding, fall back to a clear placeholder rather
+// than a generic "N/A" + "Location pending" double dash, which made the
+// column read like an error.
+const getEntityName = (item: any): string => {
+  const profile = item?.profile || {};
+  const direct = profile.businessName
+    || profile.organizationName
+    || profile.officeZoneName
+    || (typeof item?.organization === 'object' ? item.organization?.legalName || item.organization?.name : '');
+  return (typeof direct === 'string' ? direct.trim() : '') || '';
+};
+
+const getEntityLocation = (item: any): string => {
+  const profile = item?.profile || {};
+  const parts = [profile.city, profile.state].filter(part => typeof part === 'string' && part.trim().length > 0);
+  return parts.join(', ');
+};
+
+const getEntitySubtitle = (item: any): string => {
+  const profile = item?.profile || {};
+  const role = String(item?.role || '').toLowerCase();
+  if (role === 'seller') {
+    return [profile.organizationType, profile.msmeCategory].filter(Boolean).join(' · ');
+  }
+  return [profile.organizationType, profile.industry, profile.businessType].filter(Boolean).join(' · ');
+};
+
 const getRecordStatus = (item: any) => item.onboardingStatus || item.status || 'pending';
 
 const getReviewSections = (item: any) => item.role === 'buyer'
   ? ['org', 'rep', 'address', 'procurement', 'docs']
-  : ['pan', 'details', 'additional', 'offices', 'bank', 'einvoicing', 'ownership'];
+  : ['pan', 'details', 'additional', 'offices', 'bank', 'ownership'];
 
 const getApprovalProgress = (item: any) => {
   const sectionStatus = item.sectionStatus || {};
@@ -75,13 +110,13 @@ const getApprovalProgress = (item: any) => {
 };
 
 export default function AdminOperations({ section }: AdminOperationsProps) {
-  const token = localStorage.getItem('token') || '';
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
   const authOptions = { headers: { Authorization: `Bearer ${token}` } };
+
   const [data, setData] = useState<{ sellers: any[]; buyers: any[] }>({ sellers: [], buyers: [] });
   const [stats, setStats] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -91,6 +126,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [viewMode, setViewMode] = useResponsiveViewMode();
   const config = sectionConfig[section];
   const SectionIcon = config.icon;
 
@@ -111,41 +147,58 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
     setPage(1);
   }, [roleFilter, statusFilter]);
 
+  // 1. Fetch onboarding paged list
+  const { data: onboardingData, isLoading: isOnboardingLoading } = useQuery({
+    queryKey: ['adminOnboardingPagedList', section, page, pageSize, debouncedSearchTerm, roleFilter, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('skip', String((page - 1) * pageSize));
+      params.set('take', String(pageSize));
+      if (debouncedSearchTerm.trim()) params.set('q', debouncedSearchTerm.trim());
+      if (roleFilter !== 'all') params.set('role', roleFilter);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      const res = await api.fetch(`/api/admin/onboarding?${params.toString()}`, authOptions);
+      if (!res.ok) throw new Error('Failed to load onboarding records');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  // 2. Fetch stats (shared stats query key ['adminStats'] if reports section)
+  const statsQueryKey = section === 'reports' ? ['adminStats'] : ['adminStatsProcurement'];
+  const { data: statsData, isLoading: isStatsLoading } = useQuery({
+    queryKey: statsQueryKey,
+    queryFn: async () => {
+      const statsPath = section === 'reports' ? '/api/admin/reports/summary?kpiOnly=true' : '/api/admin/reports/procurement';
+      const res = await api.fetch(statsPath, authOptions);
+      if (!res.ok) throw new Error('Failed to load operations stats');
+      const json = await res.json();
+      return json?.data ?? json;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const loading = isOnboardingLoading || isStatsLoading;
+
   useEffect(() => {
-    const fetchAdminData = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        params.set('skip', String((page - 1) * pageSize));
-        params.set('take', String(pageSize));
-        if (debouncedSearchTerm.trim()) params.set('q', debouncedSearchTerm.trim());
-        if (roleFilter !== 'all') params.set('role', roleFilter);
-        if (statusFilter !== 'all') params.set('status', statusFilter);
-        const [onboardingRes, statsRes] = await Promise.all([
-          api.fetch(`/api/admin/onboarding?${params.toString()}`, { ...authOptions, skipCache: true }),
-          api.fetch(section === 'reports' ? '/api/admin/reports/summary' : '/api/admin/reports/procurement', { ...authOptions, skipCache: true })
-        ]);
-        if (onboardingRes.ok) {
-          const body = await onboardingRes.json();
-          const users = body?.data ?? body;
-          setTotalRecords(Number(users?.total ?? 0));
-          setSummary(users?.summary || null);
-          setData(Array.isArray(users)
-            ? { sellers: users.filter((item: any) => item.role === 'seller'), buyers: users.filter((item: any) => item.role === 'buyer') }
-            : { sellers: users?.sellers || [], buyers: users?.buyers || [] });
-        }
-        if (statsRes.ok) {
-          const body = await statsRes.json();
-          setStats(body?.data ?? body);
-        }
-      } catch (err) {
-        toast.error('Unable to load admin dashboard records');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAdminData();
-  }, [token, section, debouncedSearchTerm, roleFilter, statusFilter, page, pageSize]);
+    if (onboardingData) {
+      const users = onboardingData;
+      setTotalRecords(Number(users?.total ?? 0));
+      setSummary(users?.summary || null);
+      setData(Array.isArray(users)
+        ? { sellers: users.filter((item: any) => item.role === 'seller'), buyers: users.filter((item: any) => item.role === 'buyer') }
+        : { sellers: users?.sellers || [], buyers: users?.buyers || [] });
+    }
+  }, [onboardingData]);
+
+  useEffect(() => {
+    if (statsData) {
+      setStats(statsData);
+    }
+  }, [statsData]);
 
   const records = useMemo(() => {
     const rows = [
@@ -162,11 +215,10 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
 
   const filteredRecords = useMemo(() => {
     const valueForSort = (item: any) => {
-      const profile = item.profile || {};
       if (sortKey === 'role') return item.role;
       if (sortKey === 'status') return getRecordStatus(item);
       if (sortKey === 'date') return new Date(item.createdAt || 0).getTime();
-      if (sortKey === 'entity') return profile.businessName || profile.organizationName || profile.officeZoneName || '';
+      if (sortKey === 'entity') return getEntityName(item);
       return item.name || '';
     };
 
@@ -220,21 +272,21 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
 
   const tiles = section === 'reports'
     ? [
-        { label: 'Total Network', value: stats?.totalNetwork ?? records.length, helper: 'Buyer and seller records', icon: Users },
-        { label: 'Approved Entities', value: approvedCount, helper: 'Cleared for procurement', icon: CheckCircle2 },
-        { label: 'Pending Review', value: queueCount, helper: 'Requires admin decision', icon: FileSearch },
-        { label: 'Exceptions', value: rejectedCount + resubmissionCount, helper: 'Rejected or resubmitted', icon: AlertTriangle }
-      ]
+      { label: 'Total Network', value: stats?.totalNetwork ?? records.length, helper: 'Buyer and seller records', icon: Users },
+      { label: 'Approved Entities', value: approvedCount, helper: 'Cleared for procurement', icon: CheckCircle2 },
+      { label: 'Pending Review', value: queueCount, helper: 'Requires admin decision', icon: FileSearch },
+      { label: 'Exceptions', value: rejectedCount + resubmissionCount, helper: 'Rejected or resubmitted', icon: AlertTriangle }
+    ]
     : [
-        // { label: 'Total Stakeholders', value: summary?.total ?? stats?.totalNetwork ?? totalRecords, helper: 'Buyer and seller records', icon: Users },
-        { label: 'Approved for Procurement', value: approvedCount, helper: 'Ready to transact', icon: CheckCircle2 },
-        { label: 'Pending Review Queue', value: queueCount, helper: 'Needs admin verification', icon: FileSearch },
-        { label: 'Compliance Exceptions', value: complianceExceptionCount, helper: 'Flags, rejected, or returned', icon: AlertTriangle },
-        { label: 'Active Sellers', value: activeSellerCount, helper: 'Approved supplier pool', icon: Users },
-        { label: 'Active Buyers', value: activeBuyerCount, helper: 'Approved buyer departments', icon: ClipboardCheck },
-        { label: 'Resubmission Required', value: resubmissionCount, helper: 'Returned for correction', icon: AlertTriangle },
-        { label: 'Avg Verification Progress', value: `${averageProgress}%`, helper: 'Section approval completion', icon: BarChart3 }
-      ];
+      // { label: 'Total Stakeholders', value: summary?.total ?? stats?.totalNetwork ?? totalRecords, helper: 'Buyer and seller records', icon: Users },
+      { label: 'Approved for Procurement', value: approvedCount, helper: 'Ready to transact', icon: CheckCircle2 },
+      { label: 'Pending Review Queue', value: queueCount, helper: 'Needs admin verification', icon: FileSearch },
+      // { label: 'Compliance Exceptions', value: complianceExceptionCount, helper: 'Flags, rejected, or returned', icon: AlertTriangle },
+      { label: 'Active Sellers', value: activeSellerCount, helper: 'Approved supplier pool', icon: Users },
+      { label: 'Active Buyers', value: activeBuyerCount, helper: 'Approved buyer departments', icon: ClipboardCheck },
+      { label: 'Resubmission Required', value: resubmissionCount, helper: 'Returned for correction', icon: AlertTriangle },
+      { label: 'Avg Verification Progress', value: `${averageProgress}%`, helper: 'Section approval completion', icon: BarChart3 }
+    ];
 
   const toggleSort = (key: SortKey) => {
     setSortDirection(prev => sortKey === key && prev === 'asc' ? 'desc' : 'asc');
@@ -261,15 +313,14 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
   const exportCsv = () => {
     const headers = ['Sr No', 'Name', 'Role', 'Entity', 'Email', 'Status', 'Submitted At'];
     const rows = filteredRecords.map((item, index) => {
-      const profile = item.profile || {};
       return [
         index + 1,
         item.name || '',
         item.role || '',
-        profile.businessName || profile.organizationName || profile.officeZoneName || '',
+        getEntityName(item),
         item.email || '',
         statusLabel(item.onboardingStatus || item.status),
-        item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
+        formatDateTime(item.createdAt)
       ];
     });
     const csv = [headers, ...rows]
@@ -307,7 +358,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
         {tiles.map(tile => (
           <button
             key={tile.label}
@@ -346,12 +397,15 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 setStatusFilter('all');
               }
             }}
-            className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 text-left shadow-sm transition-all hover:border-[#12335f]/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#12335f]"
+            className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 text-left shadow-sm transition-all hover:border-[#12335f]/40 hover:-translate-y-0.5 hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#12335f] focus:ring-offset-2"
+            aria-label={`Filter by ${tile.label}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tile.label}</p>
-                <p className="mt-2 text-3xl font-black text-slate-950">{tile.value ?? 0}</p>
+                <p className={cn("mt-2 text-3xl font-black", isStatsLoading ? "text-slate-300" : "text-slate-950")}>
+                  {isStatsLoading ? "0" : tile.value ?? 0}
+                </p>
                 <p className="mt-1 text-xs font-semibold text-slate-500">{tile.helper}</p>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-50 text-[#12335f]">
@@ -370,9 +424,6 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                 <SectionIcon className="h-5 w-5 text-[#12335f]" />
                 <div className="min-w-0">
                   <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Stakeholder Register</h2>
-                  <p className="text-xs font-medium text-slate-500">
-                    {displayedRecordCount} {displayedRecordCount === 1 ? 'record' : 'records'} matching current filters
-                  </p>
                 </div>
               </div>
               {hasActiveFilters && (
@@ -383,7 +434,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                     setRoleFilter('all');
                     setStatusFilter('all');
                   }}
-                  className="h-9 rounded-md border border-slate-200 px-3 text-xs font-black uppercase tracking-wide text-slate-600 transition hover:border-[#12335f]/30 hover:text-[#12335f]"
+                  className="h-7 rounded-md border border-slate-200 px-3 text-xs font-black uppercase tracking-wide text-slate-600 transition hover:border-[#12335f]/30 hover:text-[#12335f]"
                 >
                   Clear Filters
                 </button>
@@ -391,49 +442,71 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
             </div>
 
             <div className="space-y-3">
-              <div className="flex flex-col md:flex-row gap-2 items-center">
-                <div className="relative min-w-0 flex-1 w-full">
+              <div className="flex items-stretch gap-2">
+                {/* Search box: takes ~80% on desktop */}
+                <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={searchTerm}
                     onChange={event => setSearchTerm(event.target.value)}
                     placeholder="Search name, GST, PAN, state..."
-                    className="h-10 w-full rounded-md border-slate-200 pl-9 text-xs"
+                    className="h-11 w-full rounded-md border-slate-200 pl-9 text-xs"
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowMobileFilters(!showMobileFilters)}
-                  className="md:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
-                >
-                  <Filter className="h-4 w-4 text-slate-500" />
-                  <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
-                </Button>
-              </div>
 
-              <div className={cn(
-                "grid gap-3 items-center",
-                showMobileFilters 
-                  ? "grid grid-cols-2" 
-                  : "hidden md:grid md:grid-cols-[150px_190px] md:justify-end"
-              )}>
-                <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                {/* Desktop filters inline */}
+                <div className="hidden md:flex items-stretch gap-2">
+                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
                     <option value="all">All Roles</option>
                     <option value="seller">Sellers</option>
                     <option value="buyer">Buyers</option>
-                </select>
-                <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600 w-full">
+                  </select>
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
                     {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
                     {statusOptions.map(status => (
                       <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
                     ))}
-                </select>
+                  </select>
+                  <ViewModeToggle value={viewMode} onChange={setViewMode} />
+                </div>
+
+                {/* Mobile filters toggle */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                  className="md:hidden h-11 gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                  aria-expanded={showMobileFilters}
+                >
+                  <Filter className="h-4 w-4 text-slate-500" />
+                  <span>Filters</span>
+                </Button>
               </div>
+
+              {/* Mobile filters drawer */}
+              {showMobileFilters && (
+                <div className="md:hidden grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value)} className="h-11 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
+                    <option value="all">All Roles</option>
+                    <option value="seller">Sellers</option>
+                    <option value="buyer">Buyers</option>
+                  </select>
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-11 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-600">
+                    {statusFilter === 'review_queue' && <option value="review_queue">Review Queue</option>}
+                    {statusOptions.map(status => (
+                      <option key={status} value={status}>{status === 'all' ? 'All Status' : statusLabel(status)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Table list view for Desktop */}
+          <div className={cn(
+            "overflow-x-auto",
+            viewMode === "list" ? "hidden md:block" : "hidden"
+          )}>
             <table className="w-full min-w-[760px] table-fixed text-left">
               <thead className="bg-slate-50">
                 <tr className="border-b border-slate-200">
@@ -448,32 +521,62 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-slate-400">Loading admin records...</td></tr>
+                  [1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i} className="animate-pulse border-b border-slate-50">
+                      <td className="px-3 py-4"><div className="h-4 w-8 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4">
+                        <div className="h-4 w-24 bg-slate-100 rounded mb-2" />
+                        <div className="h-3.5 w-32 bg-slate-100 rounded" />
+                      </td>
+                      <td className="px-3 py-4"><div className="h-4 w-12 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4">
+                        <div className="h-4 w-36 bg-slate-100 rounded mb-2" />
+                        <div className="h-3 w-16 bg-slate-100 rounded" />
+                      </td>
+                      <td className="px-3 py-4"><div className="h-6 w-20 bg-slate-100 rounded-full" /></td>
+                      <td className="px-3 py-4"><div className="h-4 w-20 bg-slate-100 rounded" /></td>
+                      <td className="px-3 py-4"><div className="h-4 w-16 bg-slate-100 rounded" /></td>
+                    </tr>
+                  ))
                 ) : filteredRecords.length === 0 ? (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-slate-400">No records found for selected filters.</td></tr>
                 ) : filteredRecords.map((item, index) => {
-                  const profile = item.profile || {};
                   const status = item.onboardingStatus || item.status || 'pending';
+                  const entityName = getEntityName(item);
+                  const entityLocation = getEntityLocation(item);
+                  const entitySubtitle = getEntitySubtitle(item);
                   return (
                     <tr key={`${item.role}-${item.id || item._id}`} className="hover:bg-slate-50/80">
                       <td className="px-3 py-4 text-xs font-bold text-slate-500">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
                       <td className="px-3 py-4">
-                        <p className="truncate text-sm font-black text-slate-900" title={item.name || 'N/A'}>{item.name || 'N/A'}</p>
+                        <p className="truncate text-sm font-black text-slate-900" title={item.name || '—'}>{item.name || '—'}</p>
                         <p className="break-all text-[11px] font-semibold text-slate-500">{item.email || 'No email'}</p>
                       </td>
                       <td className="px-3 py-4 text-xs font-black uppercase tracking-wide text-[#12335f]">{item.role}</td>
                       <td className="px-3 py-4">
-                        <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-slate-900" title={profile.businessName || profile.organizationName || profile.officeZoneName || 'N/A'}>
-                          {profile.businessName || profile.organizationName || profile.officeZoneName || 'N/A'}
-                        </p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{profile.state || profile.city || 'Location pending'}</p>
+                        {entityName ? (
+                          <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-slate-900" title={entityName}>
+                            {entityName}
+                          </p>
+                        ) : (
+                          <p className="text-sm font-semibold italic text-slate-400">
+                            Onboarding in progress
+                          </p>
+                        )}
+                        {entityLocation ? (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{entityLocation}</p>
+                        ) : entitySubtitle ? (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{entitySubtitle}</p>
+                        ) : null}
                       </td>
-                      <td className="px-3 py-4">
-                        <span className={cn('inline-flex max-w-[150px] rounded-full border px-2.5 py-1 text-center text-[10px] font-black uppercase leading-tight tracking-wide', statusTone(status))}>
+                      <td className="px-3 py-4 text-left">
+                        <span className={cn('inline-flex max-w-[170px] rounded-full border px-2.5 py-1 text-left text-[10px] font-black uppercase leading-tight tracking-wide', statusTone(status))}>
                           {statusLabel(status)}
                         </span>
                       </td>
-                      <td className="px-3 py-4 text-xs font-bold text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'}</td>
+                      <td className="px-3 py-4 text-xs font-bold text-slate-600">
+                        {formatDateTime(item.createdAt)}
+                      </td>
                       <td className="px-3 py-4">
                         <Link href="/admin/onboarding" className="text-xs font-black uppercase tracking-wide text-[#12335f] hover:text-[#12335f]">
                           Open Review
@@ -485,12 +588,344 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               </tbody>
             </table>
           </div>
+
+          {/* Desktop Grid view */}
+          {viewMode === "grid" && (
+            <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+              {loading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center pb-3 border-b border-slate-50">
+                      <div className="h-4 w-12 bg-slate-100 rounded" />
+                      <div className="h-6 w-20 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 bg-slate-100 rounded-xl" />
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 w-24 bg-slate-100 rounded" />
+                        <div className="h-3 w-32 bg-slate-100 rounded" />
+                      </div>
+                    </div>
+                    <div className="h-12 bg-slate-50 rounded-xl" />
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50">
+                      <div className="h-8 bg-slate-100 rounded" />
+                      <div className="h-8 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                ))
+              ) : filteredRecords.length === 0 ? (
+                <div className="col-span-full py-20 text-center text-sm font-bold text-slate-400">No records found for selected filters.</div>
+              ) : filteredRecords.map((item, index) => {
+                const status = getRecordStatus(item);
+                const entityName = getEntityName(item);
+                const entityLocation = getEntityLocation(item);
+                const entitySubtitle = getEntitySubtitle(item);
+                const progress = getApprovalProgress(item);
+
+                const getAvatarGradient = (statusStr: string) => {
+                  switch (statusStr) {
+                    case "approved_for_procurement":
+                      return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                    case "rejected":
+                      return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                    case "resubmission_required":
+                      return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                    default:
+                      return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                  }
+                };
+
+                return (
+                  <div
+                    key={`grid-${item.role}-${item.id || item._id}`}
+                    className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#12335f]/25 transition-all duration-300 flex flex-col justify-between min-w-0"
+                  >
+                    <div>
+                      {/* Top Row - Meta & Badge */}
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                          {item.role}
+                          {" · #"}
+                          {String((page - 1) * pageSize + index + 1).padStart(2, "0")}
+                        </div>
+                        <div className="shrink-0">
+                          <span className={cn('inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest shadow-sm', statusTone(status))}>
+                            {statusLabel(status)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Identity - Avatar & Names */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md text-sm font-extrabold text-white transition-all duration-300 group-hover:scale-105",
+                          getAvatarGradient(status)
+                        )}>
+                          {String(item.name || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-800 text-sm tracking-tight group-hover:text-[#12335f] transition-colors line-clamp-2">
+                            {item.name}
+                          </div>
+                          <div className="break-all text-[11px] font-semibold text-slate-500">
+                            {item.email || 'No email'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Entity Info box */}
+                      <div className="mt-3 p-3 bg-slate-50 rounded-xl min-w-0">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Entity Details</p>
+                        {entityName ? (
+                          <p className="line-clamp-2 break-words text-xs font-bold leading-snug text-slate-800" title={entityName}>
+                            {entityName}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-semibold italic text-slate-400">
+                            Onboarding in progress
+                          </p>
+                        )}
+                        {entitySubtitle && (
+                          <p className="mt-1 text-[10px] font-bold text-slate-500 line-clamp-1">{entitySubtitle}</p>
+                        )}
+                      </div>
+
+                      {/* Metadata Grid */}
+                      <div className="mt-3.5 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                            <p className="text-[11px] font-semibold text-slate-700 truncate" title={entityLocation || undefined}>
+                              {entityLocation || "—"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 min-w-0">
+                          <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400 group-hover:text-[#12335f]/70 transition-colors" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                            <p className="text-[11px] font-semibold text-slate-700 font-mono">
+                              {formatDate(item.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mt-4">
+                      <div className="flex justify-between items-center mb-1 text-[10px] font-bold text-slate-500">
+                        <span>Verification</span>
+                        <span>{progress}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#12335f] transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      {/* Footer - Section Dots & CTA */}
+                      <div className="mt-3.5 flex items-center justify-between gap-2">
+                        <div className="flex space-x-1">
+                          {getReviewSections(item).map((section) => {
+                            const sectionStatus = item.sectionStatus?.[section];
+                            const statusColors = {
+                              approved: "bg-emerald-500 shadow-sm shadow-emerald-500/20",
+                              rejected: "bg-red-500 shadow-sm shadow-red-500/20",
+                              pending: "bg-slate-200",
+                            };
+                            const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                            return (
+                              <div
+                                key={section}
+                                className={cn("h-1.5 w-3 rounded-full transition-all duration-300", colorClass)}
+                                title={`${section}: ${sectionStatus || "pending"}`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <Link href="/admin/onboarding" className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-800 transition-colors flex items-center gap-1">
+                          <span>REVIEW</span>
+                          <span className="transform group-hover:translate-x-0.5 transition-transform duration-200">→</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Responsive Card Grid for Mobile */}
+          <div className="md:hidden grid grid-cols-1 gap-4 p-4 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+            {loading ? (
+              [1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">
+                  <div className="flex justify-between items-center pb-2.5 border-b border-slate-50">
+                    <div className="h-3 w-10 bg-slate-100 rounded" />
+                    <div className="h-5 w-16 bg-slate-100 rounded-full" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-slate-100 rounded-xl" />
+                    <div className="space-y-1.5 flex-1">
+                      <div className="h-3.5 w-20 bg-slate-100 rounded" />
+                      <div className="h-2.5 w-28 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
+                    <div className="h-6 bg-slate-100 rounded" />
+                    <div className="h-6 bg-slate-100 rounded" />
+                  </div>
+                </div>
+              ))
+            ) : filteredRecords.length === 0 ? (
+              <div className="py-10 text-center text-sm font-bold text-slate-400">No records found.</div>
+            ) : filteredRecords.map((item, index) => {
+              const status = getRecordStatus(item);
+              const entityName = getEntityName(item);
+              const entityLocation = getEntityLocation(item);
+              const entitySubtitle = getEntitySubtitle(item);
+              const progress = getApprovalProgress(item);
+
+              const getAvatarGradient = (statusStr: string) => {
+                switch (statusStr) {
+                  case "approved_for_procurement":
+                    return "bg-gradient-to-br from-emerald-600 to-green-500 shadow-emerald-500/10";
+                  case "rejected":
+                    return "bg-gradient-to-br from-red-600 to-rose-500 shadow-red-500/10";
+                  case "resubmission_required":
+                    return "bg-gradient-to-br from-amber-500 to-orange-400 shadow-amber-500/10";
+                  default:
+                    return "bg-gradient-to-br from-[#12335f] to-[#25528c] shadow-[#12335f]/10";
+                }
+              };
+
+              return (
+                <div
+                  key={`mobile-${item.role}-${item.id || item._id}`}
+                  className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50 transition-all flex flex-col justify-between min-w-0"
+                >
+                  <Link href="/admin/onboarding" className="block text-left min-w-0 flex-1">
+                    {/* Top Row - Meta & Badge */}
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+                      <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">
+                        {item.role}
+                        {" · #"}
+                        {String((page - 1) * pageSize + index + 1).padStart(2, "0")}
+                      </div>
+                      <div className="shrink-0 scale-90 origin-right">
+                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-widest shadow-sm', statusTone(status))}>
+                          {statusLabel(status)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Identity - Avatar & Names */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md text-xs font-extrabold text-white",
+                        getAvatarGradient(status)
+                      )}>
+                        {String(item.name || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800 text-xs tracking-tight line-clamp-2">
+                          {item.name}
+                        </div>
+                        <div className="break-all text-[10px] font-semibold text-slate-500">
+                          {item.email || 'No email'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Entity Info Box */}
+                    <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl min-w-0">
+                      <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-0.5">Entity Details</p>
+                      {entityName ? (
+                        <p className="line-clamp-2 break-words text-[11px] font-bold leading-snug text-slate-800">
+                          {entityName}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] font-semibold italic text-slate-400">
+                          Onboarding in progress
+                        </p>
+                      )}
+                      {entitySubtitle && (
+                        <p className="mt-0.5 text-[9px] font-bold text-slate-500 line-clamp-1">{entitySubtitle}</p>
+                      )}
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="mt-3 grid grid-cols-2 gap-x-2.5 gap-y-1.5 border-t border-slate-100 pt-2.5">
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                          <p className="text-[10px] font-semibold text-slate-700 truncate">
+                            {entityLocation || "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <Clock className="h-3 w-3 mt-0.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Submitted</p>
+                          <p className="text-[10px] font-semibold text-slate-700 font-mono">
+                            {formatDate(item.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mt-3">
+                      <div className="h-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#12335f]"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      {/* Footer - Section Dots & CTA */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex space-x-0.5">
+                          {getReviewSections(item).map((section) => {
+                            const sectionStatus = item.sectionStatus?.[section];
+                            const statusColors = {
+                              approved: "bg-emerald-500",
+                              rejected: "bg-red-500",
+                              pending: "bg-slate-200",
+                            };
+                            const colorClass = statusColors[sectionStatus as keyof typeof statusColors] || "bg-slate-200";
+                            return (
+                              <div
+                                key={section}
+                                className={cn("h-1 w-2 rounded-full", colorClass)}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="text-[9px] font-black text-indigo-600 uppercase flex items-center gap-0.5">
+                          <span>REVIEW</span>
+                          <span>→</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
           {!loading && totalRecords > 0 && (
             <Pagination page={page} pageSize={pageSize} total={totalRecords} onPageChange={setPage} onPageSizeChange={setPageSize} />
           )}
         </section>
 
-        <aside className="space-y-4">
+        {/* <aside className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-[#12335f]" />
@@ -526,7 +961,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
               Go to verification console
             </Link>
           </div>
-        </aside>
+        </aside> */}
       </div>
     </div>
   );

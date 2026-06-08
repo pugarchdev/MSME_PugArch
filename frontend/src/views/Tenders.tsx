@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '../lib/api';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, PAYMENT_TERMS, DELIVERY_TYPES } from '../constants/dropdowns';
 import { compressImage } from '../lib/compress';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
@@ -32,10 +33,13 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Pagination } from '../features/shared/Pagination';
 import { EntityIdLink } from '../features/shared/EntityIdLink';
-import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
+import { ViewModeToggle } from '../features/shared/ViewModeToggle';
+import { useFeatureQuery, usePaginatedFeatureQuery, useResponsiveViewMode } from '../features/shared/hooks';
+import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
 
 interface Tender {
   id: number;
@@ -134,14 +138,12 @@ const normalizeTenderList = (payload: any): Tender[] => {
 export default function Tenders() {
   const router = useRouter();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
-  const cachedTenders = api.peek('/api/tenders', authOptions);
-  const [tenders, setTenders] = useState<Tender[]>(normalizeTenderList(cachedTenders));
-  const [loading, setLoading] = useState(!cachedTenders);
   const [activeTab, setActiveTab] = useState<string>('published');
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
   const [budgetFilter, setBudgetFilter] = useState('All');
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'created', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTender, setNewTender] = useState({
@@ -161,6 +163,49 @@ export default function Tenders() {
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null);
   const [editingTender, setEditingTender] = useState<Tender | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchText);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchText]);
+
+  const {
+    records: pagedTenders,
+    loading,
+    refreshing,
+    error,
+    reload,
+    setRecords: setPagedTenders,
+    page,
+    pageSize,
+    total,
+    setPage,
+    setPageSize
+  } = usePaginatedFeatureQuery<Tender>(
+    '/api/tenders',
+    {
+      search: debouncedSearch,
+      status: activeTab,
+      category: selectedCategoryFilter,
+      budget: budgetFilter,
+      sortBy: sortConfig.key,
+      sortOrder: sortConfig.direction
+    },
+    10
+  );
+
+  const { data: summaryData, reload: reloadSummary } = useFeatureQuery<{ draftCount: number; activeCount: number; closedCount: number } | null>(
+    '/api/tenders/summary',
+    null
+  );
+
+  const refreshAll = () => {
+    void reload();
+    void reloadSummary();
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -180,7 +225,10 @@ export default function Tenders() {
 
       if (res.ok) {
         const data = await res.json();
-        setNewTender(prev => ({ ...prev, documentUrl: data?.data?.url || data?.url || '' }));
+        const uploaded = data?.data || data;
+        const fileId = Number(uploaded?.fileId || uploaded?.file?.id || 0);
+        const documentUrl = uploaded?.file?.documentUrl || uploaded?.url || (fileId ? `/api/files/${fileId}/view` : '');
+        setNewTender(prev => ({ ...prev, documentUrl }));
         toast.success('Specifications document uploaded successfully');
       } else {
         toast.error('Failed to upload document');
@@ -192,21 +240,15 @@ export default function Tenders() {
     }
   };
 
-  useEffect(() => {
-    fetchTenders();
-  }, []);
+  useEffect(() => () => {
+    if (previewDocument?.url.startsWith('blob:')) URL.revokeObjectURL(previewDocument.url);
+  }, [previewDocument]);
 
-  const fetchTenders = async () => {
+  const handlePreviewDocument = async (url: string, label: string) => {
     try {
-      const res = await api.get('/api/tenders', authOptions);
-      if (res.ok) {
-        const data = await res.json();
-        setTenders(normalizeTenderList(data));
-      }
-    } catch (err) {
-      console.error('Failed to fetch tenders', err);
-    } finally {
-      setLoading(false);
+      setPreviewDocument(await getFileAssetPreview({ url }, label));
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to open document');
     }
   };
 
@@ -221,7 +263,7 @@ export default function Tenders() {
 
       if (res.ok) {
         toast.success('Tender published successfully');
-        await fetchTenders();
+        refreshAll();
         setActiveTab('published');
       } else {
         const errorData = await res.json();
@@ -271,7 +313,7 @@ export default function Tenders() {
         toast.success('Tender created successfully');
         setIsModalOpen(false);
         setNewTender({ title: '', category: '', budget: '', description: '', documentUrl: '', closesAt: '', quantityUnit: '', paymentTerms: '', deliveryType: '' });
-        fetchTenders();
+        refreshAll();
       } else {
         const errorData = await res.json().catch(() => null);
         toast.error(errorData?.message || 'Failed to create tender');
@@ -308,10 +350,11 @@ export default function Tenders() {
       const res = await api.put(`/api/tenders/${editingTender.id}`, payload, authOptions);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || 'Failed to update tender');
+      const updatedTender = data?.data || data;
       toast.success('Tender updated successfully');
       setEditingTender(null);
-      setSelectedTender(data);
-      await fetchTenders();
+      setSelectedTender(updatedTender);
+      refreshAll();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
     } finally {
@@ -328,7 +371,7 @@ export default function Tenders() {
       toast.success('Tender deleted successfully');
       setSelectedTender(null);
       setEditingTender(null);
-      await fetchTenders();
+      refreshAll();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');
     }
@@ -414,49 +457,8 @@ export default function Tenders() {
     </div>
   );
 
-  const currentTenders = (activeTab === 'published'
-    ? tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin'))
-    : activeTab === 'closed'
-      ? tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated')
-      : tenders.filter(t => t.status === activeTab)
-  ).filter(t => {
-    const matchesSearch = !searchText ||
-      t.title.toLowerCase().includes(searchText.toLowerCase()) ||
-      (t.tenderId && t.tenderId.toLowerCase().includes(searchText.toLowerCase()));
-
-    const matchesCategory = selectedCategoryFilter === 'All' || t.category === selectedCategoryFilter;
-    const matchesBudget =
-      budgetFilter === 'All' ||
-      (budgetFilter === 'under_10l' && Number(t.budget || 0) < 1000000) ||
-      (budgetFilter === '10l_50l' && Number(t.budget || 0) >= 1000000 && Number(t.budget || 0) <= 5000000) ||
-      (budgetFilter === 'above_50l' && Number(t.budget || 0) > 5000000);
-
-    return matchesSearch && matchesCategory && matchesBudget;
-  }).sort((a, b) => {
-    const direction = sortConfig.direction === 'asc' ? 1 : -1;
-    const valueFor = (tender: Tender) => {
-      if (sortConfig.key === 'tenderId') return tender.tenderId || `T-2026-01${tender.id}`;
-      if (sortConfig.key === 'title') return tender.title || '';
-      if (sortConfig.key === 'category') return tender.category || '';
-      if (sortConfig.key === 'budget') return Number(tender.budget || 0);
-      if (sortConfig.key === 'bids') return Number(tender.bidsCount || 0);
-      if (sortConfig.key === 'closes') return new Date(tender.closesAt || 0).getTime();
-      if (sortConfig.key === 'status') return tender.status || '';
-      return tender.id;
-    };
-    const aValue = valueFor(a);
-    const bValue = valueFor(b);
-    if (typeof aValue === 'number' && typeof bValue === 'number') return (aValue - bValue) * direction;
-    return String(aValue).localeCompare(String(bValue)) * direction;
-  });
-  const { page, pageSize, pageItems: pagedTenders, total, setPage, setPageSize } = usePagination(currentTenders, 10);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
-      </div>
-    );
+  if (loading && pagedTenders.length === 0) {
+    return <LoadingState label="Loading tenders..." />;
   }
 
   return (
@@ -481,9 +483,9 @@ export default function Tenders() {
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-1 bg-[#f1f3f4] p-1 rounded-lg border border-[#e8eaed]">
             {[
-              { id: 'draft', label: 'Draft', count: tenders.filter(t => t.status === 'draft').length },
-              { id: 'published', label: 'Active', count: tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin')).length },
-              { id: 'closed', label: 'Closed', count: tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated').length }
+              { id: 'draft', label: 'Draft', count: summaryData?.draftCount ?? 0 },
+              { id: 'published', label: 'Active', count: summaryData?.activeCount ?? 0 },
+              { id: 'closed', label: 'Closed', count: summaryData?.closedCount ?? 0 }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -500,30 +502,7 @@ export default function Tenders() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1 rounded-lg border border-[#e8eaed] bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
-                viewMode === 'list' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
-              )}
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-all',
-                viewMode === 'grid' ? 'bg-[#12335f] text-white shadow-sm' : 'hover:bg-slate-50 hover:text-[#12335f]'
-              )}
-              title="Grid view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-          </div>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
         </div>
 
         {/* Filters and Search Row */}
@@ -598,7 +577,7 @@ export default function Tenders() {
                     <td colSpan={9} className="px-8 py-10"><div className="h-4 bg-slate-50 rounded w-full"></div></td>
                   </tr>
                 ))
-              ) : currentTenders.length === 0 ? (
+              ) : pagedTenders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-8 py-20 text-center">
                     <div className="flex flex-col items-center gap-4 opacity-30">
@@ -695,7 +674,7 @@ export default function Tenders() {
             </tbody>
           </table>
         </div>
-        {viewMode === 'grid' && currentTenders.length === 0 && (
+        {viewMode === 'grid' && pagedTenders.length === 0 && (
           <div className="rounded-lg border border-[#dadce0] bg-white px-8 py-20 text-center shadow-sm">
             <div className="flex flex-col items-center gap-4 opacity-30">
               <FileText className="h-12 w-12" />
@@ -704,7 +683,7 @@ export default function Tenders() {
           </div>
         )}
 
-        {viewMode === 'grid' && currentTenders.length > 0 && (
+        {viewMode === 'grid' && pagedTenders.length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {pagedTenders.map((tender, index) => (
               <div key={tender.id} className="rounded-lg border border-[#dadce0] bg-white p-4 shadow-sm transition hover:shadow-md">
@@ -759,7 +738,7 @@ export default function Tenders() {
           </div>
         )}
 
-        {currentTenders.length > 0 && (
+        {pagedTenders.length > 0 && (
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="tenders" />
         )}
 
@@ -974,6 +953,7 @@ export default function Tenders() {
             }}
             onDelete={() => handleDeleteTender(selectedTender)}
             onViewBids={() => router.push('/quotations')}
+            onPreviewDocument={handlePreviewDocument}
           />
         )}
         {editingTender && (
@@ -982,8 +962,10 @@ export default function Tenders() {
             saving={savingEdit}
             onClose={() => setEditingTender(null)}
             onSubmit={handleUpdateTender}
+            onPreviewDocument={handlePreviewDocument}
           />
         )}
+        <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
       </div>
     </div>
   );
@@ -994,13 +976,15 @@ function TenderDetailsModal({
   onClose,
   onEdit,
   onDelete,
-  onViewBids
+  onViewBids,
+  onPreviewDocument
 }: {
   tender: Tender;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onViewBids: () => void;
+  onPreviewDocument: (url: string, label: string) => void;
 }) {
   const closesLabel = tender.closesAt ? new Date(tender.closesAt).toLocaleString() : 'Not available';
   const documentName = tender.documentUrl ? tender.documentUrl.split('/').pop() || 'Specification document' : '';
@@ -1042,7 +1026,7 @@ function TenderDetailsModal({
             <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Document</p>
               <p className="mt-2 text-sm font-semibold text-slate-700 truncate">{documentName}</p>
-              <button type="button" onClick={() => window.open(tender.documentUrl, '_blank', 'noopener,noreferrer')} className="mt-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-black text-[#12335f] hover:bg-slate-50">
+              <button type="button" onClick={() => onPreviewDocument(tender.documentUrl!, `${tender.tenderId} Specifications`)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-black text-[#12335f] hover:bg-slate-50">
                 <FileText className="h-4 w-4" />
                 Open Document
               </button>
@@ -1069,13 +1053,17 @@ function TenderEditModal({
   tender,
   saving,
   onClose,
-  onSubmit
+  onSubmit,
+  onPreviewDocument
 }: {
   tender: Tender;
   saving: boolean;
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onPreviewDocument: (url: string, label: string) => void;
 }) {
+  const documentName = tender.documentUrl ? tender.documentUrl.split('/').pop() || 'Specification document' : '';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
@@ -1143,6 +1131,33 @@ function TenderEditModal({
             Description
             <textarea name="description" rows={5} defaultValue={tender.description} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#12335f]/20" />
           </label>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Document</p>
+            {tender.documentUrl ? (
+              <div className="mt-3 flex flex-col gap-3 rounded-md border border-emerald-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                    <Paperclip className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-900">{documentName}</p>
+                    <p className="text-xs font-semibold text-emerald-700">Attached to this tender</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onPreviewDocument(tender.documentUrl!, `${tender.tenderId || `Tender #${tender.id}`} Specifications`)}
+                  className="h-9 shrink-0 rounded-md border-slate-200 text-xs font-black uppercase text-[#12335f]"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Open Document
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-white px-3 py-3 text-xs font-bold text-slate-500">No specification document is attached to this tender.</p>
+            )}
+          </div>
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="h-10 rounded-md border-slate-200 text-xs font-black uppercase">Cancel</Button>
             <Button type="submit" disabled={saving} className="h-10 rounded-md bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445]">

@@ -30,6 +30,12 @@ export const auditWorkflow = (actor: WorkflowActor, action: string, entityType: 
     metadata: maskSensitive(metadata || {})
   });
 
+export const auditWorkflowSoon = (actor: WorkflowActor, action: string, entityType: string, entityId?: number | string, metadata?: Record<string, unknown>) => {
+  void auditWorkflow(actor, action, entityType, entityId, metadata).catch(error => {
+    console.warn('[WorkflowAudit] Background audit failed', error instanceof Error ? error.message : error);
+  });
+};
+
 export const notifyWorkflow = async (userId: number, title: string, message: string, type: string, redirectUrl = '/dashboard') => {
   await notificationService.notifyWithEmail(userId, {
     title,
@@ -37,6 +43,12 @@ export const notifyWorkflow = async (userId: number, title: string, message: str
     type,
     priority: 'medium',
     redirectUrl
+  });
+};
+
+export const notifyWorkflowSoon = (userId: number, title: string, message: string, type: string, redirectUrl = '/dashboard') => {
+  void notifyWorkflow(userId, title, message, type, redirectUrl).catch(error => {
+    console.warn('[WorkflowNotify] Background notification failed', error instanceof Error ? error.message : error);
   });
 };
 

@@ -13,7 +13,7 @@ type AuditPayload = {
   metadata?: Record<string, unknown>;
 };
 
-export const auditLog = async (payload: AuditPayload) => {
+const persistAuditLog = async (payload: AuditPayload) => {
   const actorId = payload.actorId ?? payload.actorUserId ?? null;
   const safeMetadata = maskSensitive({
     actorRole: payload.actorRole,
@@ -40,4 +40,10 @@ export const auditLog = async (payload: AuditPayload) => {
   }
 
   console.log('[Audit]', JSON.stringify(maskSensitive(payload)));
+};
+
+export const auditLog = async (payload: AuditPayload) => {
+  void persistAuditLog(payload).catch(error => {
+    console.error('[Audit] Background audit failed', error instanceof Error ? error.message : error);
+  });
 };

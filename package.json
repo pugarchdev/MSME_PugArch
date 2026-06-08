@@ -26,6 +26,7 @@
     "@eslint/js": "^10.0.1",
     "@next/eslint-plugin-next": "^16.2.6",
     "@typescript-eslint/parser": "^8.59.3",
+    "agentation": "^3.0.2",
     "concurrently": "^9.2.1",
     "eslint": "^10.3.0",
     "eslint-plugin-security": "^4.0.0",

@@ -33,6 +33,7 @@ model User {
   passwordResetVersion    Int                         @default(0)
   sessionVersion          Int                         @default(0)
   organizationId          Int?
+  companyId               Int?
   accountStatus           UserStatus                  @default(ACTIVE)
   createdAt               DateTime                    @default(now())
   updatedAt               DateTime                    @updatedAt
@@ -74,6 +75,10 @@ model User {
   sellerProfile           SellerProfile?
   tenders                 Tender[]
   organization            Organization?               @relation(fields: [organizationId], references: [id])
+  company                 Company?                    @relation(fields: [companyId], references: [id])
+  roles                   UserRole[]                  @relation("UserRoleUser")
+  assignedUserRoles       UserRole[]                  @relation("UserRoleAssigner")
+  updatedCompanyFeatures  CompanyFeature[]            @relation("CompanyFeatureUpdater")
   sessions                UserSession[]
   sellerDocumentsVerified SellerDocument[]            @relation("SellerDocumentVerifiedBy")
   apiVerificationLogs     ApiVerificationLog[]
@@ -104,11 +109,45 @@ model User {
   paymentSettlementsApproved  PaymentSettlement[]     @relation("PaymentSettlementApprover")
   paymentSettlementsReleased  PaymentSettlement[]     @relation("PaymentSettlementReleaser")
   paymentSettlementsRejected  PaymentSettlement[]     @relation("PaymentSettlementRejecter")
+  orgMemberships              OrgMembership[]         @relation("OrgMembershipUser")
+  orgMembershipsInvited       OrgMembership[]         @relation("OrgMembershipInviter")
+  orgInvitationsSent          OrgInvitation[]         @relation("OrgInvitationInviter")
+  cartsCreated                Cart[]                  @relation("CartCreator")
+  cartsApproved               Cart[]                  @relation("CartApprover")
+  cartsRejected               Cart[]                  @relation("CartRejecter")
+  cartItemsAsSeller           CartItem[]              @relation("CartItemSeller")
+  cartItemsTechApproved       CartItem[]              @relation("CartItemTechApprover")
+  buyerRequirementsCreated    BuyerRequirement[]      @relation("BuyerRequirementCreator")
+  buyerRequirementsApproved   BuyerRequirement[]      @relation("BuyerRequirementApprover")
+  requirementResponses        RequirementResponse[]   @relation("RequirementResponseSeller")
+  procurementApprovalsDecided ProcurementApproval[]   @relation("ProcurementApprovalApprover")
+  grnsReceived                GoodsReceiptNote[]      @relation("GrnReceiver")
+  grnDocumentsUploaded        GrnDocument[]           @relation("GrnDocumentUploader")
+  procurementBidsCreated      ProcurementBid[]        @relation("ProcurementBidCreatedBy")
+  procurementBidsApproved     ProcurementBid[]        @relation("ProcurementBidApprovedBy")
+  procurementBidDocuments     ProcurementBidDocument[] @relation("ProcurementBidDocumentUploader")
+  procurementParticipations   ProcurementBidParticipation[] @relation("ProcurementBidParticipationSeller")
+  procurementParticipationDocuments ProcurementBidParticipationDocument[] @relation("ProcurementBidParticipationDocumentUploader")
+  procurementClarificationsAsSeller ProcurementBidClarification[] @relation("ProcurementBidClarificationSeller")
+  procurementClarificationsAsBuyer ProcurementBidClarification[] @relation("ProcurementBidClarificationBuyer")
+  procurementClarificationsRequested ProcurementBidClarification[] @relation("ProcurementBidClarificationRequestedBy")
+  procurementClarificationsResponded ProcurementBidClarification[] @relation("ProcurementBidClarificationRespondedBy")
+  procurementClarificationFiles ProcurementBidClarificationFile[] @relation("ProcurementBidClarificationFileUploader")
+  procurementEvaluations      ProcurementBidEvaluation[] @relation("ProcurementBidEvaluationEvaluator")
+  procurementAwardsAsSeller   ProcurementBidAward[]   @relation("ProcurementBidAwardSeller")
+  procurementAwardsGranted    ProcurementBidAward[]   @relation("ProcurementBidAwardedBy")
+  procurementAuditLogs        ProcurementAuditLog[]   @relation("ProcurementAuditUser")
 
   @@index([role, onboardingStatus])
+  @@index([role])
   @@index([mobile])
   @@index([organizationId])
+  @@index([companyId])
   @@index([accountStatus])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([onboardingStatus])
+  @@index([name])
 }
 
 model BuyerProfile {
@@ -273,6 +312,7 @@ model Organization {
   country                      String             @default("India")
   website                      String?
   organizationLogoFileId       Int?
+  companyId                    Int?
   annualTurnover               Decimal?           @db.Decimal(18, 2)
   employeeCount                Int?
   verificationStatus           VerificationStatus @default(PENDING)
@@ -283,6 +323,7 @@ model Organization {
   updatedAt                    DateTime           @updatedAt
   deletedAt                    DateTime?
   users                        User[]
+  company                      Company?           @relation(fields: [companyId], references: [id])
   buyerProfiles                BuyerProfile[]
   sellerProfiles               SellerProfile[]
   logoFile                     FileAsset?         @relation("OrganizationLogo", fields: [organizationLogoFileId], references: [id])
@@ -292,13 +333,205 @@ model Organization {
   services                     Service[]
   requirements                 Requirement[]
   tenders                      Tender[]
+  memberships                  OrgMembership[]
+  userRoles                    UserRole[]
+  invitations                  OrgInvitation[]
+  carts                        Cart[]
+  buyerRequirements            BuyerRequirement[]      @relation("BuyerRequirementOrganization")
+  requirementResponses         RequirementResponse[]   @relation("RequirementResponseOrganization")
+  guestCartItems               GuestCartItem[]
+  profile                      OrganizationProfile?
+  procurementApprovals         ProcurementApproval[]
+  grns                         GoodsReceiptNote[]
+  procurementBids              ProcurementBid[]        @relation("ProcurementBidOrganization")
 
+  @@index([organizationName])
+  @@index([organizationType])
   @@index([gstin])
   @@index([panNumber])
   @@index([udyamNumber])
   @@index([verificationStatus])
   @@index([isBlacklisted])
   @@index([organizationLogoFileId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([state])
+}
+
+model Company {
+  id                Int              @id @default(autoincrement())
+  name              String
+  shortName         String?
+  portalDisplayName String
+  logoUrl           String?
+  contactEmail      String?
+  contactPhone      String?
+  address           String?
+  district          String?
+  state             String?
+  themeSettings     Json?
+  homepageContent   String?
+  aboutContent      String?
+  footerContent     String?
+  grievanceContent  String?
+  procurementPolicy String?
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  users             User[]
+  organizations     Organization[]
+  roles             RbacRole[]
+  userRoles         UserRole[]
+  features          CompanyFeature[]
+  settings          CompanySetting[]
+  contentPages      ContentPage[]
+  auditLogs         AuditLog[]
+  buyerRequirements BuyerRequirement[]
+  guestCarts        GuestCart[]
+
+  @@index([name])
+  @@index([district, state])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([portalDisplayName])
+}
+
+model BuyerRequirement {
+  id                  Int                       @id @default(autoincrement())
+  companyId           Int?
+  buyerOrganizationId Int?
+  title               String
+  requirementType     BuyerRequirementType
+  categoryId          Int?
+  description         String
+  quantity            Decimal?                  @db.Decimal(18, 3)
+  unit                String?
+  location            String?
+  budgetMin           Decimal?                  @db.Decimal(18, 2)
+  budgetMax           Decimal?                  @db.Decimal(18, 2)
+  lastDate            DateTime
+  visibility          RequirementVisibility     @default(PUBLIC)
+  status              BuyerRequirementStatus    @default(DRAFT)
+  isFeatured          Boolean                   @default(false)
+  isUrgent            Boolean                   @default(false)
+  requiredDocuments   String[]                  @default([])
+  contactPerson       String?
+  attachmentUrl       String?
+  terms               String?
+  approvedById        Int?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  createdById         Int?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  company             Company?                  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  buyerOrganization   Organization?             @relation("BuyerRequirementOrganization", fields: [buyerOrganizationId], references: [id], onDelete: SetNull)
+  category            Category?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy           User?                     @relation("BuyerRequirementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy          User?                     @relation("BuyerRequirementApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  responses           RequirementResponse[]
+
+  @@index([companyId])
+  @@index([buyerOrganizationId])
+  @@index([categoryId])
+  @@index([status, lastDate])
+  @@index([status, createdAt])
+  @@index([status, isUrgent, lastDate])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([isFeatured])
+  @@index([isUrgent])
+  @@index([createdById])
+  @@index([approvedById])
+}
+
+model RequirementResponse {
+  id                   Int                       @id @default(autoincrement())
+  requirementId        Int
+  sellerOrganizationId Int?
+  sellerUserId         Int
+  offeredPrice         Decimal?                  @db.Decimal(18, 2)
+  offeredQuantity      Decimal?                  @db.Decimal(18, 3)
+  deliveryTimeline     String?
+  message              String
+  attachmentUrl        String?
+  terms                String?
+  status               RequirementResponseStatus @default(SUBMITTED)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  requirement          BuyerRequirement          @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  sellerOrganization   Organization?             @relation("RequirementResponseOrganization", fields: [sellerOrganizationId], references: [id], onDelete: SetNull)
+  sellerUser           User                      @relation("RequirementResponseSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
+
+  @@index([requirementId])
+  @@index([requirementId, createdAt])
+  @@index([requirementId, sellerUserId, status])
+  @@index([sellerOrganizationId])
+  @@index([sellerOrganizationId, createdAt])
+  @@index([sellerUserId])
+  @@index([sellerUserId, createdAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model GuestCart {
+  id        Int             @id @default(autoincrement())
+  cartToken String          @unique
+  companyId Int?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  company   Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  items     GuestCartItem[]
+
+  @@index([companyId])
+  @@index([updatedAt])
+}
+
+model GuestCartItem {
+  id                   Int           @id @default(autoincrement())
+  guestCartId          Int
+  itemType             CartItemType
+  productId            Int?
+  serviceId            Int?
+  quantity             Decimal       @db.Decimal(18, 3)
+  priceSnapshot        Decimal?      @db.Decimal(18, 2)
+  sellerOrganizationId Int?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  guestCart            GuestCart     @relation(fields: [guestCartId], references: [id], onDelete: Cascade)
+  product              Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service              Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  sellerOrganization   Organization? @relation(fields: [sellerOrganizationId], references: [id], onDelete: SetNull)
+
+  @@unique([guestCartId, itemType, productId, serviceId])
+  @@index([guestCartId])
+  @@index([productId])
+  @@index([serviceId])
+  @@index([sellerOrganizationId])
+}
+
+model OrganizationProfile {
+  id                 Int                @id @default(autoincrement())
+  organizationId     Int                @unique
+  organizationType   OrganizationType?
+  industryType       String?
+  logoUrl            String?
+  description        String?
+  isLargeIndustry    Boolean            @default(false)
+  isBigMsme          Boolean            @default(false)
+  isFeatured         Boolean            @default(false)
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([isLargeIndustry])
+  @@index([isBigMsme])
+  @@index([isFeatured])
+  @@index([verificationStatus])
 }
 
 model SellerOffice {
@@ -370,22 +603,33 @@ model RbacRole {
   code         String           @unique
   name         String
   description  String?
+  companyId    Int?
+  scope        RoleScope        @default(GLOBAL)
   isSystemRole Boolean          @default(true)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   permissions  RolePermission[]
+  company      Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users        UserRole[]
+
+  @@index([companyId])
+  @@index([scope])
 }
 
 model Permission {
   id          Int              @id @default(autoincrement())
   code        String           @unique
   module      String
+  action      String?
+  featureId   Int?
   description String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   roles       RolePermission[]
+  feature     Feature?         @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   @@index([module])
+  @@index([featureId])
 }
 
 model RolePermission {
@@ -399,6 +643,89 @@ model RolePermission {
   @@unique([roleId, permissionId])
   @@index([roleId])
   @@index([permissionId])
+}
+
+model UserRole {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  roleId       Int
+  companyId    Int?
+  organizationId Int?
+  assignedById Int?
+  assignedAt   DateTime  @default(now())
+  isActive     Boolean   @default(true)
+  user         User      @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role         RbacRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedBy   User?     @relation("UserRoleAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId, companyId, organizationId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model Feature {
+  id          Int              @id @default(autoincrement())
+  code        String           @unique
+  name        String
+  module      String
+  description String?
+  isSystem    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  companies   CompanyFeature[]
+  permissions Permission[]
+
+  @@index([module])
+  @@index([isSystem])
+}
+
+model CompanyFeature {
+  companyId Int
+  featureId Int
+  enabled   Boolean  @default(true)
+  updatedById Int?
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  updatedBy User?    @relation("CompanyFeatureUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@id([companyId, featureId])
+  @@index([featureId])
+  @@index([enabled])
+  @@index([updatedById])
+}
+
+model CompanySetting {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+  @@index([companyId])
+}
+
+model ContentPage {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  slug      String
+  title     String
+  body      String
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@index([isActive])
 }
 
 model SellerDocument {
@@ -441,6 +768,7 @@ model Category {
   products       Product[]
   services       Service[]
   requirements   Requirement[]
+  buyerRequirements BuyerRequirement[]
   tenders        Tender[]
 
   @@index([parentId])
@@ -462,6 +790,8 @@ model Product {
   modelNumber        String?
   unitOfMeasure      String?
   price              Decimal?               @db.Decimal(18, 2)
+  taxRate            Decimal?               @db.Decimal(5, 2) @default(0.00)
+  discount           Decimal?               @db.Decimal(5, 2) @default(0.00)
   currency           String                 @default("INR")
   status             ProductStatus          @default(DRAFT)
   isMsmeMade         Boolean                @default(false)
@@ -479,6 +809,8 @@ model Product {
   bidItems           BidItem[]
   purchaseOrderItems PurchaseOrderItem[]
   invoiceItems       InvoiceItem[]
+  cartItems          CartItem[]
+  guestCartItems     GuestCartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -524,6 +856,8 @@ model Service {
   description    String?
   pricingModel   PricingModel    @default(CUSTOM)
   basePrice      Decimal?        @db.Decimal(18, 2)
+  taxRate        Decimal?        @db.Decimal(5, 2) @default(0.00)
+  discount       Decimal?        @db.Decimal(5, 2) @default(0.00)
   currency       String          @default("INR")
   serviceArea    String?
   status         ProductStatus   @default(DRAFT)
@@ -533,6 +867,8 @@ model Service {
   organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   certifications Certification[]
+  cartItems      CartItem[]
+  guestCartItems GuestCartItem[]
 
   @@index([sellerId])
   @@index([organizationId])
@@ -708,6 +1044,7 @@ model Tender {
   @@index([statusEnum])
   @@index([awardedBidId])
   @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model Bid {
@@ -719,6 +1056,11 @@ model Bid {
 
   unitPrice         Float
   quantity          Int
+  taxRate           Float      @default(0)
+  discountAmount    Float      @default(0)
+  subtotal          Float      @default(0)
+  taxAmount         Float      @default(0)
+  totalAmount       Float      @default(0)
   deliveryDays      Int
   warranty          String?
   validTill         DateTime?
@@ -749,6 +1091,8 @@ model Bid {
   @@index([tenderId, status])
   @@index([bidNumber])
   @@index([statusEnum])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model TenderItem {
@@ -966,6 +1310,7 @@ model QuoteRequest {
   message        String
   documentUrl    String?
   estimatedValue Decimal?            @db.Decimal(18, 2)
+  deadlineDate   DateTime?
   status         String              @default("pending")
   statusEnum     QuoteRequestStatus?
   createdAt      DateTime            @default(now())
@@ -1038,12 +1383,25 @@ model AuctionBid {
 model AuditLog {
   id         Int      @id @default(autoincrement())
   userId     Int?
+  companyId  Int?
   action     String
   entityType String?
   entityId   Int?
   details    Json?
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
   User       User?    @relation(fields: [userId], references: [id])
+  company    Company? @relation(fields: [companyId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([entityId])
 }
 
 model ApiVerificationLog {
@@ -1199,6 +1557,7 @@ model FileAsset {
   certifications      Certification[]
   deliveryDocuments   DeliveryDocument[] @relation("DeliveryDocumentFile")
   deliveryStatusLogs  DeliveryStatusLog[] @relation("DeliveryStatusLogFile")
+  grnDocuments        GrnDocument[]
 
   @@index([ownerId])
   @@index([entityType, entityId])
@@ -1250,6 +1609,7 @@ model PurchaseOrder {
   invoices          Invoice[]
   payments          PaymentTransaction[]
   contract          Contract?            @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  grns              GoodsReceiptNote[]
 
   @@index([buyerId, status])
   @@index([sellerId, status])
@@ -1257,6 +1617,9 @@ model PurchaseOrder {
   @@index([poStatus])
   @@index([sourceType, sourceId])
   @@index([pdfFileId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([bidId])
 }
 
 model DeliveryWorkflow {
@@ -1333,6 +1696,8 @@ model DeliveryTracking {
   @@index([purchaseOrderId])
   @@index([status])
   @@index([logisticsPartnerId])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model DeliveryTrackingEvent {
@@ -1555,6 +1920,8 @@ model Invoice {
   @@index([buyerId, status])
   @@index([invoiceStatus])
   @@index([invoiceFileId])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model InvoiceItem {
@@ -1615,6 +1982,7 @@ model PaymentTransaction {
   paymentSettlements     PaymentSettlement[]    @relation("PaymentSettlementTransaction")
 
   @@index([gateway, status])
+  @@index([status])
   @@index([gatewayEnum])
   @@index([methodEnum])
   @@index([paymentStatus])
@@ -1623,6 +1991,11 @@ model PaymentTransaction {
   @@index([purchaseOrderId, status])
   @@index([payerId, status])
   @@index([payeeId, status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([amount])
+  @@index([currency])
+  @@index([gateway])
 }
 
 model PaymentWebhookEvent {
@@ -1692,8 +2065,10 @@ model EscrowAccount {
 
   @@index([buyerId, status])
   @@index([sellerId, status])
+  @@index([status])
   @@index([escrowStatus])
   @@index([purchaseOrderId])
+  @@index([createdAt])
 }
 
 model EscrowTransaction {
@@ -2059,6 +2434,379 @@ model GstCache {
   lastVerified           DateTime  @default(now())
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+}
+
+model ProcurementBid {
+  id                       Int                              @id @default(autoincrement())
+  bidNumber                String                           @unique
+  title                    String
+  description              String
+  buyerId                  Int
+  buyerOrganizationId      Int?
+  buyerOrganizationName    String
+  buyerType                String
+  category                 String
+  subCategory              String?
+  bidType                  String
+  procurementType          String?
+  quantity                 Decimal?                         @db.Decimal(18, 3)
+  unit                     String?
+  estimatedValue           Decimal?                         @db.Decimal(18, 2)
+  deliveryLocation         String
+  state                    String?
+  district                 String?
+  pincode                  String?
+  startDate                DateTime
+  endDate                  DateTime
+  technicalOpeningDate     DateTime?
+  financialOpeningDate     DateTime?
+  bidValidityDate          DateTime?
+  status                   ProcurementBidStatus             @default(DRAFT)
+  approvalStatus           ProcurementApprovalStatus         @default(DRAFT)
+  lifecycleStage           ProcurementLifecycleStage         @default(BID_PUBLISHED)
+  evaluationMethod         String                            @default("L1")
+  isEmdRequired            Boolean                           @default(false)
+  emdAmount                Decimal?                          @db.Decimal(18, 2)
+  documentFee              Decimal?                          @db.Decimal(18, 2)
+  allowClarification       Boolean                           @default(true)
+  allowReverseAuction      Boolean                           @default(false)
+  allowBoq                 Boolean                           @default(false)
+  termsAndConditions       String[]                          @default([])
+  eligibilityCriteria      String[]                          @default([])
+  requiredDocuments        String[]                          @default([])
+  approvedById             Int?
+  approvedAt               DateTime?
+  rejectedReason           String?
+  createdAt                DateTime                          @default(now())
+  updatedAt                DateTime                          @updatedAt
+
+  buyer                    User                              @relation("ProcurementBidCreatedBy", fields: [buyerId], references: [id], onDelete: Restrict)
+  buyerOrganization        Organization?                      @relation("ProcurementBidOrganization", fields: [buyerOrganizationId], references: [id])
+  approvedBy               User?                             @relation("ProcurementBidApprovedBy", fields: [approvedById], references: [id])
+  documents                ProcurementBidDocument[]
+  participations           ProcurementBidParticipation[]
+  clarifications           ProcurementBidClarification[]
+  evaluations              ProcurementBidEvaluation[]
+  awards                   ProcurementBidAward[]
+
+  @@index([status, approvalStatus])
+  @@index([buyerId, status])
+  @@index([buyerOrganizationId])
+  @@index([category])
+  @@index([district, state])
+  @@index([endDate])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([estimatedValue])
+  @@index([approvalStatus])
+  @@index([status])
+  @@index([buyerOrganizationName])
+  @@index([title])
+}
+
+model ProcurementBidDocument {
+  id             Int                           @id @default(autoincrement())
+  bidId          Int
+  documentType   String
+  fileAssetId    Int?
+  fileName       String
+  fileUrl        String?
+  fileKey        String?
+  mimeType       String
+  fileSize       Int
+  uploadedById   Int
+  visibility     ProcurementDocumentVisibility @default(BUYER_ADMIN_ONLY)
+  createdAt      DateTime                      @default(now())
+
+  bid            ProcurementBid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  uploadedBy     User                          @relation("ProcurementBidDocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([bidId, visibility])
+  @@index([uploadedById])
+}
+
+model ProcurementBidParticipation {
+  id                         Int                                  @id @default(autoincrement())
+  bidId                      Int
+  sellerId                   Int
+  participationNumber        String                               @unique
+  technicalStatus            ProcurementTechnicalStatus            @default(PENDING)
+  financialStatus            ProcurementFinancialStatus            @default(LOCKED)
+  finalStatus                ProcurementFinalStatus                @default(PENDING)
+  rank                       Int?
+  quotedAmount               Decimal?                             @db.Decimal(18, 2)
+  gstPercentage              Decimal?                             @db.Decimal(5, 2)
+  totalAmount                Decimal?                             @db.Decimal(18, 2)
+  makeBrand                  String?
+  model                      String?
+  offeredItemDescription     String?
+  submissionStatus           ProcurementSubmissionStatus           @default(DRAFT)
+  submittedAt                DateTime?
+  technicalSubmittedAt       DateTime?
+  financialSubmittedAt       DateTime?
+  isWithdrawn                Boolean                              @default(false)
+  withdrawnAt                DateTime?
+  rejectionReason            String?
+  createdAt                  DateTime                             @default(now())
+  updatedAt                  DateTime                             @updatedAt
+
+  bid                        ProcurementBid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  seller                     User                                 @relation("ProcurementBidParticipationSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  documents                  ProcurementBidParticipationDocument[]
+  clarifications             ProcurementBidClarification[]
+  evaluations                ProcurementBidEvaluation[]
+  awards                     ProcurementBidAward[]
+
+  @@unique([bidId, sellerId])
+  @@index([sellerId, submissionStatus])
+  @@index([bidId, technicalStatus, financialStatus])
+  @@index([submissionStatus])
+  @@index([submittedAt])
+}
+
+model ProcurementBidParticipationDocument {
+  id                Int                         @id @default(autoincrement())
+  participationId   Int
+  bidId             Int
+  sellerId          Int
+  documentCategory  ProcurementDocumentCategory
+  documentName      String
+  fileAssetId       Int?
+  fileName          String
+  fileUrl           String?
+  fileKey           String?
+  mimeType          String
+  fileSize          Int
+  documentStatus    ProcurementDocumentStatus   @default(UPLOADED)
+  uploadedAt        DateTime                    @default(now())
+
+  participation     ProcurementBidParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  seller            User                        @relation("ProcurementBidParticipationDocumentUploader", fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([participationId, documentCategory])
+  @@index([bidId, sellerId])
+}
+
+model ProcurementBidClarification {
+  id                  Int                           @id @default(autoincrement())
+  bidId               Int
+  participationId     Int
+  sellerId            Int
+  buyerId             Int
+  requestNumber       String                        @unique
+  clarificationType   String
+  question            String
+  response            String?
+  status              ProcurementClarificationStatus @default(PENDING)
+  requestedById       Int
+  respondedById       Int?
+  requestedAt         DateTime                      @default(now())
+  respondedAt         DateTime?
+  dueDate             DateTime?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  bid                 ProcurementBid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  participation       ProcurementBidParticipation   @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  seller              User                          @relation("ProcurementBidClarificationSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  buyer               User                          @relation("ProcurementBidClarificationBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  requestedBy         User                          @relation("ProcurementBidClarificationRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  respondedBy         User?                         @relation("ProcurementBidClarificationRespondedBy", fields: [respondedById], references: [id])
+  files               ProcurementBidClarificationFile[]
+
+  @@index([bidId, status])
+  @@index([participationId])
+  @@index([sellerId])
+}
+
+model ProcurementBidClarificationFile {
+  id              Int                         @id @default(autoincrement())
+  clarificationId Int
+  fileAssetId     Int?
+  fileName        String
+  fileUrl         String?
+  fileKey         String?
+  mimeType        String
+  fileSize        Int
+  uploadedById    Int
+  createdAt       DateTime                    @default(now())
+
+  clarification   ProcurementBidClarification @relation(fields: [clarificationId], references: [id], onDelete: Cascade)
+  uploadedBy      User                        @relation("ProcurementBidClarificationFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([clarificationId])
+  @@index([uploadedById])
+}
+
+model ProcurementBidEvaluation {
+  id              Int                         @id @default(autoincrement())
+  bidId           Int
+  participationId Int
+  sellerId        Int
+  evaluatorId     Int
+  evaluationType  ProcurementEvaluationType
+  status          String
+  remarks         String?
+  score           Decimal?                    @db.Decimal(8, 2)
+  evaluatedAt     DateTime                    @default(now())
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  bid             ProcurementBid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  participation   ProcurementBidParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  evaluator       User                        @relation("ProcurementBidEvaluationEvaluator", fields: [evaluatorId], references: [id], onDelete: Restrict)
+
+  @@index([bidId, evaluationType])
+  @@index([participationId, evaluationType])
+}
+
+model ProcurementBidAward {
+  id              Int                         @id @default(autoincrement())
+  bidId           Int
+  participationId Int
+  sellerId        Int
+  awardedAmount   Decimal                     @db.Decimal(18, 2)
+  awardStatus     ProcurementAwardStatus      @default(RECOMMENDED)
+  awardedById     Int
+  awardedAt       DateTime                    @default(now())
+  remarks         String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  bid             ProcurementBid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  participation   ProcurementBidParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  seller          User                        @relation("ProcurementBidAwardSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  awardedBy       User                        @relation("ProcurementBidAwardedBy", fields: [awardedById], references: [id], onDelete: Restrict)
+
+  @@unique([bidId, participationId])
+  @@index([sellerId])
+}
+
+model ProcurementAuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  role        String?
+  entityType  String
+  entityId    String
+  action      String
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation("ProcurementAuditUser", fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+enum ProcurementBidStatus {
+  DRAFT
+  PENDING_ADMIN_APPROVAL
+  APPROVED
+  OPEN
+  CLOSED
+  TECHNICAL_EVALUATION
+  FINANCIAL_EVALUATION
+  AWARDED
+  CANCELLED
+  EXPIRED
+}
+
+enum ProcurementApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProcurementLifecycleStage {
+  BID_PUBLISHED
+  SELLER_PARTICIPATION
+  TECHNICAL_EVALUATION
+  FINANCIAL_EVALUATION
+  L1_SELECTION
+  AWARDED
+}
+
+enum ProcurementDocumentVisibility {
+  PUBLIC
+  SELLER_AFTER_LOGIN
+  BUYER_ADMIN_ONLY
+}
+
+enum ProcurementTechnicalStatus {
+  PENDING
+  UNDER_REVIEW
+  QUALIFIED
+  DISQUALIFIED
+  CLARIFICATION_REQUIRED
+}
+
+enum ProcurementFinancialStatus {
+  LOCKED
+  NOT_OPENED
+  OPENED
+  EVALUATED
+}
+
+enum ProcurementFinalStatus {
+  PENDING
+  L1
+  L2
+  L3
+  AWARDED
+  NOT_SELECTED
+  REJECTED
+}
+
+enum ProcurementSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  WITHDRAWN
+}
+
+enum ProcurementDocumentCategory {
+  GST_CERTIFICATE
+  PAN_CARD
+  UDYAM_CERTIFICATE
+  COMPANY_REGISTRATION
+  TECHNICAL_COMPLIANCE
+  PRODUCT_CATALOGUE
+  EXPERIENCE_CERTIFICATE
+  FINANCIAL_QUOTE
+  PRICE_BREAKUP
+  AUTHORIZATION_LETTER
+  BANK_DETAILS
+  OTHER
+}
+
+enum ProcurementDocumentStatus {
+  UPLOADED
+  ACCEPTED
+  REJECTED
+}
+
+enum ProcurementClarificationStatus {
+  PENDING
+  RESPONDED
+  COMPLETED
+  REOPENED
+  REJECTED
+  EXPIRED
+}
+
+enum ProcurementEvaluationType {
+  TECHNICAL
+  FINANCIAL
+}
+
+enum ProcurementAwardStatus {
+  RECOMMENDED
+  ADMIN_APPROVED
+  REJECTED
 }
 
 enum UserStatus {
@@ -2505,9 +3253,282 @@ enum ComplianceRuleCode {
 }
 
 enum Role {
+  master_admin
   seller
   buyer
   admin
+}
+
+enum RoleScope {
+  GLOBAL
+  COMPANY
+  ORGANIZATION
+}
+
+enum BuyerRequirementType {
+  PRODUCT
+  SERVICE
+}
+
+enum RequirementVisibility {
+  PUBLIC
+  VERIFIED_SELLERS_ONLY
+}
+
+enum BuyerRequirementStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  OPEN
+  CLOSED
+  CANCELLED
+  AWARDED
+  REJECTED
+}
+
+enum RequirementResponseStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+}
+
+enum CartItemType {
+  PRODUCT
+  SERVICE
+}
+
+// ─── Intra-Organisation Roles ────────────────────────────────────────────────
+enum OrgRole {
+  ORG_ADMIN
+  PROCUREMENT_OFFICER
+  FINANCE_OFFICER
+  TECHNICAL_OFFICER
+  LOGISTICS_OFFICER
+  VIEWER
+}
+
+model OrgMembership {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  organizationId Int
+  orgRole        OrgRole      @default(VIEWER)
+  isActive       Boolean      @default(true)
+  invitedById    Int?
+  invitedAt      DateTime     @default(now())
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user           User         @relation("OrgMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User?        @relation("OrgMembershipInviter", fields: [invitedById], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, orgRole])
+  @@index([userId])
+  @@index([invitedById])
+}
+
+model OrgInvitation {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  email          String
+  orgRole        OrgRole
+  token          String       @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  invitedById    Int
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User         @relation("OrgInvitationInviter", fields: [invitedById], references: [id])
+
+  @@index([organizationId])
+  @@index([token])
+  @@index([email])
+}
+
+// ─── Cart System ─────────────────────────────────────────────────────────────
+enum CartStatus {
+  ACTIVE
+  SUBMITTED_FOR_APPROVAL
+  APPROVED
+  REJECTED
+  CONVERTED_TO_ORDER
+  ABANDONED
+}
+
+model Cart {
+  id             Int        @id @default(autoincrement())
+  organizationId Int
+  createdById    Int
+  status         CartStatus @default(ACTIVE)
+  notes          String?
+  approvedById   Int?
+  approvedAt     DateTime?
+  rejectedById   Int?
+  rejectedAt     DateTime?
+  rejectionNote  String?
+  convertedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User         @relation("CartCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy     User?        @relation("CartApprover", fields: [approvedById], references: [id])
+  rejectedBy     User?        @relation("CartRejecter", fields: [rejectedById], references: [id])
+  items          CartItem[]
+
+  @@index([organizationId, status])
+  @@index([createdById])
+  @@index([approvedById])
+  @@index([rejectedById])
+}
+
+model CartItem {
+  id                    Int      @id @default(autoincrement())
+  cartId                Int
+  productId             Int?
+  serviceId             Int?
+  sellerId              Int
+  itemName              String
+  quantity              Decimal  @db.Decimal(18, 3)
+  unitOfMeasure         String
+  unitPrice             Decimal  @db.Decimal(18, 2)
+  currency              String   @default("INR")
+  technicalApproved     Boolean?
+  technicalApprovedById Int?
+  technicalNote         String?
+  technicalDecidedAt    DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  cart                  Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product               Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service               Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  seller                User     @relation("CartItemSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  technicalApprovedBy   User?    @relation("CartItemTechApprover", fields: [technicalApprovedById], references: [id])
+
+  @@index([cartId])
+  @@index([productId])
+  @@index([serviceId])
+  @@index([sellerId])
+  @@index([technicalApprovedById])
+}
+
+// ─── Multi-Level Procurement Approval Workflow ───────────────────────────────
+enum ApprovalStage {
+  DEPARTMENT_HEAD
+  FINANCE_DEPT
+  PROCUREMENT_HEAD
+}
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT_FOR_CLARIFICATION
+}
+
+model ProcurementApproval {
+  id                Int              @id @default(autoincrement())
+  entityType        String           // 'tender' | 'purchase_order' | 'cart' | 'direct_purchase'
+  entityId          Int
+  organizationId    Int
+  stage             ApprovalStage
+  sequence          Int              // 1, 2, 3 — order in the chain
+  decision          ApprovalDecision @default(PENDING)
+  approverId        Int?
+  remarks           String?
+  clarificationNote String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  approver          User?            @relation("ProcurementApprovalApprover", fields: [approverId], references: [id])
+
+  @@unique([entityType, entityId, stage])
+  @@index([entityType, entityId])
+  @@index([organizationId, stage, decision])
+  @@index([approverId])
+}
+
+// ─── Goods Receipt Note (GRN) ────────────────────────────────────────────────
+enum GrnStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PARTIAL
+}
+
+model GoodsReceiptNote {
+  id              Int       @id @default(autoincrement())
+  grnNumber       String    @unique
+  purchaseOrderId Int
+  receivedById    Int
+  organizationId  Int
+  status          GrnStatus @default(DRAFT)
+  receivedAt      DateTime  @default(now())
+  remarks         String?
+  inspectionNote  String?
+  approvedById    Int?
+  approvedAt      DateTime?
+  rejectedById    Int?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  receivedBy      User          @relation("GrnReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items           GrnItem[]
+  documents       GrnDocument[]
+
+  @@index([purchaseOrderId])
+  @@index([organizationId, status])
+  @@index([receivedById])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model GrnItem {
+  id                  Int              @id @default(autoincrement())
+  grnId               Int
+  purchaseOrderItemId Int?
+  itemName            String
+  orderedQty          Decimal          @db.Decimal(18, 3)
+  receivedQty         Decimal          @db.Decimal(18, 3)
+  acceptedQty         Decimal          @db.Decimal(18, 3)
+  rejectedQty         Decimal          @db.Decimal(18, 3)
+  rejectionReason     String?
+  unitOfMeasure       String
+  createdAt           DateTime         @default(now())
+
+  grn                 GoodsReceiptNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+
+  @@index([grnId])
+}
+
+model GrnDocument {
+  id           Int              @id @default(autoincrement())
+  grnId        Int
+  fileAssetId  Int
+  documentType String
+  uploadedById Int
+  createdAt    DateTime         @default(now())
+
+  grn          GoodsReceiptNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset        @relation(fields: [fileAssetId], references: [id])
+  uploadedBy   User             @relation("GrnDocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([grnId])
+  @@index([fileAssetId])
+  @@index([uploadedById])
 }
 
 enum RegistrationStatus {
@@ -2622,4 +3643,51 @@ enum DeliveryTypeEnum {
   URGENT_DELIVERY
   PARTIAL_DELIVERY
   PROJECT_DELIVERY
+}
+
+// ─── Marketplace Public Portal Models ────────────────────────────────────────
+
+model MarketplaceBanner {
+  id           Int      @id @default(autoincrement())
+  companyId    Int?
+  title        String
+  subtitle     String?
+  imageUrl     String?
+  ctaText      String?
+  ctaLink      String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, displayOrder])
+  @@index([companyId])
+}
+
+model MarketplaceNotice {
+  id          Int       @id @default(autoincrement())
+  companyId   Int?
+  title       String
+  description String?
+  type        String    @default("general")
+  isActive    Boolean   @default(true)
+  publishedAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, publishedAt])
+  @@index([companyId])
+  @@index([type])
+}
+
+model MarketplaceSetting {
+  id        Int      @id @default(autoincrement())
+  companyId Int?
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, key])
+  @@index([companyId])
 }

@@ -1,4 +1,4 @@
-export type QuoteRequestStatus = 'pending' | 'responded' | 'closed' | 'cancelled' | string;
+export type QuoteRequestStatus = 'pending' | 'responded' | 'accepted' | 'rejected' | 'closed' | 'cancelled' | string;
 export type QuoteResponseStatus = 'DRAFT' | 'SUBMITTED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
 
 export interface QuoteResponseDto {

@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import {
     useCreateQuoteRequest,
     useDeleteQuoteRequest,
+    useDecideQuoteResponse,
     useQuoteRequest,
     useQuoteRequests,
     useSubmitQuoteResponse,
@@ -34,6 +35,8 @@ import type { QuoteRequestDto, QuoteRequestStatus } from '../types';
 const STATUS_TONE: Record<string, string> = {
     pending: 'border-amber-200 bg-amber-50 text-amber-700',
     responded: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    accepted: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    rejected: 'border-red-200 bg-red-50 text-red-700',
     closed: 'border-slate-200 bg-slate-100 text-slate-500',
     cancelled: 'border-red-200 bg-red-50 text-red-700'
 };
@@ -110,6 +113,8 @@ export default function RfqPage() {
                         options: [
                             { value: 'pending', label: 'Pending' },
                             { value: 'responded', label: 'Responded' },
+                            { value: 'accepted', label: 'Accepted' },
+                            { value: 'rejected', label: 'Rejected' },
                             { value: 'closed', label: 'Closed' },
                             { value: 'cancelled', label: 'Cancelled' }
                         ]
@@ -256,7 +261,7 @@ export default function RfqPage() {
                 </Card>
             )}
 
-            {openId !== null && <RfqDetail id={openId} isSeller={!!isSeller} onClose={() => setOpenId(null)} />}
+            {openId !== null && <RfqDetail id={openId} isBuyer={!!isBuyer} isSeller={!!isSeller} onClose={() => setOpenId(null)} />}
             {creating && isBuyer && <RfqCreator onClose={() => setCreating(false)} />}
         </div>
     );
@@ -264,9 +269,10 @@ export default function RfqPage() {
 
 /* ---------- Detail with response form (sellers) and comparison (buyers) ---------- */
 
-function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; onClose: () => void }) {
+function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: boolean; isSeller: boolean; onClose: () => void }) {
     const detail = useQuoteRequest(id);
     const submitResp = useSubmitQuoteResponse();
+    const decideResp = useDecideQuoteResponse();
     const rfq = detail.data;
 
     const [unitPrice, setUnitPrice] = useState('');
@@ -322,6 +328,22 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
     };
 
     const myResponse = useMemo(() => rfq?.quoteResponses?.find(r => r.status !== 'WITHDRAWN'), [rfq]);
+    const hasDecidableResponse = (responseStatus?: string) => ['SUBMITTED', 'DRAFT'].includes(String(responseStatus || '').toUpperCase());
+
+    const decideResponse = async (responseId: number, decision: 'accept' | 'reject') => {
+        if (!rfq) return;
+        const action = decision === 'accept' ? 'accept this RFQ response and generate a purchase order' : 'reject this RFQ response';
+        if (!window.confirm(`Are you sure you want to ${action}?`)) return;
+        await runWithToast(
+            () => decideResp.mutateAsync({ id: responseId, decision, title: rfq.subject }),
+            {
+                loading: decision === 'accept' ? 'Accepting response and generating PO...' : 'Rejecting response...',
+                success: decision === 'accept' ? 'RFQ response accepted and PO generated' : 'RFQ response rejected',
+                error: decision === 'accept' ? 'Accept failed' : 'Reject failed'
+            }
+        );
+        detail.refetch();
+    };
 
     return (
         <Modal title={rfq ? `RFQ-${String(rfq.id).padStart(5, '0')}` : 'RFQ'} onClose={onClose} wide>
@@ -424,6 +446,7 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
                                             <th className="px-3 py-2 text-left w-32">Valid Till</th>
                                             <th className="px-3 py-2 text-left w-28">Status</th>
                                             <th className="px-3 py-2 text-left w-44">Submitted</th>
+                                            {isBuyer && <th className="px-3 py-2 text-right w-40">Buyer Action</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -532,6 +555,34 @@ function RfqDetail({ id, isSeller, onClose }: { id: number; isSeller: boolean; o
                                                     </Badge>
                                                 </td>
                                                 <td className="px-3 py-2 text-xs font-semibold text-slate-700">{formatDateTime(r.createdAt)}</td>
+                                                {isBuyer && (
+                                                    <td className="px-3 py-2 text-right">
+                                                        {hasDecidableResponse(r.status) && rfq.status === 'responded' ? (
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => decideResponse(r.id, 'reject')}
+                                                                    disabled={decideResp.isPending}
+                                                                    className="inline-flex h-8 items-center rounded-md border border-red-200 bg-white px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                                >
+                                                                    <X className="mr-1 h-3.5 w-3.5" /> Reject
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => decideResponse(r.id, 'accept')}
+                                                                    disabled={decideResp.isPending}
+                                                                    className="inline-flex h-8 items-center rounded-md border border-emerald-200 bg-emerald-600 px-2 text-[10px] font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                                >
+                                                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Accept & PO
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="inline-flex h-7 items-center rounded border border-slate-200 bg-slate-50 px-2 text-[10px] font-black uppercase text-slate-500">
+                                                                {String(r.status).toUpperCase() === 'ACCEPTED' ? 'PO generated' : String(r.status).toUpperCase() === 'REJECTED' ? 'Rejected' : 'No action'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>

@@ -199,7 +199,7 @@ function RoleAwareActionCards() {
             priority: false
         },
         {
-            label: 'Open RFQs',
+            label: 'RFQs',
             count: data.myRfqsCount || 0,
             href: '/buyer/rfq',
             icon: Send,

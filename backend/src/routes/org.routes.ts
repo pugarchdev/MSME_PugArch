@@ -213,7 +213,8 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
             sellerActivePOs,
             sellerCatalogueItems,
             sellerPendingInvoices,
-            sellerQuotations
+            sellerTenderQuotations,
+            sellerReceivedRfqs
         ] = await Promise.all([
             // cart item count
             orgId
@@ -305,6 +306,9 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 ? prisma.bid.count({
                     where: { sellerId: userIdNum, status: { not: 'withdrawn' as any } }
                 }).catch(() => 0)
+                : Promise.resolve(0),
+            isSeller
+                ? prisma.quoteRequest.count({ where: { sellerId: userIdNum } }).catch(() => 0)
                 : Promise.resolve(0)
         ]);
 
@@ -325,7 +329,7 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
             sellerActivePOsCount: sellerActivePOs,
             sellerCatalogueItemsCount: sellerCatalogueItems,
             sellerPendingInvoicesCount: sellerPendingInvoices,
-            sellerQuotationsCount: sellerQuotations,
+            sellerQuotationsCount: sellerTenderQuotations + sellerReceivedRfqs,
             orgRole
         };
     }, 1800);

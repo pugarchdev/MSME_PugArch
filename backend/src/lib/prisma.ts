@@ -5,7 +5,7 @@ import { invalidateByPattern } from '../services/cache.service.js';
 const AFFECTED_MODELS = new Set([
   'cart', 'cartitem', 'procurementapproval', 'goodsreceiptnote', 
   'tender', 'purchaseorder', 'invoice', 'quoterequest', 'bid', 
-  'deliverytracking', 'product', 'service', 'user', 'orgmembership'
+  'deliverytracking', 'product', 'service', 'user', 'orgmembership', 'quoteresponse'
 ]);
 
 const prismaClientSingleton = () => {

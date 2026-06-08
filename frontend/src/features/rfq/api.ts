@@ -35,6 +35,12 @@ export const updateQuoteRequest = (id: number, payload: Partial<NewQuoteRequestP
 export const submitQuoteResponse = (quoteRequestId: number, payload: NewQuoteResponsePayload) =>
     postApi<QuoteResponseDto>(`/api/quote-requests/${quoteRequestId}/responses`, payload);
 
+export const decideQuoteResponse = (quoteResponseId: number, decision: 'accept' | 'reject', payload: { title?: string } = {}) =>
+    postApi<{ quoteResponse?: QuoteResponseDto; purchaseOrder?: unknown; reused?: boolean } | QuoteResponseDto>(
+        `/api/quote-responses/${quoteResponseId}/${decision}`,
+        payload
+    );
+
 export const deleteQuoteRequest = (id: number) =>
     deleteApi<{ success: boolean }>(`/api/quote-requests/${id}`);
 

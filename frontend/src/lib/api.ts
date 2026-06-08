@@ -182,6 +182,11 @@ const invalidatePrefixFor = (endpoint: string) => {
   if (cleanPrefix.startsWith('/api/marketplace/guest-cart')) {
     prefixesToInvalidate.add('/api/marketplace/guest-cart');
   }
+  if (cleanPrefix.startsWith('/api/quote-requests') || cleanPrefix.startsWith('/api/quote-responses')) {
+    prefixesToInvalidate.add('/api/quote-requests');
+    prefixesToInvalidate.add('/api/quote-responses');
+    prefixesToInvalidate.add('/api/dashboard/summary');
+  }
 
   for (const pref of prefixesToInvalidate) {
     clearApiCache(pref);

@@ -5,6 +5,7 @@ import {
     fetchQuoteRequestById,
     fetchQuoteRequests,
     submitQuoteResponse,
+    decideQuoteResponse,
     updateQuoteRequest,
     fetchVendors,
     fetchVendorCatalogue
@@ -26,13 +27,16 @@ export const useQuoteRequest = (id: number | undefined) =>
         enabled: !!id && id > 0
     });
 
-const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: KEY });
+const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
+    void qc.invalidateQueries({ queryKey: KEY });
+    void qc.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
+};
 
 export const useCreateQuoteRequest = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (payload: NewQuoteRequestPayload) => createQuoteRequest(payload),
-        onSuccess: () => { void invalidate(qc); }
+        onSuccess: () => { invalidate(qc); }
     });
 };
 
@@ -41,7 +45,7 @@ export const useUpdateQuoteRequest = () => {
     return useMutation({
         mutationFn: ({ id, data }: { id: number; data: Partial<NewQuoteRequestPayload> & { status?: string } }) =>
             updateQuoteRequest(id, data),
-        onSuccess: () => { void invalidate(qc); }
+        onSuccess: () => { invalidate(qc); }
     });
 };
 
@@ -49,14 +53,23 @@ export const useSubmitQuoteResponse = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: ({ id, data }: { id: number; data: NewQuoteResponsePayload }) => submitQuoteResponse(id, data),
-        onSuccess: () => { void invalidate(qc); }
+        onSuccess: () => { invalidate(qc); }
     });
 };
+export const useDecideQuoteResponse = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, decision, title }: { id: number; decision: 'accept' | 'reject'; title?: string }) =>
+            decideQuoteResponse(id, decision, title ? { title } : {}),
+        onSuccess: () => { invalidate(qc); }
+    });
+};
+
 export const useDeleteQuoteRequest = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (id: number) => deleteQuoteRequest(id),
-        onSuccess: () => { void invalidate(qc); }
+        onSuccess: () => { invalidate(qc); }
     });
 };
 

@@ -40,6 +40,7 @@ import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 import { compressImage } from '../lib/compress';
 import { GstTaxPicker } from '../features/shared/gstTax';
+import { useQueryClient } from '@tanstack/react-query';
 
 type BidStatus = 'pending' | 'submitted' | 'technical_qualified' | 'technical_rejected' | 'financial_evaluated' | 'accepted' | 'rejected' | 'withdrawn' | 'draft' | 'modified';
 
@@ -514,6 +515,7 @@ function BidEditModal({
 
 export default function Quotations() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
@@ -728,6 +730,16 @@ export default function Quotations() {
         throw new Error(data?.message || 'Update failed');
       }
       toast.success(`Quotation ${status === 'accepted' ? 'accepted' : 'rejected'} successfully`);
+      if (status === 'accepted') {
+        // Clear both caching layers so the PO page shows fresh data:
+        // 1. Low-level fetch cache (api.ts in-memory Map)
+        api.invalidate('/api/purchase-orders');
+        // 2. React Query cache
+        queryClient.invalidateQueries({ predicate: (query) => {
+          const key = query.queryKey[1];
+          return typeof key === 'string' && key.includes('/api/purchase-orders');
+        }});
+      }
       fetchBuyerBids();
     } catch (err: any) {
       toast.error(err?.message || 'Network error');

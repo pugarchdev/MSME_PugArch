@@ -78,12 +78,12 @@ async function main() {
     console.log(`Detected backend running on port: ${backendPort}`);
     console.log(`Starting Next.js dev server on port ${port}...`);
 
-    // Next.js executable is in node_modules/.bin/next
-    const nextPath = path.resolve(__dirname, '../frontend/node_modules/.bin/next');
-    const child = spawn(nextPath, ['dev', '-p', String(port)], {
+    // Next.js executable is in node_modules/next/dist/bin/next
+    const nextPath = path.resolve(__dirname, '../node_modules/next/dist/bin/next');
+    const child = spawn('node', [nextPath, 'dev', '-p', String(port)], {
       cwd: path.resolve(__dirname, '../frontend'),
       stdio: 'inherit',
-      shell: true,
+      shell: false,
       env: {
         ...process.env,
         NEXT_PUBLIC_BACKEND_PORT: String(backendPort)

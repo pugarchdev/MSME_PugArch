@@ -18,7 +18,13 @@ import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
 const readableStatus = (value?: string) => String(value || 'generated').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'delivered', 'invoice_submitted'];
+const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'invoice_submitted'];
+const purchaseOrderStatusParam = (tab: 'Open' | 'Delivered' | 'Cancelled' | 'All') => {
+  if (tab === 'Delivered') return 'delivered';
+  if (tab === 'Cancelled') return 'cancelled';
+  return undefined;
+};
+const isOpenPurchaseOrder = (order: PurchaseOrderDto) => openStatuses.includes(String(order.status || 'generated').toLowerCase());
 
 export default function PurchaseOrders() {
   const { user } = useAuth();
@@ -57,20 +63,39 @@ export default function PurchaseOrders() {
   } = usePaginatedFeatureQuery<PurchaseOrderDto>(
     '/api/purchase-orders',
     {
-      search: debouncedSearch,
-      status: activeTab,
+      q: debouncedSearch,
+      status: purchaseOrderStatusParam(activeTab),
       sortBy
     },
     10
   );
 
-  const { data: summaryData } = useFeatureQuery<{ totalSpend: number; deliveredCount: number; openCount: number } | null>(
-    '/api/purchase-orders/summary',
-    null
+  const { data: allOrders, reload: reloadAllOrders } = useFeatureQuery<PurchaseOrderDto[]>(
+    '/api/purchase-orders?take=500',
+    []
   );
-  const totalSpend = summaryData?.totalSpend ?? 0;
-  const deliveredCount = summaryData?.deliveredCount ?? 0;
-  const openCount = summaryData?.openCount ?? 0;
+
+  const visibleOrders = useMemo(() => {
+    if (activeTab === 'Open') return pagedOrders.filter(isOpenPurchaseOrder);
+    return pagedOrders;
+  }, [activeTab, pagedOrders]);
+
+  const totalSpend = useMemo(
+    () => allOrders.reduce((sum, order) => sum + Number(order.amount || order.totalValue || 0), 0),
+    [allOrders]
+  );
+  const deliveredCount = useMemo(
+    () => allOrders.filter(order => String(order.status || '').toLowerCase() === 'delivered').length,
+    [allOrders]
+  );
+  const openCount = useMemo(
+    () => allOrders.filter(isOpenPurchaseOrder).length,
+    [allOrders]
+  );
+
+  const refreshPurchaseOrders = async () => {
+    await Promise.all([reload(), reloadAllOrders()]);
+  };
 
   const handleConvertToInvoice = (order: PurchaseOrderDto) => {
     const amountVal = order.amount || order.totalValue || 0;
@@ -231,7 +256,7 @@ export default function PurchaseOrders() {
           <h1 className="text-2xl font-black tracking-tight text-slate-950">Purchase Orders</h1>
           <p className="mt-1 text-xs font-semibold text-slate-500">Live PO register from backend procurement workflows.</p>
         </div>
-        <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
+        <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -284,10 +309,10 @@ export default function PurchaseOrders() {
         </CardContent>
       </Card>
 
-      {pagedOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
+      {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {pagedOrders.map(order => (
+            {visibleOrders.map(order => (
               <Card key={order.id} className="border-slate-200 bg-white shadow-sm">
                 <CardContent className="space-y-4 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -338,7 +363,7 @@ export default function PurchaseOrders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pagedOrders.map((order, index) => {
+                {visibleOrders.map((order, index) => {
                   const rowIndex = (page - 1) * pageSize + index + 1;
                   return (
                     <tr key={order.id} className="hover:bg-slate-50">

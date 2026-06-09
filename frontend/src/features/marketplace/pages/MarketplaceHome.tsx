@@ -22,6 +22,7 @@ import { ServiceRow } from '../components/ServiceRow';
 // ── Ecosystem & bids
 import { IndustryNetwork } from '../components/IndustryNetwork';
 import { LatestBids } from '../components/LatestBids';
+import { BuyerRequirementBrowser } from '../components/BuyerRequirementBrowser';
 
 // ── Sellers
 import { SellerStrip } from '../components/SellerStrip';
@@ -82,7 +83,10 @@ export default function MarketplaceHome() {
                 {/* 7. Industry & supplier network */}
                 {/* <IndustryNetwork /> */}
 
-                {/* 8. Latest bids & buyer requirements (NEW) */}
+                {/* 8. Buyer-wise requirement browser */}
+                <BuyerRequirementBrowser buyers={data?.largeIndustries || []} requirements={data?.featuredRequirements || []} />
+
+                {/* 9. Latest bids & buyer requirements */}
                 <LatestBids requirements={data?.featuredRequirements} tenders={data?.latestTenders} bids={data?.latestBids} loading={isLoading && !data} />
 
                 {/* 9. Verified seller strip */}

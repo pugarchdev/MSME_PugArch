@@ -66,7 +66,7 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
                     <ChevronLeft className="h-4 w-4 text-slate-600" />
                 </button>
 
-                <div ref={scrollRef} className="flex gap-0 overflow-x-auto no-scrollbar">
+                <div ref={scrollRef} className="flex gap-0 overflow-x-auto pb-3 [scrollbar-width:thin]">
                     {products.map(p => <ProductCard key={p.id} product={p} />)}
 
                     {/* View All tile */}

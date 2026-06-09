@@ -96,6 +96,7 @@ export interface BuyerRequirement {
         district?: string;
         state?: string;
         verificationStatus: string;
+        logoUrl?: string | null;
         profile?: any;
     };
     _count?: { responses: number };
@@ -153,6 +154,7 @@ export interface MarketplaceBid {
         district?: string;
         state?: string;
         verificationStatus: string;
+        logoUrl?: string | null;
     } | null;
 }
 
@@ -164,6 +166,7 @@ export interface MarketplaceOrganization {
     district?: string;
     state?: string;
     verificationStatus: string;
+    logoUrl?: string | null;
     profile?: any;
     _count?: Record<string, number>;
 }

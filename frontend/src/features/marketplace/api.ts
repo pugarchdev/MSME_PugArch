@@ -215,7 +215,7 @@ export const getGuestCartToken = () => {
 
 export const marketplaceApi = {
     getHomeData: async (): Promise<MarketplaceHomeData> => {
-        const res = await api.get('/api/marketplace/home', { headers: headers() });
+        const res = await api.get('/api/marketplace/home', { headers: headers(), skipCache: true });
         const body = await readJsonResponse(res);
         return unwrapApiData(body);
     },
@@ -248,7 +248,7 @@ export const marketplaceApi = {
 
     getRequirements: async (params: Record<string, string | number> = {}) => {
         const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString();
-        const res = await api.get(`/api/marketplace/requirements?${qs}`, { headers: headers() });
+        const res = await api.get(`/api/marketplace/requirements?${qs}`, { headers: headers(), skipCache: true });
         const body = await readJsonResponse(res);
         return unwrapApiData(body);
     },

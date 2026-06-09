@@ -159,7 +159,7 @@ export default function SellerTenders() {
 
   const fetchPublicTenders = async () => {
     try {
-      const res = await api.get(PUBLIC_TENDERS_ENDPOINT, authOptions);
+      const res = await api.get(PUBLIC_TENDERS_ENDPOINT, { ...authOptions, skipCache: true });
       if (res.ok) {
         const data = await res.json();
         setTenders(data);
@@ -792,7 +792,7 @@ export default function SellerTenders() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-blue-900/60 backdrop-blur-sm animate-in fade-in duration-300"
-            onClick={() => setSelectedTenderForDetails(null)}
+            onClick={closeTenderDetails}
           />
           <div className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-300">
             {/* Modal Header */}
@@ -804,7 +804,7 @@ export default function SellerTenders() {
                 </h3>
               </div>
               <button
-                onClick={() => setSelectedTenderForDetails(null)}
+                onClick={closeTenderDetails}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10"
               >
                 <X className="h-4 w-4" />
@@ -950,7 +950,7 @@ export default function SellerTenders() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setSelectedTenderForDetails(null)}
+                onClick={closeTenderDetails}
                 className="h-9 px-4 rounded-md font-bold uppercase text-[10px] tracking-widest text-slate-500 hover:text-slate-900"
               >
                 Close

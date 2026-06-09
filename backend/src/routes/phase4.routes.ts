@@ -1145,6 +1145,56 @@ router.post('/onboarding/upload-document', authenticate, upload.single('file'), 
   ok(res, { asset, document }, 201);
 }));
 
+
+const getPublicTenderDocument = async (fileId: number) => db.tenderDocument.findFirst({
+  where: {
+    fileAssetId: fileId,
+    isPublic: true,
+    tender: { status: { in: ['published', 'bid_submission'] } }
+  },
+  include: { tender: { select: { buyerId: true } } }
+});
+
+router.get('/public/files/:id/view', asyncRoute(async (req: AuthRequest, res) => {
+  const { id } = parse(idParams, req.params);
+  const publicDoc = await getPublicTenderDocument(id);
+  if (!publicDoc) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
+
+  const file = await getFileContent(id, { id: publicDoc.tender.buyerId, role: 'buyer' }, {
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
+  const filename = encodeURIComponent(file.asset.originalName || 'document');
+
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Length', file.buffer.length);
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"; filename*=UTF-8''${filename}`);
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  return res.end(file.buffer);
+}));
+
+router.get('/public/files/:id/signed-url', asyncRoute(async (req: AuthRequest, res) => {
+  const { id } = parse(idParams, req.params);
+  const publicDoc = await getPublicTenderDocument(id);
+  if (!publicDoc) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
+
+  const file = await getSignedUrl(id, { id: publicDoc.tender.buyerId, role: 'buyer' }, {
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
+
+  ok(res, {
+    signedUrl: file.signedUrl,
+    expiresInSeconds: file.expiresInSeconds,
+    file: {
+      id: file.asset.id,
+      originalName: file.asset.originalName,
+      mimeType: file.asset.mimeType,
+      size: file.asset.size
+    }
+  });
+}));
+
 router.get('/files/:id/view', authenticate, asyncRoute(async (req: AuthRequest, res) => {
   const { id } = parse(idParams, req.params);
   if (!req.user) throw new ApiError(401, 'Authentication required', 'AUTH_REQUIRED');

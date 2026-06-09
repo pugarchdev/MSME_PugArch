@@ -298,7 +298,7 @@ export const api = {
     }).catch(networkErrorResponse);
   },
 
-  get: (endpoint: string, options: RequestInit = {}) =>
+  get: (endpoint: string, options: RequestInit & { skipCache?: boolean } = {}) =>
     api.fetch(endpoint, { ...options, method: 'GET' }),
 
   post: (endpoint: string, body: any, options: RequestInit = {}) =>

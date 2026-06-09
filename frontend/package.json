@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "node ../tools/dev-port-picker.js",
+    "dev": "node ../tools/dev-port-picker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",

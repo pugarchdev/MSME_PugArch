@@ -22,7 +22,7 @@ import {
 import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Pagination } from '../features/shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
@@ -102,6 +102,7 @@ const storePublicTenders = (rows: PublicTender[]) => {
 export default function SellerTenders() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
+  const pathname = usePathname() || '/seller/tenders';
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
   const cachedTenders = api.peek(PUBLIC_TENDERS_ENDPOINT, authOptions) || api.peek('/api/tenders/public', authOptions) || readStoredPublicTenders();
   const [tenders, setTenders] = useState<PublicTender[]>(cachedTenders || []);
@@ -154,6 +155,17 @@ export default function SellerTenders() {
   const handlePreviewTenderDocument = async (tender: PublicTender, event?: React.MouseEvent) => {
     if (tender.documentUrl) {
       await handlePreviewDocument(tender.documentUrl, `${tender.tenderId} Specifications`, event);
+    }
+  };
+
+  const closeTenderDetails = () => {
+    setSelectedTenderForDetails(null);
+
+    if (requestedTenderId) {
+      const nextParams = new URLSearchParams(searchParams?.toString());
+      nextParams.delete('tender');
+      const nextQuery = nextParams.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
     }
   };
 

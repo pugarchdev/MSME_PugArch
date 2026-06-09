@@ -9,7 +9,9 @@ import {
     Clock,
     Eye,
     Flame,
+    Grid2X2,
     Landmark,
+    List,
     MapPin,
     Package,
     Send,
@@ -192,17 +194,40 @@ function money(value?: number | string | null) {
 }
 
 function HomeSection({ title, href, empty, children }: { title: string; href: string; empty: string; children: React.ReactNode }) {
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const list = React.Children.toArray(children).filter(Boolean);
+    const layoutClass = viewMode === 'grid' ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3' : 'grid gap-3';
+
     return (
         <div>
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">{title}</h3>
-                <Link href={href} className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0b2447] hover:underline">
-                    View all <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1" aria-label={`${title} display mode`}>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('grid')}
+                            aria-pressed={viewMode === 'grid'}
+                            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-bold transition ${viewMode === 'grid' ? 'bg-[#0b2447] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <Grid2X2 className="h-3.5 w-3.5" /> Grid
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('list')}
+                            aria-pressed={viewMode === 'list'}
+                            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-bold transition ${viewMode === 'list' ? 'bg-[#0b2447] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <List className="h-3.5 w-3.5" /> List
+                        </button>
+                    </div>
+                    <Link href={href} className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-[#0b2447] hover:bg-slate-50">
+                        View all <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                </div>
             </div>
             {list.length ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{list}</div>
+                <div className={layoutClass}>{list}</div>
             ) : (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
                     <p className="text-sm font-bold text-slate-700">{empty}</p>

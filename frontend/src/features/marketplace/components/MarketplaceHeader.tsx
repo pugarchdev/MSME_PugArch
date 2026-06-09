@@ -12,6 +12,31 @@ import {
 
 interface Props { user: any; }
 
+const signupOptions = [
+    { href: '/seller/register', label: 'Sign Up as Seller', icon: <Store className="h-4 w-4" /> },
+    { href: '/buyer/register', label: 'Sign Up as Buyer', icon: <Building2 className="h-4 w-4" /> },
+    { href: '/hcp/register', label: 'Sign Up as HCP', icon: <User className="h-4 w-4" /> }
+];
+
+function SignupMenu({ onSelect }: { onSelect: () => void }) {
+    return (
+        <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
+            {signupOptions.map(option => (
+                <Link
+                    key={option.href}
+                    href={option.href}
+                    onClick={onSelect}
+                    className="flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                    role="menuitem"
+                >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0b2447]/5 text-[#0b2447]">{option.icon}</span>
+                    {option.label}
+                </Link>
+            ))}
+        </div>
+    );
+}
+
 /* ── Persisted font-size ─────────────────────────────────────────────────── */
 function useFontSize() {
     const [size, setSize] = useState(100);
@@ -72,16 +97,19 @@ export function MarketplaceHeader({ user }: Props) {
 
     const [searchQ, setSearchQ] = useState('');
     const [showLogin, setShowLogin] = useState(false);
+    const [showSignup, setShowSignup] = useState(false);
     const [showLang, setShowLang] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
 
     const loginRef = useRef<HTMLDivElement>(null);
+    const signupRef = useRef<HTMLDivElement>(null);
     const langRef = useRef<HTMLDivElement>(null);
 
     /* Close dropdowns on outside click */
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (loginRef.current && !loginRef.current.contains(e.target as Node)) setShowLogin(false);
+            if (signupRef.current && !signupRef.current.contains(e.target as Node)) setShowSignup(false);
             if (langRef.current && !langRef.current.contains(e.target as Node)) setShowLang(false);
         };
         document.addEventListener('mousedown', handler);
@@ -275,25 +303,21 @@ export function MarketplaceHeader({ user }: Props) {
                                     )}
                                 </div>
 
-                                {/* Sign Up as Buyer */}
-                                <Link
-                                    href="/buyer/register"
-                                    className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#0b2447] text-white text-xs font-semibold hover:bg-[#12335f] active:scale-95 transition-colors [&]:translate-y-0"
-                                >
-                                    <Building2 className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="hidden lg:inline">Sign Up as Buyer</span>
-                                    <span className="lg:hidden">Buyer</span>
-                                </Link>
-
-                                {/* Sign Up as Seller */}
-                                <Link
-                                    href="/seller/register"
-                                    className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border-2 border-[#0b2447] text-[#0b2447] text-xs font-semibold hover:bg-[#0b2447] hover:text-white active:scale-95 transition-colors"
-                                >
-                                    <Store className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="hidden lg:inline">Sign Up as Seller</span>
-                                    <span className="lg:hidden">Seller</span>
-                                </Link>
+                                {/* Sign Up dropdown */}
+                                <div ref={signupRef} className="relative hidden sm:block">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSignup(v => !v)}
+                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0b2447] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#12335f] active:scale-95 [&:not(:disabled):hover]:translate-y-0"
+                                        aria-haspopup="menu"
+                                        aria-expanded={showSignup}
+                                    >
+                                        <User className="h-3.5 w-3.5 shrink-0" />
+                                        Sign Up
+                                        <ChevronDown className={`h-3 w-3 transition-transform ${showSignup ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {showSignup && <SignupMenu onSelect={() => setShowSignup(false)} />}
+                                </div>
                             </>
                         ) : (
                             /* Dashboard (logged in) */
@@ -371,20 +395,24 @@ export function MarketplaceHeader({ user }: Props) {
                     <div className="sm:hidden border-t border-slate-100 bg-white px-4 py-3 space-y-2.5">
                         {!user ? (
                             <>
-                                <Link
-                                    href="/buyer/register"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-[#0b2447] text-white text-xs font-semibold w-full"
-                                >
-                                    <Building2 className="h-4 w-4" /> Sign Up as Buyer
-                                </Link>
-                                <Link
-                                    href="/seller/register"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-[#0b2447] text-[#0b2447] text-xs font-semibold w-full"
-                                >
-                                    <Store className="h-4 w-4" /> Sign Up as Seller
-                                </Link>
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                                    <p className="mb-2 flex items-center justify-center gap-2 rounded-lg bg-[#0b2447] px-4 py-2.5 text-xs font-semibold text-white">
+                                        <User className="h-4 w-4" /> Sign Up
+                                    </p>
+                                    <div className="grid gap-2">
+                                        {signupOptions.map(option => (
+                                            <Link
+                                                key={option.href}
+                                                href={option.href}
+                                                onClick={() => setMobileOpen(false)}
+                                                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700"
+                                            >
+                                                {option.icon}
+                                                {option.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
                                 <Link
                                     href="/login"
                                     onClick={() => setMobileOpen(false)}

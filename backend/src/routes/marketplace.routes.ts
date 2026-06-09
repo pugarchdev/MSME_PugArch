@@ -60,7 +60,9 @@ const safeBuyerOrganizationSelect = {
     city: true,
     district: true,
     state: true,
-    verificationStatus: true
+    verificationStatus: true,
+    logoUrl: true,
+    profile: true
 };
 
 const requirementCategorySelect = { id: true, name: true, slug: true };
@@ -482,7 +484,7 @@ const guestCartItemSchema = z.object({
 router.get('/marketplace/home', async (_req: Request, res: Response) => {
     try {
         const [latestRequirements, latestTenders, latestBids] = await Promise.all([
-            loadLatestRequirements(6),
+            loadLatestRequirements(24),
             loadLatestTenders(6),
             loadLatestProcurementBids(6)
         ]);
@@ -518,11 +520,10 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 db.product.findMany({
                     where: { status: 'ACTIVE' },
                     orderBy: { createdAt: 'desc' },
-                    take: 8,
                     include: {
                         category: { select: { id: true, name: true } },
                         seller: { select: { id: true, name: true, onboardingStatus: true } },
-                        organization: { select: { id: true, organizationName: true, city: true, district: true, state: true, verificationStatus: true } },
+                        organization: { select: { id: true, organizationName: true, city: true, district: true, state: true, verificationStatus: true, logoUrl: true } },
                         images: { include: { fileAsset: { select: { id: true, url: true } } }, orderBy: [{ isPrimary: 'desc' }, { displayOrder: 'asc' }], take: 1 }
                     }
                 }).catch(() => []),
@@ -552,6 +553,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                         district: true,
                         state: true,
                         verificationStatus: true,
+                        logoUrl: true,
                         _count: { select: { products: { where: { status: 'ACTIVE' } }, services: { where: { status: 'ACTIVE' } } } }
                     }
                 }).catch(() => []),
@@ -583,6 +585,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                         district: true,
                         state: true,
                         verificationStatus: true,
+                        logoUrl: true,
                         profile: true,
                         _count: { select: { buyerRequirements: true } }
                     }
@@ -608,6 +611,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                         district: true,
                         state: true,
                         verificationStatus: true,
+                        logoUrl: true,
                         profile: true,
                         _count: { select: { products: { where: { status: 'ACTIVE' } }, services: { where: { status: 'ACTIVE' } } } }
                     }

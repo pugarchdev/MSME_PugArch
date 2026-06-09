@@ -74,6 +74,7 @@ const openTenderStatuses = ['published', 'bid_submission'];
 const activeDeliveryTerminalStatuses = ['DELIVERED', 'COMPLETED', 'CANCELLED', 'CLOSED'];
 const activeQuotationStatuses = ['pending', 'submitted', 'technical_qualified', 'financial_evaluated', 'modified', 'accepted', 'PENDING', 'SUBMITTED', 'TECHNICAL_QUALIFIED', 'FINANCIAL_EVALUATED', 'MODIFIED', 'ACCEPTED'];
 const activeQuoteRequestStatuses = ['pending', 'sent', 'responded', 'PENDING', 'SENT', 'RESPONDED'];
+const publicProcurementBidStatuses = ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'];
 
 const generateToken = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -228,7 +229,9 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         sellerCatalogueItems,
         sellerPendingInvoices,
         sellerTenderQuotations,
-        sellerReceivedRfqs
+        sellerReceivedRfqs,
+        sellerLiveProcurementBids,
+        sellerProcurementParticipations
     ] = await Promise.all([
             // cart item count
             orgId
@@ -326,6 +329,22 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 : Promise.resolve(0),
             isSeller
                 ? prisma.quoteRequest.count({ where: { ...sellerRecordWhere, status: { in: activeQuoteRequestStatuses } } }).catch(() => 0)
+                : Promise.resolve(0),
+            isSeller
+                ? (prisma as any).procurementBid.count({
+                    where: {
+                        approvalStatus: 'APPROVED',
+                        status: { in: publicProcurementBidStatuses },
+                        OR: [{ endDate: null }, { endDate: { gt: new Date() } }]
+                    }
+                }).catch(() => 0)
+                : Promise.resolve(0),
+            isSeller
+                ? (prisma as any).procurementBidParticipation.count({
+                    where: orgId
+                        ? { OR: [{ sellerId: userIdNum }, { seller: { organizationId: orgId } }] }
+                        : { sellerId: userIdNum }
+                }).catch(() => 0)
                 : Promise.resolve(0)
     ]);
 
@@ -342,11 +361,11 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
         myPendingInvoicesCount: myPendingInvoices,
         myRfqsCount: myRfqs,
         // Seller-side
-        sellerOpenTendersCount: sellerOpenTenders,
+        sellerOpenTendersCount: sellerOpenTenders + sellerLiveProcurementBids,
         sellerActivePOsCount: sellerActivePOs,
         sellerCatalogueItemsCount: sellerCatalogueItems,
         sellerPendingInvoicesCount: sellerPendingInvoices,
-        sellerQuotationsCount: sellerTenderQuotations + sellerReceivedRfqs,
+        sellerQuotationsCount: sellerTenderQuotations + sellerReceivedRfqs + sellerProcurementParticipations,
         orgRole
     };
 

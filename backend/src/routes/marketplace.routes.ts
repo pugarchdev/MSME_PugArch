@@ -89,6 +89,30 @@ const publicRequirementListSelect = {
     _count: { select: { responses: true } }
 };
 
+
+const publicLegacyRequirementSelect = {
+    id: true,
+    requirementNumber: true,
+    title: true,
+    description: true,
+    procurementMethod: true,
+    status: true,
+    estimatedValue: true,
+    requiredBy: true,
+    createdAt: true,
+    updatedAt: true,
+    buyer: {
+        select: {
+            id: true,
+            name: true,
+            buyerProfile: { select: { organizationName: true, organizationType: true, city: true, district: true, state: true } }
+        }
+    },
+    organization: { select: safeBuyerOrganizationSelect },
+    category: { select: requirementCategorySelect },
+    _count: { select: { tenders: true } }
+};
+
 const publicRequirementDetailSelect = {
     ...publicRequirementListSelect,
     requiredDocuments: true
@@ -182,7 +206,7 @@ const decorateRequirement = (requirement: any) => {
     const state = computeRequirementState(requirement);
     return {
         ...requirement,
-        requirementNumber: `REQ-${String(requirement.id).padStart(5, '0')}`,
+        requirementNumber: requirement.requirementNumber || `REQ-${String(Math.abs(Number(requirement.id))).padStart(5, '0')}`,
         bidStatus: state.code,
         computedStatus: state.code,
         statusLabel: state.label,
@@ -190,6 +214,52 @@ const decorateRequirement = (requirement: any) => {
         timeRemaining: state.timeRemaining
     };
 };
+
+const mapLegacyRequirementToPublic = (requirement: any) => {
+    if (!requirement) return requirement;
+    const profile = requirement.buyer?.buyerProfile || {};
+    const organization = requirement.organization || {
+        id: requirement.buyer?.id || requirement.id,
+        organizationName: profile.organizationName || requirement.buyer?.name || 'Verified buyer',
+        organizationType: profile.organizationType || 'BUYER',
+        city: profile.city,
+        district: profile.district,
+        state: profile.state,
+        verificationStatus: 'VERIFIED'
+    };
+    const requiredBy = requirement.requiredBy || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return decorateRequirement({
+        id: -Number(requirement.id),
+        sourceModel: 'REQUIREMENT',
+        sourceId: requirement.id,
+        title: requirement.title,
+        requirementType: 'PRODUCT',
+        categoryId: requirement.categoryId,
+        description: requirement.description || requirement.title,
+        quantity: null,
+        unit: null,
+        location: [organization.city, organization.district, organization.state].filter(Boolean).join(', ') || null,
+        budgetMin: requirement.estimatedValue || null,
+        budgetMax: requirement.estimatedValue || null,
+        lastDate: requiredBy,
+        visibility: 'PUBLIC',
+        status: requirement.status === 'FULFILLED' ? 'AWARDED' : requirement.status === 'CANCELLED' ? 'CANCELLED' : 'OPEN',
+        isFeatured: false,
+        isUrgent: false,
+        approvedAt: requirement.updatedAt,
+        createdAt: requirement.createdAt,
+        updatedAt: requirement.updatedAt,
+        category: requirement.category,
+        buyerOrganization: organization,
+        _count: { responses: requirement._count?.tenders || 0 },
+        requirementNumber: requirement.requirementNumber
+    });
+};
+
+const getPublicLegacyRequirementWhere = () => ({
+    status: { in: ['APPROVED', 'SOURCING'] },
+    AND: [{ OR: [{ requiredBy: null }, { requiredBy: { gte: new Date() } }] }]
+});
 
 
 const loadLatestTenders = async (take = 6) => {
@@ -265,13 +335,26 @@ const loadLatestProcurementBids = async (take = 6) => {
 };
 
 const loadLatestRequirements = async (take = 6) => {
-    const requirements = await db.buyerRequirement?.findMany?.({
-        where: getPublicRequirementWhere(),
-        orderBy: { createdAt: 'desc' },
-        take,
-        select: publicRequirementListSelect
-    }).catch(() => []);
-    return (requirements || []).map(decorateRequirement);
+    const [buyerRequirements, legacyRequirements] = await Promise.all([
+        db.buyerRequirement?.findMany?.({
+            where: getPublicRequirementWhere(),
+            orderBy: { createdAt: 'desc' },
+            take,
+            select: publicRequirementListSelect
+        }).catch(() => []),
+        db.requirement?.findMany?.({
+            where: getPublicLegacyRequirementWhere(),
+            orderBy: { updatedAt: 'desc' },
+            take,
+            select: publicLegacyRequirementSelect
+        }).catch(() => [])
+    ]);
+    return [
+        ...(buyerRequirements || []).map(decorateRequirement),
+        ...(legacyRequirements || []).map(mapLegacyRequirementToPublic)
+    ]
+        .sort((a: any, b: any) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime())
+        .slice(0, take);
 };
 
 const requirementSchema = z.object({
@@ -453,13 +536,29 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 // Stats
                 Promise.all([
                     db.organization.count({ where: { verificationStatus: 'VERIFIED', isBlacklisted: false } }).catch(() => 0),
-                    db.user.count({ where: { role: 'buyer', onboardingStatus: { in: ['approved_for_procurement', 'approved'] } } }).catch(() => 0),
+                    db.user.count({ where: { role: 'buyer', accountStatus: 'ACTIVE', onboardingStatus: { in: ['approved_for_procurement', 'approved'] } } }).catch(() => 0),
+                    db.organization.count({
+                        where: {
+                            verificationStatus: 'VERIFIED',
+                            isBlacklisted: false,
+                            deletedAt: null,
+                            OR: [
+                                { users: { some: { role: 'buyer', accountStatus: 'ACTIVE' } } },
+                                { buyerProfiles: { some: {} } },
+                                { buyerRequirements: { some: {} } },
+                                { procurementBids: { some: {} } },
+                                { tenders: { some: {} } },
+                                { profile: { isLargeIndustry: true } },
+                                { organizationType: { in: ['PUBLIC_LIMITED', 'PSU', 'GOVERNMENT'] } }
+                            ]
+                        }
+                    }).catch(() => 0),
                     db.product.count({ where: { status: 'ACTIVE' } }).catch(() => 0),
                     db.service.count({ where: { status: 'ACTIVE' } }).catch(() => 0),
                     db.category.count({ where: { isActive: true } }).catch(() => 0),
-                ]).then(([sellers, buyers, products, services, categories]) => ({
+                ]).then(([sellers, buyerUsers, buyerOrganizations, products, services, categories]) => ({
                     verifiedSellers: sellers,
-                    registeredBuyers: buyers,
+                    registeredBuyers: Math.max(buyerUsers, buyerOrganizations),
                     productsListed: products,
                     servicesListed: services,
                     categories
@@ -731,11 +830,50 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
         if (query.categoryId) where.categoryId = query.categoryId;
         if (query.location) where.location = { contains: query.location, mode: 'insensitive' };
 
-        const [requirements, total] = await Promise.all([
-            db.buyerRequirement.findMany({ where, orderBy: [{ isUrgent: 'desc' }, { lastDate: 'asc' }, { createdAt: 'desc' }], skip, take: pageSize, select: publicRequirementListSelect }),
-            db.buyerRequirement.count({ where })
+        const legacyWhere: any = { ...getPublicLegacyRequirementWhere() };
+        if (query.q) legacyWhere.AND = [
+            ...(Array.isArray(legacyWhere.AND) ? legacyWhere.AND : []),
+            { OR: [
+                { title: { contains: query.q, mode: 'insensitive' } },
+                { description: { contains: query.q, mode: 'insensitive' } },
+                { organization: { OR: [
+                    { organizationName: { contains: query.q, mode: 'insensitive' } },
+                    { city: { contains: query.q, mode: 'insensitive' } },
+                    { district: { contains: query.q, mode: 'insensitive' } },
+                    { state: { contains: query.q, mode: 'insensitive' } }
+                ] } }
+            ] }
+        ];
+        if (query.tab === 'services' || query.type === 'SERVICE') legacyWhere.id = -1;
+        if (query.tab === 'closing_soon') legacyWhere.requiredBy = { gte: new Date(), lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
+        if (query.tab === 'large_industries') legacyWhere.organization = { profile: { isLargeIndustry: true } };
+        if (query.tab === 'government') legacyWhere.organization = { organizationType: { in: ['GOVERNMENT', 'PSU'] } };
+        if (query.categoryId) legacyWhere.categoryId = query.categoryId;
+        if (query.location) legacyWhere.organization = {
+            ...(legacyWhere.organization || {}),
+            OR: [
+                { city: { contains: query.location, mode: 'insensitive' } },
+                { district: { contains: query.location, mode: 'insensitive' } },
+                { state: { contains: query.location, mode: 'insensitive' } }
+            ]
+        };
+
+        const [buyerRequirements, buyerTotal, legacyRequirements, legacyTotal] = await Promise.all([
+            db.buyerRequirement.findMany({ where, orderBy: [{ isUrgent: 'desc' }, { lastDate: 'asc' }, { createdAt: 'desc' }], take: pageSize * page, select: publicRequirementListSelect }),
+            db.buyerRequirement.count({ where }),
+            db.requirement.findMany({ where: legacyWhere, orderBy: [{ requiredBy: 'asc' }, { updatedAt: 'desc' }], take: pageSize * page, select: publicLegacyRequirementSelect }).catch(() => []),
+            db.requirement.count({ where: legacyWhere }).catch(() => 0)
         ]);
-        return ok(res, { requirements: requirements.map(decorateRequirement), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+        const combined = [
+            ...buyerRequirements.map(decorateRequirement),
+            ...(legacyRequirements || []).map(mapLegacyRequirementToPublic)
+        ].sort((a: any, b: any) => {
+            const urgent = Number(Boolean(b.isUrgent)) - Number(Boolean(a.isUrgent));
+            if (urgent) return urgent;
+            return new Date(a.lastDate || 0).getTime() - new Date(b.lastDate || 0).getTime();
+        });
+        const total = buyerTotal + legacyTotal;
+        return ok(res, { requirements: combined.slice(skip, skip + pageSize), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
         console.error('[Marketplace Requirements]', error);
         return apiResponse.error(res, 500, 'Failed to load buyer requirements', 'BUYER_REQUIREMENTS_ERROR');

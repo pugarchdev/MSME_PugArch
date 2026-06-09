@@ -3142,13 +3142,36 @@ router.post('/tenders/:id/bids', authenticate, authorize('seller'), asyncRoute(a
 router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyncRoute(async (req, res) => {
   const role = String(req.user?.role || '');
   const currentUserId = userId(req);
-  const where: any = role === 'seller'
-    ? { sellerId: currentUserId }
-    : role === 'buyer'
-      ? { tender: { buyerId: currentUserId } }
-      : {};
-  const bids = await db.bid.findMany({ where, include: { tender: true }, orderBy: { createdAt: 'desc' } });
-  res.json(maskSensitive(await attachBidFileAssets(bids)));
+  let where: any = {};
+  if (role === 'seller') {
+    const ownTenderIds = await db.bid.findMany({
+      where: { sellerId: currentUserId },
+      select: { tenderId: true },
+      distinct: ['tenderId']
+    });
+    const tenderIds = ownTenderIds.map((row: any) => row.tenderId).filter(Boolean);
+    where = tenderIds.length ? { tenderId: { in: tenderIds } } : { sellerId: currentUserId };
+  } else if (role === 'buyer') {
+    where = { tender: { buyerId: currentUserId } };
+  }
+  const bids = await db.bid.findMany({
+    where,
+    include: {
+      tender: true,
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          mobile: true,
+          sellerProfile: { select: { businessName: true, organizationType: true, offices: { select: { city: true, state: true } } } }
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+  const enriched = (await attachBidFileAssets(bids)).map((bid: any) => ({ ...bid, isOwnBid: bid.sellerId === currentUserId }));
+  res.json(maskSensitive(enriched));
 }));
 
 router.get('/bids/:id', authenticate, asyncRoute(async (req, res) => {
@@ -3204,10 +3227,15 @@ router.get('/bids/:id', authenticate, asyncRoute(async (req, res) => {
   ok(res, enriched);
 }));
 
-router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
+router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'seller', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const tender = await assertTenderAccess(req, id);
-  if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
+  const requesterId = userId(req);
+  if (!isAdmin(req) && req.user?.role === 'buyer' && tender.buyerId !== requesterId) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
+  if (req.user?.role === 'seller') {
+    const hasOwnBid = await db.bid.findFirst({ where: { tenderId: id, sellerId: requesterId }, select: { id: true } });
+    if (!hasOwnBid) throw new ApiError(403, 'Submit a bid on this tender before viewing competing seller bids.', 'SELLER_TENDER_BID_REQUIRED');
+  }
   const bids = await db.bid.findMany({
     where: { tenderId: id },
     include: {
@@ -3234,7 +3262,7 @@ router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'admin'), async
     },
     orderBy: { createdAt: 'desc' }
   });
-  res.json(maskSensitive(await attachBidFileAssets(bids)));
+  res.json(maskSensitive((await attachBidFileAssets(bids)).map((bid: any) => ({ ...bid, isOwnBid: bid.sellerId === requesterId }))));
 }));
 
 router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {

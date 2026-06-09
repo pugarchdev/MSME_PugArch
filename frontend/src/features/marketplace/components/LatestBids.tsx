@@ -93,7 +93,8 @@ const RequirementCard = memo(function RequirementCard({
     const days = requirement.daysRemaining ?? daysLeft(requirement.lastDate);
     const isService = requirement.requirementType === 'SERVICE';
     const responseCount = requirement._count?.responses ?? 0;
-    const detailHref = `/marketplace/requirements/${requirement.id}`;
+    const isLegacyRequirement = requirement.sourceModel === 'REQUIREMENT' || requirement.id < 0;
+    const detailHref = isLegacyRequirement ? '' : `/marketplace/requirements/${requirement.id}`;
 
     return (
         <article
@@ -162,13 +163,20 @@ const RequirementCard = memo(function RequirementCard({
                         </span>
                     </span>
                     <div className="flex items-center gap-2">
-                        <Link href={detailHref} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-[11px] font-bold text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447]">
-                            <Eye className="h-3.5 w-3.5" />
-                            View
-                        </Link>
-                        <button onClick={() => badge.label === 'Closed' || badge.label === 'Awarded' ? onView(requirement) : onSubmit(requirement)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white transition hover:bg-[#12335f] active:scale-95">
+                        {isLegacyRequirement ? (
+                            <button onClick={() => onView(requirement)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-[11px] font-bold text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447]">
+                                <Eye className="h-3.5 w-3.5" />
+                                View
+                            </button>
+                        ) : (
+                            <Link href={detailHref} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-[11px] font-bold text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447]">
+                                <Eye className="h-3.5 w-3.5" />
+                                View
+                            </Link>
+                        )}
+                        <button onClick={() => isLegacyRequirement || badge.label === 'Closed' || badge.label === 'Awarded' ? onView(requirement) : onSubmit(requirement)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white transition hover:bg-[#12335f] active:scale-95">
                             <Send className="h-3.5 w-3.5" />
-                            {badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : actionLabel}
+                            {isLegacyRequirement || badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : actionLabel}
                         </button>
                     </div>
                 </div>
@@ -322,7 +330,7 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
                             <HomeSection title="Buyer Requirements" href="/marketplace/requirements" empty="No live buyer requirements are available right now.">
                                 {liveRequirements.map((requirement, index) => (
                                     <RequirementCard
-                                        key={requirement.id}
+                                        key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`}
                                         requirement={requirement}
                                         index={index}
                                         visible={visible}

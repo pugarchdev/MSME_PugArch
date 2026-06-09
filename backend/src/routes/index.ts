@@ -55,6 +55,7 @@ router.use('/auth', authRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/ratings', ratingsRoutes);
+router.use('/', phase4Routes);
 router.use('/', marketplaceRoutes);
 router.use('/', orgRoutes);
 router.use('/', cartRoutes);
@@ -63,6 +64,5 @@ router.use('/', grnRoutes);
 router.use('/', tenderEvalRoutes);
 router.use('/', masterAdminRoutes);
 router.use('/', procurementBidRoutes);
-router.use('/', phase4Routes);
 
 export default router;

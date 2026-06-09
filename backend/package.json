@@ -7,7 +7,7 @@
     "dev": "npx tsc -p tsconfig.json && node dist/index.js",
     "postinstall": "npx prisma generate",
     "db:migrate": "npx prisma migrate deploy",
-    "vercel-build": "npm run db:migrate && npx prisma generate && tsc",
+    "vercel-build": "npx prisma generate && tsc",
     "build": "npx prisma generate && tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -22,7 +22,8 @@
     "cleanup:seed-data": "tsx scripts/cleanup-seed-data.ts",
     "backfill:org-membership": "tsx scripts/backfill-org-membership.ts",
     "attach-user-to-org": "tsx scripts/attach-user-to-org.ts",
-    "security:check": "npm run typecheck && npm run prisma:validate && npm run lint:security && npm run test:security && npm run audit:deps"
+    "security:check": "npm run typecheck && npm run prisma:validate && npm run lint:security && npm run test:security && npm run audit:deps",
+    "vercel-build:with-migrate": "npm run db:migrate && npm run vercel-build"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

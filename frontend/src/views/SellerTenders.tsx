@@ -22,12 +22,13 @@ import {
 import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Pagination } from '../features/shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
+import { useAuth } from '../hooks/useAuth';
 
 interface TenderDoc {
   id: number;
@@ -99,6 +100,8 @@ const storePublicTenders = (rows: PublicTender[]) => {
 };
 
 export default function SellerTenders() {
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
   const authOptions = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
   const cachedTenders = api.peek(PUBLIC_TENDERS_ENDPOINT, authOptions) || api.peek('/api/tenders/public', authOptions) || readStoredPublicTenders();
   const [tenders, setTenders] = useState<PublicTender[]>(cachedTenders || []);
@@ -119,12 +122,19 @@ export default function SellerTenders() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const router = useRouter();
+  const requestedTenderId = searchParams?.get('tender');
   const [selectedTenderForDetails, setSelectedTenderForDetails] = useState<PublicTender | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode();
 
   useEffect(() => {
     fetchPublicTenders();
   }, []);
+
+  useEffect(() => {
+    if (!requestedTenderId || selectedTenderForDetails) return;
+    const match = tenders.find(tender => String(tender.id) === requestedTenderId || tender.tenderId === requestedTenderId);
+    if (match) setSelectedTenderForDetails(match);
+  }, [requestedTenderId, selectedTenderForDetails, tenders]);
 
   useEffect(() => {
     return () => {
@@ -253,6 +263,7 @@ export default function SellerTenders() {
 
 
   const getTenderActionHref = (tender: PublicTender) => {
+    if (!user) return `/login?returnUrl=${encodeURIComponent(`/seller/tenders/${tender.id}/bid`)}`;
     if (tender.hasParticipated) {
       return tender.myBidId
         ? `/quotations?bidId=${tender.myBidId}`

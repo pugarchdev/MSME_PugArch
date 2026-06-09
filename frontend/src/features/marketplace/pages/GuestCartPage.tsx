@@ -82,7 +82,7 @@ export default function GuestCartPage() {
                             </div>
                         </div>
                         <div className="flex gap-2 shrink-0 w-full sm:w-auto">
-                            <Link href="/login" className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 h-9 px-4 rounded-lg bg-white text-[#0b2447] text-xs font-bold hover:bg-slate-100 transition shadow">
+                            <Link href="/login?returnUrl=%2Fcart" className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 h-9 px-4 rounded-lg bg-white text-[#0b2447] text-xs font-bold hover:bg-slate-100 transition shadow">
                                 <LogIn className="h-3.5 w-3.5" /> Login
                             </Link>
                             <Link href="/buyer/register" className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 h-9 px-4 rounded-lg border border-white/30 bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition">
@@ -247,7 +247,7 @@ export default function GuestCartPage() {
                                                 Buyer Signup
                                             </Link>
                                             <Link
-                                                href="/login"
+                                                href="/login?returnUrl=%2Fcart"
                                                 className="h-9 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-bold flex items-center justify-center transition"
                                             >
                                                 Onboarding
@@ -292,7 +292,7 @@ export default function GuestCartPage() {
 
                         <div className="space-y-2 pt-2">
                             <Link
-                                href="/login"
+                                href="/login?returnUrl=%2Fcart"
                                 className="block w-full text-center h-11 leading-[44px] rounded-xl bg-[#0b2447] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#12335f] transition shadow-md"
                             >
                                 Log In to Your Account

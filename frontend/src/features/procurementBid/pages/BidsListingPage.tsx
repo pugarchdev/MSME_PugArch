@@ -37,6 +37,7 @@ export default function BidsListingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useResponsiveViewMode('phase7:bids-listing:view-mode');
+  const participationHref = (bid: ProcurementBid) => user ? `/bids/${bid.id}/participate` : `/login?returnUrl=${encodeURIComponent(`/bids/${bid.id}/participate`)}`;
 
   const loadBids = React.useCallback(() => {
     let alive = true;
@@ -197,7 +198,7 @@ export default function BidsListingPage() {
               />
             ) : pageRows.length ? (
               viewMode === 'grid' ? (
-                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} />)}</div>
+                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} participationHref={participationHref(bid)} participationLabel={user ? 'Participate' : 'Login to Participate'} />)}</div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="overflow-x-auto">
@@ -230,7 +231,7 @@ export default function BidsListingPage() {
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2">
                                 <Link href={`/bids/${bid.id}`} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700">View</Link>
-                                <Link href={`/bids/${bid.id}/participate`} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white">Participate</Link>
+                                <Link href={participationHref(bid)} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white">{user ? 'Participate' : 'Login'}</Link>
                               </div>
                             </td>
                           </tr>

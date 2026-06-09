@@ -62,6 +62,8 @@ export interface MarketplaceSeller {
 
 export interface BuyerRequirement {
     id: number;
+    sourceModel?: 'BUYER_REQUIREMENT' | 'REQUIREMENT' | string;
+    sourceId?: number;
     title: string;
     requirementType: 'PRODUCT' | 'SERVICE';
     description: string;

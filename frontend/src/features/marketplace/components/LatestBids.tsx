@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { BidDetailModal } from './BidDetailModal';
-import type { BuyerRequirement } from '../api';
+import type { BuyerRequirement, MarketplaceBid, MarketplaceTender } from '../api';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -177,18 +177,106 @@ const RequirementCard = memo(function RequirementCard({
     );
 });
 
+
+function money(value?: number | string | null) {
+    if (value === undefined || value === null || value === '') return 'Budget not disclosed';
+    return `Rs. ${Number(value).toLocaleString('en-IN')}`;
+}
+
+function HomeSection({ title, href, empty, children }: { title: string; href: string; empty: string; children: React.ReactNode }) {
+    const list = React.Children.toArray(children).filter(Boolean);
+    return (
+        <div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">{title}</h3>
+                <Link href={href} className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0b2447] hover:underline">
+                    View all <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+            </div>
+            {list.length ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{list}</div>
+            ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
+                    <p className="text-sm font-bold text-slate-700">{empty}</p>
+                    <p className="mt-1 text-xs text-slate-500">Fresh records will appear here immediately after publication.</p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TenderCard({ tender, index, visible }: { tender: MarketplaceTender; index: number; visible: boolean }) {
+    const closes = tender.closesAt ? new Date(tender.closesAt) : null;
+    const days = closes ? Math.max(0, Math.ceil((closes.getTime() - Date.now()) / dayMs)) : null;
+    const org = tender.buyer?.buyerProfile?.organizationName || tender.buyer?.name || 'Verified buyer';
+
+    return (
+        <article className="group flex min-h-[230px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-lg" style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: `opacity 0.5s ease ${80 + index * 70}ms, transform 0.5s ease ${80 + index * 70}ms` }}>
+            <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{tender.tenderId}</p>
+                    <h4 className="mt-1 line-clamp-2 text-sm font-bold text-slate-800 group-hover:text-[#0b2447]">{tender.title}</h4>
+                </div>
+                <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{String(tender.status).replace(/_/g, ' ')}</span>
+            </div>
+            <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{tender.description}</p>
+            <div className="mt-3 space-y-2 text-[11px] font-semibold text-slate-600">
+                <p className="flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5 text-slate-400" /> {org}</p>
+                <p className="flex items-center gap-1.5"><Package className="h-3.5 w-3.5 text-slate-400" /> {tender.category}</p>
+                <p className="font-black text-[#0b2447]">{money(tender.budget)} estimated value</p>
+                <p>{tender.bidsCount || 0} bid{(tender.bidsCount || 0) === 1 ? '' : 's'} submitted</p>
+            </div>
+            <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="text-[11px] font-semibold text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{days === null ? 'Open' : `${days}d left`}</span>
+                <Link href="/seller/tenders" className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">View Tender <ArrowRight className="h-3.5 w-3.5" /></Link>
+            </div>
+        </article>
+    );
+}
+
+function ProcurementBidCard({ bid, index, visible }: { bid: MarketplaceBid; index: number; visible: boolean }) {
+    const days = Math.max(0, Math.ceil((new Date(bid.endDate).getTime() - Date.now()) / dayMs));
+    return (
+        <article className="group flex min-h-[230px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-lg" style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: `opacity 0.5s ease ${80 + index * 70}ms, transform 0.5s ease ${80 + index * 70}ms` }}>
+            <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{bid.bidNumber}</p>
+                    <h4 className="mt-1 line-clamp-2 text-sm font-bold text-slate-800 group-hover:text-[#0b2447]">{bid.title}</h4>
+                </div>
+                <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{String(bid.status).replace(/_/g, ' ')}</span>
+            </div>
+            <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{bid.description}</p>
+            <div className="mt-3 space-y-2 text-[11px] font-semibold text-slate-600">
+                <p className="flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5 text-slate-400" /> {bid.buyerOrganizationName}</p>
+                <p className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {[bid.district, bid.state].filter(Boolean).join(', ') || bid.deliveryLocation}</p>
+                <p>{bid.quantity || '-'} {bid.unit || ''} · {bid.category}</p>
+                <p className="font-black text-[#0b2447]">{money(bid.estimatedValue)} estimated value</p>
+                <p>{bid.participantsCount || 0} participant{(bid.participantsCount || 0) === 1 ? '' : 's'}</p>
+            </div>
+            <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className={`text-[11px] font-semibold ${days <= 3 ? 'text-red-600' : days <= 7 ? 'text-amber-600' : 'text-slate-500'}`}><Clock className="mr-1 inline h-3 w-3" />{days}d left</span>
+                <Link href={`/bids/${bid.bidNumber}`} className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">View Bid <ArrowRight className="h-3.5 w-3.5" /></Link>
+            </div>
+        </article>
+    );
+}
+
 interface Props {
     requirements?: BuyerRequirement[];
+    tenders?: MarketplaceTender[];
+    bids?: MarketplaceBid[];
     loading?: boolean;
 }
 
-export function LatestBids({ requirements, loading = false }: Props) {
+export function LatestBids({ requirements, tenders, bids, loading = false }: Props) {
     const { ref, visible } = useFadeIn();
     const router = useRouter();
     const { user } = useAuth();
     const [selected, setSelected] = useState<BuyerRequirement | null>(null);
 
     const liveRequirements = useMemo(() => requirements || [], [requirements]);
+    const liveTenders = useMemo(() => tenders || [], [tenders]);
+    const liveBids = useMemo(() => bids || [], [bids]);
     const isSeller = user?.role === 'seller' || user?.role === 'admin' || user?.role === 'master_admin';
     const actionLabel = user ? (isSeller ? 'Submit Quote' : 'View Details') : 'Login to Submit';
 
@@ -223,24 +311,27 @@ export function LatestBids({ requirements, loading = false }: Props) {
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {Array.from({ length: 6 }).map((_, index) => <RequirementSkeleton key={index} />)}
                         </div>
-                    ) : liveRequirements.length ? (
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {liveRequirements.map((requirement, index) => (
-                                <RequirementCard
-                                    key={requirement.id}
-                                    requirement={requirement}
-                                    index={index}
-                                    visible={visible}
-                                    onView={setSelected}
-                                    onSubmit={handleSubmit}
-                                    actionLabel={actionLabel}
-                                />
-                            ))}
-                        </div>
                     ) : (
-                        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-                            <p className="text-sm font-bold text-slate-700">No live buyer requirements are available right now.</p>
-                            <p className="mt-1 text-xs text-slate-500">New verified buyer requirements will appear here once published.</p>
+                        <div className="space-y-8">
+                            <HomeSection title="Newly Published Tenders" href="/seller/tenders" empty="No published tenders are available right now.">
+                                {liveTenders.map((tender, index) => <TenderCard key={tender.id} tender={tender} index={index} visible={visible} />)}
+                            </HomeSection>
+                            <HomeSection title="Live Procurement Bids" href="/bids" empty="No live procurement bids are available right now.">
+                                {liveBids.map((bid, index) => <ProcurementBidCard key={bid.id} bid={bid} index={index} visible={visible} />)}
+                            </HomeSection>
+                            <HomeSection title="Buyer Requirements" href="/marketplace/requirements" empty="No live buyer requirements are available right now.">
+                                {liveRequirements.map((requirement, index) => (
+                                    <RequirementCard
+                                        key={requirement.id}
+                                        requirement={requirement}
+                                        index={index}
+                                        visible={visible}
+                                        onView={setSelected}
+                                        onSubmit={handleSubmit}
+                                        actionLabel={actionLabel}
+                                    />
+                                ))}
+                            </HomeSection>
                         </div>
                     )}
 

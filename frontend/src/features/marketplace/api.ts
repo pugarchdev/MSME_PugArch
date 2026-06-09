@@ -99,6 +99,59 @@ export interface BuyerRequirement {
     _count?: { responses: number };
 }
 
+
+export interface MarketplaceTender {
+    id: number;
+    tenderId: string;
+    title: string;
+    category: string;
+    budget?: number | string | null;
+    description?: string | null;
+    status: string;
+    closesAt?: string | null;
+    publishedAt?: string | null;
+    createdAt: string;
+    bidsCount?: number;
+    buyer?: {
+        id: number;
+        name?: string;
+        buyerProfile?: { organizationName?: string; state?: string; district?: string } | null;
+    };
+}
+
+export interface MarketplaceBid {
+    id: number;
+    bidNumber: string;
+    title: string;
+    description?: string | null;
+    buyerOrganizationName: string;
+    buyerType?: string;
+    category: string;
+    subCategory?: string | null;
+    bidType: string;
+    quantity?: number | string | null;
+    unit?: string | null;
+    estimatedValue?: number | string | null;
+    deliveryLocation: string;
+    state?: string | null;
+    district?: string | null;
+    startDate: string;
+    endDate: string;
+    status: string;
+    approvalStatus: string;
+    lifecycleStage: string;
+    participantsCount?: number;
+    buyerOrganization?: {
+        id: number;
+        organizationName: string;
+        organizationType: string;
+        city?: string;
+        district?: string;
+        state?: string;
+        verificationStatus: string;
+    } | null;
+}
+
 export interface MarketplaceOrganization {
     id: number;
     organizationName: string;
@@ -133,6 +186,8 @@ export interface MarketplaceHomeData {
     featuredProducts: MarketplaceProduct[];
     featuredServices: MarketplaceService[];
     featuredRequirements: BuyerRequirement[];
+    latestTenders?: MarketplaceTender[];
+    latestBids?: MarketplaceBid[];
     verifiedSellers: MarketplaceSeller[];
     largeIndustries: MarketplaceOrganization[];
     bigMsmes: MarketplaceOrganization[];

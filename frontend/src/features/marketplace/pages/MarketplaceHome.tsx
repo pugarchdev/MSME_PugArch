@@ -83,7 +83,7 @@ export default function MarketplaceHome() {
                 {/* <IndustryNetwork /> */}
 
                 {/* 8. Latest bids & buyer requirements (NEW) */}
-                <LatestBids requirements={data?.featuredRequirements} loading={isLoading && !data} />
+                <LatestBids requirements={data?.featuredRequirements} tenders={data?.latestTenders} bids={data?.latestBids} loading={isLoading && !data} />
 
                 {/* 9. Verified seller strip */}
                 <SellerStrip sellers={data?.verifiedSellers || []} />

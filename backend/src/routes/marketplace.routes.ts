@@ -191,6 +191,79 @@ const decorateRequirement = (requirement: any) => {
     };
 };
 
+
+const loadLatestTenders = async (take = 6) => {
+    const tenders = await db.tender?.findMany?.({
+        where: { status: { in: ['published', 'bid_submission'] } },
+        orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+        take,
+        select: {
+            id: true,
+            tenderId: true,
+            title: true,
+            category: true,
+            budget: true,
+            description: true,
+            status: true,
+            closesAt: true,
+            publishedAt: true,
+            createdAt: true,
+            buyer: { select: { id: true, name: true, buyerProfile: { select: { organizationName: true, state: true, district: true } } } },
+            _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } }
+        }
+    }).catch(() => []);
+
+    return (tenders || []).map((tender: any) => ({
+        ...tender,
+        bidsCount: tender._count?.bids ?? tender.bidsCount ?? 0,
+        _count: undefined
+    }));
+};
+
+const loadLatestProcurementBids = async (take = 6) => {
+    const bids = await db.procurementBid?.findMany?.({
+        where: {
+            approvalStatus: 'APPROVED',
+            status: { in: ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'] }
+        },
+        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        take,
+        select: {
+            id: true,
+            bidNumber: true,
+            title: true,
+            description: true,
+            buyerOrganizationName: true,
+            buyerType: true,
+            category: true,
+            subCategory: true,
+            bidType: true,
+            quantity: true,
+            unit: true,
+            estimatedValue: true,
+            deliveryLocation: true,
+            state: true,
+            district: true,
+            startDate: true,
+            endDate: true,
+            status: true,
+            approvalStatus: true,
+            lifecycleStage: true,
+            createdAt: true,
+            buyerOrganization: { select: safeBuyerOrganizationSelect },
+            _count: { select: { participations: true } }
+        }
+    }).catch(() => []);
+
+    return (bids || []).map((bid: any) => ({
+        ...bid,
+        quantity: bid.quantity == null ? null : Number(bid.quantity),
+        estimatedValue: bid.estimatedValue == null ? null : Number(bid.estimatedValue),
+        participantsCount: bid._count?.participations ?? 0,
+        _count: undefined
+    }));
+};
+
 const loadLatestRequirements = async (take = 6) => {
     const requirements = await db.buyerRequirement?.findMany?.({
         where: getPublicRequirementWhere(),
@@ -245,7 +318,11 @@ const guestCartItemSchema = z.object({
 // ─── Public: Home Page Aggregated Data ───────────────────────────────────────
 router.get('/marketplace/home', async (_req: Request, res: Response) => {
     try {
-        const latestRequirements = await loadLatestRequirements(6);
+        const [latestRequirements, latestTenders, latestBids] = await Promise.all([
+            loadLatestRequirements(6),
+            loadLatestTenders(6),
+            loadLatestProcurementBids(6)
+        ]);
         const data = await getOrSetCache('marketplace:home', async () => {
             const [
                 banners,
@@ -392,7 +469,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
             return { banners, categories, featuredProducts, featuredServices, featuredRequirements: [], verifiedSellers, largeIndustries, bigMsmes, notices, stats };
         }, 300); // Cache 5 minutes
 
-        return ok(res, { ...data, featuredRequirements: latestRequirements });
+        return ok(res, { ...data, featuredRequirements: latestRequirements, latestTenders, latestBids });
     } catch (error) {
         console.error('[Marketplace Home]', error);
         return apiResponse.error(res, 500, 'Failed to load marketplace data', 'MARKETPLACE_HOME_ERROR');

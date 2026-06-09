@@ -168,7 +168,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
 export const procurementBidApi = {
   async list(params: Record<string, string | number> = {}) {
     const qs = buildQueryString(params);
-    const res = await api.get(`/api/bids${qs ? `?${qs}` : ''}`, { headers: authHeaders() });
+    const res = await api.get(`/api/bids${qs ? `?${qs}` : ''}`, { headers: authHeaders(), skipCache: true });
     const body = await readJsonResponse(res);
     const data = unwrapApiData(body);
     return { ...data, items: (data.items || []).map(normalizeBid) };

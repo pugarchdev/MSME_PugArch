@@ -52,12 +52,15 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
     };
   }
 
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
+  const signedUrlEndpoint = token ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
+  const viewEndpoint = token ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
   try {
-    const res = await api.fetch(`/api/files/${fileId}/signed-url`, {
+    const res = await api.fetch(signedUrlEndpoint, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`
-      },
+      headers: authHeader,
       skipCache: true
     });
 
@@ -76,11 +79,9 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
     // Fallback to the authenticated blob view below.
   }
 
-  const res = await api.fetch(`/api/files/${fileId}/view`, {
+  const res = await api.fetch(viewEndpoint, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`
-    },
+    headers: authHeader,
     skipCache: true
   });
 

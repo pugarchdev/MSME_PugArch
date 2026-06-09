@@ -52,7 +52,7 @@ export function ProcurementHero({ title, subtitle, action }: { title: string; su
   );
 }
 
-export function BidCard({ bid }: { bid: ProcurementBid }) {
+export function BidCard({ bid, participationHref, participationLabel = 'Participate' }: { bid: ProcurementBid; participationHref?: string; participationLabel?: string }) {
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-xl">
       <div className="h-1 bg-gradient-to-r from-[#0b2447] via-[#1f6feb] to-[#c86413]" />
@@ -80,8 +80,8 @@ export function BidCard({ bid }: { bid: ProcurementBid }) {
           <Link href={`/bids/${bid.id}`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-3 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f]">
             <Eye className="h-3.5 w-3.5" /> View Details
           </Link>
-          <Link href={`/bids/${bid.id}/participate`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-[#c86413] bg-[#fff7ed] px-3 text-xs font-black text-[#9a4a0f] transition hover:bg-[#ffedd5]">
-            <Send className="h-3.5 w-3.5" /> Participate
+          <Link href={participationHref || `/bids/${bid.id}/participate`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-[#c86413] bg-[#fff7ed] px-3 text-xs font-black text-[#9a4a0f] transition hover:bg-[#ffedd5]">
+            <Send className="h-3.5 w-3.5" /> {participationLabel}
           </Link>
           <button className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 px-3 text-xs font-black text-slate-600 hover:bg-slate-50">
             <Download className="h-3.5 w-3.5" /> Docs

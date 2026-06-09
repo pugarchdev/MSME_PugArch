@@ -32,7 +32,8 @@ export function BidDetailModal({ bid, onClose }: Props) {
     const isService = bid.requirementType === 'SERVICE';
     const badge = statusBadge(bid);
     const days = bid.daysRemaining ?? daysLeft(bid.lastDate);
-    const isResponseClosed = badge.label === 'Closed' || badge.label === 'Awarded';
+    const isLegacyRequirement = bid.sourceModel === 'REQUIREMENT' || bid.id < 0;
+    const isResponseClosed = isLegacyRequirement || badge.label === 'Closed' || badge.label === 'Awarded';
 
     const [message, setMessage] = useState('');
     const [price, setPrice] = useState('');
@@ -55,7 +56,7 @@ export function BidDetailModal({ bid, onClose }: Props) {
 
     const handleSubmit = async () => {
         if (isResponseClosed) {
-            toast.info('This requirement is no longer accepting seller responses.');
+            toast.info(isLegacyRequirement ? 'This published requirement can be viewed here; seller responses are handled through its linked tender/RFQ flow.' : 'This requirement is no longer accepting seller responses.');
             return;
         }
         if (!user) {

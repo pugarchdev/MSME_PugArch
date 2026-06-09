@@ -229,7 +229,7 @@ export default function BuyerRequirementListPage() {
                                 const isSvc = req.requirementType === 'SERVICE';
                                 return (
                                     <div
-                                        key={req.id}
+                                        key={`${req.sourceModel || 'buyer'}-${req.id}`}
                                         className="group bg-white rounded-xl border border-slate-200 hover:border-[#0b2447]/30 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex flex-col overflow-hidden"
                                     >
                                         <div className={`h-1 w-full ${isSvc ? 'bg-purple-400' : 'bg-[#0b2447]'}`} />

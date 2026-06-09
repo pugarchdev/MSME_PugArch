@@ -8,8 +8,27 @@ import { maskSensitive } from '../../utils/maskSensitive.js';
 import { validate } from '../../middleware/validate.js';
 import * as service from './procurement-bid.service.js';
 import * as orderService from './procurement-order.service.js';
+import { verifyAccessToken } from '../../services/token.service.js';
 
 const router = Router();
+
+
+const optionalActor = async (req: AuthRequest) => {
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) return null;
+  try {
+    const decoded = verifyAccessToken(token);
+    const user = await prisma.user.findUnique({
+      where: { id: Number(decoded.id) },
+      select: { id: true, role: true, sessionVersion: true, accountStatus: true, organizationId: true }
+    });
+    if (!user || user.accountStatus !== 'ACTIVE' || user.role !== decoded.role || user.sessionVersion !== Number(decoded.sessionVersion)) return null;
+    return { id: user.id, role: user.role, sessionVersion: user.sessionVersion, organizationId: user.organizationId, permissions: [], enabledFeatures: [] };
+  } catch {
+    return null;
+  }
+};
 
 const asyncRoute = (handler: (req: AuthRequest & { file?: Express.Multer.File }, res: Response) => Promise<unknown>) =>
   async (req: AuthRequest & { file?: Express.Multer.File }, res: Response) => {
@@ -154,8 +173,10 @@ router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyn
 }));
 
 router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+  const actor = await optionalActor(req);
   const bid = await service.resolveBid(req.params.bidId);
-  return apiResponse.success(res, service.serializeBid(bid, { detail: true }), 200, 'Bid details fetched successfully');
+  const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
+  return apiResponse.success(res, service.serializeBid(bid, { actor: actor || undefined, detail: true, includeParticipants: sellerCanSeeParticipants }), 200, 'Bid details fetched successfully');
 }));
 
 router.post('/bids/:bidId/participate', authenticate, authorize('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {

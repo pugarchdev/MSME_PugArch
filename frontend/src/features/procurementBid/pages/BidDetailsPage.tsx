@@ -20,6 +20,7 @@ export default function BidDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showClarifications, setShowClarifications] = useState(false);
+  const participateHref = user ? `/bids/${bidId}/participate` : `/login?returnUrl=${encodeURIComponent(`/bids/${bidId}/participate`)}`;
 
   const loadBid = React.useCallback(() => {
     let alive = true;
@@ -90,7 +91,7 @@ export default function BidDetailsPage() {
         <ProcurementHero
           title={bid.title}
           subtitle={`${loading ? 'Loading...' : bid.id} • ${bid.buyerName} • ${bid.buyerType}`}
-          action={<Link href={`/bids/${bid.id}/participate`} className="inline-flex h-10 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">Participate in Bid</Link>}
+          action={<Link href={participateHref} className="inline-flex h-10 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">{user ? 'Participate in Bid' : 'Login to Participate'}</Link>}
         />
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_340px]">
@@ -166,7 +167,7 @@ export default function BidDetailsPage() {
                 )) : <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">No bid documents uploaded currently.</p>}
               </div>
             </div>
-            <Link href={`/bids/${bid.id}/participate`} className="flex h-11 items-center justify-center rounded-md bg-[#0b2447] text-xs font-black text-white">Participate</Link>
+            <Link href={participateHref} className="flex h-11 items-center justify-center rounded-md bg-[#0b2447] text-xs font-black text-white">{user ? 'Participate' : 'Login to Participate'}</Link>
             <Link href="/bids" className="flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white text-xs font-black text-slate-700">Back to all bids</Link>
           </aside>
         </div>

@@ -211,11 +211,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(user);
     setLoading(false);
     const guestCartToken = localStorage.getItem('jsg_guest_cart_token');
-    if (guestCartToken && user.role === 'buyer') {
-      void api.post('/api/cart/merge-guest', { cartToken: guestCartToken }, {
+    const localGuestCart = (() => {
+      try {
+        const raw = localStorage.getItem('jsg_guest_cart');
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((item: any) => ({ id: item.id, type: item.type, quantity: item.quantity || 1 })) : [];
+      } catch {
+        return [];
+      }
+    })();
+    if (user.role === 'buyer' && (guestCartToken || localGuestCart.length > 0)) {
+      void api.post('/api/cart/merge-guest', { cartToken: guestCartToken || undefined, items: localGuestCart }, {
         headers: { Authorization: `Bearer ${token}` }
       }).then(res => {
-        if (res.ok) localStorage.removeItem('jsg_guest_cart_token');
+        if (res.ok) {
+          localStorage.removeItem('jsg_guest_cart_token');
+          localStorage.removeItem('jsg_guest_cart');
+          api.invalidate('/api/cart');
+        }
       }).catch(() => undefined);
     }
   }, []);

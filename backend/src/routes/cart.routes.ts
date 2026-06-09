@@ -84,7 +84,14 @@ const techDecisionSchema = z.object({
 });
 
 const mergeGuestCartSchema = z.object({
-    cartToken: z.string().trim().min(12).max(120)
+    cartToken: z.string().trim().min(12).max(120).optional(),
+    items: z.array(z.object({
+        id: z.coerce.number().int().positive(),
+        type: z.enum(['product', 'service']),
+        quantity: z.coerce.number().positive().max(1_000_000).default(1)
+    })).optional()
+}).refine(data => Boolean(data.cartToken) || Boolean(data.items?.length), {
+    message: 'Guest cart token or local cart items are required'
 });
 
 // ─── Get / create active cart ─────────────────────────────────────────────────
@@ -129,17 +136,35 @@ router.get('/cart', authenticate, authorize('buyer', 'seller'), shortCache(10), 
 
 router.post('/cart/merge-guest', authenticate, authorize('buyer'), requireApprovedOrg, asyncRoute(async (req, res) => {
     ensureOrg(req);
-    const { cartToken } = mergeGuestCartSchema.parse(req.body);
-    const guestCart = await (prisma as any).guestCart.findUnique({
+    const { cartToken, items = [] } = mergeGuestCartSchema.parse(req.body);
+    const guestCart = cartToken ? await (prisma as any).guestCart.findUnique({
         where: { cartToken },
         include: { items: { include: { product: true, service: true } } }
-    });
-    if (!guestCart || guestCart.items.length === 0) {
-        return ok(res, await getOrCreateActiveCart(orgId(req), userId(req)));
-    }
+    }) : null;
+
+    const localProductIds = items.filter(item => item.type === 'product').map(item => item.id);
+    const localServiceIds = items.filter(item => item.type === 'service').map(item => item.id);
+    const [localProducts, localServices] = await Promise.all([
+        localProductIds.length ? prisma.product.findMany({ where: { id: { in: localProductIds }, status: 'ACTIVE' } }) : Promise.resolve([]),
+        localServiceIds.length ? prisma.service.findMany({ where: { id: { in: localServiceIds }, status: 'ACTIVE' } }) : Promise.resolve([])
+    ]);
+    const productsById = new Map(localProducts.map(product => [product.id, product]));
+    const servicesById = new Map(localServices.map(service => [service.id, service]));
+    const mergeItems = [
+        ...((guestCart?.items || []).map((guestItem: any) => ({
+            product: guestItem.product,
+            service: guestItem.service,
+            quantity: Number(guestItem.quantity || 1)
+        }))),
+        ...items.map(item => ({
+            product: item.type === 'product' ? productsById.get(item.id) : null,
+            service: item.type === 'service' ? servicesById.get(item.id) : null,
+            quantity: Number(item.quantity || 1)
+        }))
+    ];
 
     const cart = await getOrCreateActiveCart(orgId(req), userId(req));
-    for (const guestItem of guestCart.items) {
+    for (const guestItem of mergeItems) {
         const product = guestItem.product;
         const service = guestItem.service;
         const sellerIdValue = product?.sellerId || service?.sellerId;
@@ -165,7 +190,7 @@ router.post('/cart/merge-guest', authenticate, authorize('buyer'), requireApprov
             });
         }
     }
-    await (prisma as any).guestCart.delete({ where: { id: guestCart.id } }).catch(() => undefined);
+    if (guestCart) await (prisma as any).guestCart.delete({ where: { id: guestCart.id } }).catch(() => undefined);
     const refreshed = await prisma.cart.findUnique({ where: { id: cart.id }, include: cartIncludes });
     ok(res, refreshed);
 }));

@@ -159,7 +159,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -252,6 +252,7 @@ export default function App() {
     if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
     if (/^\/marketplace\/requirements\/\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
     if (pathname === '/bids') return <BidsListingPage />;
+    if (pathname === '/tenders') return <SellerTenders />;
     if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
     if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;

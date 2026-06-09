@@ -261,7 +261,7 @@ export default function BidParticipationPage() {
 
   const startParticipation = async () => {
     if (!user) {
-      router.push('/login');
+      router.push(`/login?returnUrl=${encodeURIComponent(`/bids/${bidId}/participate`)}`);
       return;
     }
     if (guard || !bid) return;

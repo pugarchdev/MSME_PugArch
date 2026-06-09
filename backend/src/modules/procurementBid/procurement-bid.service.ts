@@ -9,7 +9,7 @@ const db = prisma as any;
 
 type Actor = AuthenticatedUser;
 
-const publicBidStatuses = ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'];
+const publicBidStatuses = ['PENDING_ADMIN_APPROVAL', 'OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'];
 const financialOpenStatuses = ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'];
 const sellerVerifiedStatuses = ['approved_for_procurement', 'approved'];
 const activeUserStatuses = ['ACTIVE'];
@@ -328,7 +328,7 @@ export const listPublicBids = async (query: any) => {
   const page = Math.max(1, Number(query.page || 1));
   const pageSize = Math.min(50, Math.max(1, Number(query.pageSize || 12)));
   const where: any = {
-    approvalStatus: 'APPROVED',
+    approvalStatus: { in: ['APPROVED', 'PENDING', 'SUBMITTED', 'PENDING_APPROVAL'] },
     status: { in: query.status ? [String(query.status).toUpperCase()] : publicBidStatuses }
   };
   if (query.q) {

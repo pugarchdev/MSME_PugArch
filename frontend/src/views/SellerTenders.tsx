@@ -123,7 +123,6 @@ export default function SellerTenders() {
 
   const router = useRouter();
   const requestedTenderId = searchParams?.get('tender');
-  const openedTenderParamRef = React.useRef<string | null>(null);
   const [selectedTenderForDetails, setSelectedTenderForDetails] = useState<PublicTender | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode();
 
@@ -132,18 +131,10 @@ export default function SellerTenders() {
   }, []);
 
   useEffect(() => {
-    if (!requestedTenderId || openedTenderParamRef.current === requestedTenderId) return;
+    if (!requestedTenderId || selectedTenderForDetails) return;
     const match = tenders.find(tender => String(tender.id) === requestedTenderId || tender.tenderId === requestedTenderId);
-    if (match) {
-      openedTenderParamRef.current = requestedTenderId;
-      setSelectedTenderForDetails(match);
-    }
-  }, [requestedTenderId, tenders]);
-
-  const closeTenderDetails = React.useCallback(() => {
-    setSelectedTenderForDetails(null);
-    if (requestedTenderId) router.replace('/tenders');
-  }, [requestedTenderId, router]);
+    if (match) setSelectedTenderForDetails(match);
+  }, [requestedTenderId, selectedTenderForDetails, tenders]);
 
   useEffect(() => {
     return () => {

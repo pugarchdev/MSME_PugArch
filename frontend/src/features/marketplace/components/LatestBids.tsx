@@ -193,10 +193,11 @@ function money(value?: number | string | null) {
     return `Rs. ${Number(value).toLocaleString('en-IN')}`;
 }
 
-function HomeSection({ title, href, empty, children }: { title: string; href: string; empty: string; children: React.ReactNode }) {
+function HomeSection({ title, href, empty, children, listHeaders, listChildren }: { title: string; href: string; empty: string; children: React.ReactNode; listHeaders?: string[]; listChildren?: React.ReactNode }) {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const list = React.Children.toArray(children).filter(Boolean);
-    const layoutClass = viewMode === 'grid' ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3' : 'grid gap-3';
+    const gridList = React.Children.toArray(children).filter(Boolean);
+    const rowList = React.Children.toArray(listChildren || children).filter(Boolean);
+    const hasItems = gridList.length > 0;
 
     return (
         <div>
@@ -226,8 +227,19 @@ function HomeSection({ title, href, empty, children }: { title: string; href: st
                     </Link>
                 </div>
             </div>
-            {list.length ? (
-                <div className={layoutClass}>{list}</div>
+            {hasItems ? (
+                viewMode === 'grid' ? (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{gridList}</div>
+                ) : (
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        {listHeaders?.length ? (
+                            <div className="hidden grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-slate-600 lg:grid">
+                                {listHeaders.map(header => <span key={header}>{header}</span>)}
+                            </div>
+                        ) : null}
+                        <div className="divide-y divide-slate-100">{rowList}</div>
+                    </div>
+                )
             ) : (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
                     <p className="text-sm font-bold text-slate-700">{empty}</p>
@@ -299,6 +311,59 @@ function ProcurementBidCard({ bid, index, visible }: { bid: MarketplaceBid; inde
     );
 }
 
+function TenderListRow({ tender, srNo }: { tender: MarketplaceTender; srNo: number }) {
+    const org = tender.buyer?.buyerProfile?.organizationName || tender.buyer?.name || 'Verified buyer';
+    const closes = tender.closesAt ? new Date(tender.closesAt) : null;
+    const days = closes ? Math.max(0, Math.ceil((closes.getTime() - Date.now()) / dayMs)) : null;
+    return (
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
+            <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{tender.tenderId}</p><p className="font-bold text-[#0b2447]">{tender.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{tender.description}</p></div>
+            <span className="font-semibold">{org}</span>
+            <span>{tender.category}</span>
+            <span className="font-black text-[#0b2447]">{money(tender.budget)}</span>
+            <Link href={`/tenders/${tender.id}`} className="inline-flex h-8 w-fit items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">View Tender <ArrowRight className="h-3.5 w-3.5" /></Link>
+            {days !== null && <span className="text-[11px] font-semibold text-slate-500 lg:hidden">{days}d left</span>}
+        </div>
+    );
+}
+
+function ProcurementBidListRow({ bid, srNo }: { bid: MarketplaceBid; srNo: number }) {
+    const isTenderActivity = bid.sourceModel === 'TENDER';
+    const href = isTenderActivity && bid.sourceId ? `/tenders/${bid.sourceId}` : `/bids/${bid.id}`;
+    return (
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
+            <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{bid.bidNumber}</p><p className="font-bold text-[#0b2447]">{bid.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{bid.description}</p></div>
+            <span className="font-semibold">{bid.buyerOrganizationName}</span>
+            <span>{[bid.district, bid.state].filter(Boolean).join(', ') || bid.deliveryLocation}</span>
+            <span className="font-black text-[#0b2447]">{money(bid.estimatedValue)}</span>
+            <Link href={href} className="inline-flex h-8 w-fit items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">{isTenderActivity ? 'View Tender' : 'View Bid'} <ArrowRight className="h-3.5 w-3.5" /></Link>
+        </div>
+    );
+}
+
+function RequirementListRow({ requirement, srNo, onView }: { requirement: BuyerRequirement; srNo: number; onView: (requirement: BuyerRequirement) => void }) {
+    const isLegacyRequirement = requirement.sourceModel === 'REQUIREMENT' || requirement.id < 0;
+    const budget = requirement.budgetMin || requirement.budgetMax ? `Rs. ${Number(requirement.budgetMin || requirement.budgetMax).toLocaleString('en-IN')}` : 'Budget not disclosed';
+    const buyer = requirement.buyerOrganization?.organizationName || 'Verified buyer';
+    const detailHref = `/marketplace/requirements/${requirement.id}`;
+    return (
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
+            <div className="min-w-0"><p className="font-bold text-[#0b2447]">{requirement.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{requirement.description}</p></div>
+            <span className="font-semibold">{buyer}</span>
+            <span>{requirement.category?.name || requirement.requirementType}</span>
+            <span className="font-black text-[#0b2447]">{budget}</span>
+            {isLegacyRequirement ? (
+                <button onClick={() => onView(requirement)} className="inline-flex h-8 w-fit items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">View Details <ArrowRight className="h-3.5 w-3.5" /></button>
+            ) : (
+                <Link href={detailHref} className="inline-flex h-8 w-fit items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-bold text-white hover:bg-[#12335f]">View Details <ArrowRight className="h-3.5 w-3.5" /></Link>
+            )}
+        </div>
+    );
+}
+
 interface Props {
     requirements?: BuyerRequirement[];
     tenders?: MarketplaceTender[];
@@ -351,13 +416,31 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
                         </div>
                     ) : (
                         <div className="space-y-8">
-                            <HomeSection title="Newly Published Tenders" href="/tenders" empty="No published tenders are available right now.">
+                            <HomeSection
+                                title="Newly Published Tenders"
+                                href="/tenders"
+                                empty="No published tenders are available right now."
+                                listHeaders={['Sr. No.', 'Tender', 'Buyer', 'Category', 'Value', 'Action']}
+                                listChildren={liveTenders.map((tender, index) => <TenderListRow key={tender.id} tender={tender} srNo={index + 1} />)}
+                            >
                                 {liveTenders.map((tender, index) => <TenderCard key={tender.id} tender={tender} index={index} visible={visible} />)}
                             </HomeSection>
-                            <HomeSection title="Live Procurement Bids" href="/bids" empty="No live procurement bids are available right now.">
+                            <HomeSection
+                                title="Live Procurement Bids"
+                                href="/bids"
+                                empty="No live procurement bids are available right now."
+                                listHeaders={['Sr. No.', 'Bid', 'Buyer', 'Location', 'Value', 'Action']}
+                                listChildren={liveBids.map((bid, index) => <ProcurementBidListRow key={bid.id} bid={bid} srNo={index + 1} />)}
+                            >
                                 {liveBids.map((bid, index) => <ProcurementBidCard key={bid.id} bid={bid} index={index} visible={visible} />)}
                             </HomeSection>
-                            <HomeSection title="Buyer Requirements" href="/marketplace/requirements" empty="No live buyer requirements are available right now.">
+                            <HomeSection
+                                title="Buyer Requirements"
+                                href="/marketplace/requirements"
+                                empty="No live buyer requirements are available right now."
+                                listHeaders={['Sr. No.', 'Requirement', 'Buyer', 'Category', 'Budget', 'Action']}
+                                listChildren={liveRequirements.map((requirement, index) => <RequirementListRow key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} requirement={requirement} srNo={index + 1} onView={setSelected} />)}
+                            >
                                 {liveRequirements.map((requirement, index) => (
                                     <RequirementCard
                                         key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`}

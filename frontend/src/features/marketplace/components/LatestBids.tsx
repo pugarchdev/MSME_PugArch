@@ -231,9 +231,9 @@ function HomeSection({ title, href, empty, children, listHeaders, listChildren }
                 viewMode === 'grid' ? (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{gridList}</div>
                 ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm [scrollbar-width:thin]">
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         {listHeaders?.length ? (
-                            <div className="grid min-w-[940px] grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-slate-600">
+                            <div className="hidden grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-slate-600 lg:grid">
                                 {listHeaders.map(header => <span key={header}>{header}</span>)}
                             </div>
                         ) : null}
@@ -316,8 +316,8 @@ function TenderListRow({ tender, srNo }: { tender: MarketplaceTender; srNo: numb
     const closes = tender.closesAt ? new Date(tender.closesAt) : null;
     const days = closes ? Math.max(0, Math.ceil((closes.getTime() - Date.now()) / dayMs)) : null;
     return (
-        <div className="grid min-w-[940px] grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] items-center gap-3 px-4 py-3 text-xs text-slate-700">
-            <span className="font-black text-slate-500">{srNo}</span>
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{tender.tenderId}</p><p className="font-bold text-[#0b2447]">{tender.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{tender.description}</p></div>
             <span className="font-semibold">{org}</span>
             <span>{tender.category}</span>
@@ -332,8 +332,8 @@ function ProcurementBidListRow({ bid, srNo }: { bid: MarketplaceBid; srNo: numbe
     const isTenderActivity = bid.sourceModel === 'TENDER';
     const href = isTenderActivity && bid.sourceId ? `/tenders/${bid.sourceId}` : `/bids/${bid.id}`;
     return (
-        <div className="grid min-w-[940px] grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] items-center gap-3 px-4 py-3 text-xs text-slate-700">
-            <span className="font-black text-slate-500">{srNo}</span>
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-[#c86413]">{bid.bidNumber}</p><p className="font-bold text-[#0b2447]">{bid.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{bid.description}</p></div>
             <span className="font-semibold">{bid.buyerOrganizationName}</span>
             <span>{[bid.district, bid.state].filter(Boolean).join(', ') || bid.deliveryLocation}</span>
@@ -349,8 +349,8 @@ function RequirementListRow({ requirement, srNo, onView }: { requirement: BuyerR
     const buyer = requirement.buyerOrganization?.organizationName || 'Verified buyer';
     const detailHref = `/marketplace/requirements/${requirement.id}`;
     return (
-        <div className="grid min-w-[940px] grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] items-center gap-3 px-4 py-3 text-xs text-slate-700">
-            <span className="font-black text-slate-500">{srNo}</span>
+        <div className="grid gap-3 px-4 py-3 text-xs text-slate-700 lg:grid-cols-[72px_minmax(220px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_130px_140px] lg:items-center">
+            <span className="font-black text-slate-500"><span className="lg:hidden">Sr. No. </span>{srNo}</span>
             <div className="min-w-0"><p className="font-bold text-[#0b2447]">{requirement.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{requirement.description}</p></div>
             <span className="font-semibold">{buyer}</span>
             <span>{requirement.category?.name || requirement.requirementType}</span>

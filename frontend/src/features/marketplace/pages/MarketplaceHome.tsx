@@ -50,45 +50,23 @@ export default function MarketplaceHome() {
     });
 
     const shouldFetchProductFallback = !isLoading && (data?.featuredProducts?.length || 0) === 0;
-    const { data: productFallbackData } = useQuery<HomeProductFallback>({
+    const { data: productFallbackData } = useQuery({
         queryKey: ['marketplaceHomeProductFallback'],
         queryFn: () => marketplaceApi.getProducts({ pageSize: 12, sort: 'latest' }),
         enabled: shouldFetchProductFallback,
         staleTime: 60_000
     });
 
-    const visibleProducts = useMemo<MarketplaceHomeData['featuredProducts']>(() => {
+    const visibleProducts = useMemo(() => {
         if (data?.featuredProducts?.length) return data.featuredProducts;
         return productFallbackData?.products || [];
     }, [data?.featuredProducts, productFallbackData]);
 
-    const shouldFetchSellerFallback = !isLoading && (data?.verifiedSellers?.length || 0) === 0;
-    const { data: sellerFallbackData } = useQuery<HomeSellerFallback>({
-        queryKey: ['marketplaceHomeSellerFallback'],
-        queryFn: () => marketplaceApi.getSellers({ pageSize: 16 }),
-        enabled: shouldFetchSellerFallback,
-        staleTime: 60_000
-    });
-
-    const shouldFetchBuyerFallback = !isLoading && (data?.largeIndustries?.length || 0) === 0;
-    const { data: buyerFallbackData } = useQuery<HomeBuyerFallback>({
-        queryKey: ['marketplaceHomeBuyerFallback'],
-        queryFn: () => marketplaceApi.getBuyers({ pageSize: 24 }),
-        enabled: shouldFetchBuyerFallback,
-        staleTime: 60_000
-    });
-
-    const homeBuyers = useMemo<HomeBuyer[]>(() => {
-        const map = new Map<number, HomeBuyer>();
-        [...(data?.largeIndustries || []), ...(buyerFallbackData?.buyers || [])].forEach(buyer => map.set(buyer.id, buyer));
+    const homeSellers = useMemo(() => {
+        const map = new Map<number, NonNullable<MarketplaceHomeData['verifiedSellers']>[number]>();
+        [...(data?.verifiedSellers || []), ...(data?.bigMsmes || [])].forEach(seller => map.set(seller.id, seller as any));
         return Array.from(map.values());
-    }, [data?.largeIndustries, buyerFallbackData]);
-
-    const homeSellers = useMemo<MarketplaceSeller[]>(() => {
-        const map = new Map<number, MarketplaceSeller>();
-        [...(data?.verifiedSellers || []), ...(sellerFallbackData?.sellers || []), ...(data?.bigMsmes || [])].forEach(seller => map.set(seller.id, seller as any));
-        return Array.from(map.values());
-    }, [data?.verifiedSellers, sellerFallbackData, data?.bigMsmes]);
+    }, [data?.verifiedSellers, data?.bigMsmes]);
 
     if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
 

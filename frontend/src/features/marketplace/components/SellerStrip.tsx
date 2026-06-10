@@ -8,8 +8,6 @@ interface Props { sellers: MarketplaceSeller[]; }
 
 export function SellerStrip({ sellers }: Props) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    if (sellers.length === 0) return null;
-
     const scroll = (dir: 'left' | 'right') => {
         scrollRef.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
     };
@@ -19,8 +17,8 @@ export function SellerStrip({ sellers }: Props) {
             <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
                 <div className="flex items-end justify-between mb-3">
                     <div>
-                        <h2 className="text-sm sm:text-base font-bold text-[#0b2447]">Verified Seller Organizations</h2>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Trusted MSMEs with verified GST & Udyam</p>
+                        <h2 className="text-sm sm:text-base font-bold text-[#0b2447]">Vendors & Verified Seller Organizations</h2>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Scrollable vendor row of trusted MSMEs with verified GST & Udyam</p>
                     </div>
                     <Link href="/marketplace/sellers" className="text-[11px] font-bold text-[#0b2447] hover:underline">View All →</Link>
                 </div>
@@ -30,7 +28,13 @@ export function SellerStrip({ sellers }: Props) {
                     <ChevronLeft className="h-4 w-4 text-slate-600" />
                 </button>
                 <div ref={scrollRef} className="flex gap-0 overflow-x-auto no-scrollbar pb-4">
-                    {sellers.map(seller => {
+                    {sellers.length === 0 ? (
+                        <div className="mx-4 mb-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                            <Building2 className="mx-auto mb-2 h-8 w-8 text-slate-300" />
+                            <p className="text-sm font-bold text-slate-700">No verified vendors available right now.</p>
+                            <p className="mt-1 text-xs text-slate-500">Approved vendor organizations will appear here automatically.</p>
+                        </div>
+                    ) : sellers.map(seller => {
                         const location = seller.city || seller.district || seller.state;
                         const products = seller._count?.products || 0;
                         const services = seller._count?.services || 0;

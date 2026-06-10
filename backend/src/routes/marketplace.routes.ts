@@ -523,10 +523,11 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 db.product.findMany({
                     where: { status: 'ACTIVE' },
                     orderBy: { createdAt: 'desc' },
+                    take: 12,
                     include: {
                         category: { select: { id: true, name: true } },
                         seller: { select: { id: true, name: true, onboardingStatus: true } },
-                        organization: { select: { id: true, organizationName: true, city: true, district: true, state: true, verificationStatus: true, logoUrl: true } },
+                        organization: { select: { id: true, organizationName: true, city: true, district: true, state: true, verificationStatus: true, logoUrl: true, logoFile: { select: organizationLogoSelect }, profile: { select: organizationProfileBrandSelect } } },
                         images: { include: { fileAsset: { select: { id: true, url: true } } }, orderBy: [{ isPrimary: 'desc' }, { displayOrder: 'asc' }], take: 1 }
                     }
                 }).catch(() => []),
@@ -547,7 +548,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                 db.organization.findMany({
                     where: { verificationStatus: 'VERIFIED', isBlacklisted: false, deletedAt: null },
                     orderBy: { updatedAt: 'desc' },
-                    take: 8,
+                    take: 16,
                     select: {
                         id: true,
                         organizationName: true,
@@ -906,7 +907,8 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
     try {
         const query = paginationQuery.extend({
             type: z.enum(['PRODUCT', 'SERVICE']).optional(),
-            tab: z.enum(['all', 'products', 'services', 'closing_soon', 'large_industries', 'government']).optional()
+            tab: z.enum(['all', 'products', 'services', 'closing_soon', 'large_industries', 'government']).optional(),
+            buyerOrganizationId: z.coerce.number().int().positive().optional()
         }).parse(req.query);
         const page = query.page || 1;
         const pageSize = query.pageSize || 12;
@@ -920,6 +922,7 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
         if (query.tab === 'large_industries') where.buyerOrganization = { profile: { isLargeIndustry: true } };
         if (query.tab === 'government') where.buyerOrganization = { organizationType: { in: ['GOVERNMENT', 'PSU'] } };
         if (query.categoryId) where.categoryId = query.categoryId;
+        if (query.buyerOrganizationId) where.buyerOrganizationId = query.buyerOrganizationId;
         if (query.location) where.location = { contains: query.location, mode: 'insensitive' };
 
         const legacyWhere: any = { ...getPublicLegacyRequirementWhere() };
@@ -941,6 +944,7 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
         if (query.tab === 'large_industries') legacyWhere.organization = { profile: { isLargeIndustry: true } };
         if (query.tab === 'government') legacyWhere.organization = { organizationType: { in: ['GOVERNMENT', 'PSU'] } };
         if (query.categoryId) legacyWhere.categoryId = query.categoryId;
+        if (query.buyerOrganizationId) legacyWhere.organizationId = query.buyerOrganizationId;
         if (query.location) legacyWhere.organization = {
             ...(legacyWhere.organization || {}),
             OR: [

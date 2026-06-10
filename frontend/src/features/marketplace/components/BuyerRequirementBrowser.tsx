@@ -1,8 +1,9 @@
 'use client';
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { BadgeCheck, Building2, ChevronRight, MapPin } from 'lucide-react';
-import type { BuyerRequirement, MarketplaceOrganization } from '../api';
+import { marketplaceApi, type BuyerRequirement, type MarketplaceOrganization } from '../api';
 import { RequirementCard } from './BuyerRequirementsSection';
 
 interface BuyerSummary {
@@ -78,10 +79,17 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
     const [selectedBuyerId, setSelectedBuyerId] = useState<number | 'all'>('all');
 
     const selectedBuyer = selectedBuyerId === 'all' ? null : buyerSummaries.find(buyer => buyer.id === selectedBuyerId) || null;
+    const selectedBuyerRequirementQuery = useQuery({
+        queryKey: ['marketplaceRequirementsByBuyer', selectedBuyerId],
+        queryFn: () => marketplaceApi.getRequirements({ buyerOrganizationId: selectedBuyerId as number, pageSize: 12 }),
+        enabled: selectedBuyerId !== 'all',
+        staleTime: 60_000
+    });
     const selectedRequirements = useMemo(() => {
         if (selectedBuyerId === 'all') return requirements;
-        return requirements.filter(requirement => requirement.buyerOrganization?.id === selectedBuyerId);
-    }, [requirements, selectedBuyerId]);
+        const fetched = selectedBuyerRequirementQuery.data?.requirements as BuyerRequirement[] | undefined;
+        return fetched?.length ? fetched : requirements.filter(requirement => requirement.buyerOrganization?.id === selectedBuyerId);
+    }, [requirements, selectedBuyerId, selectedBuyerRequirementQuery.data]);
 
     if (!buyerSummaries.length && !requirements.length) return null;
 
@@ -142,11 +150,15 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                     <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                         <div>
                             <h3 className="text-base font-black text-[#0b2447]">{selectedBuyer ? `${selectedBuyer.name} requirements` : 'All buyer requirements'}</h3>
-                            <p className="text-xs font-medium text-slate-500">{selectedRequirements.length} matching requirement{selectedRequirements.length === 1 ? '' : 's'} found.</p>
+                            <p className="text-xs font-medium text-slate-500">{selectedBuyerRequirementQuery.isFetching ? 'Loading published requirements...' : `${selectedRequirements.length} matching requirement${selectedRequirements.length === 1 ? '' : 's'} found.`}</p>
                         </div>
                     </div>
 
-                    {selectedRequirements.length ? (
+                    {selectedBuyerRequirementQuery.isFetching ? (
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-56 rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse"><div className="mb-4 h-4 w-3/4 rounded bg-slate-100" /><div className="mb-2 h-3 w-full rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /></div>)}
+                        </div>
+                    ) : selectedRequirements.length ? (
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                             {selectedRequirements.map(requirement => <RequirementCard key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} requirement={requirement} />)}
                         </div>

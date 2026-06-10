@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { marketplaceApi, type MarketplaceHomeData } from '../api';
 import { useQuery } from '@tanstack/react-query';
@@ -44,6 +44,25 @@ export default function MarketplaceHome() {
         placeholderData: (previous) => previous ?? api.peek('/api/marketplace/home') ?? undefined,
     });
 
+    const shouldFetchProductFallback = !isLoading && (data?.featuredProducts?.length || 0) === 0;
+    const { data: productFallbackData } = useQuery({
+        queryKey: ['marketplaceHomeProductFallback'],
+        queryFn: () => marketplaceApi.getProducts({ pageSize: 12, sort: 'latest' }),
+        enabled: shouldFetchProductFallback,
+        staleTime: 60_000
+    });
+
+    const visibleProducts = useMemo(() => {
+        if (data?.featuredProducts?.length) return data.featuredProducts;
+        return productFallbackData?.products || [];
+    }, [data?.featuredProducts, productFallbackData]);
+
+    const homeSellers = useMemo(() => {
+        const map = new Map<number, NonNullable<MarketplaceHomeData['verifiedSellers']>[number]>();
+        [...(data?.verifiedSellers || []), ...(data?.bigMsmes || [])].forEach(seller => map.set(seller.id, seller as any));
+        return Array.from(map.values());
+    }, [data?.verifiedSellers, data?.bigMsmes]);
+
     if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
 
     return (
@@ -68,7 +87,7 @@ export default function MarketplaceHome() {
                 <ProductRow
                     title="Featured Products"
                     subtitle="Quality products from verified MSME sellers"
-                    products={data?.featuredProducts || []}
+                    products={visibleProducts}
                     viewAllHref="/marketplace/products"
                 />
 
@@ -90,7 +109,7 @@ export default function MarketplaceHome() {
                 <LatestBids requirements={data?.featuredRequirements} tenders={data?.latestTenders} bids={data?.latestBids} loading={isLoading && !data} />
 
                 {/* 9. Verified seller strip */}
-                <SellerStrip sellers={data?.verifiedSellers || []} />
+                <SellerStrip sellers={homeSellers} />
 
                 {/* 10. Register CTA */}
                 {/* <RegistrationCTA /> */}

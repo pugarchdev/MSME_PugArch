@@ -1,7 +1,7 @@
 'use client';
 import React, { useMemo } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { marketplaceApi, type MarketplaceHomeData } from '../api';
+import { marketplaceApi, type MarketplaceHomeData, type MarketplaceSeller } from '../api';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
@@ -34,6 +34,11 @@ import { HowItWorks } from '../components/HowItWorks';
 // ── Misc
 import { StatsSection } from '../components/StatsSection';
 import { NoticeBoard } from '../components/NoticeBoard';
+
+type HomeBuyer = MarketplaceHomeData['largeIndustries'][number];
+type HomeProductFallback = { products?: MarketplaceHomeData['featuredProducts'] };
+type HomeSellerFallback = { sellers?: MarketplaceSeller[] };
+type HomeBuyerFallback = { buyers?: HomeBuyer[] };
 
 export default function MarketplaceHome() {
     const { user } = useAuth();
@@ -103,7 +108,7 @@ export default function MarketplaceHome() {
                 {/* <IndustryNetwork /> */}
 
                 {/* 8. Buyer-wise requirement browser */}
-                <BuyerRequirementBrowser buyers={data?.largeIndustries || []} requirements={data?.featuredRequirements || []} />
+                <BuyerRequirementBrowser buyers={homeBuyers} requirements={data?.featuredRequirements || []} />
 
                 {/* 9. Latest bids & buyer requirements */}
                 <LatestBids requirements={data?.featuredRequirements} tenders={data?.latestTenders} bids={data?.latestBids} loading={isLoading && !data} />

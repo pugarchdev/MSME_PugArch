@@ -284,6 +284,20 @@ export const marketplaceApi = {
         return unwrapApiData(body);
     },
 
+    getSellers: async (params: Record<string, string | number> = {}) => {
+        const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString();
+        const res = await api.get(`/api/marketplace/sellers?${qs}`, { headers: headers(), skipCache: true });
+        const body = await readJsonResponse(res);
+        return unwrapApiData(body);
+    },
+
+    getBuyers: async (params: Record<string, string | number> = {}) => {
+        const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString();
+        const res = await api.get(`/api/marketplace/buyers?${qs}`, { headers: headers(), skipCache: true });
+        const body = await readJsonResponse(res);
+        return unwrapApiData(body);
+    },
+
     getRequirementDetail: async (id: number) => {
         const res = await api.get(`/api/marketplace/requirements/${id}`, { headers: headers() });
         const body = await readJsonResponse(res);

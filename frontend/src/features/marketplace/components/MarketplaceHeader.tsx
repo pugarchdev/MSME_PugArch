@@ -15,7 +15,7 @@ interface Props { user: any; }
 const signupOptions = [
     { href: '/seller/register', label: 'Sign Up as Seller', icon: <Store className="h-4 w-4" /> },
     { href: '/buyer/register', label: 'Sign Up as Buyer', icon: <Building2 className="h-4 w-4" /> },
-    { href: '/hcp/register', label: 'Sign Up as HCP', icon: <User className="h-4 w-4" /> }
+    { href: '/seller/register?entity=shg', label: 'Sign Up as SHG', icon: <User className="h-4 w-4" /> }
 ];
 
 function SignupMenu({ onSelect }: { onSelect: () => void }) {

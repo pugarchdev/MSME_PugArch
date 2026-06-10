@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { Building2, BadgeCheck, ChevronLeft, ChevronRight, Package, Wrench, MapPin } from 'lucide-react';
 import type { MarketplaceSeller } from '../api';
 
+function sellerLogo(seller: MarketplaceSeller) {
+    const profile = seller.profile || {};
+    return seller.logoUrl || seller.logoFile?.url || profile.logoUrl || profile.logo || profile.organizationLogoUrl || profile.organizationLogo || null;
+}
+
 interface Props { sellers: MarketplaceSeller[]; }
 
 export function SellerStrip({ sellers }: Props) {
@@ -38,14 +43,15 @@ export function SellerStrip({ sellers }: Props) {
                         const location = seller.city || seller.district || seller.state;
                         const products = seller._count?.products || 0;
                         const services = seller._count?.services || 0;
+                        const logo = sellerLogo(seller);
                         return (
                             <Link
                                 key={seller.id}
                                 href={`/vendors/${seller.id}`}
                                 className="group shrink-0 w-48 sm:w-52 flex flex-col items-center text-center gap-2 border-r border-slate-100 px-4 py-3 hover:bg-slate-50 transition cursor-pointer"
                             >
-                                <div className="w-14 h-14 rounded-full bg-[#0b2447]/5 border-2 border-[#0b2447]/10 flex items-center justify-center group-hover:border-[#0b2447]/30 transition">
-                                    <Building2 className="h-7 w-7 text-[#0b2447]/60" />
+                                <div className="w-14 h-14 overflow-hidden rounded-full bg-[#0b2447]/5 border-2 border-[#0b2447]/10 flex items-center justify-center group-hover:border-[#0b2447]/30 transition">
+                                    {logo ? <img src={logo} alt={`${seller.organizationName} logo`} className="h-full w-full object-contain p-1.5" loading="lazy" /> : <Building2 className="h-7 w-7 text-[#0b2447]/60" />}
                                 </div>
                                 <h3 className="text-xs font-semibold text-slate-800 line-clamp-2 leading-tight">{seller.organizationName}</h3>
                                 {location && <p className="text-[9px] text-slate-400 inline-flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{location}</p>}

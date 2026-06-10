@@ -558,6 +558,8 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
                         state: true,
                         verificationStatus: true,
                         logoUrl: true,
+                        logoFile: { select: organizationLogoSelect },
+                        profile: { select: organizationProfileBrandSelect },
                         _count: { select: { products: { where: { status: 'ACTIVE' } }, services: { where: { status: 'ACTIVE' } } } }
                     }
                 }).catch(() => []),
@@ -875,6 +877,9 @@ router.get('/marketplace/sellers', async (req: Request, res: Response) => {
                     district: true,
                     state: true,
                     verificationStatus: true,
+                    logoUrl: true,
+                    logoFile: { select: organizationLogoSelect },
+                    profile: { select: organizationProfileBrandSelect },
                     _count: { select: { products: { where: { status: 'ACTIVE' } }, services: { where: { status: 'ACTIVE' } } } }
                 }
             }),
@@ -885,6 +890,60 @@ router.get('/marketplace/sellers', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('[Marketplace Sellers]', error);
         return apiResponse.error(res, 500, 'Failed to load sellers', 'MARKETPLACE_SELLERS_ERROR');
+    }
+});
+
+
+// ─── Public: Verified Buyers ─────────────────────────────────────────────────
+router.get('/marketplace/buyers', async (req: Request, res: Response) => {
+    try {
+        const query = paginationQuery.parse(req.query);
+        const page = query.page || 1;
+        const pageSize = query.pageSize || 12;
+        const skip = (page - 1) * pageSize;
+        const where: any = {
+            verificationStatus: 'VERIFIED',
+            isBlacklisted: false,
+            deletedAt: null,
+            OR: [
+                { users: { some: { role: 'buyer', accountStatus: 'ACTIVE' } } },
+                { buyerProfiles: { some: {} } },
+                { buyerRequirements: { some: {} } },
+                { procurementBids: { some: {} } },
+                { tenders: { some: {} } },
+                { profile: { isLargeIndustry: true } },
+                { organizationType: { in: ['PUBLIC_LIMITED', 'PSU', 'GOVERNMENT'] } }
+            ]
+        };
+        if (query.q) where.organizationName = { contains: query.q, mode: 'insensitive' };
+
+        const [buyers, total] = await Promise.all([
+            db.organization.findMany({
+                where,
+                orderBy: { updatedAt: 'desc' },
+                skip,
+                take: pageSize,
+                select: {
+                    id: true,
+                    organizationName: true,
+                    organizationType: true,
+                    city: true,
+                    district: true,
+                    state: true,
+                    verificationStatus: true,
+                    logoUrl: true,
+                    logoFile: { select: organizationLogoSelect },
+                    profile: { select: organizationProfileBrandSelect },
+                    _count: { select: { buyerRequirements: true } }
+                }
+            }),
+            db.organization.count({ where })
+        ]);
+
+        return ok(res, { buyers, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+    } catch (error) {
+        console.error('[Marketplace Buyers]', error);
+        return apiResponse.error(res, 500, 'Failed to load buyers', 'MARKETPLACE_BUYERS_ERROR');
     }
 });
 

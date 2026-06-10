@@ -23,7 +23,7 @@ interface Props {
 
 function organizationLogo(org?: Partial<MarketplaceOrganization> | null) {
     const profile = org?.profile || {};
-    return org?.logoUrl || profile.logoUrl || profile.logo || profile.organizationLogoUrl || profile.organizationLogo || null;
+    return org?.logoUrl || org?.logoFile?.url || profile.logoUrl || profile.logo || profile.organizationLogoUrl || profile.organizationLogo || null;
 }
 
 function initials(name: string) {
@@ -91,16 +91,15 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
         return fetched?.length ? fetched : requirements.filter(requirement => requirement.buyerOrganization?.id === selectedBuyerId);
     }, [requirements, selectedBuyerId, selectedBuyerRequirementQuery.data]);
 
-    if (!buyerSummaries.length && !requirements.length) return null;
 
     return (
         <section className="mt-2 border-b border-slate-100 bg-white" aria-labelledby="buyer-browser-heading">
             <div className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
                 <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Buyer Requirement Directory</p>
-                        <h2 id="buyer-browser-heading" className="mt-1 text-xl font-black text-[#0b2447] sm:text-2xl">Browse requirements by buyer</h2>
-                        <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">Select a buyer logo to view only that buyer&apos;s open requirements below.</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Verified Buyer Strip</p>
+                        <h2 id="buyer-browser-heading" className="mt-1 text-xl font-black text-[#0b2447] sm:text-2xl">Verified buyers & published requirements</h2>
+                        <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">Scroll verified buyer logos and click any buyer to list only requirements published by that buyer below.</p>
                     </div>
                     <Link href="/marketplace/requirements" className="inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-[#0b2447] px-4 text-xs font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white sm:self-end">
                         View All Requirements <ChevronRight className="h-3.5 w-3.5" />
@@ -120,7 +119,9 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                         </span>
                     </button>
 
-                    {buyerSummaries.map(buyer => {
+                    {buyerSummaries.length === 0 ? (
+                        <div className="min-w-[260px] shrink-0 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-bold text-slate-600">No verified buyers available right now.</div>
+                    ) : buyerSummaries.map(buyer => {
                         const isActive = selectedBuyerId === buyer.id;
                         return (
                             <button

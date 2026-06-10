@@ -55,7 +55,7 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
             <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
                 <SectionHeader title={title} subtitle={subtitle} viewAllHref={viewAllHref} />
             </div>
-            <div className="relative">
+            <div className="relative mx-auto max-w-7xl px-4">
                 {/* Prev arrow — uses inline style to avoid translate conflict with global CSS */}
                 <button
                     onClick={() => scroll('left')}
@@ -72,7 +72,7 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
                     {/* View All tile */}
                     <Link
                         href={viewAllHref}
-                        className="shrink-0 w-40 flex flex-col items-center justify-center gap-2 border-l border-slate-100 hover:bg-slate-50 transition px-4"
+                        className="min-h-[310px] w-44 shrink-0 snap-start rounded-xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-2 hover:bg-slate-100 transition px-4"
                     >
                         <span className="text-xs font-bold text-[#0b2447] text-center">View All Products</span>
                         <ChevronRight className="h-5 w-5 text-[#0b2447]" />
@@ -149,14 +149,14 @@ function ProductCard({ product }: { product: MarketplaceProduct }) {
     return (
         /* ⚠️ outer wrapper is <div> — no <a> here */
         <div
-            className="group shrink-0 w-44 sm:w-48 flex flex-col border-r border-slate-100 hover:bg-slate-50 transition relative"
+            className="group flex w-44 shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-md sm:w-52"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
             {/* ── Image area — click navigates to detail ── */}
             <div
                 onClick={goToDetail}
-                className="relative h-44 sm:h-48 bg-slate-100 overflow-hidden cursor-pointer"
+                className="relative h-40 cursor-pointer overflow-hidden bg-slate-100 sm:h-44"
             >
                 {imageUrl
                     ? <img src={imageUrl} alt={product.name} loading="lazy" className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300" />

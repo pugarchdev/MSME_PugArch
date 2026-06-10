@@ -18,6 +18,31 @@ export interface MarketplaceCategory {
     _count?: { products: number; services: number };
 }
 
+export interface MarketplaceLogoFile {
+    id: number;
+    url: string;
+}
+
+export interface MarketplaceOrganizationProfile {
+    logoUrl?: string | null;
+    isLargeIndustry?: boolean;
+    isBigMsme?: boolean;
+    [key: string]: any;
+}
+
+export interface MarketplaceOrganizationSummary {
+    id: number;
+    organizationName: string;
+    organizationType?: string;
+    city?: string;
+    district?: string;
+    state?: string;
+    verificationStatus: string;
+    logoUrl?: string | null;
+    logoFile?: MarketplaceLogoFile | null;
+    profile?: MarketplaceOrganizationProfile | null;
+}
+
 export interface MarketplaceProduct {
     id: number;
     name: string;
@@ -29,7 +54,7 @@ export interface MarketplaceProduct {
     status: string;
     category?: { id: number; name: string };
     seller?: { id: number; name: string; onboardingStatus: string };
-    organization?: { id: number; organizationName: string; city?: string; district?: string; state?: string; verificationStatus: string };
+    organization?: MarketplaceOrganizationSummary;
     images?: Array<{ id: number; fileAsset?: { id: number; url: string } }>;
     imageUrl?: string;
 }
@@ -45,7 +70,7 @@ export interface MarketplaceService {
     status: string;
     category?: { id: number; name: string };
     seller?: { id: number; name: string; onboardingStatus: string };
-    organization?: { id: number; organizationName: string; city?: string; district?: string; state?: string; verificationStatus: string };
+    organization?: MarketplaceOrganizationSummary;
     imageUrl?: string;
 }
 
@@ -57,6 +82,9 @@ export interface MarketplaceSeller {
     district?: string;
     state?: string;
     verificationStatus: string;
+    logoUrl?: string | null;
+    logoFile?: MarketplaceLogoFile | null;
+    profile?: MarketplaceOrganizationProfile | null;
     _count?: { products: number; services: number };
 }
 
@@ -158,9 +186,7 @@ export interface MarketplaceBid {
     } | null;
 }
 
-export interface MarketplaceOrganization {
-    id: number;
-    organizationName: string;
+export interface MarketplaceOrganization extends MarketplaceOrganizationSummary {
     organizationType: string;
     city?: string;
     district?: string;

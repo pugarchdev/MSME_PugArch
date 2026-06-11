@@ -7,6 +7,7 @@ import { CheckCircle2, Info } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const sellerBusinessTypes = [
+  { value: 'herSHG', label: 'herSHG / Women Self-Help Group' },
   { value: 'Proprietorship', label: 'Proprietorship' },
   { value: 'Partnership', label: 'Partnership Firm' },
   { value: 'Company', label: 'Company (Pvt Ltd / Ltd)' },
@@ -61,6 +62,26 @@ const prerequisiteDocs: Record<string, { personal: string[], business: string[],
       'NSIC Registered'
     ]
   },
+  'herSHG': {
+    personal: [
+      'Authorized representative Aadhaar/Virtual ID with Aadhaar linked mobile number OR Personal PAN details with mobile number',
+      'Active Email ID for OTP verification of the herSHG representative'
+    ],
+    business: [
+      'Self-Help Group resolution or authorization letter naming the representative',
+      'SHG registration certificate / NRLM, mission, federation, cooperative, or local authority proof',
+      'List of members and office bearers with contact details',
+      'SHG bank account number and IFSC',
+      'PAN card of SHG or Form 60 declaration where PAN is not available',
+      'Registered address or meeting-place address proof'
+    ],
+    optional: [
+      'Udyam / MSME registration number where available',
+      'GST number for taxable or interstate supplies',
+      'Product catalogue, photos, FSSAI/handloom/handicraft certification where applicable',
+      'Recent bank statement or passbook copy'
+    ]
+  },
   'Startup': {
     personal: [
       'Aadhaar/Virtual ID and Aadhaar linked mobile number OR Personal PAN details with mobile number',
@@ -102,10 +123,11 @@ const prerequisiteDocs: Record<string, { personal: string[], business: string[],
 interface PrerequisitesProps {
   onProceed: (type: string, selectedDocuments?: string[]) => void;
   role: 'buyer' | 'seller';
+  variant?: 'buyer' | 'seller' | 'hershg';
 }
 
-export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
-  const [selectedType, setSelectedType] = useState('');
+export default function Prerequisites({ onProceed, role, variant }: PrerequisitesProps) {
+  const [selectedType, setSelectedType] = useState(variant === 'hershg' ? 'herSHG' : '');
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   
   const docs = prerequisiteDocs[selectedType] || prerequisiteDocs['default'];
@@ -131,9 +153,12 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
     if (normalized.includes('gst')) return 'gst_certificate';
     if (normalized.includes('nsic')) return 'nsic_certificate';
     if (normalized.includes('udyam')) return 'udyam_certificate';
+    if (normalized.includes('authorization') || normalized.includes('resolution')) return 'authorization_letter';
+    if (normalized.includes('member')) return 'member_list';
+    if (normalized.includes('registration certificate') || normalized.includes('nrlm') || normalized.includes('federation')) return 'registration_certificate';
     if (normalized.includes('registered address')) return 'address_proof';
     if (normalized.includes('bank account')) return 'bank_passbook';
-    if (normalized.includes('business pan')) return 'pan_copy';
+    if (normalized.includes('business pan') || normalized.includes('pan card')) return 'pan_copy';
     return '';
   };
 
@@ -143,12 +168,19 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
     return Array.from(new Set(checked.map(sellerDocumentForPrerequisite).filter(Boolean)));
   };
 
+  const isHerShg = variant === 'hershg';
+  const availableBusinessTypes = isHerShg ? sellerBusinessTypes.filter(t => t.value === 'herSHG') : (role === 'buyer' ? buyerBusinessTypes : sellerBusinessTypes.filter(t => t.value !== 'herSHG'));
+
   return (
     <div className="mx-auto w-full max-w-4xl">
       <Card className="overflow-visible rounded-2xl border-none bg-white shadow-lg shadow-slate-200/70 sm:shadow-xl">
         <div className="p-4 pb-3 text-left sm:p-6 md:p-8 md:pb-4">
-           <h2 className="text-lg font-bold text-slate-800 sm:text-xl">Pre-requisites</h2>
-           <p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm md:text-xs">Registration on JsgSmile should be done by an authorized person (Director of the organisation or a Key Person/Proprietor).</p>
+           <h2 className="text-lg font-bold text-slate-800 sm:text-xl">{isHerShg ? 'herSHG Pre-requisites' : 'Pre-requisites'}</h2>
+           <p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm md:text-xs">
+             {isHerShg
+               ? 'Register a women Self-Help Group through an authorized representative. Keep SHG identity, member, bank, and catalogue records ready before starting.'
+               : 'Registration on JsgSmile should be done by an authorized person (Director of the organisation or a Key Person/Proprietor).'}
+           </p>
         </div>
         
         <CardContent className="p-4 pt-0 pb-10 sm:p-6 sm:pt-0 sm:pb-12 md:p-8 md:pt-0 md:pb-16">
@@ -164,7 +196,7 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
                 className="h-12 rounded-xl border-slate-200 bg-white text-base sm:text-sm"
               >
                 <option value="">{isBuyer ? 'Select type of User' : 'Select type'}</option>
-                {(role === 'buyer' ? buyerBusinessTypes : sellerBusinessTypes).map(t => (
+                {availableBusinessTypes.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </Select>
@@ -196,7 +228,7 @@ export default function Prerequisites({ onProceed, role }: PrerequisitesProps) {
               ) : (
                 <>
                   <div className="mb-2 flex items-center gap-2">
-                     <h3 className="text-sm font-bold text-slate-800">Required *</h3>
+                     <h3 className="text-sm font-bold text-slate-800">{isHerShg ? 'Documents and readiness checklist *' : 'Required *'}</h3>
                   </div>
                   <Section 
                     title="Personal Details" 

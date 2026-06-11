@@ -38,6 +38,10 @@ main .max-w-7xl {
   max-width: 1450px !important;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body,
 #root {
@@ -50,7 +54,23 @@ body,
 
 body {
   margin: 0;
+  overflow-x: hidden;
 }
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  :root,
+  html {
+    font-size: 12.8px !important;
+  }
+}
+
 
 @layer base {
 

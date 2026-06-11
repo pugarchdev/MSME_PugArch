@@ -30,6 +30,7 @@ interface RegistrationDetailsFlowProps {
   businessType: string;
   onBack: () => void;
   role: 'buyer' | 'seller';
+  variant?: 'buyer' | 'seller' | 'hershg';
   prereqSelectedDocuments?: string[];
 }
 
@@ -110,7 +111,7 @@ const validateCin = (value: string) => {
   return '';
 };
 
-export default function RegistrationDetailsFlow({ businessType, onBack, role, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
+export default function RegistrationDetailsFlow({ businessType, onBack, role, variant, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(1);
   const { user, login } = useAuth();
   const router = useRouter();
@@ -176,8 +177,17 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [verifiedGstDetails, setVerifiedGstDetails] = useState<any>(null);
 
+  const isHerShg = variant === 'hershg' || businessType === 'herSHG';
+
   const sellerRegistrationDocuments = () => {
     const docs = new Set(prereqSelectedDocuments);
+    if (isHerShg) {
+      docs.add('authorization_letter');
+      docs.add('registration_certificate');
+      docs.add('member_list');
+      docs.add('bank_passbook');
+      docs.add('address_proof');
+    }
     if (formData.gstin && isGstVerified) docs.add('gst_certificate');
     if (formData.udyamNumber) docs.add('udyam_certificate');
     if (formData.cin) docs.add('business_registration_proof');
@@ -469,7 +479,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
         toast.error('Please enter Organization Name');
         return;
       }
-      if (role === 'seller' && showOptionalDetails && !formData.udyamNumber) {
+      if (role === 'seller' && !isHerShg && showOptionalDetails && !formData.udyamNumber) {
         toast.error('Please enter Udyam Number');
         return;
       }
@@ -635,6 +645,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
           dob: formData.dob,
           registrationDetails: {
             businessType,
+            stakeholderCategory: isHerShg ? 'herSHG' : role,
             businessName: formData.businessName,
             userId: formData.userId,
             verificationMethod: formData.personalVerificationMethod,
@@ -754,7 +765,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
             <CardContent className="p-0">
               {currentSubStep === 1 && (
                 <div className="animate-in slide-in-from-right-2 duration-300">
-                  <h2 className="text-2xl font-bold text-slate-800 mb-8 tracking-tight">Organisation Details</h2>
+                  <h2 className="mb-8 text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{isHerShg ? 'herSHG Organisation Details' : 'Organisation Details'}</h2>
 
                   {isPrimaryBuyer ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
@@ -874,10 +885,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
 
                       <div className="space-y-2 md:col-span-2">
                         <label className="flex items-center gap-1 text-[13px] font-semibold text-slate-700">
-                          Business / Organisation Name * <Info className="h-3.5 w-3.5 text-slate-400" />
+                          {isHerShg ? 'Self-Help Group Name *' : 'Business / Organisation Name *'} <Info className="h-3.5 w-3.5 text-slate-400" />
                         </label>
                         <Input
-                          placeholder="Please enter your Business/Company Name"
+                          placeholder={isHerShg ? 'Please enter your Self-Help Group name' : 'Please enter your Business/Company Name'}
                           value={formData.businessName}
                           onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
                           className="h-10 rounded border-slate-300 bg-white text-[13px]"
@@ -902,10 +913,10 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
 
                       <div className="space-y-2">
                         <label className="flex items-center gap-1 text-[13px] font-semibold text-slate-700">
-                          Business / Organisation Name * <Info className="h-3.5 w-3.5 text-slate-400" />
+                          {isHerShg ? 'Self-Help Group Name *' : 'Business / Organisation Name *'} <Info className="h-3.5 w-3.5 text-slate-400" />
                         </label>
                         <Input
-                          placeholder="Please enter your Business/Company Name"
+                          placeholder={isHerShg ? 'Please enter your Self-Help Group name' : 'Please enter your Business/Company Name'}
                           value={formData.businessName}
                           onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
                           disabled={showOptionalDetails}
@@ -925,7 +936,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         />
                         <label htmlFor="showOptionalDetails" className="text-[13px] font-semibold text-slate-700 cursor-pointer">
-                          Provide Optional Details (GSTIN, Udyam Number, CIN, Website)
+                          {isHerShg ? 'Provide Additional Details (GSTIN, Udyam Number, Website)' : 'Provide Optional Details (GSTIN, Udyam Number, CIN, Website)'}
                         </label>
                       </div>
 
@@ -961,7 +972,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
 
                           <div className="space-y-2">
                             <label className="flex items-center gap-1 text-[13px] font-semibold text-slate-700">
-                              Udyam Number * <Info className="h-3.5 w-3.5 text-slate-400" />
+                              {isHerShg ? 'Udyam Number (Optional)' : 'Udyam Number *'} <Info className="h-3.5 w-3.5 text-slate-400" />
                             </label>
                             <Input
                               placeholder="e.g., UDYAM-MH-12-0123456"
@@ -983,7 +994,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, pr
                               <p className="text-[10px] text-red-500 mt-1 font-medium tracking-tight">
                                 {validateUdyam(formData.udyamNumber)}
                               </p>
-                            ) : !formData.udyamNumber ? (
+                            ) : !formData.udyamNumber && !isHerShg ? (
                               <p className="text-[10px] text-red-500 mt-1 font-medium tracking-tight">Please enter valid Udyam Number.</p>
                             ) : null}
                           </div>

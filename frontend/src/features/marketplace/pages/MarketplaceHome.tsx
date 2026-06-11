@@ -68,6 +68,12 @@ export default function MarketplaceHome() {
         return Array.from(map.values());
     }, [data?.verifiedSellers, data?.bigMsmes]);
 
+    const homeBuyers = useMemo(() => {
+        const map = new Map<number, HomeBuyer>();
+        [...(data?.largeIndustries || []), ...(data?.bigMsmes || [])].forEach(buyer => map.set(buyer.id, buyer));
+        return Array.from(map.values());
+    }, [data?.largeIndustries, data?.bigMsmes]);
+
     if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
 
     return (

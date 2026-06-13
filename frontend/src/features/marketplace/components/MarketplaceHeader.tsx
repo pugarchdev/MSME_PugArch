@@ -138,7 +138,7 @@ export function MarketplaceHeader({ user }: Props) {
           Right : A- A A+ · contrast · language
           ════════════════════════════════════════════════════════════════════ */}
             <div className="bg-[#0b2447] text-white marketplace-util-bar" style={{ height: 36 }}>
-                <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
+                <div className="mx-auto flex h-full max-w-[1680px] items-center justify-between px-4 sm:px-6 2xl:px-8">
 
                     {/* Left */}
                     <div className="flex items-center gap-4 overflow-hidden text-[10px] font-medium">
@@ -217,12 +217,12 @@ export function MarketplaceHeader({ user }: Props) {
           [Logo]  [Search bar──────────────────]  [Login][Buyer][Seller][Cart][Help]
           ════════════════════════════════════════════════════════════════════ */}
             <nav className="border-b border-slate-100 bg-white" aria-label="Main navigation">
-                <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-3">
+                <div className="mx-auto flex h-16 max-w-[1680px] items-center gap-3 px-4 sm:px-6 2xl:px-8">
 
                     {/* Logo ── always visible */}
                     <Link href="/" className="flex items-center gap-2.5 shrink-0">
-                        <div className="w-9 h-9 rounded-lg bg-[#0b2447] flex items-center justify-center shrink-0">
-                            <span className="text-white font-black text-sm tracking-tight leading-none">JS</span>
+                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0 p-0.5 shadow-sm border border-slate-200 transition-all hover:scale-105">
+                            <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <div className="hidden sm:block leading-none">
                             <p className="text-sm font-black text-[#0b2447]">JsgSmile</p>

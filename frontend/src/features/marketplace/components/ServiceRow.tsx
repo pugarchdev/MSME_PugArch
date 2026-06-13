@@ -7,6 +7,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { toast } from 'sonner';
 import type { MarketplaceService } from '../api';
 import { useQueryClient } from '@tanstack/react-query';
+import { CompareToggleButton } from './CompareToggleButton';
 
 const PRICING_LABELS: Record<string, string> = {
     FIXED: 'Fixed',
@@ -44,7 +45,7 @@ export function ServiceRow({ title, subtitle, services, viewAllHref }: Props) {
     if (services.length === 0) {
         return (
             <section className="bg-white mt-2 border-b border-slate-100">
-                <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className="mx-auto max-w-[1680px] px-4 py-6 sm:px-6 2xl:px-8">
                     <div className="flex items-end justify-between mb-3">
                         <h2 className="text-sm sm:text-base font-bold text-[#0b2447]">{title}</h2>
                     </div>
@@ -59,7 +60,7 @@ export function ServiceRow({ title, subtitle, services, viewAllHref }: Props) {
 
     return (
         <section className="bg-white mt-2 border-b border-slate-100">
-            <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
+            <div className="mx-auto max-w-[1680px] px-4 pt-5 pb-2 sm:px-6 2xl:px-8">
                 <div className="flex items-end justify-between mb-3">
                     <div>
                         <h2 className="text-sm sm:text-base font-bold text-[#0b2447]">{title}</h2>
@@ -68,20 +69,20 @@ export function ServiceRow({ title, subtitle, services, viewAllHref }: Props) {
                     <Link href={viewAllHref} className="text-[11px] font-bold text-[#0b2447] hover:underline">View All →</Link>
                 </div>
             </div>
-            <div className="relative">
-                <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 bg-white/90 border border-slate-200 shadow-md flex items-center justify-center hover:bg-slate-50 transition rounded-r-md" aria-label="Scroll left">
+            <div className="relative mx-auto max-w-[1680px] px-4 sm:px-6 2xl:px-8">
+                <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 z-10 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-md border border-slate-200 bg-white/90 shadow-md transition hover:bg-slate-50" aria-label="Scroll left">
                     <ChevronLeft className="h-4 w-4 text-slate-600" />
                 </button>
-                <div ref={scrollRef} className="flex gap-0 overflow-x-auto no-scrollbar">
+                <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 no-scrollbar xl:gap-5">
                     {services.map(service => (
                         <ServiceCard key={service.id} service={service} />
                     ))}
-                    <Link href={viewAllHref} className="shrink-0 w-44 flex flex-col items-center justify-center gap-2 border-l border-slate-100 hover:bg-slate-50 transition px-4 cursor-pointer">
+                    <Link href={viewAllHref} className="flex min-h-[245px] w-48 shrink-0 snap-start cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 transition hover:bg-slate-100 sm:w-56 xl:w-60">
                         <span className="text-xs font-bold text-[#0b2447] text-center">View All Services</span>
                         <ChevronRight className="h-5 w-5 text-[#0b2447]" />
                     </Link>
                 </div>
-                <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 bg-white/90 border border-slate-200 shadow-md flex items-center justify-center hover:bg-slate-50 transition rounded-l-md" aria-label="Scroll right">
+                <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 z-10 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-md border border-slate-200 bg-white/90 shadow-md transition hover:bg-slate-50" aria-label="Scroll right">
                     <ChevronRight className="h-4 w-4 text-slate-600" />
                 </button>
             </div>
@@ -115,9 +116,9 @@ function ServiceCard({ service }: { service: MarketplaceService }) {
     };
 
     return (
-        <div onClick={goToDetail} className="group shrink-0 w-52 sm:w-56 flex flex-col border-r border-slate-100 hover:bg-[#f8fafc] transition cursor-pointer p-3 gap-2">
+        <div onClick={goToDetail} className="group flex min-h-[245px] w-52 shrink-0 snap-start cursor-pointer flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:bg-[#f8fafc] hover:shadow-md sm:w-56 xl:w-60">
             {/* Image area — shows uploaded image or icon fallback */}
-            <div className={`h-20 ${bgColor} rounded-lg flex items-center justify-center border border-slate-100 overflow-hidden`}>
+            <div className={`h-24 ${bgColor} rounded-lg flex items-center justify-center border border-slate-100 overflow-hidden xl:h-28`}>
                 {(service as any).imageUrl
                     ? <img src={(service as any).imageUrl} alt={service.name} loading="lazy" className="w-full h-full object-cover" />
                     : (service as any).images?.[0]?.fileAsset?.url
@@ -173,6 +174,9 @@ function ServiceCard({ service }: { service: MarketplaceService }) {
                 >
                     <FileText className="h-2.5 w-2.5" /> Quote
                 </button>
+            </div>
+            <div onClick={(event) => event.stopPropagation()}>
+                <CompareToggleButton item={{ type: 'service', id: service.id, categoryId: service.category?.id }} />
             </div>
         </div>
     );

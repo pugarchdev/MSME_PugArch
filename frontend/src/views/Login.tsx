@@ -124,7 +124,7 @@ export default function Login() {
           <div className="absolute top-0 right-0 p-6 opacity-5">
             <ShieldCheck className="h-28 w-28" />
           </div>
-          <div className="relative mx-auto w-20 h-20 bg-white shadow-[0_12px_24px_-8px_rgba(0,0,0,0.2)] rounded-2xl flex items-center justify-center mb-1 border border-white/20 transition-all duration-500 hover:scale-100 overflow-hidden p-0">
+          <div className="relative mx-auto w-20 h-20 bg-white shadow-[0_12px_24px_-8px_rgba(0,0,0,0.3)] rounded-2xl flex items-center justify-center mb-1 border-2 border-white/30 transition-all duration-500 hover:scale-105 overflow-hidden p-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/msme-logo.png" alt="Official MSME Logo" className="w-full h-full object-contain" />
           </div>

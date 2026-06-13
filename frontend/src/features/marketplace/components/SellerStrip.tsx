@@ -19,7 +19,7 @@ export function SellerStrip({ sellers }: Props) {
 
     return (
         <section className="bg-white mt-2 border-b border-slate-100">
-            <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
+            <div className="mx-auto max-w-[1680px] px-4 pt-5 pb-2 sm:px-6 2xl:px-8">
                 <div className="flex items-end justify-between mb-3">
                     <div>
                         <h2 className="text-sm sm:text-base font-bold text-[#0b2447]">Vendors & Verified Seller Organizations</h2>
@@ -28,11 +28,11 @@ export function SellerStrip({ sellers }: Props) {
                     <Link href="/marketplace/sellers" className="text-[11px] font-bold text-[#0b2447] hover:underline">View All →</Link>
                 </div>
             </div>
-            <div className="relative">
-                <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 bg-white/90 border border-slate-200 shadow-md flex items-center justify-center hover:bg-slate-50 transition rounded-r-md" aria-label="Scroll left">
+            <div className="relative mx-auto max-w-[1680px] px-4 sm:px-6 2xl:px-8">
+                <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 z-10 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-md border border-slate-200 bg-white/90 shadow-md transition hover:bg-slate-50" aria-label="Scroll left">
                     <ChevronLeft className="h-4 w-4 text-slate-600" />
                 </button>
-                <div ref={scrollRef} className="flex gap-0 overflow-x-auto no-scrollbar pb-4">
+                <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 no-scrollbar xl:gap-5">
                     {sellers.length === 0 ? (
                         <div className="mx-4 mb-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                             <Building2 className="mx-auto mb-2 h-8 w-8 text-slate-300" />
@@ -48,7 +48,7 @@ export function SellerStrip({ sellers }: Props) {
                             <Link
                                 key={seller.id}
                                 href={`/vendors/${seller.id}`}
-                                className="group shrink-0 w-48 sm:w-52 flex flex-col items-center text-center gap-2 border-r border-slate-100 px-4 py-3 hover:bg-slate-50 transition cursor-pointer"
+                                className="group flex w-48 shrink-0 snap-start flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-4 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:bg-slate-50 hover:shadow-md sm:w-52 xl:w-56"
                             >
                                 <div className="w-14 h-14 overflow-hidden rounded-full bg-[#0b2447]/5 border-2 border-[#0b2447]/10 flex items-center justify-center group-hover:border-[#0b2447]/30 transition">
                                     {logo ? <img src={logo} alt={`${seller.organizationName} logo`} className="h-full w-full object-contain p-1.5" loading="lazy" /> : <Building2 className="h-7 w-7 text-[#0b2447]/60" />}
@@ -68,7 +68,7 @@ export function SellerStrip({ sellers }: Props) {
                         );
                     })}
                 </div>
-                <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 bg-white/90 border border-slate-200 shadow-md flex items-center justify-center hover:bg-slate-50 transition rounded-l-md" aria-label="Scroll right">
+                <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 z-10 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-md border border-slate-200 bg-white/90 shadow-md transition hover:bg-slate-50" aria-label="Scroll right">
                     <ChevronRight className="h-4 w-4 text-slate-600" />
                 </button>
             </div>

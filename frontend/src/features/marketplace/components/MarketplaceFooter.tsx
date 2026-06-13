@@ -7,8 +7,8 @@ export function MarketplaceFooter() {
     return (
         <footer className="bg-[#0b2447] text-white" id="help">
             {/* Main Footer */}
-            <div className="max-w-7xl mx-auto px-4 py-10">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="mx-auto max-w-[1680px] px-4 py-10 sm:px-6 2xl:px-8">
+                <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4 xl:gap-12">
                     {/* About */}
                     <div>
                         <h3 className="text-sm font-bold mb-3">About JsgSmile</h3>
@@ -74,7 +74,7 @@ export function MarketplaceFooter() {
 
             {/* Bottom Bar */}
             <div className="border-t border-white/10">
-                <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="mx-auto flex max-w-[1680px] flex-col items-center justify-between gap-3 px-4 py-4 sm:flex-row sm:px-6 2xl:px-8">
                     <p className="text-[10px] text-white/40 text-center sm:text-left">
                         © {new Date().getFullYear()} JsgSmile - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem. All Rights Reserved.
                     </p>

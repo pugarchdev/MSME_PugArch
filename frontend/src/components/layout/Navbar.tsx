@@ -342,7 +342,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
             className={cn("flex items-center gap-3 min-w-0 select-none", isActuallyCollapsed && "lg:justify-center")}
             title="MSME Portal"
           >
-            <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/10 p-1">
+            <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/20 p-0.5 shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>

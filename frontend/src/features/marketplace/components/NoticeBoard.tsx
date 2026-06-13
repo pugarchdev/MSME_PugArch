@@ -18,7 +18,7 @@ export function NoticeBoard({ notices }: Props) {
 
     return (
         <section className="bg-white mt-2 border-b border-slate-100">
-            <div className="max-w-7xl mx-auto px-4 py-6">
+            <div className="mx-auto max-w-[1680px] px-4 py-6 sm:px-6 2xl:px-8">
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-sm font-bold text-[#0b2447]">Important Notices & Announcements</h2>

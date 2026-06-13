@@ -47,7 +47,7 @@ export default function RegisterSelection() {
 
       <div className="relative z-10 w-full max-w-6xl px-1 text-center sm:px-4">
         <div className="mb-6 text-center sm:mb-8">
-          <div className="mx-auto mb-2 flex h-24 w-24 items-center justify-center border border-slate-100 p-2 sm:h-28 sm:w-28 md:h-30 md:w-30">
+          <div className="mx-auto mb-2 flex h-24 w-24 items-center justify-center rounded-2xl bg-white p-1.5 shadow-md border border-slate-200 sm:h-28 sm:w-28 md:h-30 md:w-30 transition-all duration-500 hover:scale-105">
             <img src="/msme-logo.png" alt="Official MSME Logo" className="h-full w-full object-contain" />
           </div>
           <h2 className="text-2xl font-black uppercase tracking-tight text-slate-800 sm:text-3xl md:text-4xl">

@@ -3,45 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, ArrowRight, ShieldCheck, Users, Package, Star } from 'lucide-react';
 import type { MarketplaceBanner } from '../api';
-
-const FALLBACK_BANNERS: MarketplaceBanner[] = [
-    {
-        id: 1,
-        title: 'Discover Verified MSME\nProducts & Services',
-        subtitle: 'Browse quality products from verified local manufacturers and service providers in Jharsuguda District',
-        ctaText: 'Explore Marketplace',
-        ctaLink: '#products',
-        imageUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1400&q=75&auto=format&fit=crop',
-        displayOrder: 1,
-    },
-    {
-        id: 2,
-        title: 'Register as Seller &\nGrow Your Business',
-        subtitle: 'List your products and services. Reach government, institutional, and enterprise buyers across the district.',
-        ctaText: 'Register as Seller',
-        ctaLink: '/seller/register',
-        imageUrl: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1400&q=75&auto=format&fit=crop',
-        displayOrder: 2,
-    },
-    {
-        id: 3,
-        title: 'Transparent Procurement\nfor All Buyers',
-        subtitle: 'Access verified suppliers, compare products, request quotations, and manage your procurement needs in one place.',
-        ctaText: 'Register as Buyer',
-        ctaLink: '/buyer/register',
-        imageUrl: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=1400&q=75&auto=format&fit=crop',
-        displayOrder: 3,
-    },
-    {
-        id: 4,
-        title: 'Empowering Jharsuguda\nMSMEs Digitally',
-        subtitle: 'A government-grade marketplace connecting local industries, suppliers, and buyers through transparent digital procurement.',
-        ctaText: 'Learn More',
-        ctaLink: '#how-it-works',
-        imageUrl: 'https://images.unsplash.com/photo-1565043666747-69f6646db940?w=1400&q=75&auto=format&fit=crop',
-        displayOrder: 4,
-    },
-];
+import { DEFAULT_MARKETPLACE_BANNERS } from '../../banners/defaultBanners';
+import { BASE_URL } from '../../../lib/api';
 
 // Quick-stat pills shown on the right on desktop
 const QUICK_STATS = [
@@ -53,8 +16,15 @@ const QUICK_STATS = [
 
 interface Props { banners: MarketplaceBanner[]; }
 
+const imageSrc = (url?: string) => {
+    if (!url) return '';
+    if (/^(https?:|data:|blob:)/i.test(url)) return url;
+    if (url.startsWith('/')) return `${BASE_URL}${url}`;
+    return url;
+};
+
 export function HeroBanner({ banners }: Props) {
-    const slides = banners.length > 0 ? banners : FALLBACK_BANNERS;
+    const slides = banners.length > 0 ? banners : DEFAULT_MARKETPLACE_BANNERS as unknown as MarketplaceBanner[];
     const [current, setCurrent] = useState(0);
     const [fading, setFading] = useState(false);
 
@@ -72,6 +42,8 @@ export function HeroBanner({ banners }: Props) {
     }, [next]);
 
     const slide = slides[current];
+    const ctaLink = slide.ctaLink || slide.targetUrl;
+    const ctaText = slide.ctaText || (ctaLink ? 'View Details' : '');
 
     const handleCtaClick = (e: React.MouseEvent<HTMLAnchorElement>, link: string) => {
         if (link.startsWith('#')) {
@@ -84,14 +56,14 @@ export function HeroBanner({ banners }: Props) {
         <section
             className="relative overflow-hidden"
             aria-label="Hero Banner"
-            style={{ minHeight: '380px', background: 'linear-gradient(135deg, #07172e 0%, #0b2447 60%, #12335f 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #07172e 0%, #0b2447 60%, #12335f 100%)' }}
         >
             {/* Background image */}
             <div className="absolute inset-0">
                 {slide.imageUrl && (
                     <img
                         key={slide.id}
-                        src={slide.imageUrl}
+                        src={imageSrc(slide.imageUrl)}
                         alt=""
                         loading="eager"
                         className={`w-full h-full object-cover transition-opacity duration-300 ${fading ? 'opacity-0' : 'opacity-100'}`}
@@ -103,8 +75,8 @@ export function HeroBanner({ banners }: Props) {
                 <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#07172e]/60 to-transparent" />
             </div>
 
-            <div className="relative max-w-7xl mx-auto px-4 py-12 sm:py-16 lg:py-20">
-                <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div className="relative mx-auto flex min-h-[360px] max-w-[1680px] items-center px-4 py-12 sm:px-6 sm:py-16 lg:min-h-[430px] xl:min-h-[480px] 2xl:px-8 2xl:py-24">
+                <div className="grid w-full gap-8 lg:grid-cols-[minmax(0,0.58fr)_minmax(360px,0.42fr)] lg:items-center">
                     {/* Left: main content */}
                     <div className={`transition-all duration-300 ${fading ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
                         {/* Trust badge */}
@@ -114,7 +86,7 @@ export function HeroBanner({ banners }: Props) {
                         </div>
 
                         {/* Title — supports \n line breaks */}
-                        <h1 className="text-2xl sm:text-3xl lg:text-[2.4rem] font-black text-white leading-tight mb-4 tracking-tight">
+                        <h1 className="mb-4 text-2xl font-black leading-tight tracking-tight text-white sm:text-3xl lg:text-[2.4rem] xl:text-[2.8rem]">
                             {slide.title.split('\n').map((line, i) => (
                                 <React.Fragment key={i}>
                                     {i > 0 && <br />}
@@ -124,20 +96,20 @@ export function HeroBanner({ banners }: Props) {
                         </h1>
 
                         {slide.subtitle && (
-                            <p className="text-sm text-white/65 leading-relaxed mb-7 max-w-md">
+                            <p className="mb-7 max-w-xl text-sm leading-relaxed text-white/70 lg:text-base">
                                 {slide.subtitle}
                             </p>
                         )}
 
                         {/* CTA buttons */}
                         <div className="flex flex-wrap gap-3">
-                            {slide.ctaText && slide.ctaLink && (
+                            {ctaText && ctaLink && (
                                 <Link
-                                    href={slide.ctaLink}
-                                    onClick={(e) => handleCtaClick(e, slide.ctaLink!)}
+                                    href={ctaLink}
+                                    onClick={(e) => handleCtaClick(e, ctaLink)}
                                     className="inline-flex items-center gap-2 h-11 px-6 rounded-xl bg-white text-[#0b2447] text-sm font-bold hover:bg-slate-100 active:scale-95 transition shadow-lg shadow-black/20"
                                 >
-                                    {slide.ctaText}
+                                    {ctaText}
                                     <ArrowRight className="h-4 w-4" />
                                 </Link>
                             )}

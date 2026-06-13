@@ -230,7 +230,7 @@ function HomeSection({ title, href, empty, children, listHeaders, listChildren }
             </div>
             {hasItems ? (
                 viewMode === 'grid' ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{gridList}</div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">{gridList}</div>
                 ) : (
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         {listHeaders?.length ? (
@@ -396,7 +396,7 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
         <>
             {selected && <BidDetailModal bid={selected} onClose={() => setSelected(null)} />}
             <section ref={ref} className="mt-2 border-b border-slate-100 bg-[#f8fafc]" aria-labelledby="bids-heading">
-                <div className="mx-auto max-w-7xl px-4 py-10 sm:py-12">
+                <div className="mx-auto max-w-[1680px] px-4 py-10 sm:px-6 sm:py-12 2xl:px-8">
                     <div
                         className="mb-7 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"
                         style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(-10px)', transition: 'opacity 0.5s, transform 0.5s' }}
@@ -412,7 +412,7 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
                     </div>
 
                     {loading ? (
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                             {Array.from({ length: 6 }).map((_, index) => <RequirementSkeleton key={index} />)}
                         </div>
                     ) : (

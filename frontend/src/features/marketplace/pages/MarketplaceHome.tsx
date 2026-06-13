@@ -34,6 +34,7 @@ import { HowItWorks } from '../components/HowItWorks';
 // ── Misc
 import { StatsSection } from '../components/StatsSection';
 import { NoticeBoard } from '../components/NoticeBoard';
+import { CompareTray } from '../components/CompareTray';
 
 type HomeBuyer = MarketplaceHomeData['largeIndustries'][number];
 type HomeProductFallback = { products?: MarketplaceHomeData['featuredProducts'] };
@@ -47,6 +48,12 @@ export default function MarketplaceHome() {
         queryKey: ['marketplaceHome'],
         queryFn: marketplaceApi.getHomeData,
         placeholderData: (previous) => previous ?? api.peek('/api/marketplace/home') ?? undefined,
+    });
+
+    const { data: activeBannerData } = useQuery({
+        queryKey: ['activeHomeBanners'],
+        queryFn: () => marketplaceApi.getActiveBanners('HOME_HERO'),
+        staleTime: 60_000
     });
 
     const shouldFetchProductFallback = !isLoading && (data?.featuredProducts?.length || 0) === 0;
@@ -97,13 +104,13 @@ export default function MarketplaceHome() {
     if (isLoading && !data) return <MarketplaceLoadingSkeleton />;
 
     return (
-        <div className="min-h-dvh bg-[#f1f3f6] text-slate-800 flex flex-col">
+        <div className="flex min-h-dvh flex-col overflow-x-hidden bg-[#f1f3f6] text-slate-800">
             <div className="brand-tricolor-strip w-full" />
             <MarketplaceHeader user={user} />
 
-            <main className="flex-1">
+            <main className="flex-1 overflow-x-hidden">
                 {/* 1. Hero banner */}
-                <HeroBanner banners={data?.banners || []} />
+                <HeroBanner banners={activeBannerData?.banners?.length ? activeBannerData.banners : (data?.banners || [])} />
 
                 {/* 2. Mobile search */}
                 <SearchSection categories={data?.categories || []} />
@@ -154,6 +161,7 @@ export default function MarketplaceHome() {
                 {/* 13. Notices / announcements */}
                 <NoticeBoard notices={data?.notices || []} />
             </main>
+            <CompareTray />
 
             <MarketplaceFooter />
         </div>
@@ -173,7 +181,7 @@ function MarketplaceLoadingSkeleton() {
             <div className="h-72 sm:h-96 bg-slate-300 animate-pulse" />
             {/* Category rail */}
             <div className="bg-white border-b border-slate-100 py-4 px-4">
-                <div className="max-w-7xl mx-auto flex gap-4 overflow-hidden">
+                <div className="mx-auto flex max-w-[1680px] gap-4 overflow-hidden">
                     {Array.from({ length: 10 }).map((_, i) => (
                         <div key={i} className="shrink-0 w-[90px] h-24 bg-slate-100 rounded-xl animate-pulse" />
                     ))}
@@ -183,7 +191,7 @@ function MarketplaceLoadingSkeleton() {
             <div className="bg-white h-14 border-b border-slate-100 animate-pulse" />
             {/* Product row */}
             <div className="bg-white mt-2 border-b border-slate-100 p-4">
-                <div className="max-w-7xl mx-auto">
+                <div className="mx-auto max-w-[1680px]">
                     <div className="h-4 w-40 bg-slate-200 rounded mb-4 animate-pulse" />
                     <div className="flex gap-0 overflow-hidden">
                         {Array.from({ length: 6 }).map((_, i) => (
@@ -194,7 +202,7 @@ function MarketplaceLoadingSkeleton() {
             </div>
             {/* Service row */}
             <div className="bg-white mt-2 border-b border-slate-100 p-4">
-                <div className="max-w-7xl mx-auto">
+                <div className="mx-auto max-w-[1680px]">
                     <div className="h-4 w-40 bg-slate-200 rounded mb-4 animate-pulse" />
                     <div className="flex gap-0 overflow-hidden">
                         {Array.from({ length: 5 }).map((_, i) => (
@@ -205,7 +213,7 @@ function MarketplaceLoadingSkeleton() {
             </div>
             {/* Bids */}
             <div className="bg-[#f8fafc] mt-2 p-4">
-                <div className="max-w-7xl mx-auto">
+                <div className="mx-auto max-w-[1680px]">
                     <div className="h-4 w-52 bg-slate-200 rounded mb-4 animate-pulse" />
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {Array.from({ length: 3 }).map((_, i) => (

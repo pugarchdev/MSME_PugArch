@@ -87,7 +87,7 @@ export function StatsSection({ stats }: Props) {
             <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-blue-400/8 blur-3xl pointer-events-none" />
             <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-violet-400/8 blur-3xl pointer-events-none" />
 
-            <div className="relative max-w-7xl mx-auto px-4 py-12">
+            <div className="relative mx-auto max-w-[1680px] px-4 py-12 sm:px-6 2xl:px-8">
                 <div
                     className="text-center mb-8"
                     style={{ opacity: running ? 1 : 0, transition: 'opacity 0.5s' }}
@@ -100,7 +100,7 @@ export function StatsSection({ stats }: Props) {
                     <p className="text-[11px] text-white/50 mt-1">Real-time numbers from the Jharsuguda MSME Marketplace</p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:gap-4">
                     {items.map((item, i) => (
                         <StatCard key={item.label} {...item} delay={80 + i * 100} running={running} />
                     ))}

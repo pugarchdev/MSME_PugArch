@@ -927,7 +927,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       </div>
 
                       {/* Portal Logo */}
-                      <div className="shrink-0 bg-white p-2 rounded-xl border border-slate-150 shadow-sm flex items-center justify-center h-16 w-16">
+                      <div className="shrink-0 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-center h-16 w-16">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/msme-logo.png" alt="JsgSmile Logo" className="h-full w-full object-contain" />
                       </div>

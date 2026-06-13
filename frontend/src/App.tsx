@@ -92,6 +92,15 @@ const BidResultsPage = lazy(() => import('./features/procurementBid/pages/BidRes
 const BuyerPublishBidPage = lazy(() => import('./features/procurementBid/pages/BuyerPublishBidPage'));
 const AdminBidManagementPage = lazy(() => import('./features/procurementBid/pages/AdminBidManagementPage'));
 const ProcurementOrdersPage = lazy(() => import('./features/procurementBid/pages/ProcurementOrdersPage'));
+const ReverseAuctionListPage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionListPage'));
+const ReverseAuctionCreatePage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionCreatePage'));
+const ReverseAuctionDetailPage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionDetailPage'));
+const ReverseAuctionLivePage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionLivePage'));
+const AuctionResultPage = lazy(() => import('./features/reverseAuctions/pages/AuctionResultPage'));
+const MarketplaceComparePage = lazy(() => import('./features/marketplace/pages/MarketplaceComparePage'));
+const AdminBannerManagementPage = lazy(() => import('./features/banners/pages/AdminBannerManagementPage'));
+const MonthlyRankingsAdminPage = lazy(() => import('./features/banners/pages/MonthlyRankingsAdminPage'));
+const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/pages/OrganizationBannerEligibilityPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -252,6 +261,7 @@ export default function App() {
     if (pathname === '/marketplace/sellers') return <MarketplaceHome />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
     if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
+    if (pathname === '/marketplace/compare') return <MarketplaceComparePage />;
     if (/^\/marketplace\/requirements\/\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
     if (pathname === '/bids') return <BidsListingPage />;
     if (pathname === '/tenders') return <SellerTenders />;
@@ -269,6 +279,7 @@ export default function App() {
     if (pathname === '/master-admin' && roleOk(user.role, ['master_admin'])) return <MasterAdminPage />;
     if (pathname === '/dashboard' && user.role === 'master_admin') return <Redirect to="/master-admin" />;
     if (pathname === '/dashboard') return <Dashboard />;
+    if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
@@ -331,6 +342,8 @@ export default function App() {
     if (pathname === '/admin/security-monitoring' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Security Monitoring" eyebrow="Security" description="Audit and fraud signals for platform operations." endpoint="/api/admin/fraud-alerts" />;
     if (['/admin/governance', '/admin/procurement', '/admin/compliance'].includes(pathname) && roleOk(user.role, ['admin'])) return <AdminOperations section="procurement" />;
     if (pathname === '/admin/reports' && roleOk(user.role, ['admin'])) return <MISReports />;
+    if (pathname === '/admin/banners' && roleOk(user.role, ['admin'])) return <AdminBannerManagementPage />;
+    if (pathname === '/admin/monthly-rankings' && roleOk(user.role, ['admin'])) return <MonthlyRankingsAdminPage />;
     if (pathname === '/admin/rbac' && roleOk(user.role, ['admin'])) return <RbacPanel />;
     if (pathname === '/admin/organizations' && roleOk(user.role, ['admin'])) return <OrganizationManagement />;
     if (pathname === '/notifications') return <NotificationCenter />;
@@ -360,6 +373,23 @@ export default function App() {
       if (auctionLiveMatch) {
         const id = Number(auctionLiveMatch[1]);
         if (Number.isFinite(id) && id > 0) return <AuctionLivePage id={id} />;
+      }
+      if (pathname === '/reverse-auctions') return <ReverseAuctionListPage />;
+      if (pathname === '/reverse-auctions/create') return <ReverseAuctionCreatePage />;
+      const reverseAuctionLiveMatch = pathname.match(/^\/reverse-auctions\/(\d+)\/live$/);
+      if (reverseAuctionLiveMatch) {
+        const id = Number(reverseAuctionLiveMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <ReverseAuctionLivePage id={id} />;
+      }
+      const reverseAuctionResultMatch = pathname.match(/^\/reverse-auctions\/(\d+)\/results$/);
+      if (reverseAuctionResultMatch) {
+        const id = Number(reverseAuctionResultMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <AuctionResultPage id={id} />;
+      }
+      const reverseAuctionDetailMatch = pathname.match(/^\/reverse-auctions\/(\d+)$/);
+      if (reverseAuctionDetailMatch) {
+        const id = Number(reverseAuctionDetailMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <ReverseAuctionDetailPage id={id} />;
       }
     }
     if (pathname === '/settings/security') return <SecuritySettingsPage />;

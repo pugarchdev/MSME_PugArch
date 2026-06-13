@@ -8,6 +8,10 @@ export interface MarketplaceBanner {
     ctaText?: string;
     ctaLink?: string;
     displayOrder: number;
+    targetUrl?: string;
+    status?: string;
+    priority?: number;
+    displayLocation?: string;
 }
 
 export interface MarketplaceCategory {
@@ -332,5 +336,17 @@ export const marketplaceApi = {
         const res = await api.get(`/api/marketplace/search?q=${encodeURIComponent(q)}`, { headers: headers() });
         const body = await readJsonResponse(res);
         return unwrapApiData(body);
+    },
+
+    getActiveBanners: async (location = 'HOME_HERO') => {
+        const res = await api.get(`/api/banners/active?location=${encodeURIComponent(location)}`, { skipCache: true });
+        const body = await readJsonResponse(res);
+        return unwrapApiData<{ banners: MarketplaceBanner[] }>(body);
+    },
+
+    getCompareItems: async (ids: string[]) => {
+        const res = await api.get(`/api/marketplace/compare?ids=${encodeURIComponent(ids.join(','))}`, { skipCache: true });
+        const body = await readJsonResponse(res);
+        return unwrapApiData<{ items: any[]; highlights: { lowestPrice?: number | null }; limit: number }>(body);
     }
 };

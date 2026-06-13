@@ -19,6 +19,7 @@ import { useGuestCart } from '../hooks/useGuestCart';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { MarketplaceProduct } from '../api';
+import { CompareToggleButton } from './CompareToggleButton';
 
 interface Props {
     title: string;
@@ -36,7 +37,7 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
     if (products.length === 0) {
         return (
             <section className="bg-white mt-2 border-b border-slate-100">
-                <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className="mx-auto max-w-[1680px] px-4 py-6 sm:px-6 2xl:px-8">
                     <SectionHeader title={title} subtitle={subtitle} viewAllHref={viewAllHref} />
                     <div className="text-center py-10">
                         <Package className="h-10 w-10 text-slate-200 mx-auto mb-2" />
@@ -52,10 +53,10 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
 
     return (
         <section className="bg-white mt-2 border-b border-slate-100">
-            <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
+            <div className="mx-auto max-w-[1680px] px-4 pt-5 pb-2 sm:px-6 2xl:px-8">
                 <SectionHeader title={title} subtitle={subtitle} viewAllHref={viewAllHref} />
             </div>
-            <div className="relative mx-auto max-w-7xl px-4">
+            <div className="relative mx-auto max-w-[1680px] px-4 sm:px-6 2xl:px-8">
                 {/* Prev arrow — uses inline style to avoid translate conflict with global CSS */}
                 <button
                     onClick={() => scroll('left')}
@@ -66,13 +67,13 @@ export function ProductRow({ title, subtitle, products, viewAllHref }: Props) {
                     <ChevronLeft className="h-4 w-4 text-slate-600" />
                 </button>
 
-                <div ref={scrollRef} className="flex gap-0 overflow-x-auto pb-3 [scrollbar-width:thin]">
+                <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 [scrollbar-width:thin] xl:gap-5">
                     {products.map(p => <ProductCard key={p.id} product={p} />)}
 
                     {/* View All tile */}
                     <Link
                         href={viewAllHref}
-                        className="min-h-[310px] w-44 shrink-0 snap-start rounded-xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-2 hover:bg-slate-100 transition px-4"
+                        className="flex min-h-[330px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 transition hover:bg-slate-100 sm:w-56 xl:w-60 2xl:w-64"
                     >
                         <span className="text-xs font-bold text-[#0b2447] text-center">View All Products</span>
                         <ChevronRight className="h-5 w-5 text-[#0b2447]" />
@@ -149,14 +150,14 @@ function ProductCard({ product }: { product: MarketplaceProduct }) {
     return (
         /* ⚠️ outer wrapper is <div> — no <a> here */
         <div
-            className="group flex w-44 shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-md sm:w-52"
+            className="group flex w-48 shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-md sm:w-56 xl:w-60 2xl:w-64"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
             {/* ── Image area — click navigates to detail ── */}
             <div
                 onClick={goToDetail}
-                className="relative h-40 cursor-pointer overflow-hidden bg-slate-100 sm:h-44"
+                className="relative h-40 cursor-pointer overflow-hidden bg-slate-100 sm:h-44 xl:h-48"
             >
                 {imageUrl
                     ? <img src={imageUrl} alt={product.name} loading="lazy" className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300" />
@@ -218,6 +219,9 @@ function ProductCard({ product }: { product: MarketplaceProduct }) {
 
             {/* ── Cart controls ── (always <button>, never <a>) */}
             <div className="px-3 pb-3">
+                <div className="mb-2" onClick={(event) => event.stopPropagation()}>
+                    <CompareToggleButton item={{ type: 'product', id: product.id, categoryId: product.category?.id }} />
+                </div>
                 {count === 0 ? (
                     <button
                         onClick={addToCart}

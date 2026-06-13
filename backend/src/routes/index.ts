@@ -11,6 +11,9 @@ import grnRoutes from './grn.routes.js';
 import tenderEvalRoutes from './tender-evaluation.routes.js';
 import masterAdminRoutes from './master-admin.routes.js';
 import marketplaceRoutes from './marketplace.routes.js';
+import reverseAuctionRoutes from './reverse-auction.routes.js';
+import compareRoutes from './compare.routes.js';
+import bannerRoutes from './banner.routes.js';
 import procurementBidRoutes from '../modules/procurementBid/procurement-bid.routes.js';
 import prisma from '../config/prisma.js';
 
@@ -50,11 +53,15 @@ router.get('/health', async (_req, res) => {
   }
 });
 
+router.get('/test', (_req, res) => res.json({ message: 'API working' }));
+
 // Register module routers
 router.use('/auth', authRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/ratings', ratingsRoutes);
+router.use('/', compareRoutes);
+router.use('/', bannerRoutes);
 router.use('/', phase4Routes);
 router.use('/', marketplaceRoutes);
 router.use('/', orgRoutes);
@@ -64,5 +71,6 @@ router.use('/', grnRoutes);
 router.use('/', tenderEvalRoutes);
 router.use('/', masterAdminRoutes);
 router.use('/', procurementBidRoutes);
+router.use('/', reverseAuctionRoutes);
 
 export default router;

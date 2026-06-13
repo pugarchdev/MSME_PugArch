@@ -71,6 +71,26 @@ canvas {
   }
 }
 
+/* Scale up comfortably on large / ultrawide monitors */
+@media (min-width: 1280px) {
+  :root,
+  html {
+    font-size: 13.6px !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  :root,
+  html {
+    font-size: 14px !important;
+  }
+  /* Let page containers breathe on ultrawides */
+  main .max-w-6xl,
+  main .max-w-7xl {
+    max-width: 1600px !important;
+  }
+}
+
 
 @layer base {
 

@@ -48,7 +48,7 @@ export function CategoryRail({ categories }: Props) {
 
     return (
         <section className="bg-white border-b border-slate-100" id="categories">
-            <div className="max-w-7xl mx-auto px-2 sm:px-4 relative">
+            <div className="relative mx-auto max-w-[1680px] px-3 sm:px-6 2xl:px-8">
                 {/* Prev Arrow */}
                 <button
                     onClick={() => scroll('left')}
@@ -61,7 +61,7 @@ export function CategoryRail({ categories }: Props) {
                 {/* Rail */}
                 <div
                     ref={scrollRef}
-                    className="flex gap-1 overflow-x-auto no-scrollbar py-4 px-8"
+                    className="flex gap-3 overflow-x-auto no-scrollbar px-8 py-4 xl:gap-5"
                 >
                     {categories.map(cat => {
                         const [icon, style] = getIconStyle(cat.name);
@@ -69,7 +69,7 @@ export function CategoryRail({ categories }: Props) {
                             <Link
                                 key={cat.id}
                                 href={`/marketplace/products?categoryId=${cat.id}`}
-                                className="group shrink-0 flex flex-col items-center gap-2 w-[90px] sm:w-[100px] cursor-pointer"
+                                className="group flex w-[90px] shrink-0 cursor-pointer flex-col items-center gap-2 sm:w-[100px] xl:w-[112px]"
                             >
                                 <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center ${style} border border-slate-100 group-hover:scale-105 group-hover:shadow-md transition-all`}>
                                     {icon}

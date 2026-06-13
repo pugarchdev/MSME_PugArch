@@ -1249,27 +1249,6 @@ app.get("/", (req, res) => {
 app.get("/api/test", (req, res) => res.json({ message: "API working" }));
 
 // --- Tender APIs ---
-app.get('/api/tenders/summary', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
-  try {
-    const userId = Number(req.user?.id);
-    const role = String(req.user?.role);
-    const where = role === 'admin' ? {} : { buyerId: userId };
-
-    const tenders = await prisma.tender.findMany({
-      where,
-      select: { status: true }
-    });
-
-    const draftCount = tenders.filter(t => t.status === 'draft').length;
-    const activeCount = tenders.filter(t => t.status === 'published' || t.status === 'bid_submission' || t.status.startsWith('tech') || t.status.startsWith('fin')).length;
-    const closedCount = tenders.filter(t => t.status === 'closed' || t.status === 'awarded' || t.status === 'po_generated').length;
-
-    res.json({ success: true, draftCount, activeCount, closedCount });
-  } catch (err: any) {
-    handleSecureRouteError(res, err, 'Unable to load tenders summary');
-  }
-});
-
 app.get('/api/tenders', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
     const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;

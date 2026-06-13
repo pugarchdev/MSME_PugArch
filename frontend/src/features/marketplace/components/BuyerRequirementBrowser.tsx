@@ -94,7 +94,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
 
     return (
         <section className="mt-2 border-b border-slate-100 bg-white" aria-labelledby="buyer-browser-heading">
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
+            <div className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 sm:py-10 2xl:px-8">
                 <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                     <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Verified Buyer Strip</p>
@@ -156,11 +156,11 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                     </div>
 
                     {selectedBuyerRequirementQuery.isFetching ? (
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                             {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-56 rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse"><div className="mb-4 h-4 w-3/4 rounded bg-slate-100" /><div className="mb-2 h-3 w-full rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /></div>)}
                         </div>
                     ) : selectedRequirements.length ? (
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                             {selectedRequirements.map(requirement => <RequirementCard key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} requirement={requirement} />)}
                         </div>
                     ) : (

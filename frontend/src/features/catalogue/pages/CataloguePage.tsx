@@ -23,6 +23,9 @@ import { DocumentPreviewModal } from '../../../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, ITEM_CONDITIONS } from '../../../constants/dropdowns';
 import { api, BASE_URL } from '../../../lib/api';
 import { compressImage } from '../../../lib/compress';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { CompareToggleButton } from '../../marketplace/components/CompareToggleButton';
+import { CompareTray } from '../../marketplace/components/CompareTray';
 
 type CatalogueMode = 'buyer' | 'seller' | 'admin';
 type ItemKind = 'product' | 'service';
@@ -220,6 +223,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priceFilter, setPriceFilter] = useState('');
+  const [verificationFilter, setVerificationFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<FilterKind>('all');
   const [formKind, setFormKind] = useState<ItemKind>('product');
   const [form, setForm] = useState(blankForm);
@@ -235,8 +239,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<CatalogueRecord | null>(null);
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
   const [sellerLoading, setSellerLoading] = useState(false);
-  const [addingItemId, setAddingItemId] = useState<number | null>(null);
+  const [addingItemKey, setAddingItemKey] = useState<string | null>(null);
   const [buyerActions, setBuyerActions] = useState<Record<string, BuyerActionState>>({});
+  const debouncedSearchTerm = useDebounce(searchTerm, 200);
 
   // File upload state for catalogue form
   const [uploadedImages, setUploadedImages] = useState<any[]>([]);
@@ -413,7 +418,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const statuses = useMemo(() => Array.from(new Set(data.map(item => item.status).filter(Boolean) as string[])).sort(), [data]);
 
   const filtered = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
     return data.filter(item => {
       const price = cataloguePrice(item);
       const haystack = [item.name, item.description, item.category?.name, item.seller?.name, item.seller?.email, item.itemKind].filter(Boolean).join(' ').toLowerCase();
@@ -422,9 +427,12 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       const matchesStatus = !statusFilter || item.status === statusFilter;
       const matchesCategory = !categoryFilter || item.category?.name === categoryFilter;
       const matchesPrice = !priceFilter || (priceFilter === 'high' ? price >= 10000 : priceFilter === 'mid' ? price >= 1000 && price < 10000 : price < 1000);
-      return matchesSearch && matchesKind && matchesStatus && matchesCategory && matchesPrice;
+      const sellerStatus = String(item.seller?.onboardingStatus || '').toLowerCase();
+      const matchesVerification = !verificationFilter ||
+        (verificationFilter === 'verified' ? isProcurementApproved(sellerStatus) : !isProcurementApproved(sellerStatus));
+      return matchesSearch && matchesKind && matchesStatus && matchesCategory && matchesPrice && matchesVerification;
     });
-  }, [categoryFilter, data, kindFilter, priceFilter, searchTerm, statusFilter]);
+  }, [categoryFilter, data, debouncedSearchTerm, kindFilter, priceFilter, statusFilter, verificationFilter]);
 
   const sorted = useMemo(() => {
     const direction = sortDirection === 'asc' ? 1 : -1;
@@ -526,7 +534,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       toast.error('Your buyer account must be approved by admin before purchase or RFQ actions are allowed.');
       return;
     }
-    setAddingItemId(item.id);
+    const itemKey = `${item.itemKind}-${item.id}`;
+    setAddingItemKey(itemKey);
     try {
       const payload = item.itemKind === 'product'
         ? { productId: item.id, quantity: 1 }
@@ -536,7 +545,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     } catch (err: any) {
       toast.error(err?.message || 'Failed to add to cart');
     } finally {
-      setAddingItemId(null);
+      setAddingItemKey(null);
     }
   };
 
@@ -729,7 +738,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
             <div className={cn(
               "grid gap-3 items-center",
-              showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[150px_170px_170px_160px_auto] xl:justify-between"
+              showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[140px_160px_150px_150px_150px] xl:justify-between"
             )}>
               <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
                 <option value="all">All types</option>
@@ -750,6 +759,13 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                 <option value="mid">Rs. 1k to 10k</option>
                 <option value="low">Below Rs. 1k</option>
               </select>
+              {mode !== 'seller' && (
+                <select value={verificationFilter} onChange={event => setVerificationFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+                  <option value="">All sellers</option>
+                  <option value="verified">Verified sellers</option>
+                  <option value="unverified">Pending sellers</option>
+                </select>
+              )}
 
 
             </div>
@@ -772,7 +788,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                   onViewDetails={setSelectedDetailsItem}
                   onPurchaseBid={openPurchaseBid}
                   onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
-                  addingToCart={addingItemId === item.id}
+                  addingToCart={addingItemKey === `${item.itemKind}-${item.id}`}
                   canPurchase={buyerApproved}
                   onSellerClick={openSellerProfile}
                   actionState={buyerActions[`${item.itemKind}-${item.id}`]}
@@ -783,23 +799,23 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           ) : (
             <div className="rounded-lg border border-slate-200 bg-white">
               <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[960px] table-auto text-left">
+                <table className="w-full min-w-[900px] table-fixed text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500">
                       <th className="px-2 py-3 w-10 text-center">
                         <CatalogueSortHead label="Sr." field="sr" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
                       <th className="px-2 py-3 w-14 text-center">Image</th>
-                      <th className="px-3 py-3 min-w-[180px]">
+                      <th className="px-3 py-3 w-[210px]">
                         <CatalogueSortHead label="Item" field="name" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
                       <th className="px-2 py-3 w-20 whitespace-nowrap">
                         <CatalogueSortHead label="Type" field="kind" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
-                      <th className="px-2 py-3 w-24 whitespace-nowrap">
+                      <th className="px-2 py-3 w-28 whitespace-nowrap">
                         <CatalogueSortHead label="Category" field="category" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
-                      <th className="px-2 py-3 w-20 whitespace-nowrap">
+                      <th className="px-2 py-3 w-24 whitespace-nowrap">
                         <CatalogueSortHead label="HSN" field="hsn" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
                       <th className="px-2 py-3 w-28 whitespace-nowrap">
@@ -811,7 +827,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                       <th className="px-2 py-3 w-24 whitespace-nowrap">
                         <CatalogueSortHead label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
-                      <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
+                      <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -846,7 +862,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               )}
                             </button>
                           </td>
-                          <td className="px-3 py-3 align-top">
+                          <td className="px-3 py-3 align-top w-[210px]">
                             <div className="flex items-center gap-2 mb-0.5">
                               <EntityIdLink
                                 label={`${item.itemKind === 'product' ? 'PRD' : 'SVC'}-${item.id}`}
@@ -860,11 +876,11 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               onClick={() => setSelectedDetailsItem(item)}
                               className="block text-left"
                             >
-                              <p className="text-sm font-black text-neutral-900 hover:text-emerald-700 hover:underline text-wrap-anywhere leading-snug line-clamp-2">
+                              <p className="max-w-[190px] break-words text-sm font-black leading-snug text-neutral-900 hover:text-emerald-700 hover:underline line-clamp-2">
                                 {item.name}
                               </p>
                             </button>
-                            <p className="mt-0.5 text-[11px] font-medium text-slate-500 line-clamp-1 text-wrap-anywhere">{item.description || 'No description'}</p>
+                            <p className="mt-0.5 max-w-[190px] break-words text-[11px] font-medium text-slate-500 line-clamp-2">{item.description || 'No description'}</p>
                           </td>
                           <td className="px-3 py-3 align-top">
                             <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-700">
@@ -922,7 +938,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               <p className="mt-1 text-[9px] font-black uppercase tracking-wide text-emerald-700">{buyerStatusLabel}</p>
                             )}
                           </td>
-                          <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[140px] min-w-[140px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
+                          <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
                             <div className="inline-flex items-center justify-end gap-1">
                               {mode === 'seller' && (
                                 <>
@@ -973,6 +989,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               )}
                               {mode === 'buyer' && (
                                 <>
+                                  <CompareToggleButton item={{ type: item.itemKind, id: item.id, categoryId: item.categoryId }} iconOnly />
                                   <button
                                     type="button"
                                     onClick={() => setSelectedDetailsItem(item)}
@@ -985,12 +1002,12 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                                   <button
                                     type="button"
                                     onClick={() => handleAddToCart(item)}
-                                    disabled={!buyerApproved || addingItemId === item.id}
+                                    disabled={!buyerApproved || addingItemKey === `${item.itemKind}-${item.id}`}
                                     title={buyerApproved ? 'Add to cart' : 'Approval required'}
                                     aria-label="Add to cart"
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#12335f] text-[#12335f] hover:bg-[#12335f]/5 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shrink-0"
                                   >
-                                    {addingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                                    {addingItemKey === `${item.itemKind}-${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
                                   </button>
                                   <button
                                     type="button"
@@ -1054,6 +1071,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         />
       )}
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
+      {mode === 'buyer' && <CompareTray />}
     </div>
   );
 }
@@ -1518,6 +1536,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                 )}
                 {mode === 'buyer' && (
                   <>
+                    <CompareToggleButton item={{ type: item.itemKind, id: item.id, categoryId: item.categoryId }} iconOnly />
                     <Button
                       type="button"
                       variant="outline"
@@ -1683,6 +1702,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
           )}
           {mode === 'buyer' && (
             <div className="mt-3 flex gap-1.5 border-t border-slate-100 pt-3">
+              <CompareToggleButton item={{ type: item.itemKind, id: item.id, categoryId: item.categoryId }} iconOnly />
               <Button
                 type="button"
                 variant="outline"

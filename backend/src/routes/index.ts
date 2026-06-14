@@ -14,6 +14,7 @@ import marketplaceRoutes from './marketplace.routes.js';
 import reverseAuctionRoutes from './reverse-auction.routes.js';
 import compareRoutes from './compare.routes.js';
 import bannerRoutes from './banner.routes.js';
+import disputeRoutes from './dispute.routes.js';
 import procurementBidRoutes from '../modules/procurementBid/procurement-bid.routes.js';
 import prisma from '../config/prisma.js';
 
@@ -62,6 +63,7 @@ router.use('/delivery', deliveryRoutes);
 router.use('/ratings', ratingsRoutes);
 router.use('/', compareRoutes);
 router.use('/', bannerRoutes);
+router.use('/', disputeRoutes);
 router.use('/', phase4Routes);
 router.use('/', marketplaceRoutes);
 router.use('/', orgRoutes);

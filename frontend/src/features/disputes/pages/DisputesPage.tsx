@@ -26,6 +26,9 @@ import type { DisputeDto, DisputeStatus } from '../api';
 const STATUS_TONE: Record<DisputeStatus, string> = {
     open: 'border-amber-200 bg-amber-50 text-amber-800',
     under_review: 'border-blue-200 bg-blue-50 text-blue-800',
+    clarification_requested: 'border-purple-200 bg-purple-50 text-purple-800',
+    responded: 'border-cyan-200 bg-cyan-50 text-cyan-800',
+    escalated: 'border-red-300 bg-red-50 text-red-800',
     frozen: 'border-red-200 bg-red-50 text-red-800',
     resolved: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     rejected: 'border-slate-200 bg-slate-100 text-slate-700',
@@ -66,6 +69,7 @@ function DisputeList({ isAdmin, onSelect, onCreate, showCreate, onCloseCreate }:
     const counts = {
         open: items.filter(d => d.status === 'open').length,
         underReview: items.filter(d => d.status === 'under_review').length,
+        urgent: items.filter(d => d.priority === 'URGENT').length,
         resolved: items.filter(d => d.status === 'resolved').length,
         total: items.length
     };
@@ -93,10 +97,11 @@ function DisputeList({ isAdmin, onSelect, onCreate, showCreate, onCloseCreate }:
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 <Metric label="Total" value={counts.total} icon={AlertTriangle} />
                 <Metric label="Open" value={counts.open} icon={AlertTriangle} tone="amber" />
                 <Metric label="Under Review" value={counts.underReview} icon={Shield} tone="blue" />
+                <Metric label="Urgent" value={counts.urgent} icon={AlertTriangle} tone="amber" />
                 <Metric label="Resolved" value={counts.resolved} icon={CheckCircle2} tone="emerald" />
             </div>
 
@@ -120,7 +125,7 @@ function DisputeList({ isAdmin, onSelect, onCreate, showCreate, onCloseCreate }:
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <EntityIdLink label={`DSP-${d.id}`} id={d.id} size="sm" onClick={() => onSelect(d.id)} />
+                                                        <EntityIdLink label={d.disputeNo || `DSP-${d.id}`} id={d.id} size="sm" onClick={() => onSelect(d.id)} />
                                                         <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_TONE[d.status]}`}>
                                                             {d.status.replace(/_/g, ' ')}
                                                         </span>
@@ -128,7 +133,8 @@ function DisputeList({ isAdmin, onSelect, onCreate, showCreate, onCloseCreate }:
                                                             {d.category}
                                                         </span>
                                                     </div>
-                                                    <p className="mt-1 text-sm font-black text-slate-900 text-wrap-anywhere line-clamp-2">{d.reason}</p>
+                                                    <p className="mt-1 text-sm font-black text-slate-900 text-wrap-anywhere line-clamp-2">{d.title || d.reason}</p>
+                                                    {d.amountInDispute && <p className="mt-1 text-[11px] font-black text-red-700">Amount: {formatCurrency(d.amountInDispute)}</p>}
                                                     <p className="mt-1 text-[11px] text-slate-500">
                                                         Buyer: <span className="font-bold">{d.buyer?.name}</span> ·
                                                         Seller: <span className="font-bold">{d.seller?.name}</span>
@@ -206,7 +212,7 @@ function DisputeDetail({ id, onBack, isAdmin }: { id: number; onBack: () => void
                         <ArrowLeft className="mr-1 h-3 w-3" /> Back to Disputes
                     </button>
                     <div className="mt-1 flex items-center gap-2 flex-wrap">
-                        <h1 className="text-2xl font-black text-slate-950">DSP-{dispute.id}</h1>
+                        <h1 className="text-2xl font-black text-slate-950">{dispute.disputeNo || `DSP-${dispute.id}`}</h1>
                         <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-black uppercase ${STATUS_TONE[dispute.status]}`}>
                             {dispute.status.replace(/_/g, ' ')}
                         </span>
@@ -229,7 +235,13 @@ function DisputeDetail({ id, onBack, isAdmin }: { id: number; onBack: () => void
             <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
                 <CardContent className="p-4">
                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Original Reason</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900 text-wrap-anywhere">{dispute.reason}</p>
+                    <p className="mt-1 text-base font-black text-slate-900 text-wrap-anywhere">{dispute.title || 'Dispute'}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-900 text-wrap-anywhere whitespace-pre-wrap">{dispute.description || dispute.reason}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase text-slate-600">
+                        {dispute.linkedEntityType && <span className="rounded border border-slate-200 bg-white px-2 py-1">{dispute.linkedEntityType.replace(/_/g, ' ')} #{dispute.linkedEntityId || '-'}</span>}
+                        {dispute.priority && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">{dispute.priority}</span>}
+                        {dispute.amountInDispute && <span className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">{formatCurrency(dispute.amountInDispute)}</span>}
+                    </div>
                 </CardContent>
             </Card>
 
@@ -363,7 +375,9 @@ function StatusUpdateModal({ dispute, onClose, onSubmit, pending }: {
                         <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">New Status</label>
                         <select value={status} onChange={e => setStatus(e.target.value as DisputeStatus)} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold">
                             <option value="under_review">Under Review</option>
-                            <option value="frozen">Frozen</option>
+                            <option value="clarification_requested">Request Clarification</option>
+                            <option value="responded">Responded</option>
+                            <option value="escalated">Escalated</option>
                             <option value="resolved">Resolved</option>
                             <option value="rejected">Rejected</option>
                             <option value="closed">Closed</option>
@@ -409,10 +423,15 @@ function StatusUpdateModal({ dispute, onClose, onSubmit, pending }: {
 // ─── Create Dispute Modal ────────────────────────────────────────────────────
 
 function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+    const [linkedEntityType, setLinkedEntityType] = useState('PURCHASE_ORDER');
+    const [linkedEntityId, setLinkedEntityId] = useState<number | ''>('');
     const [poId, setPoId] = useState<number | ''>('');
     const [counterpartyId, setCounterpartyId] = useState<number | ''>('');
     const [category, setCategory] = useState('');
-    const [reason, setReason] = useState('');
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [priority, setPriority] = useState('MEDIUM');
+    const [amountInDispute, setAmountInDispute] = useState<number | ''>('');
     const mut = useCreateDispute();
 
     return (
@@ -424,6 +443,22 @@ function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCre
                 </div>
                 <div className="p-5 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
+                        <Field label="Linked Record Type">
+                            <select value={linkedEntityType} onChange={e => setLinkedEntityType(e.target.value)} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold">
+                                <option value="PURCHASE_ORDER">Purchase Order</option>
+                                <option value="INVOICE">Invoice</option>
+                                <option value="PAYMENT_TRANSACTION">Payment</option>
+                                <option value="DELIVERY">Delivery</option>
+                                <option value="GRN">GRN</option>
+                                <option value="ESCROW_ACCOUNT">Escrow</option>
+                                <option value="REQUIREMENT_RESPONSE">Requirement Response</option>
+                                <option value="REVERSE_AUCTION_AWARD">Reverse Auction Award</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </Field>
+                        <Field label="Linked Record ID">
+                            <input type="number" value={linkedEntityId} onChange={e => setLinkedEntityId(e.target.value === '' ? '' : Number(e.target.value))} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-mono font-semibold" />
+                        </Field>
                         <Field label="Purchase Order ID">
                             <input type="number" value={poId} onChange={e => setPoId(e.target.value === '' ? '' : Number(e.target.value))} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-mono font-semibold" />
                         </Field>
@@ -434,31 +469,59 @@ function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCre
                     <Field label="Category">
                         <select value={category} onChange={e => setCategory(e.target.value)} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold">
                             <option value="">Select category...</option>
-                            <option value="quality">Quality issue</option>
-                            <option value="delivery">Delivery delay</option>
-                            <option value="non_delivery">Non-delivery</option>
-                            <option value="payment">Payment issue</option>
-                            <option value="invoice">Invoice mismatch</option>
-                            <option value="damaged">Damaged goods</option>
-                            <option value="other">Other</option>
+                            <option value="PAYMENT_DELAY">Payment delay</option>
+                            <option value="PAYMENT_MISMATCH">Payment mismatch</option>
+                            <option value="QUALITY_ISSUE">Quality issue</option>
+                            <option value="QUANTITY_MISMATCH">Quantity mismatch</option>
+                            <option value="DELIVERY_DELAY">Delivery delay</option>
+                            <option value="DAMAGED_GOODS">Damaged goods</option>
+                            <option value="WRONG_ITEM">Wrong item</option>
+                            <option value="INVOICE_MISMATCH">Invoice mismatch</option>
+                            <option value="GRN_REJECTION">GRN rejection</option>
+                            <option value="ESCROW_RELEASE_ISSUE">Escrow release issue</option>
+                            <option value="ORDER_CANCELLATION">Order cancellation</option>
+                            <option value="OTHER">Other</option>
                         </select>
                     </Field>
-                    <Field label="Detailed Reason">
-                        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={4} maxLength={4000} placeholder="Describe the issue in detail..." className="w-full rounded border border-slate-200 px-3 py-2 text-xs font-semibold" />
-                        <p className="text-[10px] text-slate-400">Minimum 10 characters. Be specific — admin will review.</p>
+                    <Field label="Title">
+                        <input value={title} onChange={e => setTitle(e.target.value)} maxLength={180} placeholder="Short dispute title" className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-semibold" />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-2">
+                        <Field label="Priority">
+                            <select value={priority} onChange={e => setPriority(e.target.value)} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold">
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                                <option value="URGENT">Urgent</option>
+                            </select>
+                        </Field>
+                        <Field label="Amount in Dispute">
+                            <input type="number" value={amountInDispute} onChange={e => setAmountInDispute(e.target.value === '' ? '' : Number(e.target.value))} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-mono font-semibold" />
+                        </Field>
+                    </div>
+                    <Field label="Detailed Description">
+                        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} maxLength={4000} placeholder="Describe the issue in detail..." className="w-full rounded border border-slate-200 px-3 py-2 text-xs font-semibold" />
+                        <p className="text-[10px] text-slate-400">Minimum 10 characters. Be specific; admin will review.</p>
                     </Field>
                     <div className="flex justify-end gap-2 pt-2">
                         <Button variant="outline" onClick={onClose}>Cancel</Button>
                         <Button
                             onClick={async () => {
                                 if (!category) { toast.error('Choose a category'); return; }
-                                if (reason.trim().length < 10) { toast.error('Reason must be ≥10 chars'); return; }
-                                if (!poId && !counterpartyId) { toast.error('Provide a PO or counterparty'); return; }
+                                if (title.trim().length < 4) { toast.error('Title must be at least 4 chars'); return; }
+                                if (description.trim().length < 10) { toast.error('Description must be at least 10 chars'); return; }
+                                if (!linkedEntityId && !poId && !counterpartyId) { toast.error('Provide a linked record, PO, or counterparty'); return; }
                                 const result = await runWithToast(() => mut.mutateAsync({
+                                    linkedEntityType,
+                                    linkedEntityId: linkedEntityId === '' ? undefined : linkedEntityId,
                                     purchaseOrderId: poId === '' ? undefined : poId,
                                     counterpartyId: counterpartyId === '' ? undefined : counterpartyId,
                                     category,
-                                    reason: reason.trim()
+                                    title: title.trim(),
+                                    description: description.trim(),
+                                    reason: description.trim(),
+                                    amountInDispute: amountInDispute === '' ? undefined : amountInDispute,
+                                    priority
                                 }), { loading: 'Creating...', success: 'Dispute raised', error: 'Failed' });
                                 if (result?.id) onCreated(result.id);
                             }}
@@ -474,7 +537,6 @@ function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCre
         </div>
     );
 }
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div className="space-y-1">

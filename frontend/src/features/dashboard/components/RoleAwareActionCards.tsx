@@ -43,6 +43,12 @@ interface DashboardSummary {
     sellerCatalogueItemsCount?: number;
     sellerPendingInvoicesCount?: number;
     sellerQuotationsCount?: number;
+    reverseAuctionsActive?: number;
+    reverseAuctionsScheduled?: number;
+    reverseAuctionsClosed?: number;
+    reverseAuctionInvites?: number;
+    reverseAuctionsLive?: number;
+    reverseAuctionBidsSubmitted?: number;
     orgRole?: string;
     isAdmin?: boolean;
 }
@@ -209,6 +215,15 @@ function RoleAwareActionCards() {
             priority: false
         },
         {
+            label: 'Reverse Auctions',
+            count: data.reverseAuctionsActive || data.reverseAuctionsScheduled || 0,
+            href: '/reverse-auctions',
+            icon: Gavel,
+            tone: 'amber',
+            show: isBuyer,
+            priority: false
+        },
+        {
             label: 'Pending Invoices',
             count: data.myPendingInvoicesCount || 0,
             href: '/buyer/invoices',
@@ -279,6 +294,15 @@ function RoleAwareActionCards() {
             href: '/quotations',
             icon: FileText,
             tone: 'purple',
+            show: isSeller,
+            priority: false
+        },
+        {
+            label: 'Live Auctions',
+            count: data.reverseAuctionsLive || data.reverseAuctionInvites || 0,
+            href: '/reverse-auctions',
+            icon: Gavel,
+            tone: 'amber',
             show: isSeller,
             priority: false
         },

@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, usePathname } from 'next/navigation';
-import { Search, ChevronRight, Package, MapPin, BadgeCheck, ShoppingCart, Eye, ChevronLeft, Wrench } from 'lucide-react';
+import { Search, ChevronRight, Package, MapPin, BadgeCheck, ShoppingCart, Eye, ChevronLeft, Wrench, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { marketplaceApi, type MarketplaceProduct, type MarketplaceCategory, type MarketplaceService } from '../api';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
@@ -13,6 +13,9 @@ import { api, unwrapApiData } from '../../../lib/api';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { CompareToggleButton } from '../components/CompareToggleButton';
+import { CompareTray } from '../components/CompareTray';
 
 const fallbackProducts: MarketplaceProduct[] = [
     {
@@ -122,10 +125,14 @@ export default function MarketplaceProductList() {
     const [query, setQuery] = useState(searchParams?.get('q') || '');
     const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
     const [sort, setSort] = useState(searchParams?.get('sort') || 'latest');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [priceFilter, setPriceFilter] = useState('');
+    const [verificationFilter, setVerificationFilter] = useState('');
     const [page, setPage] = useState(Number(searchParams?.get('page')) || 1);
     const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:marketplace:${isServices ? 'services' : 'products'}:view-mode`);
     const [tableSortKey, setTableSortKey] = useState<MarketplaceSortKey>('name');
     const [tableSortDirection, setTableSortDirection] = useState<SortDirection>('asc');
+    const debouncedQuery = useDebounce(query.trim(), 250);
 
     const { data: homeData } = useQuery({
         queryKey: ['marketplaceHomeData'],
@@ -141,16 +148,16 @@ export default function MarketplaceProductList() {
         page: String(page),
         pageSize: '12',
         sort,
-        ...(query ? { q: query } : {}),
+        ...(debouncedQuery ? { q: debouncedQuery } : {}),
         ...(categoryId ? { categoryId: String(categoryId) } : {}),
     }).toString();
     const cacheUrl = isServices ? `/api/marketplace/services?${qs}` : `/api/marketplace/products?${qs}`;
 
     const { data: listData, isLoading } = useQuery({
-        queryKey: ['marketplaceList', isServices, query, categoryId, sort, page],
+        queryKey: ['marketplaceList', isServices, debouncedQuery, categoryId, sort, page],
         queryFn: () => {
             const params: Record<string, string | number> = { page, pageSize: 12, sort };
-            if (query) params.q = query;
+            if (debouncedQuery) params.q = debouncedQuery;
             if (categoryId) params.categoryId = categoryId;
             return isServices ? marketplaceApi.getServices(params) : marketplaceApi.getProducts(params);
         },
@@ -162,11 +169,24 @@ export default function MarketplaceProductList() {
     });
 
     const apiItems = isServices ? (listData?.services || []) : (listData?.products || []);
-    const isShowingFallback = apiItems.length === 0 && !query && !categoryId;
+    const isShowingFallback = apiItems.length === 0 && !debouncedQuery && !categoryId;
     const items = isShowingFallback ? (isServices ? fallbackServices : fallbackProducts) : apiItems;
-    const total = isShowingFallback ? items.length : listData?.total || 0;
+    const filteredItems = useMemo(() => items.filter((item: any) => {
+        const status = String(item.status || '').toUpperCase();
+        const verification = String(item.organization?.verificationStatus || '').toUpperCase();
+        const price = Number(isServices ? item.basePrice || 0 : item.price || 0);
+        const matchesStatus = !statusFilter || status === statusFilter;
+        const matchesVerification = !verificationFilter || verification === verificationFilter;
+        const matchesPrice = !priceFilter ||
+            (priceFilter === 'quote' ? price <= 0 :
+                priceFilter === 'low' ? price > 0 && price < 1000 :
+                    priceFilter === 'mid' ? price >= 1000 && price < 10000 :
+                        price >= 10000);
+        return matchesStatus && matchesVerification && matchesPrice;
+    }), [isServices, items, priceFilter, statusFilter, verificationFilter]);
+    const total = isShowingFallback ? filteredItems.length : (statusFilter || priceFilter || verificationFilter ? filteredItems.length : listData?.total || 0);
     const totalPages = isShowingFallback ? 1 : listData?.totalPages || 0;
-    const sortedItems = useMemo(() => [...items].sort((a: any, b: any) => {
+    const sortedItems = useMemo(() => [...filteredItems].sort((a: any, b: any) => {
         const valueFor = (item: any) => {
             if (tableSortKey === 'seller') return item.organization?.organizationName || item.seller?.name || '';
             if (tableSortKey === 'category') return item.category?.name || '';
@@ -178,7 +198,7 @@ export default function MarketplaceProductList() {
         const bv = valueFor(b);
         const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
         return tableSortDirection === 'asc' ? result : -result;
-    }), [isServices, items, tableSortDirection, tableSortKey]);
+    }), [filteredItems, isServices, tableSortDirection, tableSortKey]);
 
     const toggleTableSort = (field: MarketplaceSortKey) => {
         setTableSortDirection(prev => tableSortKey === field && prev === 'asc' ? 'desc' : 'asc');
@@ -273,6 +293,24 @@ export default function MarketplaceProductList() {
                                 className="w-full h-10 pl-10 pr-4 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20"
                             />
                         </form>
+                        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
+                            <option value="">All Statuses</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="DRAFT">Draft</option>
+                            <option value="INACTIVE">Inactive</option>
+                        </select>
+                        <select value={priceFilter} onChange={e => { setPriceFilter(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
+                            <option value="">All Prices</option>
+                            <option value="quote">Quote Based</option>
+                            <option value="low">Below Rs. 1k</option>
+                            <option value="mid">Rs. 1k to 10k</option>
+                            <option value="high">Above Rs. 10k</option>
+                        </select>
+                        <select value={verificationFilter} onChange={e => { setVerificationFilter(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
+                            <option value="">All Sellers</option>
+                            <option value="VERIFIED">Verified</option>
+                            <option value="PENDING">Pending</option>
+                        </select>
                         <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
                             <option value="">All Categories</option>
                             {categories.filter((c: any) => isServices ? c.type === 'SERVICE' : c.type === 'PRODUCT').map((c: any) => (
@@ -289,14 +327,20 @@ export default function MarketplaceProductList() {
                     </div>
 
                     {/* Results Count */}
-                    <p className="text-xs text-slate-500 mb-4">{total} {isServices ? 'service' : 'product'}{total !== 1 ? 's' : ''} found</p>
+                    <div className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs font-semibold text-slate-500">{total} {isServices ? 'service' : 'product'}{total !== 1 ? 's' : ''} found</p>
+                        <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[#12335f]">
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                            Select any 4 items to compare
+                        </div>
+                    </div>
 
                     {/* Product / Service Grid */}
                     {isLoading && items.length === 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="h-64 bg-slate-100 rounded-lg animate-pulse" />)}
                         </div>
-                    ) : items.length === 0 ? (
+                    ) : sortedItems.length === 0 ? (
                         <div className="text-center py-16">
                             {isServices ? <Wrench className="h-12 w-12 text-slate-300 mx-auto mb-3" /> : <Package className="h-12 w-12 text-slate-300 mx-auto mb-3" />}
                             <p className="text-sm text-slate-500">No {isServices ? 'services' : 'products'} found matching your criteria.</p>
@@ -356,6 +400,9 @@ export default function MarketplaceProductList() {
                                                             <Link href={detailUrl} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 hover:bg-slate-50">
                                                                 <Eye className="h-3 w-3" /> {isFallback ? 'Browse' : 'Details'}
                                                             </Link>
+                                                            {!isFallback && (
+                                                                <CompareToggleButton item={{ type: isServices ? 'service' : 'product', id: item.id, categoryId: item.category?.id }} iconOnly />
+                                                            )}
                                                             {!isFallback && (
                                                                 <button onClick={() => handleAddToCart(item.id)} className="inline-flex h-8 items-center gap-1 rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white hover:bg-[#12335f]">
                                                                     <ShoppingCart className="h-3 w-3" /> Cart
@@ -454,6 +501,9 @@ export default function MarketplaceProductList() {
                                                     <Eye className="h-3 w-3" />{isFallback ? 'Browse' : 'Details'}
                                                 </Link>
                                                 {!isFallback && (
+                                                    <CompareToggleButton item={{ type: isServices ? 'service' : 'product', id: item.id, categoryId: item.category?.id }} iconOnly className="h-7 w-7" />
+                                                )}
+                                                {!isFallback && (
                                                     <button onClick={() => handleAddToCart(item.id)} className="inline-flex items-center justify-center h-7 w-7 rounded-md bg-[#0b2447] text-white hover:bg-[#12335f] active:scale-90 transition" aria-label="Add to cart"><ShoppingCart className="h-3 w-3" /></button>
                                                 )}
                                             </div>
@@ -486,6 +536,7 @@ export default function MarketplaceProductList() {
             </main>
 
             <MarketplaceFooter />
+            <CompareTray />
         </div>
     );
 }

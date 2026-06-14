@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui/card';
-import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2, Images, Trophy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { validators } from '../lib/validators';
 import RoleAwareActionCards from '../features/dashboard/components/RoleAwareActionCards';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { bannerApi } from '../features/banners/api';
 
 const ADMIN_REVIEW_CHECKLIST = [
   'Clear pending stakeholder approvals',
@@ -34,6 +35,74 @@ type AdminModule = {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
 };
+
+const formatBannerDate = (value?: string | null) => {
+  if (!value) return 'No expiry set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No expiry set';
+  return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const readableBannerStatus = (value?: string | null) =>
+  String(value || 'No upload yet').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+
+const PromotionEligibilityCard = React.memo(function PromotionEligibilityCard({
+  eligibility,
+  isLoading
+}: {
+  eligibility: any;
+  isLoading: boolean;
+}) {
+  if (isLoading || !eligibility?.eligible) return null;
+
+  const latestEligibility = Array.isArray(eligibility.eligibility) ? eligibility.eligibility[0] : null;
+  const latestBanner = Array.isArray(eligibility.banners) ? eligibility.banners[0] : null;
+  const eligibilityType = readableBannerStatus(latestEligibility?.eligibilityType || 'Promotion');
+  const expiry = formatBannerDate(latestEligibility?.expiresAt);
+  const recentStatus = readableBannerStatus(latestBanner?.status);
+
+  return (
+    <Card className="overflow-hidden rounded-lg border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-blue-50 shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white shadow-sm">
+              <Trophy className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Banner Eligibility</p>
+              <h3 className="text-base font-bold text-slate-950">Homepage Promotion Unlocked</h3>
+              <p className="mt-1 max-w-xl text-xs font-semibold leading-relaxed text-slate-600">
+                Your organization can submit one homepage promotional banner for admin approval.
+              </p>
+            </div>
+          </div>
+          <Link href="/my-org/banner-eligibility">
+            <Button className="h-9 rounded-md bg-[#12335f] px-3 text-[10px] font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
+              Upload Banner
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-md border border-white/70 bg-white/80 p-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Eligibility Type</p>
+            <p className="mt-1 text-xs font-bold text-slate-900">{eligibilityType}</p>
+          </div>
+          <div className="rounded-md border border-white/70 bg-white/80 p-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Valid Until</p>
+            <p className="mt-1 text-xs font-bold text-slate-900">{expiry}</p>
+          </div>
+          <div className="rounded-md border border-white/70 bg-white/80 p-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Recent Upload</p>
+            <p className="mt-1 text-xs font-bold text-slate-900">{recentStatus}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
 
 const AdminKpiLink = React.memo(function AdminKpiLink({ stat, isLoading }: { stat: AdminTile; isLoading: boolean }) {
   const Icon = stat.icon;
@@ -130,6 +199,20 @@ export default function Dashboard() {
     },
     enabled: !!token && user?.role === 'admin',
     staleTime: 5 * 60_000,
+  });
+
+  const canCheckBannerEligibility = Boolean(
+    token &&
+    user?.organizationId &&
+    ['buyer', 'seller', 'admin'].includes(String(user?.role || ''))
+  );
+
+  const { data: bannerEligibility, isLoading: isBannerEligibilityLoading } = useQuery({
+    queryKey: ['dashboard-banner-eligibility', user?.organizationId],
+    queryFn: bannerApi.eligibility,
+    enabled: canCheckBannerEligibility,
+    retry: false,
+    staleTime: 60_000,
   });
 
   const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
@@ -263,6 +346,24 @@ export default function Dashboard() {
         detail: 'Export filtered records and review overall stakeholder network health.',
         path: '/admin/reports',
         icon: BarChart3
+      },
+      {
+        title: 'Monthly Rankings',
+        detail: 'Compute buyer and seller ranking lists that unlock homepage promotion eligibility.',
+        path: '/admin/monthly-rankings',
+        icon: Trophy
+      },
+      {
+        title: 'Banner Management',
+        detail: 'Create, approve, hide, and review homepage banners submitted by eligible organizations.',
+        path: '/admin/banners',
+        icon: Images
+      },
+      {
+        title: 'Reverse Auction Monitoring',
+        detail: 'Track live auctions, monitor L1 rankings, review results, and open award recommendations.',
+        path: '/reverse-auctions',
+        icon: Gavel
       }
   ], []);
 
@@ -429,6 +530,8 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           )}
+
+          <PromotionEligibilityCard eligibility={bannerEligibility} isLoading={isBannerEligibilityLoading} />
 
           <Card className="rounded-lg border-slate-200 shadow-sm overflow-hidden bg-white">
             <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">

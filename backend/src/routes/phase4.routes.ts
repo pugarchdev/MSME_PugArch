@@ -9,6 +9,7 @@ import { verifyAccessToken } from '../services/token.service.js';
 import { upload } from '../config/storage.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { onUserLinkedToOrganization } from '../services/org-membership.service.js';
+import { approveOnboardingAndEnsureOrganization } from '../services/onboarding-organization.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
 import { paymentRateLimit, verificationRateLimit } from '../middleware/rateLimit.js';
 import { getOrSetCache, deleteCache, invalidateByPattern } from '../services/cache.service.js';
@@ -1761,20 +1762,36 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
     updateData.sectionStatus = existing.role === 'buyer' ? buyerSections : sellerSections;
   }
 
-  const user = await db.user.update({ where: { id }, data: updateData });
+  const approvalResult = body.onboardingStatus === 'approved_for_procurement'
+    ? await approveOnboardingAndEnsureOrganization(id, updateData)
+    : null;
+  const user = approvalResult?.user || await db.user.update({ where: { id }, data: updateData });
   await auditWrite(req, 'admin.onboarding.status_updated', 'user', id, body);
 
-  // Mirror approval state onto the Organization so requireApprovedOrg
-  // unlocks transactional routes for everyone in that org.
-  if (body.onboardingStatus === 'approved_for_procurement') {
-    const linkedUser = await db.user.findUnique({ where: { id }, select: { organizationId: true } });
-    if (linkedUser?.organizationId) {
-      await db.organization.update({
-        where: { id: linkedUser.organizationId },
-        data: { verificationStatus: 'VERIFIED' as any }
-      }).catch(err => console.error('[Onboarding] org verification mirror failed', err));
+  if (approvalResult) {
+    await auditWrite(req, 'onboarding.approved', 'user', id, {
+      organizationId: approvalResult.organization.id
+    });
+    if (approvalResult.createdOrganization) {
+      await auditWrite(req, 'organization.auto_created_from_onboarding', 'organization', approvalResult.organization.id, {
+        userId: id,
+        role: user.role
+      });
     }
+    if (approvalResult.createdMembership) {
+      await auditWrite(req, 'org_membership.auto_created_admin', 'orgMembership', approvalResult.membership.id, {
+        userId: id,
+        organizationId: approvalResult.organization.id,
+        orgRole: approvalResult.membership.orgRole
+      });
+    }
+    await auditWrite(req, 'organization.verified_from_onboarding', 'organization', approvalResult.organization.id, {
+      userId: id
+    });
+    deleteCache('/api/auth/me').catch(() => undefined);
+    invalidateByPattern('cache:*dashboard*').catch(() => undefined);
   }
+
   if (body.onboardingStatus === 'rejected') {
     const linkedUser = await db.user.findUnique({ where: { id }, select: { organizationId: true } });
     if (linkedUser?.organizationId) {
@@ -1808,7 +1825,13 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
     console.error('[Onboarding Status Notification Error]:', error);
   });
 
-  ok(res, user);
+  ok(res, approvalResult ? {
+    user,
+    organization: approvalResult.organization,
+    membership: approvalResult.membership,
+    organizationCreated: approvalResult.createdOrganization,
+    membershipCreated: approvalResult.createdMembership
+  } : user);
 }));
 
 // Verification

@@ -347,6 +347,6 @@ export const marketplaceApi = {
     getCompareItems: async (ids: string[]) => {
         const res = await api.get(`/api/marketplace/compare?ids=${encodeURIComponent(ids.join(','))}`, { skipCache: true });
         const body = await readJsonResponse(res);
-        return unwrapApiData<{ items: any[]; highlights: { lowestPrice?: number | null }; limit: number }>(body);
+        return unwrapApiData<{ items: any[]; highlights: { lowestPrice?: number | null; highestPrice?: number | null; verifiedCount?: number }; limit: number }>(body);
     }
 };

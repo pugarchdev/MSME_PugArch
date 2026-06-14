@@ -14,22 +14,32 @@ const readStored = (): CompareItemRef[] => {
   }
 };
 
-const emit = () => {
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('marketplace:compare-updated'));
+const emitAsync = () => {
+  if (typeof window === 'undefined') return;
+  window.setTimeout(() => {
+    window.dispatchEvent(new Event('marketplace:compare-updated'));
+  }, 0);
 };
 
 const persist = (next: CompareItemRef[]) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(key, JSON.stringify(next.slice(0, 4)));
-    emit();
+    emitAsync();
   }
 };
 
 export const useCompare = () => {
-  const [items, setItems] = useState<CompareItemRef[]>([]);
+  const [items, setItems] = useState<CompareItemRef[]>(() => readStored());
 
   useEffect(() => {
-    const sync = () => setItems(readStored());
+    const sync = () => {
+      const stored = readStored();
+      setItems(current => {
+        const currentKey = JSON.stringify(current);
+        const storedKey = JSON.stringify(stored);
+        return currentKey === storedKey ? current : stored;
+      });
+    };
     sync();
     window.addEventListener('marketplace:compare-updated', sync);
     window.addEventListener('storage', sync);
@@ -38,38 +48,43 @@ export const useCompare = () => {
       window.removeEventListener('storage', sync);
     };
   }, []);
-  useEffect(() => {
-    if (typeof window !== 'undefined') localStorage.setItem(key, JSON.stringify(items.slice(0, 4)));
-  }, [items]);
 
   const ids = useMemo(() => items.map(item => `${item.type}:${item.id}`), [items]);
   const has = useCallback((type: CompareItemRef['type'], id: number) => items.some(item => item.type === type && item.id === id), [items]);
+
+  const commit = useCallback((next: CompareItemRef[]) => {
+    const limited = next.slice(0, 4);
+    setItems(limited);
+    persist(limited);
+  }, []);
+
   const add = useCallback((item: CompareItemRef) => {
-    setItems(current => {
-      if (current.some(existing => existing.type === item.type && existing.id === item.id)) return current;
-      if (current.length >= 4) return current;
-      const compatible = current.length === 0 || current.every(existing => existing.type === item.type && (!existing.categoryId || !item.categoryId || existing.categoryId === item.categoryId));
-      if (!compatible) return current;
-      const next = [...current, item];
-      persist(next);
-      return next;
-    });
-  }, []);
+    const current = readStored();
+    if (current.some(existing => existing.type === item.type && existing.id === item.id)) {
+      setItems(current);
+      return;
+    }
+    if (current.length >= 4) {
+      setItems(current);
+      return;
+    }
+    commit([...current, item]);
+  }, [commit]);
+
   const remove = useCallback((type: CompareItemRef['type'], id: number) => {
-    setItems(current => {
-      const next = current.filter(item => item.type !== type || item.id !== id);
-      persist(next);
-      return next;
-    });
-  }, []);
+    const next = readStored().filter(item => item.type !== type || item.id !== id);
+    commit(next);
+  }, [commit]);
+
   const toggle = useCallback((item: CompareItemRef) => {
-    if (has(item.type, item.id)) remove(item.type, item.id);
+    const current = readStored();
+    if (current.some(existing => existing.type === item.type && existing.id === item.id)) remove(item.type, item.id);
     else add(item);
-  }, [add, has, remove]);
+  }, [add, remove]);
+
   const clear = useCallback(() => {
-    setItems([]);
-    persist([]);
-  }, []);
+    commit([]);
+  }, [commit]);
 
   return { items, ids, has, add, remove, toggle, clear, limit: 4 };
 };

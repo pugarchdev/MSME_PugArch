@@ -31,6 +31,8 @@ import { hashPassword, validatePasswordStrength } from '../services/password.ser
 import { issueAuthResponse } from '../services/token.service.js';
 import { toSafeUser } from '../utils/routeHelpers.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
+import { DEFAULT_ORG_ROLE_TEMPLATES, ORG_PERMISSION_CATALOG, type OrgPermissionKey } from '../constants/org-permissions.js';
+import { getOrgPermissionKeys, requireOrgPermission } from '../middleware/requireOrgPermission.js';
 
 const router = Router();
 
@@ -91,7 +93,9 @@ const ORGANIZATION_TYPE_VALUES = [
 
 const inviteSchema = z.object({
     email: z.string().email().toLowerCase().trim(),
-    orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]])
+    orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]]).optional(),
+    customRoleId: z.number().int().positive().optional(),
+    message: z.string().max(1000).optional()
 });
 
 const inviteSignupSchema = z.object({
@@ -102,8 +106,48 @@ const inviteSignupSchema = z.object({
 });
 
 const roleUpdateSchema = z.object({
-    orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]])
+    orgRole: z.enum(ORG_ROLE_VALUES as [string, ...string[]]).optional(),
+    customRoleId: z.number().int().positive().nullable().optional()
 });
+
+const roleCreateSchema = z.object({
+    name: z.string().trim().min(2).max(80),
+    description: z.string().trim().max(300).optional().nullable(),
+    roleKey: z.string().trim().min(2).max(80).regex(/^[a-z0-9_:-]+$/i).optional(),
+    cloneFrom: z.string().trim().optional(),
+    permissions: z.array(z.string()).optional()
+});
+
+const rolePatchSchema = z.object({
+    name: z.string().trim().min(2).max(80).optional(),
+    description: z.string().trim().max(300).optional().nullable(),
+    isActive: z.boolean().optional(),
+    permissions: z.array(z.string()).optional()
+});
+
+const rolePermissionSchema = z.object({
+    permissions: z.array(z.string()).default([])
+});
+
+const deactivateSchema = z.object({
+    reason: z.string().trim().min(3).max(500).optional()
+});
+
+const transferSchema = z.object({
+    toEmail: z.string().email().toLowerCase().trim(),
+    customRoleId: z.number().int().positive().optional(),
+    reason: z.string().trim().min(5).max(500),
+    deactivateOldMember: z.boolean().default(false)
+});
+
+const normalizeRoleKey = (value: string) =>
+    value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `role_${Date.now()}`;
+
+const assertValidPermissionKeys = (permissions: string[]) => {
+    const valid = new Set(ORG_PERMISSION_CATALOG.map(item => item.key));
+    const invalid = permissions.filter(permission => !valid.has(permission as OrgPermissionKey));
+    if (invalid.length) throw new ApiError(400, `Invalid permission keys: ${invalid.join(', ')}`, 'INVALID_PERMISSION');
+};
 
 const createOrgWithoutGstSchema = z.object({
     organizationName: z.string().min(2).max(200).trim(),
@@ -171,6 +215,165 @@ router.get('/org/me', authenticate, shortCache(30), asyncRoute(async (req, res) 
     ]);
 
     ok(res, { membership, organization: org });
+}));
+
+const ensureDefaultOrgRoles = async (organizationId: number, createdByUserId: number) => {
+    const db = prisma as any;
+    const created = [];
+    for (const template of DEFAULT_ORG_ROLE_TEMPLATES) {
+        const role = await db.orgCustomRole.upsert({
+            where: { organizationId_roleKey: { organizationId, roleKey: template.roleKey } },
+            update: { isSystemRole: true, isActive: true },
+            create: {
+                organizationId,
+                name: template.name,
+                description: template.description,
+                roleKey: template.roleKey,
+                isSystemRole: true,
+                isActive: true,
+                createdByUserId
+            }
+        });
+        await Promise.all(template.permissions.map(permissionKey =>
+            db.orgRolePermission.upsert({
+                where: { roleId_permissionKey: { roleId: role.id, permissionKey } },
+                update: { allowed: true },
+                create: { roleId: role.id, permissionKey, allowed: true }
+            })
+        ));
+        created.push(role);
+    }
+    return created;
+};
+
+router.get('/org/permissions/catalog', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_VIEW'), asyncRoute(async (_req, res) => {
+    ok(res, {
+        catalog: ORG_PERMISSION_CATALOG,
+        grouped: ORG_PERMISSION_CATALOG.reduce<Record<string, typeof ORG_PERMISSION_CATALOG>>((acc, permission) => {
+            acc[permission.module] = [...(acc[permission.module] || []), permission];
+            return acc;
+        }, {}),
+        templates: DEFAULT_ORG_ROLE_TEMPLATES
+    });
+}));
+
+router.get('/org/roles', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_VIEW'), asyncRoute(async (req, res) => {
+    await ensureDefaultOrgRoles(orgId(req), userId(req));
+    const roles = await (prisma as any).orgCustomRole.findMany({
+        where: { organizationId: orgId(req) },
+        include: { permissions: true, _count: { select: { memberships: true } } },
+        orderBy: [{ isSystemRole: 'desc' }, { name: 'asc' }]
+    });
+    ok(res, roles);
+}));
+
+router.post('/org/roles', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    const body = roleCreateSchema.parse(req.body);
+    const template = body.cloneFrom ? DEFAULT_ORG_ROLE_TEMPLATES.find(item => item.roleKey === body.cloneFrom) : null;
+    const permissions = body.permissions || template?.permissions || [];
+    assertValidPermissionKeys(permissions);
+    const roleKey = normalizeRoleKey(body.roleKey || body.name);
+    const role = await (prisma as any).orgCustomRole.create({
+        data: {
+            organizationId: orgId(req),
+            name: body.name,
+            description: body.description || template?.description || null,
+            roleKey,
+            isSystemRole: false,
+            isActive: true,
+            createdByUserId: userId(req),
+            permissions: { create: permissions.map(permissionKey => ({ permissionKey, allowed: true })) }
+        },
+        include: { permissions: true }
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.role.created', entityType: 'orgCustomRole', entityId: role.id, ipAddress: req.ip, metadata: { organizationId: orgId(req), roleKey } });
+    ok(res, role, 201);
+}));
+
+router.get('/org/roles/:id', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_VIEW'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const role = await (prisma as any).orgCustomRole.findFirst({
+        where: { id, organizationId: orgId(req) },
+        include: { permissions: true, memberships: { select: { id: true, userId: true, isActive: true } } }
+    });
+    if (!role) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+    ok(res, role);
+}));
+
+router.patch('/org/roles/:id', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const body = rolePatchSchema.parse(req.body);
+    const existing = await (prisma as any).orgCustomRole.findFirst({ where: { id, organizationId: orgId(req) } });
+    if (!existing) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+    if (existing.isSystemRole && (body.name || body.isActive === false)) throw new ApiError(409, 'System role templates cannot be renamed or disabled.', 'SYSTEM_ROLE_LOCKED');
+    if (body.permissions) assertValidPermissionKeys(body.permissions);
+    const role = await prisma.$transaction(async tx => {
+        if (body.permissions) {
+            await (tx as any).orgRolePermission.deleteMany({ where: { roleId: id } });
+            if (body.permissions.length) {
+                await (tx as any).orgRolePermission.createMany({ data: body.permissions.map(permissionKey => ({ roleId: id, permissionKey, allowed: true })) });
+            }
+        }
+        return (tx as any).orgCustomRole.update({
+            where: { id },
+            data: {
+                name: body.name,
+                description: body.description,
+                isActive: body.isActive
+            },
+            include: { permissions: true }
+        });
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.role.updated', entityType: 'orgCustomRole', entityId: id, ipAddress: req.ip, metadata: { permissionsChanged: Boolean(body.permissions) } });
+    ok(res, role);
+}));
+
+router.delete('/org/roles/:id', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const role = await (prisma as any).orgCustomRole.findFirst({ where: { id, organizationId: orgId(req) }, include: { _count: { select: { memberships: true } } } });
+    if (!role) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+    if (role.isSystemRole) throw new ApiError(409, 'System role templates cannot be deleted.', 'SYSTEM_ROLE_LOCKED');
+    if (role._count.memberships > 0) throw new ApiError(409, 'Role is assigned to members. Deactivate it instead.', 'ROLE_IN_USE');
+    await (prisma as any).orgCustomRole.update({ where: { id }, data: { isActive: false } });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.role.deactivated', entityType: 'orgCustomRole', entityId: id, ipAddress: req.ip });
+    ok(res, { success: true });
+}));
+
+router.post('/org/roles/:id/permissions', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const body = rolePermissionSchema.parse(req.body);
+    assertValidPermissionKeys(body.permissions);
+    const role = await (prisma as any).orgCustomRole.findFirst({ where: { id, organizationId: orgId(req) } });
+    if (!role) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+    const updated = await prisma.$transaction(async tx => {
+        await (tx as any).orgRolePermission.deleteMany({ where: { roleId: id } });
+        if (body.permissions.length) {
+            await (tx as any).orgRolePermission.createMany({ data: body.permissions.map(permissionKey => ({ roleId: id, permissionKey, allowed: true })) });
+        }
+        return (tx as any).orgCustomRole.findUnique({ where: { id }, include: { permissions: true } });
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.role.permissions_updated', entityType: 'orgCustomRole', entityId: id, ipAddress: req.ip, metadata: { count: body.permissions.length } });
+    ok(res, updated);
+}));
+
+router.post('/org/roles/:id/clone', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const source = await (prisma as any).orgCustomRole.findFirst({ where: { id, organizationId: orgId(req) }, include: { permissions: true } });
+    if (!source) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+    const name = String(req.body?.name || `${source.name} Copy`).trim();
+    const role = await (prisma as any).orgCustomRole.create({
+        data: {
+            organizationId: orgId(req),
+            name,
+            description: source.description,
+            roleKey: normalizeRoleKey(`${source.roleKey}_${Date.now()}`),
+            createdByUserId: userId(req),
+            permissions: { create: source.permissions.filter((p: any) => p.allowed).map((p: any) => ({ permissionKey: p.permissionKey, allowed: true })) }
+        },
+        include: { permissions: true }
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.role.cloned', entityType: 'orgCustomRole', entityId: role.id, ipAddress: req.ip, metadata: { sourceRoleId: id } });
+    ok(res, role, 201);
 }));
 
 // ─── GET /api/dashboard/summary — unified dashboard counts ───────────────────
@@ -394,6 +597,15 @@ router.get(
                         createdAt: true
                     }
                 },
+                customRole: {
+                    select: {
+                        id: true,
+                        name: true,
+                        roleKey: true,
+                        isSystemRole: true,
+                        permissions: { select: { permissionKey: true, allowed: true } }
+                    }
+                },
                 invitedBy: { select: { id: true, name: true, email: true } }
             },
             orderBy: { createdAt: 'asc' }
@@ -408,11 +620,14 @@ router.get(
     '/org/invitations',
     authenticate,
     authorize('buyer', 'seller'),
-    requireOrgRole('ORG_ADMIN'),
+    requireOrgPermission('TEAM_INVITE'),
     asyncRoute(async (req, res) => {
         const invitations = await prisma.orgInvitation.findMany({
-            where: { organizationId: orgId(req), acceptedAt: null, expiresAt: { gt: new Date() } },
-            include: { invitedBy: { select: { id: true, name: true, email: true } } },
+            where: { organizationId: orgId(req), acceptedAt: null, status: 'PENDING' as any, expiresAt: { gt: new Date() } },
+            include: {
+                customRole: { select: { id: true, name: true, roleKey: true } },
+                invitedBy: { select: { id: true, name: true, email: true } }
+            },
             orderBy: { createdAt: 'desc' }
         });
         ok(res, invitations);
@@ -424,9 +639,12 @@ router.post(
     '/org/invite',
     authenticate,
     authorize('buyer', 'seller'),
-    requireOrgRole('ORG_ADMIN'),
+    requireOrgPermission('TEAM_INVITE'),
     asyncRoute(async (req, res) => {
         const body = inviteSchema.parse(req.body);
+        if (!body.orgRole && !body.customRoleId) {
+            throw new ApiError(400, 'Select a role for the invited member.', 'ROLE_REQUIRED');
+        }
 
         // Check if user already a member
         const existingUser = await prisma.user.findUnique({
@@ -450,6 +668,14 @@ router.post(
             where: { id: orgId(req) },
             select: { organizationName: true }
         });
+        const customRole = body.customRoleId
+            ? await (prisma as any).orgCustomRole.findFirst({
+                where: { id: body.customRoleId, organizationId: orgId(req), isActive: true },
+                select: { id: true, name: true, roleKey: true }
+            })
+            : null;
+        if (body.customRoleId && !customRole) throw new ApiError(404, 'Custom role not found', 'ROLE_NOT_FOUND');
+        const fallbackRole = (body.orgRole || 'VIEWER') as OrgRole;
 
         const token = generateToken();
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
@@ -458,16 +684,20 @@ router.post(
             data: {
                 organizationId: orgId(req),
                 email: body.email,
-                orgRole: body.orgRole as OrgRole,
+                invitedEmail: body.email,
+                orgRole: fallbackRole,
+                customRoleId: customRole?.id || null,
                 token,
                 expiresAt,
-                invitedById: userId(req)
+                invitedById: userId(req),
+                message: body.message || null,
+                requiresPersonalVerification: true
             }
         });
 
         // Send invite email
         const inviteUrl = `${env.FRONTEND_URL || 'http://localhost:3000'}/invite/accept?token=${token}`;
-        const roleName = body.orgRole.replace(/_/g, ' ');
+        const roleName = customRole?.name || fallbackRole.replace(/_/g, ' ');
 
         try {
             await transporter.sendMail({
@@ -500,10 +730,10 @@ router.post(
             entityType: 'orgInvitation',
             entityId: invitation.id,
             ipAddress: req.ip,
-            metadata: { email: body.email, orgRole: body.orgRole }
+            metadata: { email: body.email, orgRole: fallbackRole, customRoleId: customRole?.id }
         });
 
-        ok(res, { invitation: { id: invitation.id, email: invitation.email, orgRole: invitation.orgRole, expiresAt: invitation.expiresAt } }, 201);
+        ok(res, { invitation: { id: invitation.id, email: invitation.email, orgRole: invitation.orgRole, customRoleId: invitation.customRoleId, expiresAt: invitation.expiresAt } }, 201);
     })
 );
 
@@ -512,7 +742,7 @@ router.delete(
     '/org/invitations/:id',
     authenticate,
     authorize('buyer', 'seller'),
-    requireOrgRole('ORG_ADMIN'),
+    requireOrgPermission('TEAM_INVITE'),
     asyncRoute(async (req, res) => {
         const id = Number(req.params.id);
         if (!id) throw new ApiError(400, 'Invalid invitation ID', 'INVALID_ID');
@@ -523,7 +753,7 @@ router.delete(
         if (!invite) throw new ApiError(404, 'Invitation not found', 'INVITE_NOT_FOUND');
         if (invite.acceptedAt) throw new ApiError(409, 'Invitation already accepted', 'INVITE_ACCEPTED');
 
-        await prisma.orgInvitation.delete({ where: { id } });
+        await prisma.orgInvitation.update({ where: { id }, data: { status: 'CANCELLED' as any } });
         await auditLog({
             actorUserId: userId(req),
             actorRole: req.user!.role,
@@ -550,12 +780,14 @@ router.get(
             where: { token },
             include: {
                 organization: { select: { organizationName: true, organizationType: true } },
+                customRole: { select: { id: true, name: true, description: true } },
                 invitedBy: { select: { name: true, role: true } }
             }
         });
 
         if (!invite) throw new ApiError(404, 'Invitation not found or already used.', 'INVITE_NOT_FOUND');
-        if (invite.acceptedAt) throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.acceptedAt || invite.status === 'ACCEPTED') throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.status === 'CANCELLED') throw new ApiError(410, 'This invitation has been cancelled.', 'INVITE_CANCELLED');
         if (invite.expiresAt < new Date()) throw new ApiError(410, 'This invitation has expired.', 'INVITE_EXPIRED');
 
         // Does an account already exist for this email? Drives the frontend
@@ -568,6 +800,7 @@ router.get(
         ok(res, {
             email: invite.email,
             orgRole: invite.orgRole,
+            customRole: invite.customRole,
             organizationName: invite.organization.organizationName,
             organizationType: invite.organization.organizationType,
             invitedByName: invite.invitedBy?.name || null,
@@ -595,12 +828,14 @@ router.post(
             where: { token: body.token },
             include: {
                 organization: { select: { id: true, organizationName: true, verificationStatus: true } },
+                customRole: { select: { id: true, name: true } },
                 invitedBy: { select: { role: true } }
             }
         });
 
         if (!invite) throw new ApiError(404, 'Invitation not found or already used.', 'INVITE_NOT_FOUND');
-        if (invite.acceptedAt) throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.acceptedAt || invite.status === 'ACCEPTED') throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.status === 'CANCELLED') throw new ApiError(410, 'This invitation has been cancelled.', 'INVITE_CANCELLED');
         if (invite.expiresAt < new Date()) throw new ApiError(410, 'This invitation has expired.', 'INVITE_EXPIRED');
 
         // If an account already exists, this is the wrong path — they should
@@ -657,6 +892,7 @@ router.post(
                     userId: created.id,
                     organizationId: invite.organizationId,
                     orgRole: invite.orgRole,
+                    customRoleId: invite.customRoleId,
                     isActive: true,
                     invitedById: invite.invitedById,
                     invitedAt: invite.createdAt,
@@ -666,7 +902,7 @@ router.post(
 
             await tx.orgInvitation.update({
                 where: { id: invite.id },
-                data: { acceptedAt: now }
+                data: { acceptedAt: now, status: 'ACCEPTED' as any }
             });
 
             return created;
@@ -676,7 +912,7 @@ router.post(
         try {
             await notificationService.notify(invite.invitedById, {
                 title: 'Team member joined',
-                message: `${user.email} created an account and joined ${invite.organization.organizationName} as ${invite.orgRole.replace(/_/g, ' ')}.`,
+            message: `${user.email} created an account and joined ${invite.organization.organizationName} as ${invite.orgRole.replace(/_/g, ' ')}.`,
                 type: 'org_invite_accepted',
                 priority: 'medium',
                 redirectUrl: '/org/team'
@@ -691,7 +927,7 @@ router.post(
             entityId: invite.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
-            metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole }
+            metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole, customRoleId: invite.customRoleId }
         });
 
         const tokens = issueAuthResponse(user);
@@ -700,7 +936,8 @@ router.post(
             user: toSafeUser(user),
             organizationId: invite.organizationId,
             organizationName: invite.organization.organizationName,
-            orgRole: invite.orgRole
+            orgRole: invite.orgRole,
+            customRole: invite.customRole
         }, 201);
     })
 );
@@ -714,11 +951,15 @@ router.post(
 
         const invite = await prisma.orgInvitation.findUnique({
             where: { token },
-            include: { organization: { select: { id: true, organizationName: true, verificationStatus: true } } }
+            include: {
+                customRole: { select: { id: true, name: true } },
+                organization: { select: { id: true, organizationName: true, verificationStatus: true } }
+            }
         });
 
         if (!invite) throw new ApiError(404, 'Invitation not found or already used.', 'INVITE_NOT_FOUND');
-        if (invite.acceptedAt) throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.acceptedAt || invite.status === 'ACCEPTED') throw new ApiError(409, 'This invitation has already been accepted.', 'INVITE_USED');
+        if (invite.status === 'CANCELLED') throw new ApiError(410, 'This invitation has been cancelled.', 'INVITE_CANCELLED');
         if (invite.expiresAt < new Date()) throw new ApiError(410, 'This invitation has expired.', 'INVITE_EXPIRED');
 
         const user = await prisma.user.findUnique({ where: { id: userId(req) }, select: { email: true, organizationId: true } });
@@ -743,6 +984,7 @@ router.post(
                     userId: userId(req),
                     organizationId: invite.organizationId,
                     orgRole: invite.orgRole,
+                    customRoleId: invite.customRoleId,
                     isActive: true,
                     invitedById: invite.invitedById,
                     invitedAt: invite.createdAt,
@@ -751,7 +993,7 @@ router.post(
             }),
             prisma.orgInvitation.update({
                 where: { id: invite.id },
-                data: { acceptedAt: now }
+                data: { acceptedAt: now, status: 'ACCEPTED' as any }
             }),
             prisma.user.update({
                 where: { id: userId(req) },
@@ -777,13 +1019,14 @@ router.post(
             entityType: 'orgInvitation',
             entityId: invite.id,
             ipAddress: req.ip,
-            metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole }
+            metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole, customRoleId: invite.customRoleId }
         });
 
         ok(res, {
             organizationId: invite.organizationId,
             organizationName: invite.organization.organizationName,
-            orgRole: invite.orgRole
+            orgRole: invite.orgRole,
+            customRole: invite.customRole
         });
     })
 );
@@ -793,12 +1036,13 @@ router.put(
     '/org/members/:memberId/role',
     authenticate,
     authorize('buyer', 'seller'),
-    requireOrgRole('ORG_ADMIN'),
+    requireOrgPermission('TEAM_ROLE_MANAGE'),
     asyncRoute(async (req, res) => {
         const memberId = Number(req.params.memberId);
         if (!memberId) throw new ApiError(400, 'Invalid member ID', 'INVALID_ID');
 
-        const { orgRole } = roleUpdateSchema.parse(req.body);
+        const { orgRole, customRoleId } = roleUpdateSchema.parse(req.body);
+        if (!orgRole && customRoleId === undefined) throw new ApiError(400, 'No role change supplied', 'ROLE_REQUIRED');
 
         // Cannot change own role
         if (memberId === userId(req)) {
@@ -809,10 +1053,18 @@ router.put(
             where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } }
         });
         if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
+        const customRole = customRoleId
+            ? await (prisma as any).orgCustomRole.findFirst({ where: { id: customRoleId, organizationId: orgId(req), isActive: true } })
+            : null;
+        if (customRoleId && !customRole) throw new ApiError(404, 'Custom role not found', 'ROLE_NOT_FOUND');
 
         const updated = await prisma.orgMembership.update({
             where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } },
-            data: { orgRole: orgRole as OrgRole }
+            data: {
+                orgRole: (orgRole || membership.orgRole) as OrgRole,
+                customRoleId: customRoleId === undefined ? membership.customRoleId : customRoleId
+            },
+            include: { customRole: { include: { permissions: true } } }
         });
 
         await auditLog({
@@ -822,19 +1074,134 @@ router.put(
             entityType: 'orgMembership',
             entityId: updated.id,
             ipAddress: req.ip,
-            metadata: { memberId, newRole: orgRole }
+            metadata: { memberId, newRole: updated.orgRole, customRoleId: updated.customRoleId }
         });
 
-        ok(res, { id: updated.id, userId: memberId, orgRole: updated.orgRole });
+        ok(res, { id: updated.id, userId: memberId, orgRole: updated.orgRole, customRoleId: updated.customRoleId, customRole: updated.customRole });
     })
 );
+
+router.patch('/org/members/:memberId/role', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_ROLE_MANAGE'), asyncRoute(async (req, res) => {
+    req.method = 'PUT';
+    const memberId = Number(req.params.memberId);
+    if (!memberId) throw new ApiError(400, 'Invalid member ID', 'INVALID_ID');
+    const { orgRole, customRoleId } = roleUpdateSchema.parse(req.body);
+    const membership = await prisma.orgMembership.findUnique({ where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } } });
+    if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
+    if (memberId === userId(req)) throw new ApiError(409, 'You cannot change your own role.', 'SELF_ROLE_CHANGE');
+    const customRole = customRoleId ? await (prisma as any).orgCustomRole.findFirst({ where: { id: customRoleId, organizationId: orgId(req), isActive: true } }) : null;
+    if (customRoleId && !customRole) throw new ApiError(404, 'Custom role not found', 'ROLE_NOT_FOUND');
+    const updated = await prisma.orgMembership.update({
+        where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } },
+        data: { orgRole: (orgRole || membership.orgRole) as OrgRole, customRoleId: customRoleId === undefined ? membership.customRoleId : customRoleId },
+        include: { customRole: { include: { permissions: true } } }
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.member.role_changed', entityType: 'orgMembership', entityId: updated.id, ipAddress: req.ip, metadata: { memberId, orgRole: updated.orgRole, customRoleId: updated.customRoleId } });
+    ok(res, updated);
+}));
+
+router.patch('/org/members/:memberId/deactivate', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_MEMBER_DISABLE'), asyncRoute(async (req, res) => {
+    const memberId = Number(req.params.memberId);
+    if (!memberId) throw new ApiError(400, 'Invalid member ID', 'INVALID_ID');
+    if (memberId === userId(req)) throw new ApiError(409, 'You cannot deactivate yourself.', 'SELF_DEACTIVATE');
+    const body = deactivateSchema.parse(req.body);
+    const membership = await prisma.orgMembership.findUnique({ where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } } });
+    if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
+    if (membership.orgRole === 'ORG_ADMIN') {
+        const adminCount = await prisma.orgMembership.count({ where: { organizationId: orgId(req), orgRole: 'ORG_ADMIN', isActive: true, userId: { not: memberId } } });
+        if (adminCount === 0) throw new ApiError(409, 'Cannot deactivate the last active Org Admin.', 'LAST_ORG_ADMIN');
+    }
+    const updated = await prisma.orgMembership.update({
+        where: { id: membership.id },
+        data: { isActive: false, deactivatedAt: new Date(), deactivatedByUserId: userId(req), deactivationReason: body.reason || 'Deactivated by org admin' }
+    });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.member.deactivated', entityType: 'orgMembership', entityId: updated.id, ipAddress: req.ip, metadata: { memberId, reason: body.reason } });
+    ok(res, updated);
+}));
+
+router.patch('/org/members/:memberId/reactivate', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_MEMBER_DISABLE'), asyncRoute(async (req, res) => {
+    const memberId = Number(req.params.memberId);
+    if (!memberId) throw new ApiError(400, 'Invalid member ID', 'INVALID_ID');
+    const membership = await prisma.orgMembership.findUnique({ where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } } });
+    if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
+    const updated = await prisma.orgMembership.update({ where: { id: membership.id }, data: { isActive: true, deactivatedAt: null, deactivatedByUserId: null, deactivationReason: null } });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.member.reactivated', entityType: 'orgMembership', entityId: updated.id, ipAddress: req.ip, metadata: { memberId } });
+    ok(res, updated);
+}));
+
+router.post('/org/members/:memberId/transfer-access', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_MEMBER_DISABLE'), asyncRoute(async (req, res) => {
+    const memberId = Number(req.params.memberId);
+    const body = transferSchema.parse(req.body);
+    const membership = await prisma.orgMembership.findUnique({ where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } }, include: { customRole: true } });
+    if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
+    if (memberId === userId(req)) throw new ApiError(409, 'You cannot transfer your own access from this action.', 'SELF_TRANSFER');
+    const replacementRoleId = body.customRoleId || membership.customRoleId || undefined;
+    const transfer = await (prisma as any).accessTransferLog.create({
+        data: {
+            organizationId: orgId(req),
+            fromUserId: memberId,
+            toEmail: body.toEmail,
+            roleId: replacementRoleId || null,
+            performedByUserId: userId(req),
+            reason: body.reason,
+            status: 'INITIATED'
+        }
+    });
+    const existingInvite = await prisma.orgInvitation.findFirst({ where: { organizationId: orgId(req), email: body.toEmail, acceptedAt: null, status: 'PENDING' as any, expiresAt: { gt: new Date() } } });
+    if (!existingInvite) {
+        await prisma.orgInvitation.create({
+            data: {
+                organizationId: orgId(req),
+                email: body.toEmail,
+                invitedEmail: body.toEmail,
+                orgRole: membership.orgRole,
+                customRoleId: replacementRoleId || null,
+                token: generateToken(),
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                invitedById: userId(req),
+                message: `Access transfer: ${body.reason}`,
+                requiresPersonalVerification: true
+            }
+        });
+    }
+    if (body.deactivateOldMember) {
+        await prisma.orgMembership.update({ where: { id: membership.id }, data: { isActive: false, deactivatedAt: new Date(), deactivatedByUserId: userId(req), deactivationReason: `Access transfer initiated: ${body.reason}` } });
+    }
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.access_transfer.initiated', entityType: 'accessTransferLog', entityId: transfer.id, ipAddress: req.ip, metadata: { fromUserId: memberId, toEmail: body.toEmail } });
+    ok(res, transfer, 201);
+}));
+
+router.post('/org/access-transfer/:id/complete', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_MEMBER_DISABLE'), asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const transfer = await (prisma as any).accessTransferLog.findFirst({ where: { id, organizationId: orgId(req) } });
+    if (!transfer) throw new ApiError(404, 'Transfer log not found', 'TRANSFER_NOT_FOUND');
+    const user = transfer.toEmail ? await prisma.user.findUnique({ where: { email: transfer.toEmail }, select: { id: true } }) : null;
+    const updated = await (prisma as any).accessTransferLog.update({ where: { id }, data: { status: 'COMPLETED', completedAt: new Date(), toUserId: user?.id || transfer.toUserId || null } });
+    await auditLog({ actorUserId: userId(req), actorRole: req.user!.role, action: 'org.access_transfer.completed', entityType: 'accessTransferLog', entityId: id, ipAddress: req.ip });
+    ok(res, updated);
+}));
+
+router.get('/org/access-transfer/logs', authenticate, authorize('buyer', 'seller'), requireOrgPermission('TEAM_VIEW'), asyncRoute(async (req, res) => {
+    const logs = await (prisma as any).accessTransferLog.findMany({
+        where: { organizationId: orgId(req) },
+        include: {
+            fromUser: { select: { id: true, name: true, email: true } },
+            toUser: { select: { id: true, name: true, email: true } },
+            role: { select: { id: true, name: true } },
+            performedBy: { select: { id: true, name: true, email: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
+    });
+    ok(res, logs);
+}));
 
 // ─── DELETE /api/org/members/:userId — remove member ─────────────────────────
 router.delete(
     '/org/members/:memberId',
     authenticate,
     authorize('buyer', 'seller'),
-    requireOrgRole('ORG_ADMIN'),
+    requireOrgPermission('TEAM_MEMBER_DISABLE'),
     asyncRoute(async (req, res) => {
         const memberId = Number(req.params.memberId);
         if (!memberId) throw new ApiError(400, 'Invalid member ID', 'INVALID_ID');
@@ -848,9 +1215,14 @@ router.delete(
         });
         if (!membership) throw new ApiError(404, 'Member not found in your organisation.', 'MEMBER_NOT_FOUND');
 
+        if (membership.orgRole === 'ORG_ADMIN') {
+            const adminCount = await prisma.orgMembership.count({ where: { organizationId: orgId(req), orgRole: 'ORG_ADMIN', isActive: true, userId: { not: memberId } } });
+            if (adminCount === 0) throw new ApiError(409, 'Cannot remove the last active Org Admin.', 'LAST_ORG_ADMIN');
+        }
+
         await prisma.orgMembership.update({
             where: { userId_organizationId: { userId: memberId, organizationId: orgId(req) } },
-            data: { isActive: false }
+            data: { isActive: false, deactivatedAt: new Date(), deactivatedByUserId: userId(req), deactivationReason: 'Removed by org admin' }
         });
 
         await auditLog({

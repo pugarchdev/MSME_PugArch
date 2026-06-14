@@ -21,6 +21,8 @@
 import prisma from '../config/prisma.js';
 import { OrgRole } from '@prisma/client';
 
+type PrismaLike = typeof prisma;
+
 export interface EnsureMembershipParams {
     userId: number;
     organizationId: number;
@@ -30,6 +32,8 @@ export interface EnsureMembershipParams {
     invitedById?: number | null;
     /** Override: when true, will upgrade an existing membership's role. */
     upgrade?: boolean;
+    /** Optional transaction client. */
+    client?: PrismaLike;
 }
 
 /**
@@ -37,7 +41,8 @@ export interface EnsureMembershipParams {
  * multiple times. Returns the membership row.
  */
 export async function ensureOrgMembership(params: EnsureMembershipParams) {
-    const existing = await prisma.orgMembership.findUnique({
+    const client = (params.client || prisma) as PrismaLike;
+    const existing = await client.orgMembership.findUnique({
         where: {
             userId_organizationId: {
                 userId: params.userId,
@@ -49,14 +54,14 @@ export async function ensureOrgMembership(params: EnsureMembershipParams) {
     if (existing) {
         // If caller wants to upgrade and the desired role is "higher", apply it.
         if (params.upgrade && params.desiredRole && roleRank(params.desiredRole) > roleRank(existing.orgRole)) {
-            return prisma.orgMembership.update({
+            return client.orgMembership.update({
                 where: { id: existing.id },
                 data: { orgRole: params.desiredRole, isActive: true }
             });
         }
         // Re-activate if it was deactivated.
         if (!existing.isActive) {
-            return prisma.orgMembership.update({
+            return client.orgMembership.update({
                 where: { id: existing.id },
                 data: { isActive: true }
             });
@@ -67,14 +72,14 @@ export async function ensureOrgMembership(params: EnsureMembershipParams) {
     // Decide the role: explicit > first-user-is-admin > VIEWER fallback
     let role: OrgRole = params.desiredRole || OrgRole.VIEWER;
     if (!params.desiredRole) {
-        const memberCount = await prisma.orgMembership.count({
+        const memberCount = await client.orgMembership.count({
             where: { organizationId: params.organizationId }
         });
         if (memberCount === 0) role = OrgRole.ORG_ADMIN;
     }
 
     const now = new Date();
-    return prisma.orgMembership.create({
+    return client.orgMembership.create({
         data: {
             userId: params.userId,
             organizationId: params.organizationId,

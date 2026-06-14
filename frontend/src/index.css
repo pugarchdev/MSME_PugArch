@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800&family=Noto+Serif:wght@600;700;800&family=Noto+Serif+Devanagari:wght@600;700;800&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -24,7 +24,12 @@
 }
 
 .buyer-font {
-  font-family: "Noto Sans", sans-serif;
+  font-family: var(--font-body);
+}
+
+:root {
+  --font-body: "Noto Sans", "Noto Sans Devanagari", Arial, sans-serif;
+  --font-heading: "Noto Serif", "Noto Serif Devanagari", Georgia, serif;
 }
 
 :root,
@@ -47,7 +52,7 @@ body,
 #root {
   width: 100%;
   min-width: 0;
-  font-family: "Noto Sans", Arial, sans-serif;
+  font-family: var(--font-body);
   background: #f5f7fb;
   color: #1f2937;
 }
@@ -55,6 +60,16 @@ body,
 body {
   margin: 0;
   overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+.font-heading,
+.page-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 img,
@@ -394,7 +409,7 @@ tr:hover .col-sticky-right {
   /* Elegant slate border on all sides */
   border-radius: 6px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
-  font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-family: var(--font-body) !important;
   padding: 14px 18px 14px 16px !important;
   overflow: hidden !important;
   position: relative;

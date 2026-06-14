@@ -73,56 +73,87 @@ router.get('/marketplace/compare', async (req, res: Response) => {
             where: { id: { in: serviceIds }, status: 'ACTIVE' },
             include: {
               organization: { select: { id: true, organizationName: true, verificationStatus: true, city: true, state: true, district: true } },
-              category: { select: { id: true, name: true, slug: true } }
+              category: { select: { id: true, name: true, slug: true } },
+              certifications: true
             }
           })
         : Promise.resolve([])
     ]);
 
+    const locationOf = (organization: any) => [organization?.city, organization?.district, organization?.state].filter(Boolean).join(', ');
     const productItems = products.map((product: any) => ({
       type: 'PRODUCT',
       id: product.id,
       name: product.name,
+      description: product.description,
       imageUrl: product.images?.[0]?.fileAsset?.url || null,
       sellerOrganization: product.organization,
       category: product.category,
       price: product.price,
+      currency: product.currency,
       taxInfo: product.taxRate,
       unit: product.unitOfMeasure,
+      pricingModel: null,
+      brand: product.brand,
+      modelNumber: product.modelNumber,
+      sku: product.sku,
+      hsnCode: product.hsnCode,
+      discount: product.discount,
+      status: product.status,
+      itemCondition: product.itemCondition,
+      isMsmeMade: product.isMsmeMade,
       moq: null,
       deliveryTime: null,
-      location: [product.organization?.city, product.organization?.district, product.organization?.state].filter(Boolean).join(', '),
+      location: locationOf(product.organization),
       warranty: null,
       availableQuantity: null,
       verificationStatus: product.organization?.verificationStatus,
       technicalSpecs: product.specifications,
       documents: product.certifications,
-      lastUpdated: product.updatedAt
+      lastUpdated: product.updatedAt,
+      createdAt: product.createdAt,
+      detailUrl: `/marketplace/products/${product.id}`
     }));
     const serviceItems = services.map((service: any) => ({
       type: 'SERVICE',
       id: service.id,
       name: service.name,
+      description: service.description,
       imageUrl: null,
       sellerOrganization: service.organization,
       category: service.category,
       price: service.basePrice,
+      currency: service.currency,
       taxInfo: service.taxRate,
       unit: service.pricingModel,
+      pricingModel: service.pricingModel,
+      brand: null,
+      modelNumber: null,
+      sku: null,
+      hsnCode: null,
+      discount: service.discount,
+      status: service.status,
+      itemCondition: null,
+      isMsmeMade: false,
+      serviceArea: service.serviceArea,
       moq: null,
       deliveryTime: service.deliveryTimeline || null,
-      location: [service.organization?.city, service.organization?.district, service.organization?.state].filter(Boolean).join(', '),
+      location: service.serviceArea || locationOf(service.organization),
       warranty: null,
       availableQuantity: null,
       verificationStatus: service.organization?.verificationStatus,
       technicalSpecs: [],
-      documents: [],
-      lastUpdated: service.updatedAt
+      documents: service.certifications,
+      lastUpdated: service.updatedAt,
+      createdAt: service.createdAt,
+      detailUrl: `/marketplace/services/${service.id}`
     }));
     const items = [...productItems, ...serviceItems];
     const numericPrices = items.map(item => Number(item.price)).filter(Number.isFinite);
     const lowestPrice = numericPrices.length ? Math.min(...numericPrices) : null;
-    return apiResponse.success(res, { items: maskSensitive(items), highlights: { lowestPrice }, limit: 4 });
+    const highestPrice = numericPrices.length ? Math.max(...numericPrices) : null;
+    const verifiedCount = items.filter(item => String(item.verificationStatus || '').toUpperCase() === 'VERIFIED').length;
+    return apiResponse.success(res, { items: maskSensitive(items), highlights: { lowestPrice, highestPrice, verifiedCount }, limit: 4 });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 400, error.message || 'Unable to compare marketplace items', error.code || 'MARKETPLACE_COMPARE_ERROR');
   }

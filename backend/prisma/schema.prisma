@@ -58,8 +58,10 @@ model User {
   sellerDisputes                     Dispute[]                             @relation("SellerDisputes")
   raisedDisputes                     Dispute[]                             @relation("RaisedDisputes")
   resolvedDisputes                   Dispute[]                             @relation("ResolvedDisputes")
+  assignedDisputes                   Dispute[]                             @relation("AssignedDisputes")
   disputeMessages                    DisputeMessage[]                      @relation("DisputeMessageSender")
   disputeEvidenceUploads             DisputeEvidence[]                     @relation("DisputeEvidenceUploader")
+  disputeAttachmentsUploaded         DisputeAttachment[]                   @relation("DisputeAttachmentUploader")
   grievances                         GrievanceTicket[]                     @relation("GrievanceOwner")
   assignedGrievances                 GrievanceTicket[]                     @relation("GrievanceAssignee")
   grievanceComments                  GrievanceComment[]                    @relation("GrievanceCommentAuthor")
@@ -111,7 +113,13 @@ model User {
   paymentSettlementsRejected         PaymentSettlement[]                   @relation("PaymentSettlementRejecter")
   orgMemberships                     OrgMembership[]                       @relation("OrgMembershipUser")
   orgMembershipsInvited              OrgMembership[]                       @relation("OrgMembershipInviter")
+  orgMembershipsTransferred          OrgMembership[]                       @relation("OrgMembershipTransferSource")
+  orgMembershipsDeactivated          OrgMembership[]                       @relation("OrgMembershipDeactivator")
   orgInvitationsSent                 OrgInvitation[]                       @relation("OrgInvitationInviter")
+  orgCustomRolesCreated              OrgCustomRole[]                       @relation("OrgCustomRoleCreator")
+  accessTransfersFrom                AccessTransferLog[]                   @relation("AccessTransferFromUser")
+  accessTransfersTo                  AccessTransferLog[]                   @relation("AccessTransferToUser")
+  accessTransfersPerformed           AccessTransferLog[]                   @relation("AccessTransferPerformer")
   cartsCreated                       Cart[]                                @relation("CartCreator")
   cartsApproved                      Cart[]                                @relation("CartApprover")
   cartsRejected                      Cart[]                                @relation("CartRejecter")
@@ -336,6 +344,13 @@ model Organization {
   memberships                  OrgMembership[]
   userRoles                    UserRole[]
   invitations                  OrgInvitation[]
+  customRoles                  OrgCustomRole[]
+  disputesRaised               Dispute[]             @relation("DisputeRaisedOrg")
+  disputesAgainst              Dispute[]             @relation("DisputeAgainstOrg")
+  disputesAsBuyer              Dispute[]             @relation("DisputeBuyerOrg")
+  disputesAsSeller             Dispute[]             @relation("DisputeSellerOrg")
+  disputeMessages              DisputeMessage[]      @relation("DisputeMessageOrg")
+  accessTransferLogs           AccessTransferLog[]
   carts                        Cart[]
   buyerRequirements            BuyerRequirement[]    @relation("BuyerRequirementOrganization")
   requirementResponses         RequirementResponse[] @relation("RequirementResponseOrganization")
@@ -2376,50 +2391,93 @@ model MessageAttachment {
 }
 
 model Dispute {
-  id                   Int               @id @default(autoincrement())
-  purchaseOrderId      Int?
-  paymentTransactionId Int?
-  escrowAccountId      Int?
-  buyerId              Int
-  sellerId             Int
-  raisedById           Int
-  category             String
-  reason               String
-  status               String            @default("open")
-  statusEnum           DisputeStatus?
-  resolutionRemarks    String?
-  resolvedById         Int?
-  resolvedAt           DateTime?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
-  buyer                User              @relation("BuyerDisputes", fields: [buyerId], references: [id], onDelete: Restrict)
-  seller               User              @relation("SellerDisputes", fields: [sellerId], references: [id], onDelete: Restrict)
-  raisedBy             User              @relation("RaisedDisputes", fields: [raisedById], references: [id], onDelete: Restrict)
-  resolvedBy           User?             @relation("ResolvedDisputes", fields: [resolvedById], references: [id], onDelete: SetNull)
-  messages             DisputeMessage[]
-  evidence             DisputeEvidence[]
+  id                    Int                 @id @default(autoincrement())
+  disputeNo             String?             @unique
+  raisedByUserId        Int?
+  raisedByOrgId         Int?
+  againstOrgId          Int?
+  buyerOrgId            Int?
+  sellerOrgId           Int?
+  linkedEntityType      String?
+  linkedEntityId        Int?
+  purchaseOrderId       Int?
+  invoiceId             Int?
+  paymentTransactionId  Int?
+  deliveryId            Int?
+  grnId                 Int?
+  escrowAccountId       Int?
+  requirementResponseId Int?
+  auctionId             Int?
+  buyerId               Int
+  sellerId              Int
+  raisedById            Int
+  title                 String?
+  description           String?
+  category              String
+  amountInDispute       Decimal?            @db.Decimal(18, 2)
+  priority              DisputePriority     @default(MEDIUM)
+  reason                String
+  status                String              @default("open")
+  statusEnum            DisputeStatus?
+  assignedAdminId       Int?
+  adminRemarks          String?
+  resolutionSummary     String?
+  resolutionRemarks     String?
+  resolvedById          Int?
+  resolvedAt            DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  buyer                 User                @relation("BuyerDisputes", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller                User                @relation("SellerDisputes", fields: [sellerId], references: [id], onDelete: Restrict)
+  raisedBy              User                @relation("RaisedDisputes", fields: [raisedById], references: [id], onDelete: Restrict)
+  resolvedBy            User?               @relation("ResolvedDisputes", fields: [resolvedById], references: [id], onDelete: SetNull)
+  assignedAdmin         User?               @relation("AssignedDisputes", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  raisedByOrg           Organization?       @relation("DisputeRaisedOrg", fields: [raisedByOrgId], references: [id], onDelete: SetNull)
+  againstOrg            Organization?       @relation("DisputeAgainstOrg", fields: [againstOrgId], references: [id], onDelete: SetNull)
+  buyerOrg              Organization?       @relation("DisputeBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  sellerOrg             Organization?       @relation("DisputeSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
+  messages              DisputeMessage[]
+  evidence              DisputeEvidence[]
+  attachments           DisputeAttachment[]
 
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([raisedById])
+  @@index([status])
+  @@index([raisedByOrgId])
+  @@index([againstOrgId])
+  @@index([assignedAdminId])
+  @@index([linkedEntityType, linkedEntityId])
   @@index([purchaseOrderId])
+  @@index([invoiceId])
   @@index([paymentTransactionId])
+  @@index([deliveryId])
+  @@index([grnId])
   @@index([escrowAccountId])
+  @@index([requirementResponseId])
+  @@index([auctionId])
   @@index([statusEnum])
+  @@index([createdAt])
 }
 
 model DisputeMessage {
-  id        Int      @id @default(autoincrement())
-  disputeId Int
-  senderId  Int
-  content   String
-  internal  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  dispute   Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
-  sender    User     @relation("DisputeMessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  id          Int                      @id @default(autoincrement())
+  disputeId   Int
+  senderId    Int
+  senderOrgId Int?
+  message     String?
+  visibility  DisputeMessageVisibility @default(PUBLIC_TO_PARTIES)
+  content     String
+  internal    Boolean                  @default(false)
+  createdAt   DateTime                 @default(now())
+  dispute     Dispute                  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  sender      User                     @relation("DisputeMessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  senderOrg   Organization?            @relation("DisputeMessageOrg", fields: [senderOrgId], references: [id], onDelete: SetNull)
 
   @@index([disputeId, createdAt])
   @@index([senderId, createdAt])
+  @@index([senderOrgId])
 }
 
 model DisputeEvidence {
@@ -2434,6 +2492,20 @@ model DisputeEvidence {
 
   @@index([disputeId])
   @@index([fileAssetId])
+}
+
+model DisputeAttachment {
+  id               Int      @id @default(autoincrement())
+  disputeId        Int
+  fileAssetId      Int
+  uploadedByUserId Int
+  createdAt        DateTime @default(now())
+  dispute          Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  uploadedBy       User     @relation("DisputeAttachmentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([disputeId])
+  @@index([fileAssetId])
+  @@index([uploadedByUserId])
 }
 
 model GrievanceTicket {
@@ -3349,9 +3421,37 @@ enum DisputeStatus {
   OPEN
   UNDER_REVIEW
   AWAITING_RESPONSE
+  CLARIFICATION_REQUESTED
+  RESPONDED
   RESOLVED
   REJECTED
   CLOSED
+  ESCALATED
+}
+
+enum DisputePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DisputeMessageVisibility {
+  PUBLIC_TO_PARTIES
+  ADMIN_INTERNAL
+}
+
+enum OrgInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AccessTransferStatus {
+  INITIATED
+  COMPLETED
+  CANCELLED
 }
 
 enum GrievanceStatus {
@@ -3490,44 +3590,124 @@ enum OrgRole {
 }
 
 model OrgMembership {
-  id             Int       @id @default(autoincrement())
-  userId         Int
-  organizationId Int
-  orgRole        OrgRole   @default(VIEWER)
-  isActive       Boolean   @default(true)
-  invitedById    Int?
-  invitedAt      DateTime  @default(now())
-  acceptedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                          Int       @id @default(autoincrement())
+  userId                      Int
+  organizationId              Int
+  orgRole                     OrgRole   @default(VIEWER)
+  customRoleId                Int?
+  isActive                    Boolean   @default(true)
+  invitedById                 Int?
+  invitedAt                   DateTime  @default(now())
+  acceptedAt                  DateTime?
+  accessTransferredFromUserId Int?
+  deactivatedAt               DateTime?
+  deactivatedByUserId         Int?
+  deactivationReason          String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
-  user         User         @relation("OrgMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User?        @relation("OrgMembershipInviter", fields: [invitedById], references: [id])
+  user                      User           @relation("OrgMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization              Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRole                OrgCustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  invitedBy                 User?          @relation("OrgMembershipInviter", fields: [invitedById], references: [id])
+  accessTransferredFromUser User?          @relation("OrgMembershipTransferSource", fields: [accessTransferredFromUserId], references: [id], onDelete: SetNull)
+  deactivatedBy             User?          @relation("OrgMembershipDeactivator", fields: [deactivatedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([userId, organizationId])
   @@index([organizationId, orgRole])
+  @@index([organizationId, customRoleId])
   @@index([userId])
   @@index([invitedById])
+  @@index([isActive])
+  @@index([deactivatedByUserId])
 }
 
 model OrgInvitation {
-  id             Int       @id @default(autoincrement())
-  organizationId Int
-  email          String
-  orgRole        OrgRole
-  token          String    @unique
-  expiresAt      DateTime
-  acceptedAt     DateTime?
-  invitedById    Int
-  createdAt      DateTime  @default(now())
+  id                           Int                 @id @default(autoincrement())
+  organizationId               Int
+  email                        String
+  invitedEmail                 String?
+  orgRole                      OrgRole
+  customRoleId                 Int?
+  token                        String              @unique
+  expiresAt                    DateTime
+  status                       OrgInvitationStatus @default(PENDING)
+  message                      String?
+  requiresPersonalVerification Boolean             @default(true)
+  acceptedAt                   DateTime?
+  invitedById                  Int
+  createdAt                    DateTime            @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("OrgInvitationInviter", fields: [invitedById], references: [id])
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRole   OrgCustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  invitedBy    User           @relation("OrgInvitationInviter", fields: [invitedById], references: [id])
 
   @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([customRoleId])
   @@index([token])
   @@index([email])
+}
+
+model OrgCustomRole {
+  id              Int                 @id @default(autoincrement())
+  organizationId  Int
+  name            String
+  description     String?
+  roleKey         String
+  isSystemRole    Boolean             @default(false)
+  isActive        Boolean             @default(true)
+  createdByUserId Int
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User                @relation("OrgCustomRoleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  permissions     OrgRolePermission[]
+  memberships     OrgMembership[]
+  invitations     OrgInvitation[]
+  accessTransfers AccessTransferLog[]
+
+  @@unique([organizationId, roleKey])
+  @@index([organizationId, isActive])
+  @@index([createdByUserId])
+}
+
+model OrgRolePermission {
+  id            Int           @id @default(autoincrement())
+  roleId        Int
+  permissionKey String
+  allowed       Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  role          OrgCustomRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionKey])
+  @@index([roleId])
+  @@index([permissionKey])
+}
+
+model AccessTransferLog {
+  id                Int                  @id @default(autoincrement())
+  organizationId    Int
+  fromUserId        Int
+  toUserId          Int?
+  toEmail           String?
+  roleId            Int?
+  performedByUserId Int
+  reason            String
+  status            AccessTransferStatus @default(INITIATED)
+  createdAt         DateTime             @default(now())
+  completedAt       DateTime?
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromUser          User                 @relation("AccessTransferFromUser", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser            User?                @relation("AccessTransferToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  role              OrgCustomRole?       @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  performedBy       User                 @relation("AccessTransferPerformer", fields: [performedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([roleId])
+  @@index([performedByUserId])
 }
 
 // ─── Cart System ─────────────────────────────────────────────────────────────

@@ -1,10 +1,18 @@
 'use client';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { BadgeCheck, Building2, ChevronRight, MapPin } from 'lucide-react';
+import { BadgeCheck, Building2, ChevronRight, MapPin, List, LayoutGrid } from 'lucide-react';
 import { marketplaceApi, type BuyerRequirement, type MarketplaceOrganization } from '../api';
 import { RequirementCard } from './BuyerRequirementsSection';
+
+function buyerTypeLabel(type?: string) {
+    if (type === 'GOVERNMENT' || type === 'PSU') return 'Government Buyer';
+    if (type === 'MSME') return 'MSME Buyer';
+    if (type === 'EDUCATIONAL_INSTITUTION') return 'Institution';
+    if (type === 'PUBLIC_LIMITED' || type === 'PRIVATE_LIMITED') return 'Large Scale Industry';
+    return 'Private Buyer';
+}
 
 interface BuyerSummary {
     id: number;
@@ -77,6 +85,13 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
     }, [buyers, requirements]);
 
     const [selectedBuyerId, setSelectedBuyerId] = useState<number | 'all'>('all');
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setViewMode('grid');
+        }
+    }, []);
 
     const selectedBuyer = selectedBuyerId === 'all' ? null : buyerSummaries.find(buyer => buyer.id === selectedBuyerId) || null;
     const selectedBuyerRequirementQuery = useQuery({
@@ -153,16 +168,182 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                             <h3 className="text-base font-black text-[#0b2447]">{selectedBuyer ? `${selectedBuyer.name} requirements` : 'All buyer requirements'}</h3>
                             <p className="text-xs font-medium text-slate-500">{selectedBuyerRequirementQuery.isFetching ? 'Loading published requirements...' : `${selectedRequirements.length} matching requirement${selectedRequirements.length === 1 ? '' : 's'} found.`}</p>
                         </div>
+                        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm self-start sm:self-auto">
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('list')}
+                                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                                    viewMode === 'list'
+                                        ? 'bg-[#0b2447] text-white'
+                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                }`}
+                                title="List View"
+                            >
+                                <List className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('grid')}
+                                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                                    viewMode === 'grid'
+                                        ? 'bg-[#0b2447] text-white'
+                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                }`}
+                                title="Grid View"
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                            </button>
+                        </div>
                     </div>
 
                     {selectedBuyerRequirementQuery.isFetching ? (
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                            {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-56 rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse"><div className="mb-4 h-4 w-3/4 rounded bg-slate-100" /><div className="mb-2 h-3 w-full rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /></div>)}
-                        </div>
+                        viewMode === 'list' ? (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm animate-pulse">
+                                <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                                            <th className="px-5 py-4">Buyer / Org</th>
+                                            <th className="px-5 py-4">Requirement</th>
+                                            <th className="px-5 py-4">Type</th>
+                                            <th className="px-5 py-4">Quantity</th>
+                                            <th className="px-5 py-4">Location</th>
+                                            <th className="px-5 py-4">Last Date</th>
+                                            <th className="px-5 py-4">Status</th>
+                                            <th className="px-5 py-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {Array.from({ length: 3 }).map((_, index) => (
+                                            <tr key={index} className="border-b border-slate-100">
+                                                <td className="px-5 py-4"><div className="h-4 w-32 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-48 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-16 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-16 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-24 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-20 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="h-4 w-16 rounded bg-slate-100" /></td>
+                                                <td className="px-5 py-4"><div className="ml-auto h-8 w-24 rounded bg-slate-100" /></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-56 rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse"><div className="mb-4 h-4 w-3/4 rounded bg-slate-100" /><div className="mb-2 h-3 w-full rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /></div>)}
+                            </div>
+                        )
                     ) : selectedRequirements.length ? (
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                            {selectedRequirements.map(requirement => <RequirementCard key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} requirement={requirement} />)}
-                        </div>
+                        viewMode === 'list' ? (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                                            <th scope="col" className="px-5 py-4">Buyer / Org</th>
+                                            <th scope="col" className="px-5 py-4">Requirement</th>
+                                            <th scope="col" className="px-5 py-4">Type</th>
+                                            <th scope="col" className="px-5 py-4">Quantity</th>
+                                            <th scope="col" className="px-5 py-4">Location</th>
+                                            <th scope="col" className="px-5 py-4">Last Date</th>
+                                            <th scope="col" className="px-5 py-4">Status</th>
+                                            <th scope="col" className="px-5 py-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                                        {selectedRequirements.map(requirement => {
+                                            const buyer = requirement.buyerOrganization;
+                                            const lastDate = new Date(requirement.lastDate);
+                                            const daysLeft = Math.ceil((lastDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+                                            const status = requirement.status === 'OPEN' && daysLeft <= 7 ? 'Closing Soon' : requirement.status.replace(/_/g, ' ');
+                                            const detailHref = requirement.id ? `/marketplace/requirements/${requirement.id}` : '/marketplace/requirements';
+
+                                            return (
+                                                <tr key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} className="hover:bg-slate-50/50 transition">
+                                                    <td className="px-5 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-xs font-black text-[#0b2447] border border-slate-200 shadow-sm">
+                                                                {buyer?.logoUrl ? (
+                                                                    <img src={buyer.logoUrl} alt={`${buyer.organizationName} logo`} className="h-full w-full object-contain p-1" />
+                                                                ) : (
+                                                                    initials(buyer?.organizationName || 'Verified Buyer')
+                                                                )}
+                                                            </span>
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="truncate font-black text-slate-900">{buyer?.organizationName || 'Verified Buyer'}</span>
+                                                                    {buyer?.verificationStatus === 'VERIFIED' && (
+                                                                        <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                                                    {buyerTypeLabel(buyer?.organizationType)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-4">
+                                                        <div className="max-w-[280px]">
+                                                            <p className="truncate font-bold text-slate-950" title={requirement.title}>
+                                                                {requirement.title}
+                                                            </p>
+                                                            <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
+                                                                {requirement.category?.name || 'Uncategorized'}
+                                                            </p>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-4">
+                                                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase ${
+                                                            requirement.requirementType === 'PRODUCT' 
+                                                                ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                                                                : 'bg-purple-50 text-purple-700 border border-purple-100'
+                                                        }`}>
+                                                            {requirement.requirementType}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-5 py-4 text-slate-900 font-bold">
+                                                        {requirement.quantity || 'Estimated'} {requirement.unit || ''}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-slate-600 font-semibold">
+                                                        <div className="flex items-center gap-1">
+                                                            <MapPin className="h-3.5 w-3.5 text-[#8a6a2f] shrink-0" />
+                                                            <span className="truncate max-w-[150px]">
+                                                                {requirement.location || buyer?.district || 'Confirmed on request'}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-4 text-slate-900 font-bold">
+                                                        {lastDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    </td>
+                                                    <td className="px-5 py-4">
+                                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                                            status === 'Closing Soon' 
+                                                                ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                                                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                        }`}>
+                                                            {status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-5 py-4 text-right">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <Link href={detailHref} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-center text-xs font-black text-slate-700 hover:bg-slate-100 transition">
+                                                                View
+                                                            </Link>
+                                                            <Link href={`${detailHref}#respond`} className="inline-flex items-center justify-center gap-1 rounded-md bg-[#0b2447] px-2.5 py-1.5 text-xs font-black text-white hover:bg-[#12335f] transition">
+                                                                Quote
+                                                            </Link>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                {selectedRequirements.map(requirement => <RequirementCard key={`${requirement.sourceModel || 'buyer'}-${requirement.id}`} requirement={requirement} />)}
+                            </div>
+                        )
                     ) : (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
                             <p className="text-sm font-bold text-slate-700">No requirements available for this buyer right now.</p>

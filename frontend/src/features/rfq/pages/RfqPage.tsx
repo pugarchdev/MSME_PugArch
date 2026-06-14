@@ -11,9 +11,12 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Pagination } from '../../shared/Pagination';
 import { PageToolbar } from '../../shared/PageToolbar';
+import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { useResponsiveViewMode } from '../../shared/hooks';
 import { ListSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { useAuth } from '../../../hooks/useAuth';
+import { useDebounce } from '../../../hooks/useDebounce';
 import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import { cn } from '../../../lib/utils';
@@ -52,8 +55,10 @@ export default function RfqPage() {
     const [status, setStatus] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
+    const [viewMode, setViewMode] = useResponsiveViewMode('rfq:list:view-mode');
+    const debouncedQ = useDebounce(q.trim(), 250);
 
-    const list = useQuoteRequests({ q: q || undefined, status: status || undefined, page, pageSize });
+    const list = useQuoteRequests({ q: debouncedQ || undefined, status: status || undefined, page, pageSize });
     const deleteMut = useDeleteQuoteRequest();
 
     const records = list.data?.records || [];
@@ -81,6 +86,7 @@ export default function RfqPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     <Button variant="outline" onClick={() => list.refetch()} className="h-10 rounded-lg text-xs font-black uppercase">
                         <RefreshCw className={cn('mr-2 h-4 w-4', list.isFetching && 'animate-spin')} /> Refresh
                     </Button>
@@ -137,6 +143,38 @@ export default function RfqPage() {
                 <ListSkeleton rows={4} />
             ) : records.length === 0 ? (
                 <EmptyState title="No quote requests" description={isBuyer ? 'Create your first RFQ to start collecting quotes.' : 'No requests yet.'} />
+            ) : viewMode === 'grid' ? (
+                <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {records.map((rfq, idx) => (
+                            <RfqCard
+                                key={rfq.id}
+                                rfq={rfq}
+                                index={(page - 1) * pageSize + idx + 1}
+                                isBuyer={!!isBuyer}
+                                isSeller={!!isSeller}
+                                onOpen={() => setOpenId(rfq.id)}
+                                onCancel={() => {
+                                    if (!window.confirm(`Cancel RFQ "${rfq.subject}"? This cannot be undone.`)) return;
+                                    runWithToast(() => deleteMut.mutateAsync(rfq.id), {
+                                        loading: 'Cancelling...',
+                                        success: 'RFQ cancelled',
+                                        error: 'Cancel failed'
+                                    });
+                                }}
+                                cancelling={deleteMut.isPending}
+                            />
+                        ))}
+                    </div>
+                    <Pagination
+                        page={page}
+                        pageSize={pageSize}
+                        total={total}
+                        onPageChange={setPage}
+                        onPageSizeChange={setPageSize}
+                        label="quote requests"
+                    />
+                </div>
             ) : (
                 <Card>
                     <CardContent className="p-0">
@@ -263,6 +301,84 @@ export default function RfqPage() {
 
             {openId !== null && <RfqDetail id={openId} isBuyer={!!isBuyer} isSeller={!!isSeller} onClose={() => setOpenId(null)} />}
             {creating && isBuyer && <RfqCreator onClose={() => setCreating(false)} />}
+        </div>
+    );
+}
+
+function RfqCard({
+    rfq,
+    index,
+    isBuyer,
+    isSeller,
+    onOpen,
+    onCancel,
+    cancelling
+}: {
+    rfq: QuoteRequestDto;
+    index: number;
+    isBuyer: boolean;
+    isSeller: boolean;
+    onOpen: () => void;
+    onCancel: () => void;
+    cancelling: boolean;
+}) {
+    const partyName = isBuyer ? rfq.seller?.name || `Seller #${rfq.sellerId}` : rfq.buyer?.name || `Buyer #${rfq.buyerId}`;
+    const partyEmail = isBuyer ? rfq.seller?.email : rfq.buyer?.email;
+    const canCancel = isBuyer && (rfq.quoteResponses?.length || 0) === 0 && rfq.status === 'pending';
+    const canRespond = isSeller && rfq.status === 'pending' && (rfq.quoteResponses?.length || 0) === 0;
+
+    return (
+        <Card className="border-slate-200 bg-white transition hover:border-[#12335f]/30 hover:shadow-md">
+            <CardContent className="flex h-full flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="font-mono text-[10px] font-black uppercase tracking-wider text-[#12335f]">
+                            {String(index).padStart(2, '0')} · RFQ-{String(rfq.id).padStart(5, '0')}
+                        </p>
+                        <button type="button" onClick={onOpen} className="mt-1 block text-left">
+                            <h2 className="line-clamp-2 break-words text-sm font-black text-slate-950 hover:text-[#12335f] hover:underline">{rfq.subject}</h2>
+                        </button>
+                    </div>
+                    <Badge className={cn('shrink-0 rounded-md px-2 py-0.5 text-[10px] font-black uppercase', STATUS_TONE[rfq.status as string] || STATUS_TONE.pending)}>
+                        {String(rfq.status).replace(/_/g, ' ')}
+                    </Badge>
+                </div>
+
+                <p className="line-clamp-2 break-words text-xs font-semibold text-slate-500">{rfq.message || 'No message provided'}</p>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                    <InfoMini label={isBuyer ? 'Vendor' : 'Buyer'} value={partyName} sub={partyEmail} />
+                    <InfoMini label="Value" value={formatCurrency(rfq.estimatedValue)} />
+                    <InfoMini label="Responses" value={String(rfq.quoteResponses?.length ?? 0)} />
+                    <InfoMini label="Sent" value={formatRelative(rfq.createdAt)} sub={formatDateTime(rfq.createdAt)} />
+                </div>
+
+                <div className="mt-auto flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                    <Button type="button" variant="outline" size="sm" onClick={onOpen}>
+                        <Eye className="mr-1 h-3.5 w-3.5" /> View
+                    </Button>
+                    {canCancel && (
+                        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={cancelling} className="border-red-200 text-red-600 hover:bg-red-50">
+                            <Trash2 className="mr-1 h-3.5 w-3.5" /> Cancel
+                        </Button>
+                    )}
+                    {canRespond && (
+                        <Button type="button" size="sm" onClick={onOpen} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                            <Send className="mr-1 h-3.5 w-3.5" /> Quote
+                        </Button>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function InfoMini({ label, value, sub }: { label: string; value?: string | number | null; sub?: string | null }) {
+    return (
+        <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-2">
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+            <p className="mt-0.5 truncate text-xs font-black text-slate-800">{value || '-'}</p>
+            {sub && <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">{sub}</p>}
         </div>
     );
 }

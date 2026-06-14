@@ -38,7 +38,10 @@ import {
   CheckSquare,
   UserPlus,
   ClipboardList,
-  BookOpen
+  BookOpen,
+  Images,
+  Trophy,
+  Gavel
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -82,10 +85,15 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/buyer/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/rfq': () => import('../../features/rfq/pages/RfqPage'),
   '/seller/rfq': () => import('../../features/rfq/pages/RfqPage'),
+  '/reverse-auctions': () => import('../../features/reverseAuctions/pages/ReverseAuctionListPage'),
+  '/reverse-auctions/create': () => import('../../features/reverseAuctions/pages/ReverseAuctionCreatePage'),
   '/seller/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/tracking': () => import('../../views/ParcelTracking'),
   '/admin/delivery': () => import('../../features/delivery/pages/DeliveryListPage'),
   '/admin/reports': () => import('../../views/MISReports'),
+  '/admin/banners': () => import('../../features/banners/pages/AdminBannerManagementPage'),
+  '/admin/monthly-rankings': () => import('../../features/banners/pages/MonthlyRankingsAdminPage'),
+  '/my-org/banner-eligibility': () => import('../../features/banners/pages/OrganizationBannerEligibilityPage'),
   '/cart': () => import('../../features/cart/pages/CartPage'),
   '/cart/approvals': () => import('../../features/cart/pages/CartApprovalPage'),
   '/cart/technical-review': () => import('../../features/cart/pages/TechnicalReviewPage'),
@@ -94,6 +102,9 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/payments': () => Promise.resolve(),
   '/escrow': () => import('../../features/escrow/pages/EscrowPage'),
   '/org/team': () => import('../../features/orgTeam/pages/TeamManagementPage'),
+  '/buyer/disputes': () => import('../../features/disputes/pages/DisputesPage'),
+  '/seller/disputes': () => import('../../features/disputes/pages/DisputesPage'),
+  '/admin/disputes': () => import('../../features/disputes/pages/DisputesPage'),
   '/settings/notifications': () => import('../../features/settings/pages/NotificationPrefsPage'),
   '/admin/users': () => import('../../features/admin/pages/AdminRecordsPage'),
   '/admin/marketplace': () => Promise.resolve(),
@@ -125,6 +136,8 @@ const HIGH_PRIORITY_PREFETCH_ROUTES = [
   '/admin/organizations',
   '/admin/onboarding',
   '/admin/reports',
+  '/admin/banners',
+  '/admin/monthly-rankings',
   '/payments',
   '/escrow',
   '/settings/notifications'
@@ -142,6 +155,9 @@ const SidebarNavLink = memo(function SidebarNavLink({
   onClose: () => void;
 }) {
   const handlePreload = useCallback(() => preloadRoute(item.path), [item.path]);
+  const handlePointerDown = useCallback(() => {
+    preloadRoute(item.path);
+  }, [item.path]);
   const Icon = item.icon;
 
   return (
@@ -149,6 +165,8 @@ const SidebarNavLink = memo(function SidebarNavLink({
       href={item.path}
       scroll={false}
       onClick={onClose}
+      onPointerDown={handlePointerDown}
+      onTouchStart={handlePointerDown}
       onMouseEnter={handlePreload}
       onFocus={handlePreload}
       title={isCollapsed ? item.label : undefined}
@@ -245,6 +263,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Governance Desk', path: '/admin/governance', icon: ClipboardCheck, roles: ['admin'] },
     { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    { label: 'Banner Eligibility', path: '/my-org/banner-eligibility', icon: Images, roles: ['seller', 'buyer'] },
     { label: 'Tenders', path: '/buyer/tenders', icon: FileText, roles: ['buyer'], featureCode: 'tender-management' },
     { label: 'Tenders', path: '/seller/tenders', icon: FileText, roles: ['seller'], featureCode: 'tender-management' },
     { label: 'Quotations', path: '/quotations', icon: ClipboardCheck, roles: ['seller', 'buyer'], featureCode: 'bid-submission' },
@@ -259,6 +278,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Requirements', path: '/buyer/requirements', icon: ClipboardCheck, roles: ['buyer'] },
     { label: 'Direct Purchase', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'RFQ', path: '/buyer/rfq', icon: FileSearch, roles: ['buyer'] },
+    { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['buyer', 'seller', 'admin', 'master_admin'] },
+    { label: 'Create Auction', path: '/reverse-auctions/create', icon: Gavel, roles: ['buyer', 'admin', 'master_admin'] },
     { label: 'RFQ', path: '/seller/rfq', icon: FileSearch, roles: ['seller'] },
     { label: 'Direct Purchase', path: '/seller/direct-purchase', icon: ShoppingCart, roles: ['seller'] },
     { label: 'Parcel Tracking', path: '/buyer/tracking', icon: Truck, roles: ['buyer'] },
@@ -272,10 +293,15 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     
     { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'], featureCode: 'payment-module' },
     { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'], featureCode: 'escrow-nodal-bank' },
-    { label: 'Team Management', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+    { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+    { label: 'Disputes', path: '/buyer/disputes', icon: AlertTriangle, roles: ['buyer'] },
+    { label: 'Disputes', path: '/seller/disputes', icon: AlertTriangle, roles: ['seller'] },
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
+    { label: 'Disputes', path: '/admin/disputes', icon: AlertTriangle, roles: ['admin'] },
+    { label: 'Monthly Rankings', path: '/admin/monthly-rankings', icon: Trophy, roles: ['admin'] },
+    { label: 'Banners', path: '/admin/banners', icon: Images, roles: ['admin'] },
     { label: 'Organizations', path: '/admin/organizations', icon: Building2, roles: ['admin'] },
     { label: 'RBAC Control', path: '/admin/rbac', icon: ShieldCheck, roles: ['admin'], featureCode: 'role-management' },
     // { label: 'Audit Logs', path: '/admin/audit-logs', icon: FileSearch, roles: ['admin'] },
@@ -304,15 +330,32 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
 
   useEffect(() => {
     if (!user) return;
-    const routes = new Set<string>([
-      ...HIGH_PRIORITY_PREFETCH_ROUTES,
-      ...filteredNav.slice(0, 8).map(item => item.path)
-    ]);
-    routes.forEach(path => {
-      router.prefetch(path);
-      preloadRoute(path);
-    });
-  }, [filteredNav, router, user]);
+    const runPrefetch = () => {
+      const routes = new Set<string>([
+        pathname || '/dashboard',
+        ...HIGH_PRIORITY_PREFETCH_ROUTES.slice(0, 4),
+        ...filteredNav.slice(0, 5).map(item => item.path)
+      ]);
+      routes.forEach(path => {
+        router.prefetch(path);
+        preloadRoute(path);
+      });
+    };
+    const idleWindow = window as Window & typeof globalThis & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const idleId = idleWindow.requestIdleCallback
+      ? idleWindow.requestIdleCallback(runPrefetch, { timeout: 2500 })
+      : globalThis.setTimeout(runPrefetch, 600);
+    return () => {
+      if (idleWindow.cancelIdleCallback && typeof idleId === 'number') {
+        idleWindow.cancelIdleCallback(idleId);
+      } else {
+        globalThis.clearTimeout(idleId as number);
+      }
+    };
+  }, [filteredNav, pathname, router, user]);
 
   if (!user) return null;
 
@@ -342,9 +385,9 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
             className={cn("flex items-center gap-3 min-w-0 select-none", isActuallyCollapsed && "lg:justify-center")}
             title="MSME Portal"
           >
-            <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/20 p-0.5 shrink-0">
+            <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/20 shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src="/msme-logo.png" alt="Logo" className="h-full w-full scale-150 object-contain" />
             </div>
             <div className={cn("flex flex-col leading-tight min-w-0", isActuallyCollapsed && "lg:hidden")}>
               <span className="font-bold tracking-tight text-base truncate text-white">MSME Portal</span>

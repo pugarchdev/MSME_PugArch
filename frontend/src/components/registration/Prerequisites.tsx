@@ -16,6 +16,69 @@ const sellerBusinessTypes = [
   { value: 'Startup', label: 'Startup' },
 ];
 
+const shgTypes = [
+  { value: 'Women SHG (Mahila Bachat Gat)', label: 'Women SHG (Mahila Bachat Gat)' },
+  { value: 'Farmer SHG', label: 'Farmer SHG' },
+  { value: 'Artisan / Handicraft SHG', label: 'Artisan / Handicraft SHG' },
+  { value: 'Dairy SHG', label: 'Dairy SHG' },
+  { value: 'Livelihood SHG', label: 'Livelihood SHG' },
+  { value: 'Tribal SHG', label: 'Tribal SHG' },
+  { value: 'Youth SHG', label: 'Youth SHG' },
+  { value: 'Other SHG', label: 'Other SHG' }
+];
+
+const shgCommonMandatoryDocs = [
+  'SHG Registration Certificate',
+  'Aadhaar of Group Leader',
+  'Bank Passbook / Cancelled Cheque',
+  'Member List',
+  'Address Proof'
+];
+
+const shgCommonOptionalDocs = [
+  'PAN Card',
+  'Udyam Registration Certificate',
+  'GST Certificate',
+  'Product Images',
+  'Training / Skill Certificates'
+];
+
+const shgAdditionalOptionalDocs: Record<string, string[]> = {
+  'Women SHG (Mahila Bachat Gat)': [
+    'NRLM Mission Certificate',
+    'Women Empowerment Training Certificate'
+  ],
+  'Farmer SHG': [
+    'Farmer ID Card',
+    'Land Record (7/12)',
+    'FPO/FPC Certificate'
+  ],
+  'Artisan / Handicraft SHG': [
+    'Artisan Card',
+    'Handicraft Certification',
+    'Product Catalogue'
+  ],
+  'Dairy SHG': [
+    'Dairy Cooperative Membership Certificate',
+    'Livestock Ownership Proof'
+  ],
+  'Livelihood SHG': [
+    'Skill Development Certificates',
+    'Business Activity Proof'
+  ],
+  'Tribal SHG': [
+    'Tribal Community Certificate',
+    'Tribal Development Scheme Registration'
+  ],
+  'Youth SHG': [
+    'Skill Training Certificate',
+    'Startup/Entrepreneurship Training Certificate'
+  ],
+  'Other SHG': [
+    'Activity-specific Supporting Documents'
+  ]
+};
+
 const buyerBusinessTypes = [
   { value: 'Primary User (HOD)', label: 'Primary User (HOD)' },
   { value: 'Verifying Authority (VA)', label: 'Verifying Authority (VA)' },
@@ -120,17 +183,22 @@ const prerequisiteDocs: Record<string, { personal: string[], business: string[],
   }
 };
 
+const getShgPrerequisiteDocs = (selectedShgType: string) => ({
+  personal: shgCommonMandatoryDocs,
+  business: shgCommonOptionalDocs,
+  optional: shgAdditionalOptionalDocs[selectedShgType] || []
+});
+
 interface PrerequisitesProps {
-  onProceed: (type: string, selectedDocuments?: string[]) => void;
+  onProceed: (type: string, selectedDocuments?: string[], shgType?: string) => void;
   role: 'buyer' | 'seller';
   variant?: 'buyer' | 'seller' | 'hershg';
 }
 
 export default function Prerequisites({ onProceed, role, variant }: PrerequisitesProps) {
   const [selectedType, setSelectedType] = useState(variant === 'hershg' ? 'herSHG' : '');
+  const [selectedShgType, setSelectedShgType] = useState('');
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
-  
-  const docs = prerequisiteDocs[selectedType] || prerequisiteDocs['default'];
 
   const handleCheck = (item: string) => {
     setCheckedItems(prev => ({ ...prev, [item]: !prev[item] }));
@@ -138,16 +206,36 @@ export default function Prerequisites({ onProceed, role, variant }: Prerequisite
 
   const isBuyer = role === 'buyer';
   const buyerRequiredDocs = getBuyerRequiredDocs(selectedType);
-  const allRequiredChecked = selectedType && (isBuyer 
-    ? buyerRequiredDocs.every(item => checkedItems[item.id])
-    : [
-      ...docs.personal,
-      ...docs.business
-    ].every(item => checkedItems[item])
-  );
 
   const sellerDocumentForPrerequisite = (item: string) => {
     const normalized = item.toLowerCase();
+    if (normalized.includes('shg registration certificate')) return 'shg_registration_certificate';
+    if (normalized.includes('aadhaar of group leader')) return 'group_leader_aadhaar';
+    if (normalized.includes('bank passbook') || normalized.includes('cancelled cheque')) return 'bank_passbook_cancelled_cheque';
+    if (normalized.includes('member list')) return 'member_list';
+    if (normalized.includes('address proof')) return 'address_proof';
+    if (normalized.includes('pan card')) return 'pan_copy';
+    if (normalized.includes('udyam registration certificate')) return 'udyam_certificate';
+    if (normalized.includes('gst certificate')) return 'gst_certificate';
+    if (normalized.includes('product images')) return 'product_images';
+    if (normalized.includes('training / skill certificates')) return 'training_skill_certificates';
+    if (normalized.includes('nrlm mission certificate')) return 'nrlm_mission_certificate';
+    if (normalized.includes('women empowerment training certificate')) return 'women_empowerment_training_certificate';
+    if (normalized.includes('farmer id card')) return 'farmer_id_card';
+    if (normalized.includes('land record')) return 'land_record_7_12';
+    if (normalized.includes('fpo/fpc certificate')) return 'fpo_fpc_certificate';
+    if (normalized.includes('artisan card')) return 'artisan_card';
+    if (normalized.includes('handicraft certification')) return 'handicraft_certification';
+    if (normalized.includes('product catalogue')) return 'product_catalogue';
+    if (normalized.includes('dairy cooperative membership certificate')) return 'dairy_cooperative_membership_certificate';
+    if (normalized.includes('livestock ownership proof')) return 'livestock_ownership_proof';
+    if (normalized.includes('skill development certificates')) return 'skill_development_certificates';
+    if (normalized.includes('business activity proof')) return 'business_activity_proof';
+    if (normalized.includes('tribal community certificate')) return 'tribal_community_certificate';
+    if (normalized.includes('tribal development scheme registration')) return 'tribal_development_scheme_registration';
+    if (normalized.includes('skill training certificate')) return 'skill_training_certificate';
+    if (normalized.includes('startup/entrepreneurship training certificate')) return 'startup_entrepreneurship_training_certificate';
+    if (normalized.includes('activity-specific supporting documents')) return 'activity_specific_supporting_documents';
     if (normalized.includes('income tax returns')) return 'itr_3_years';
     if (normalized.includes('dipp')) return 'dipp_certificate';
     if (normalized.includes('gst')) return 'gst_certificate';
@@ -164,12 +252,20 @@ export default function Prerequisites({ onProceed, role, variant }: Prerequisite
 
   const selectedSellerDocuments = () => {
     if (isBuyer) return [];
-    const checked = [...docs.business, ...docs.optional].filter(item => checkedItems[item]);
+    const checked = [...docs.personal, ...docs.business, ...docs.optional].filter(item => checkedItems[item]);
     return Array.from(new Set(checked.map(sellerDocumentForPrerequisite).filter(Boolean)));
   };
 
   const isHerShg = variant === 'hershg';
-  const availableBusinessTypes = isHerShg ? sellerBusinessTypes.filter(t => t.value === 'herSHG') : (role === 'buyer' ? buyerBusinessTypes : sellerBusinessTypes.filter(t => t.value !== 'herSHG'));
+  const docs = isHerShg
+    ? getShgPrerequisiteDocs(selectedShgType)
+    : (prerequisiteDocs[selectedType] || prerequisiteDocs['default']);
+  const isShgFlow = selectedType === 'herSHG';
+  const hasRequiredShgType = !isShgFlow || Boolean(selectedShgType);
+  const sellerProceedReady = isBuyer
+    ? buyerRequiredDocs.every(item => checkedItems[item.id])
+    : [...docs.personal, ...docs.business].every(item => checkedItems[item]);
+  const allRequiredChecked = Boolean(selectedType) && hasRequiredShgType && sellerProceedReady;
 
   return (
     <div className="mx-auto w-full max-w-4xl">
@@ -185,25 +281,43 @@ export default function Prerequisites({ onProceed, role, variant }: Prerequisite
         
         <CardContent className="p-4 pt-0 pb-10 sm:p-6 sm:pt-0 sm:pb-12 md:p-8 md:pt-0 md:pb-16">
           <div className="mb-6 sm:mb-8">
-            <label className="mb-2 block text-xs font-bold text-slate-700">{isBuyer ? 'User Type' : 'Business / Organisation Type'} * <Info className="inline h-3 w-3 text-slate-400" /></label>
+            <label className="mb-2 block text-xs font-bold text-slate-700">{isBuyer ? 'User Type' : isHerShg ? 'SHG Type' : 'Business / Organisation Type'} * <Info className="inline h-3 w-3 text-slate-400" /></label>
             <div className="w-full max-w-md">
-              <Select
-                value={selectedType}
-                onChange={(e) => {
-                  setSelectedType(e.target.value);
-                  setCheckedItems({});
-                }}
-                className="h-12 rounded-xl border-slate-200 bg-white text-base sm:text-sm"
-              >
-                <option value="">{isBuyer ? 'Select type of User' : 'Select type'}</option>
-                {availableBusinessTypes.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </Select>
+              {isHerShg ? (
+                <Select
+                  value={selectedShgType}
+                  onChange={(e) => {
+                    setSelectedShgType(e.target.value);
+                    setSelectedType('herSHG');
+                    setCheckedItems({});
+                  }}
+                  className="h-12 rounded-xl border-slate-200 bg-white text-base sm:text-sm"
+                >
+                  <option value="">Select SHG type</option>
+                  {shgTypes.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </Select>
+              ) : (
+                <Select
+                  value={selectedType}
+                  onChange={(e) => {
+                    setSelectedType(e.target.value);
+                    setSelectedShgType('');
+                    setCheckedItems({});
+                  }}
+                  className="h-12 rounded-xl border-slate-200 bg-white text-base sm:text-sm"
+                >
+                  <option value="">{isBuyer ? 'Select type of User' : 'Select type'}</option>
+                  {(isBuyer ? buyerBusinessTypes : sellerBusinessTypes.filter(t => t.value !== 'herSHG')).map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </Select>
+              )}
             </div>
           </div>
 
-          {selectedType && (
+              {selectedType && (
             <div className="space-y-6 animate-in fade-in duration-300">
               {isBuyer ? (
                 <>
@@ -228,27 +342,38 @@ export default function Prerequisites({ onProceed, role, variant }: Prerequisite
               ) : (
                 <>
                   <div className="mb-2 flex items-center gap-2">
-                     <h3 className="text-sm font-bold text-slate-800">{isHerShg ? 'Documents and readiness checklist *' : 'Required *'}</h3>
+                     <h3 className="text-sm font-bold text-slate-800">
+                       {isHerShg ? 'Documents and readiness checklist *' : 'Required *'}
+                     </h3>
                   </div>
-                  <Section 
-                    title="Personal Details" 
-                    items={docs.personal} 
-                    onCheck={handleCheck} 
-                    checkedItems={checkedItems} 
-                  />
-                  <Section 
-                    title="Business Details" 
-                    items={docs.business} 
-                    onCheck={handleCheck} 
-                    checkedItems={checkedItems} 
-                  />
-                  <Section 
-                    title="Optional" 
-                    items={docs.optional} 
-                    onCheck={handleCheck} 
-                    checkedItems={checkedItems} 
-                    isOptional 
-                  />
+                  {isHerShg && !selectedShgType ? (
+                    <p className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-700">
+                      Please select an SHG Type to view the matching document checklist.
+                    </p>
+                  ) : (
+                    <>
+                      <Section
+                        title={isHerShg ? 'Common Mandatory Documents (All SHGs)' : 'Personal Details'}
+                        items={docs.personal}
+                        onCheck={handleCheck}
+                        checkedItems={checkedItems}
+                      />
+                      <Section
+                        title={isHerShg ? 'Common Optional Documents (All SHGs)' : 'Business Details'}
+                        items={docs.business}
+                        onCheck={handleCheck}
+                        checkedItems={checkedItems}
+                        isOptional={isHerShg}
+                      />
+                      <Section
+                        title={isHerShg ? `${selectedShgType} Additional Optional Documents` : 'Optional'}
+                        items={docs.optional}
+                        onCheck={handleCheck}
+                        checkedItems={checkedItems}
+                        isOptional
+                      />
+                    </>
+                  )}
                 </>
               )}
               
@@ -262,7 +387,7 @@ export default function Prerequisites({ onProceed, role, variant }: Prerequisite
                   View Pre-requisites Document
                 </a>
                 <Button 
-                  onClick={() => onProceed(selectedType, selectedSellerDocuments())}
+                  onClick={() => onProceed(selectedType, selectedSellerDocuments(), selectedShgType)}
                   disabled={!allRequiredChecked}
                   className={cn(
                     "h-12 w-full rounded-lg px-8 font-black uppercase tracking-widest transition-all md:w-auto md:px-12",

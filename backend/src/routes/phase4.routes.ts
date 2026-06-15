@@ -1113,10 +1113,26 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
 
 router.post('/onboarding/upload-document', authenticate, upload.single('file'), asyncRoute(async (req: AuthRequest & { file?: Express.Multer.File }, res) => {
   if (!req.file) throw new ApiError(400, 'Document file is required', 'DOCUMENT_REQUIRED');
-  const profile = req.user?.role === 'seller'
-    ? await db.sellerProfile.findUnique({ where: { userId: userId(req) } })
-    : null;
-  if (!profile) throw new ApiError(400, 'Seller profile is required for seller documents', 'SELLER_PROFILE_REQUIRED');
+  if (req.user?.role !== 'seller') throw new ApiError(403, 'Document upload is only available for seller/SHG accounts', 'FORBIDDEN');
+
+  // Upsert sellerProfile — SHG users register as 'seller' role but may not have
+  // completed the PAN step yet. We auto-create a minimal profile so they can
+  // upload their SHG verification documents independently.
+  let profile = await db.sellerProfile.findUnique({ where: { userId: userId(req) } });
+  if (!profile) {
+    const dbUser = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true, registrationDetails: true } });
+    const regDetails = (dbUser?.registrationDetails as Record<string, any>) || {};
+    // Use a unique pan placeholder per user so the @unique constraint is not violated
+    const panPlaceholder = `PENDING_${userId(req)}_${Date.now()}`;
+    profile = await db.sellerProfile.create({
+      data: {
+        userId: userId(req),
+        pan: panPlaceholder,
+        nameAsInPan: dbUser?.name || 'Pending',
+        organizationType: String(regDetails.businessType || 'herSHG')
+      }
+    });
+  }
 
   const docType = clean(req.body?.documentType || 'onboarding');
 

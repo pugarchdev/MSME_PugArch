@@ -33,6 +33,7 @@ const AdminOperations = lazy(() => import('./views/AdminOperations'));
 const SellerRegistrationFlow = lazy(() => import('./views/SellerRegistrationFlow'));
 const BuyerRegistrationFlow = lazy(() => import('./views/BuyerRegistrationFlow'));
 const HerShgRegistrationFlow = lazy(() => import('./views/HerShgRegistrationFlow'));
+//const ShgLogin = lazy(() => import('./views/ShgLogin'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
 const Tenders = lazy(() => import('./views/Tenders'));
@@ -170,7 +171,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -245,6 +246,7 @@ export default function App() {
     if (loading && !user) return <PremiumLoader />;
     if (pathname === '/') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
+    if (pathname === '/shg/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;

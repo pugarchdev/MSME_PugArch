@@ -5,12 +5,14 @@ interface GeMProfileHeaderProps {
   completionPercentage: number;
   warnings: string[];
   onMenuClick?: () => void;
+  isShg?: boolean;
 }
 
 export const GeMProfileHeader: React.FC<GeMProfileHeaderProps> = ({
   companyName,
   completionPercentage,
-  onMenuClick
+  onMenuClick,
+  isShg = false
 }) => {
   return (
     <div className="bg-white border-b border-gray-200 p-2 space-y-2 shadow-sm">
@@ -28,7 +30,9 @@ export const GeMProfileHeader: React.FC<GeMProfileHeaderProps> = ({
             </button>
           )}
           <div>
-            <h2 className="text-[14px] sm:text-xl font-black text-gray-900 uppercase tracking-tight">Seller Profile</h2>
+            <h2 className="text-[14px] sm:text-xl font-black text-gray-900 uppercase tracking-tight">
+              {isShg ? 'SHG Profile' : 'Seller Profile'}
+            </h2>
             <p className="text-gray-500 font-bold text-[10px] sm:text-sm line-clamp-1">
               {companyName || 'Organization Name Not Set'}
             </p>

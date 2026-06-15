@@ -37,11 +37,13 @@ const steps = [
 export default function StakeholderRegistrationFlow({ role, variant = role, initialBusinessType = '' }: StakeholderRegistrationFlowProps) {
   const [step, setStep] = useState(1);
   const [businessType, setBusinessType] = useState(initialBusinessType);
+  const [shgType, setShgType] = useState('');
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const copy = variantCopy[variant];
 
-  const handlePrerequisitesProceed = (type: string, documents: string[] = []) => {
+  const handlePrerequisitesProceed = (type: string, documents: string[] = [], selectedShgType = '') => {
     setBusinessType(type);
+    setShgType(selectedShgType);
     setSelectedDocuments(documents);
     setStep(2);
   };
@@ -66,6 +68,7 @@ export default function StakeholderRegistrationFlow({ role, variant = role, init
           {step === 3 && (
             <RegistrationDetailsFlow
               businessType={businessType}
+              shgType={shgType}
               onBack={() => setStep(2)}
               role={role}
               variant={variant}

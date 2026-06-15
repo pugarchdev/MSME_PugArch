@@ -249,6 +249,15 @@ export default function Login() {
                   Create Profile
                 </Link>
               </p>
+              <p className="mt-2 text-xs font-bold text-slate-500">
+                SHG Member?{' '}
+                <Link
+                  href="/shg/login"
+                  className="font-black uppercase tracking-wider text-emerald-700 underline decoration-emerald-200 underline-offset-4 decoration-2 transition-colors hover:text-emerald-800"
+                >
+                  SHG Portal
+                </Link>
+              </p>
             </div>
           </form>
         </CardContent>

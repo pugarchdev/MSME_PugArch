@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
 import { toast } from 'sonner';
 import { ShieldCheck, Mail, Key, Eye, EyeOff, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
+import { isShgUser } from '../lib/shg';
 
 const generateSecureCaptchaString = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -44,7 +45,11 @@ export default function Login() {
       if (returnUrl) {
         router.replace(decodeURIComponent(returnUrl));
       } else {
-        router.replace(user.role === 'master_admin' ? '/master-admin' : '/dashboard');
+        if (isShgUser(user)) {
+          router.replace('/shg/onboarding');
+        } else {
+          router.replace(user.role === 'master_admin' ? '/master-admin' : '/dashboard');
+        }
       }
     }
   }, [user, router, returnUrl]);

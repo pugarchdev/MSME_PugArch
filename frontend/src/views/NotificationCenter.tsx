@@ -86,7 +86,7 @@ export default function NotificationCenter() {
 
   const handleOpenNotification = async (item: PortalNotification) => {
     if (!item.isRead) await handleMarkAsRead(item.id);
-    router.push(routeForNotification(item, user?.role));
+    router.push(routeForNotification(item, user?.role, user));
   };
 
   if (isLoading) {

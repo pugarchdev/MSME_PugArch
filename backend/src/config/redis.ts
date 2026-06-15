@@ -10,8 +10,12 @@ const redisOptions = {
   enableReadyCheck: true,
   connectTimeout: 3000,
   retryStrategy(times: number) {
-    // Retry indefinitely with backoff capped at 3000ms
-    return Math.min(times * 150, 3000);
+    // Stop retrying after 15 attempts (~75s total) to prevent log flooding
+    if (times > 15) {
+      logger.warn('Redis max reconnect attempts reached; switching to in-memory fallback permanently');
+      return null;
+    }
+    return Math.min(times * 300, 5000);
   },
   tls: env.REDIS_TLS ? {} : undefined
 };

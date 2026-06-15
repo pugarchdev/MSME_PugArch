@@ -20,6 +20,7 @@ import {
 import { sendOtpEmail } from '../services/mail.service.js';
 import { issueAuthResponse } from '../services/token.service.js';
 import { toSafeUser } from '../utils/routeHelpers.js';
+import { deleteCache } from '../services/cache.service.js';
 
 const router = Router();
 
@@ -729,6 +730,8 @@ router.post('/admin/shg-applications/:id/approve', authenticate, authorize('admi
     include: safeShgInclude
   });
   await (prisma as any).organization.update({ where: { id: profile.organizationId }, data: { verificationStatus: 'VERIFIED' } }).catch(() => undefined);
+  deleteCache('marketplace:home:v2').catch(() => undefined);
+  deleteCache('marketplace:home-layout:v2:{"user":"public"}').catch(() => undefined);
   await addShgAudit(id, req, 'admin.shg_application.approved', { remarks: clean(req.body?.remarks) });
   return apiResponse.success(res, updated);
 });

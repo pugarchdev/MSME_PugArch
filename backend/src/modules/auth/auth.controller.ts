@@ -985,12 +985,19 @@ export const authController = {
         }
       }
 
+      const currentRegistrationDetails = asObject(user.registrationDetails);
+      const updatedRegistrationDetails = {
+        ...currentRegistrationDetails,
+        ...(req.body.profileData || {})
+      };
+
       const updatedUser = await prisma.user.update({
         where: { id: userId },
         data: {
           organizationId: org.id,
           isDualRole: true,
           role: roleToActivate as Role,
+          registrationDetails: updatedRegistrationDetails,
           sessionVersion: { increment: 1 }
         }
       });

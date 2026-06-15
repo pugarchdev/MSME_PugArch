@@ -56,6 +56,58 @@ const ACCOUNT_SETTINGS_ITEMS = [
   { id: 'closeAccount', label: 'Close Account' }
 ];
 
+const SHG_MANDATORY_DOCUMENTS = [
+  { id: 'shg_registration_certificate', label: 'SHG Registration Certificate' },
+  { id: 'group_leader_aadhaar', label: 'Aadhaar of Group Leader' },
+  { id: 'bank_passbook_cancelled_cheque', label: 'Bank Passbook / Cancelled Cheque' },
+  { id: 'member_list', label: 'Member List' },
+  { id: 'address_proof', label: 'Address Proof' }
+];
+
+const SHG_OPTIONAL_DOCUMENTS = [
+  { id: 'pan_card_group_representative', label: 'PAN Card (Group or Representative)' },
+  { id: 'udyam_registration_certificate', label: 'Udyam Registration Certificate' },
+  { id: 'gst_certificate', label: 'GST Certificate (if applicable)' },
+  { id: 'product_images', label: 'Product Images' },
+  { id: 'training_skill_certificates', label: 'Training/Skill Certificates' }
+];
+
+const SHG_TYPE_OPTIONAL_DOCUMENTS: Record<string, { id: string; label: string }[]> = {
+  'Women SHG (Mahila Bachat Gat)': [
+    { id: 'nrlm_mission_certificate', label: 'NRLM Mission Certificate' },
+    { id: 'women_empowerment_training_certificate', label: 'Women Empowerment Training Certificate' }
+  ],
+  'Farmer SHG': [
+    { id: 'farmer_id_card', label: 'Farmer ID Card' },
+    { id: 'land_record_7_12', label: 'Land Record (7/12)' },
+    { id: 'fpo_fpc_certificate', label: 'FPO/FPC Certificate' }
+  ],
+  'Artisan / Handicraft SHG': [
+    { id: 'artisan_card', label: 'Artisan Card' },
+    { id: 'handicraft_certification', label: 'Handicraft Certification' },
+    { id: 'product_catalogue', label: 'Product Catalogue' }
+  ],
+  'Dairy SHG': [
+    { id: 'dairy_cooperative_membership_certificate', label: 'Dairy Cooperative Membership Certificate' },
+    { id: 'livestock_ownership_proof', label: 'Livestock Ownership Proof' }
+  ],
+  'Livelihood SHG': [
+    { id: 'skill_development_certificates', label: 'Skill Development Certificates' },
+    { id: 'business_activity_proof', label: 'Business Activity Proof' }
+  ],
+  'Tribal SHG': [
+    { id: 'tribal_community_certificate', label: 'Tribal Community Certificate' },
+    { id: 'tribal_development_scheme_registration', label: 'Tribal Development Scheme Registration' }
+  ],
+  'Youth SHG': [
+    { id: 'skill_training_certificate', label: 'Skill Training Certificate' },
+    { id: 'startup_entrepreneurship_training_certificate', label: 'Startup/Entrepreneurship Training Certificate' }
+  ],
+  'Other SHG': [
+    { id: 'activity_specific_supporting_documents', label: 'Activity-specific Supporting Documents' }
+  ]
+};
+
 const isCompletedSectionStatus = (status: unknown) =>
   status === 'completed' || status === 'approved';
 
@@ -258,6 +310,7 @@ export default function SellerOnboarding() {
     ...sellerFormDefaults,
     ...cachedProfile,
     organizationType: cachedProfile.organizationType || cachedRegDetails.businessType || 'Proprietorship',
+
     businessName: cachedProfile.businessName || cachedRegDetails.businessName || cachedMe?.user?.name || '',
     nameAsInPan: cachedProfile.nameAsInPan || cachedRegDetails.businessName || cachedMe?.user?.name || '',
     dateAsInPan: toDateInputValue(cachedProfile.dateAsInPan),
@@ -277,11 +330,23 @@ export default function SellerOnboarding() {
     productCategories: Array.isArray(cachedProfile.productCategories) ? cachedProfile.productCategories : []
   });
 
+  const isHerShg = String(cachedRegDetails.businessType || cachedProfile.organizationType || '').toLowerCase() === 'hershg';
+  const shgType = String(cachedRegDetails.shgType || cachedProfile.shgType || '').trim();
+
   const getRequiredDocuments = useCallback(() => {
-    const required: { id: string; label: string }[] = [
-      { id: 'pan_copy', label: 'PAN Card Copy' },
-      { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque' },
-      { id: 'address_proof', label: 'Address Proof' }
+    if (isHerShg) {
+      const docs: { id: string; label: string; required: boolean; category: 'mandatory' | 'optional' }[] = [
+        ...SHG_MANDATORY_DOCUMENTS.map(doc => ({ ...doc, required: true as const, category: 'mandatory' as const })),
+        ...SHG_OPTIONAL_DOCUMENTS.map(doc => ({ ...doc, required: false as const, category: 'optional' as const })),
+        ...(SHG_TYPE_OPTIONAL_DOCUMENTS[shgType] || []).map(doc => ({ ...doc, required: false as const, category: 'optional' as const }))
+      ];
+      return docs;
+    }
+
+    const required: { id: string; label: string; required: boolean; category: 'mandatory' | 'optional' }[] = [
+      { id: 'pan_copy', label: 'PAN Card Copy', required: true, category: 'mandatory' },
+      { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque', required: true, category: 'mandatory' },
+      { id: 'address_proof', label: 'Address Proof', required: true, category: 'mandatory' }
     ];
     const selectedDocs = Array.isArray(regDetails.selectedDocuments) ? regDetails.selectedDocuments : [];
     const selectedDocLabels: Record<string, string> = {
@@ -297,7 +362,7 @@ export default function SellerOnboarding() {
       nsic_certificate: 'NSIC Registration Certificate'
     };
     const addRequired = (id: string, label = selectedDocLabels[id] || id) => {
-      if (!required.some(doc => doc.id === id)) required.push({ id, label });
+      if (!required.some(doc => doc.id === id)) required.push({ id, label, required: true, category: 'mandatory' });
     };
 
     selectedDocs.forEach((id: string) => addRequired(id));
@@ -326,16 +391,16 @@ export default function SellerOnboarding() {
     }
 
     return required;
-  }, [formData, regDetails]);
+  }, [formData, regDetails, isHerShg, shgType]);
 
   const areAllDocumentsUploaded = useCallback(() => {
     const required = getRequiredDocuments();
     const uploadedTypes = sellerDocuments.map((d: any) => d.documentType);
-    return required.every(reqDoc => uploadedTypes.includes(reqDoc.id));
+    return required.filter(doc => doc.required).every(reqDoc => uploadedTypes.includes(reqDoc.id));
   }, [getRequiredDocuments, sellerDocuments]);
 
   const submittedOnboardingDocuments = useMemo(() => {
-    const requiredIds = new Set(getRequiredDocuments().map(doc => doc.id));
+    const requiredIds = new Set(getRequiredDocuments().filter(doc => doc.required).map(doc => doc.id));
     return sellerDocuments.filter((doc: any) => requiredIds.has(doc.documentType));
   }, [getRequiredDocuments, sellerDocuments]);
 
@@ -1008,6 +1073,7 @@ export default function SellerOnboarding() {
         sectionStatus={getSectionStatus()}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isShg={isHerShg}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -1016,6 +1082,7 @@ export default function SellerOnboarding() {
           completionPercentage={calculateCompletion()}
           warnings={warnings}
           onMenuClick={() => setIsSidebarOpen(true)}
+          isShg={isHerShg}
         />
 
         <div className="p-3 sm:p-4 max-w-4xl mx-auto w-full">
@@ -1046,7 +1113,7 @@ export default function SellerOnboarding() {
                           : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                       )}
                     >
-                      {item.label}
+                      {item.id === 'sellerProfile' ? (isHerShg ? 'SHG Profile' : 'Seller Profile') : item.label}
                     </button>
                   ))}
                 </div>
@@ -1829,7 +1896,11 @@ export default function SellerOnboarding() {
                     <div className="space-y-8 animate-in fade-in duration-300 min-w-0 w-full">
                       <div>
                         <h2 className="text-xl font-bold text-slate-800">Documents Upload</h2>
-                        <p className="text-sm text-slate-500">Upload all required verification documents to complete onboarding.</p>
+                        <p className="text-sm text-slate-500">
+                          {isHerShg
+                            ? 'Upload the mandatory SHG documents first. Optional documents can be added based on your SHG subtype.'
+                            : 'Upload all required verification documents to complete onboarding.'}
+                        </p>
                       </div>
 
                       <div className="space-y-4">
@@ -1839,16 +1910,28 @@ export default function SellerOnboarding() {
                           const isUploading = isUploadingMap[doc.id];
                           const status = uploadedDoc?.verificationStatus || 'NOT_UPLOADED'; // PENDING, APPROVED, REJECTED, NOT_UPLOADED
                           const remarks = uploadedDoc?.remarks;
+                          const isRequired = Boolean(doc.required);
 
                           return (
-                            <div key={doc.id} className="border border-slate-200 rounded-xl bg-white p-5 shadow-sm transition-all hover:shadow-md">
+                            <div key={doc.id} className={cn("rounded-xl bg-white p-5 shadow-sm transition-all hover:shadow-md", isRequired ? "border border-red-200" : "border border-slate-200")}>
                               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                 <div className="flex items-start gap-3">
-                                  <div className="mt-1 p-2 bg-slate-50 text-[#12335f] rounded-lg">
+                                  <div className={cn("mt-1 rounded-lg p-2", isRequired ? "bg-red-50 text-red-600" : "bg-slate-50 text-[#12335f]")}>
                                     <FileText className="h-5 w-5" />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <h4 className="text-sm font-bold text-slate-800">{doc.label}</h4>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h4 className={cn("text-sm font-bold", isRequired ? "text-red-700" : "text-slate-800")}>{doc.label}</h4>
+                                      {isRequired ? (
+                                        <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                                          Required
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                          Optional
+                                        </span>
+                                      )}
+                                    </div>
                                     {fileAsset ? (
                                       <div className="mt-1 flex items-center gap-2">
                                         <span className="text-xs text-slate-500 font-medium truncate max-w-[200px] sm:max-w-xs">
@@ -1886,7 +1969,7 @@ export default function SellerOnboarding() {
                                     </span>
                                   )}
                                   {status === 'NOT_UPLOADED' && (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                    <span className={cn("inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border", isRequired ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100 text-slate-600 border-slate-200")}>
                                       Missing
                                     </span>
                                   )}
@@ -1988,8 +2071,8 @@ export default function SellerOnboarding() {
                   {currentSection === 'sellerProfile' && (
                     <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
                       <div>
-                        <h2 className="text-xl font-bold text-slate-800">Seller Profile</h2>
-                        <p className="text-sm text-slate-500">Summary of your seller profile on JsgSmile.</p>
+                        <h2 className="text-xl font-bold text-slate-800">{isHerShg ? 'SHG Profile' : 'Seller Profile'}</h2>
+                        <p className="text-sm text-slate-500">Summary of your {isHerShg ? 'SHG' : 'seller'} profile on JsgSmile.</p>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                         <div>
@@ -2145,11 +2228,11 @@ export default function SellerOnboarding() {
 
                       <div>
                         <h2 className="text-xl font-bold text-slate-800">Close Account</h2>
-                        <p className="mt-2 text-sm text-slate-600 font-medium">If you close your account, your account will be closed permanently. You will not be able to login with this account. In addition, all the secondary seller accounts will also be closed.</p>
+                        <p className="mt-2 text-sm text-slate-600 font-medium">If you close your account, your account will be closed permanently. You will not be able to login with this account. In addition, all the secondary {isHerShg ? 'SHG' : 'seller'} accounts will also be closed.</p>
                       </div>
 
                       <div className="bg-slate-50 border border-slate-100 text-slate-700 text-sm p-5 rounded-lg">
-                        You are advised to check and validate your bank account details before closing your seller account on JsgSmile. The bank account details cannot be updated once the account is closed, which may affect pending refunds or settlements.
+                        You are advised to check and validate your bank account details before closing your {isHerShg ? 'SHG' : 'seller'} account on JsgSmile. The bank account details cannot be updated once the account is closed, which may affect pending refunds or settlements.
                       </div>
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4">

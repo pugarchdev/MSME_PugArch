@@ -37,8 +37,6 @@ const getBackendUrl = (): string => {
 };
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '../'),
   env: {
     NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF || '',
     // On Vercel, route API calls through /proxy to avoid CORS entirely.

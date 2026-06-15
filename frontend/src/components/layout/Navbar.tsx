@@ -41,10 +41,12 @@ import {
   BookOpen,
   Images,
   Trophy,
-  Gavel
+  Gavel,
+  UsersRound
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
+import { isShgUser, getSellerPortalPath } from '../../lib/shg';
 
 interface SidebarItem {
   label: string;
@@ -258,6 +260,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     logout();
     router.push('/');
   }, [logout, router]);
+  const isShgAccount = isShgUser(user);
+  const accountLabel = isShgAccount ? 'SHG' : user?.role || 'user';
 
   const navItems: SidebarItem[] = useMemo(() => [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['seller', 'buyer', 'admin'] },
@@ -320,16 +324,16 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     // { label: 'Audit Logs', path: '/admin/audit-logs', icon: FileSearch, roles: ['admin'] },
     { label: 'Fraud Alerts', path: '/admin/fraud-alerts', icon: AlertTriangle, roles: ['admin'] },
     { label: 'Compliance Rules', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
-    { label: 'Seller Hub', path: '/seller/onboarding', icon: Store, roles: ['seller'] },
+    { label: isShgAccount ? 'SHG Hub' : 'Seller Hub', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: isShgAccount ? UsersRound : Store, roles: ['seller'] },
     { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
     { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
     { label: 'Account Settings', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
     { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
-  ], []);
+  ], [isShgAccount, user]);
 
   const filteredNav = useMemo(() => navItems.filter(item => {
     if (!user) return false;
-    const hasRole = item.roles.includes(user.role);
+    const hasRole = item.roles.includes(user.role) || (isShgAccount && item.roles.includes('shg'));
     if (!hasRole) return false;
     if (item.featureCode && user.role !== 'master_admin' && Array.isArray(user.enabledFeatures) && user.enabledFeatures.length > 0) {
       if (!user.enabledFeatures.includes(item.featureCode)) return false;
@@ -339,7 +343,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       return user.permissions?.includes(item.permission);
     }
     return true;
-  }), [navItems, user]);
+  }), [navItems, user, isShgAccount]);
 
   useEffect(() => {
     if (!user) return;
@@ -451,7 +455,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
             </div>
             <div className={cn("flex flex-col min-w-0", isActuallyCollapsed && "lg:hidden")}>
               <span className="text-sm font-medium truncate text-white">{user.name}</span>
-              <span className="text-[10px] text-white/60 uppercase tracking-wide font-bold">{user.role} Account</span>
+              <span className="text-[10px] text-white/60 uppercase tracking-wide font-bold">{accountLabel} Account</span>
             </div>
           </Link>
           <Button
@@ -486,6 +490,9 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [roleAction, setRoleAction] = useState<'buyer' | 'seller' | null>(null);
+
+  const isShgAccount = isShgUser(user);
+  const displayRole = isShgAccount ? 'SHG' : user?.role || 'user';
 
   const handleLogout = () => {
     logout();
@@ -855,7 +862,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
               <div className="hidden sm:flex flex-col text-left">
                 <span className="text-xs font-bold text-slate-900 truncate max-w-[100px]">{user?.name}</span>
                 <span className="text-[9px] font-black text-[#0b2447] uppercase tracking-widest opacity-70 flex items-center gap-1">
-                  {user?.role}
+                  {displayRole}
                   <ChevronDown className="h-2.5 w-2.5 transition-transform duration-200" style={{ transform: isProfileDropdownOpen ? 'rotate(180deg)' : 'none' }} />
                 </span>
               </div>

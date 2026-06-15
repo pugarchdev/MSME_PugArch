@@ -67,11 +67,14 @@ const sellerOrganizationWhere = {
     isBlacklisted: false,
     deletedAt: null,
     OR: [
+        { users: { some: { role: 'shg', accountStatus: 'ACTIVE' } } },
         { users: { some: { role: 'seller', accountStatus: 'ACTIVE' } } },
         { sellerProfiles: { some: {} } },
+        { shgProfiles: { some: { applicationStatus: 'APPROVED', marketplaceEnabled: true } } },
         { products: { some: {} } },
         { services: { some: {} } },
         { profile: { isBigMsme: true } },
+        { organizationType: 'SHG' },
         { organizationType: 'MSME' }
     ]
 };

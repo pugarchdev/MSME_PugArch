@@ -996,11 +996,27 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
     const profile = user.sellerProfile;
     if (!profile) throw new ApiError(400, 'Seller profile not found');
 
-    const requiredDocs: string[] = ['pan_copy', 'bank_passbook', 'address_proof'];
     const regDetails = (user.registrationDetails as Record<string, any>) || {};
+    const isShg = [
+      'hershg',
+      'women_shg',
+      'farmer_shg',
+      'artisan_shg',
+      'dairy_shg',
+      'livelihood_shg',
+      'tribal_shg',
+      'youth_shg',
+      'other_shg'
+    ].includes(String(regDetails.businessType || regDetails.shgType || '').trim().toLowerCase());
+
+    const requiredDocs: string[] = isShg
+      ? ['bank_passbook', 'address_proof', 'leader_aadhaar', 'member_list']
+      : ['pan_copy', 'bank_passbook', 'address_proof'];
+
     const addRequiredDoc = (docType: string) => {
       if (!requiredDocs.includes(docType)) requiredDocs.push(docType);
     };
+
     if (Array.isArray(regDetails.selectedDocuments)) {
       for (const docType of regDetails.selectedDocuments) {
         if (typeof docType === 'string' && docType.trim()) addRequiredDoc(docType.trim());
@@ -1044,7 +1060,10 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
         business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
         dipp_certificate: 'DIPP Certificate',
         itr_3_years: 'Income Tax Returns of Last 3 Years',
-        nsic_certificate: 'NSIC Registration Certificate'
+        nsic_certificate: 'NSIC Registration Certificate',
+        leader_aadhaar: 'Group Leader Aadhaar Card',
+        registration_certificate: 'SHG Registration Certificate',
+        member_list: 'Member List'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       throw new ApiError(400, `Missing required documents: ${missingLabels}. Please upload them before submitting.`, 'MISSING_MANDATORY_DOCUMENTS');
@@ -1113,10 +1132,26 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
 
 router.post('/onboarding/upload-document', authenticate, upload.single('file'), asyncRoute(async (req: AuthRequest & { file?: Express.Multer.File }, res) => {
   if (!req.file) throw new ApiError(400, 'Document file is required', 'DOCUMENT_REQUIRED');
-  const profile = req.user?.role === 'seller'
-    ? await db.sellerProfile.findUnique({ where: { userId: userId(req) } })
-    : null;
-  if (!profile) throw new ApiError(400, 'Seller profile is required for seller documents', 'SELLER_PROFILE_REQUIRED');
+  if (req.user?.role !== 'seller') throw new ApiError(403, 'Document upload is only available for seller/SHG accounts', 'FORBIDDEN');
+
+  // Upsert sellerProfile — SHG users register as 'seller' role but may not have
+  // completed the PAN step yet. We auto-create a minimal profile so they can
+  // upload their SHG verification documents independently.
+  let profile = await db.sellerProfile.findUnique({ where: { userId: userId(req) } });
+  if (!profile) {
+    const dbUser = await db.user.findUnique({ where: { id: userId(req) }, select: { name: true, registrationDetails: true } });
+    const regDetails = (dbUser?.registrationDetails as Record<string, any>) || {};
+    // Use a unique pan placeholder per user so the @unique constraint is not violated
+    const panPlaceholder = `PENDING_${userId(req)}_${Date.now()}`;
+    profile = await db.sellerProfile.create({
+      data: {
+        userId: userId(req),
+        pan: panPlaceholder,
+        nameAsInPan: dbUser?.name || 'Pending',
+        organizationType: String(regDetails.businessType || 'herSHG')
+      }
+    });
+  }
 
   const docType = clean(req.body?.documentType || 'onboarding');
 
@@ -1807,6 +1842,8 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
       userId: id
     });
     deleteCache('/api/auth/me').catch(() => undefined);
+    deleteCache('marketplace:home:v2').catch(() => undefined);
+    deleteCache('marketplace:home-layout:v2:{"user":"public"}').catch(() => undefined);
     invalidateByPattern('cache:*dashboard*').catch(() => undefined);
   }
 

@@ -3,6 +3,7 @@ import React, { Suspense, lazy, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from './hooks/useAuth';
 import { cn } from './lib/utils';
+import { isShgUser } from './lib/shg';
 
 // Eagerly imported (small, always-needed for initial routes).
 import Home from './views/Home';
@@ -32,9 +33,9 @@ const AdminOnboarding = lazy(() => import('./views/AdminOnboarding'));
 const AdminOperations = lazy(() => import('./views/AdminOperations'));
 const SellerRegistrationFlow = lazy(() => import('./views/SellerRegistrationFlow'));
 const BuyerRegistrationFlow = lazy(() => import('./views/BuyerRegistrationFlow'));
-const HerShgRegistrationFlow = lazy(() => import('./views/HerShgRegistrationFlow'));
 const ShgOnboarding = lazy(() => import('./views/ShgOnboarding'));
 const AdminShgApplications = lazy(() => import('./views/AdminShgApplications'));
+const ShgRegistrationFlow = lazy(() => import('./views/ShgRegistrationFlow'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
 const Tenders = lazy(() => import('./views/Tenders'));
@@ -172,7 +173,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -201,7 +202,10 @@ export default function App() {
   React.useEffect(() => {
     if (mounted && user) {
       // Preload critical dynamic pages for current role in the background.
-      if (user.role === 'buyer') {
+      if (isShgUser(user)) {
+        import('./views/ShgOnboarding');
+        import('./features/payments/pages/PaymentHistoryPage');
+      } else if (user.role === 'buyer') {
         import('./views/Tenders');
         import('./views/Vendors');
         import('./features/requirements/pages/RequirementsPage');
@@ -215,9 +219,6 @@ export default function App() {
         import('./features/payments/pages/PaymentHistoryPage');
         import('./features/rfq/pages/RfqPage');
         import('./features/directPurchase/pages/DirectPurchasePage');
-      } else if (user.role === 'shg') {
-        import('./views/ShgOnboarding');
-        import('./features/payments/pages/PaymentHistoryPage');
       } else if (user.role === 'admin') {
         import('./features/admin/pages/AdminRecordsPage');
         import('./views/OrganizationManagement');
@@ -242,7 +243,8 @@ export default function App() {
   };
 
   const renderRoute = () => {
-    const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : user?.role === 'shg' ? '/shg/onboarding' : '/dashboard';
+    const isCurrentShg = isShgUser(user);
+    const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : isCurrentShg ? '/shg/onboarding' : '/dashboard';
 
     // Only show the full-screen "loading" splash when we genuinely have no
     // user data yet AND no cached user from a previous session. After that,
@@ -250,11 +252,12 @@ export default function App() {
     if (loading && !user) return <PremiumLoader />;
     if (pathname === '/') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
+    if (pathname === '/shg/login') return <Redirect to="/login" />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
-    if (pathname === '/hershg/register') return <HerShgRegistrationFlow />;
+    if (pathname === '/hershg/register') return <ShgRegistrationFlow />;
     if (pathname === '/admin/register') return <Register type="admin" />;
     // Invite routes must be reachable WITHOUT an authenticated session: a brand
     // new invitee has no account yet. AcceptInvitePage decides whether to log
@@ -282,23 +285,24 @@ export default function App() {
     if (/^\/vendors\/\d+$/.test(pathname) && !user) return <MarketplaceSellerStore />;
     if (pathname === '/cart' && !user) return <GuestCartPage />;
     if (!user) return null;
+    const shgRouteOk = isCurrentShg || roleOk(user.role, ['shg']);
     if (pathname === '/master-admin' && roleOk(user.role, ['master_admin'])) return <MasterAdminPage />;
     if (pathname === '/dashboard' && user.role === 'master_admin') return <Redirect to="/master-admin" />;
-    if (pathname === '/dashboard' && user.role === 'shg') return <Redirect to="/shg/onboarding" />;
+    if (pathname === '/dashboard' && isCurrentShg) return <Redirect to="/shg/onboarding" />;
     if (pathname === '/dashboard') return <Dashboard />;
-    if (pathname === '/shg/onboarding' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="onboarding" />;
-    if (pathname === '/shg/dashboard' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="dashboard" />;
-    if (pathname === '/shg/profile' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="profile" />;
-    if (pathname === '/shg/members' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="members" />;
-    if (pathname === '/shg/bank-details' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="bank-details" />;
-    if (pathname === '/shg/documents' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="documents" />;
-    if (pathname === '/shg/products' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="products" />;
-    if (pathname === '/shg/orders' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="orders" />;
-    if (pathname === '/shg/payments' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="payments" />;
-    if (pathname === '/shg/meetings' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="meetings" />;
-    if (pathname === '/shg/schemes' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="schemes" />;
-    if (pathname === '/shg/support' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="support" />;
-    if (pathname === '/shg/settings' && roleOk(user.role, ['shg'])) return <ShgOnboarding section="settings" />;
+    if (pathname === '/shg/onboarding' && shgRouteOk) return <ShgOnboarding section="onboarding" />;
+    if (pathname === '/shg/dashboard' && shgRouteOk) return <ShgOnboarding section="dashboard" />;
+    if (pathname === '/shg/profile' && shgRouteOk) return <ShgOnboarding section="profile" />;
+    if (pathname === '/shg/members' && shgRouteOk) return <ShgOnboarding section="members" />;
+    if (pathname === '/shg/bank-details' && shgRouteOk) return <ShgOnboarding section="bank-details" />;
+    if (pathname === '/shg/documents' && shgRouteOk) return <ShgOnboarding section="documents" />;
+    if (pathname === '/shg/products' && shgRouteOk) return <ShgOnboarding section="products" />;
+    if (pathname === '/shg/orders' && shgRouteOk) return <ShgOnboarding section="orders" />;
+    if (pathname === '/shg/payments' && shgRouteOk) return <ShgOnboarding section="payments" />;
+    if (pathname === '/shg/meetings' && shgRouteOk) return <ShgOnboarding section="meetings" />;
+    if (pathname === '/shg/schemes' && shgRouteOk) return <ShgOnboarding section="schemes" />;
+    if (pathname === '/shg/support' && shgRouteOk) return <ShgOnboarding section="support" />;
+    if (pathname === '/shg/settings' && shgRouteOk) return <ShgOnboarding section="settings" />;
     if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
@@ -423,7 +427,7 @@ export default function App() {
     return <Redirect to={authenticatedHome} />;
   };
 
-  const fixedAuthRoutes = ['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register'];
+  const fixedAuthRoutes = ['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register'];
   const isMarketplaceRoute = pathname.startsWith('/marketplace') || pathname.startsWith('/bids') || pathname === '/buyer/marketplace' || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');

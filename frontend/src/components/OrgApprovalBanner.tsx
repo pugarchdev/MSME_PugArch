@@ -14,6 +14,7 @@ import { AlertTriangle, Clock, XCircle, Building2 } from 'lucide-react';
 import { useOrgRole } from '../hooks/useOrgRole';
 import { useAuth } from '../hooks/useAuth';
 import { CreateOrganizationModal } from '../features/orgTeam/components/CreateOrganizationModal';
+import { getSellerPortalPath } from '../lib/shg';
 
 export function OrgApprovalBanner() {
     const { user } = useAuth();
@@ -116,7 +117,7 @@ export function OrgApprovalBanner() {
                     </span>
                 </div>
                 <a
-                    href={user.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding'}
+                    href={user.role === 'seller' ? getSellerPortalPath(user) : '/buyer/onboarding'}
                     className={`shrink-0 rounded-md border px-3 py-1 text-[10px] font-black uppercase tracking-wider transition hover:opacity-80 ${cfg.text} border-current`}
                 >
                     View Status

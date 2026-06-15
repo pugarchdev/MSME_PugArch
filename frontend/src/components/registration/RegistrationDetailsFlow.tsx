@@ -28,6 +28,7 @@ import { indiaStates, indiaStatesDistricts } from '../../data/indiaStatesDistric
 
 interface RegistrationDetailsFlowProps {
   businessType: string;
+  shgType?: string;
   onBack: () => void;
   role: 'buyer' | 'seller';
   variant?: 'buyer' | 'seller' | 'hershg';
@@ -111,7 +112,7 @@ const validateCin = (value: string) => {
   return '';
 };
 
-export default function RegistrationDetailsFlow({ businessType, onBack, role, variant, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
+export default function RegistrationDetailsFlow({ businessType, shgType = '', onBack, role, variant, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(1);
   const { user, login } = useAuth();
   const router = useRouter();
@@ -523,7 +524,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, va
           toast.error('Please enter first name');
           return;
         }
-        if (!formData.roleInOrg) {
+        if (!isHerShg && !formData.roleInOrg) {
           toast.error('Please select your role');
           return;
         }
@@ -620,6 +621,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, va
         const profileData: any = {
           organizationName: formData.businessName || user.name,
           businessType: businessType || 'Proprietorship',
+          shgType: shgType || null,
           pan: formData.panNumber || user.registrationDetails?.pan || '',
           state: formData.state,
           district: formData.district,
@@ -644,8 +646,9 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, va
           role,
           dob: formData.dob,
           registrationDetails: {
-            businessType,
-            stakeholderCategory: isHerShg ? 'herSHG' : role,
+          businessType,
+          shgType: shgType || null,
+          stakeholderCategory: isHerShg ? 'herSHG' : role,
             businessName: formData.businessName,
             userId: formData.userId,
             verificationMethod: formData.personalVerificationMethod,
@@ -1478,6 +1481,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, va
                                 lastName={formData.personalLastName}
                                 roleInOrg={formData.roleInOrg}
                                 roleOptions={sellerRoleOptions}
+                                hideRoleField={isHerShg}
                                 onChange={(patch) => setFormData({ ...formData, ...patch })}
                               />
                             </div>
@@ -1565,6 +1569,7 @@ export default function RegistrationDetailsFlow({ businessType, onBack, role, va
                                 lastName={formData.personalLastName}
                                 roleInOrg={formData.roleInOrg}
                                 roleOptions={sellerRoleOptions}
+                                hideRoleField={isHerShg}
                                 onChange={(patch) => setFormData({ ...formData, ...patch })}
                               />
                             </div>
@@ -1962,12 +1967,14 @@ function SellerRoleDetails({
   lastName,
   roleInOrg,
   roleOptions,
+  hideRoleField,
   onChange
 }: {
   firstName: string;
   lastName: string;
   roleInOrg: string;
   roleOptions: string[];
+  hideRoleField?: boolean;
   onChange: (patch: { personalName?: string; personalLastName?: string; roleInOrg?: string }) => void;
 }) {
   return (
@@ -1994,20 +2001,22 @@ function SellerRoleDetails({
         </div>
       </div>
 
-      <div className="max-w-md space-y-1.5">
-        <label className="text-sm font-semibold text-slate-800">Role in Organisation*</label>
-        <select
-          value={roleInOrg}
-          onChange={(event) => onChange({ roleInOrg: event.target.value })}
-          className="h-11 w-full rounded border border-slate-300 bg-white px-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]"
-        >
-          <option value="">Select your role</option>
-          {roleOptions.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
-        {!roleInOrg && <p className="text-xs font-medium text-red-600">Please select your role.</p>}
-      </div>
+      {!hideRoleField && (
+        <div className="max-w-md space-y-1.5">
+          <label className="text-sm font-semibold text-slate-800">Role in Organisation*</label>
+          <select
+            value={roleInOrg}
+            onChange={(event) => onChange({ roleInOrg: event.target.value })}
+            className="h-11 w-full rounded border border-slate-300 bg-white px-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+          >
+            <option value="">Select your role</option>
+            {roleOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          {!roleInOrg && <p className="text-xs font-medium text-red-600">Please select your role.</p>}
+        </div>
+      )}
     </div>
   );
 }

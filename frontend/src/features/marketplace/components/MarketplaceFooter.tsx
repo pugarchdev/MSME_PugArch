@@ -5,7 +5,7 @@ import { Mail, Phone, MapPin, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 
 export function MarketplaceFooter() {
-    let user = null;
+    let user: any = null;
     try {
         const auth = useAuth();
         user = auth ? auth.user : null;

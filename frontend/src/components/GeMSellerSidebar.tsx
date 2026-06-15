@@ -62,6 +62,7 @@ interface GeMSellerSidebarProps {
   sectionStatus: Record<string, 'completed' | 'pending' | 'locked'>;
   isOpen?: boolean;
   onClose?: () => void;
+  isShg?: boolean;
 }
 
 export const GeMSellerSidebar: React.FC<GeMSellerSidebarProps> = ({ 
@@ -69,7 +70,8 @@ export const GeMSellerSidebar: React.FC<GeMSellerSidebarProps> = ({
   onSectionChange,
   sectionStatus,
   isOpen,
-  onClose
+  onClose,
+  isShg = false
 }) => {
   const mandatoryItems = [
     { id: 'pan', label: '1. Business PAN Validation' },
@@ -88,7 +90,7 @@ export const GeMSellerSidebar: React.FC<GeMSellerSidebarProps> = ({
   // ];
 
   const accountItems = [
-    { id: 'sellerProfile', label: 'Seller Profile' },
+    { id: 'sellerProfile', label: isShg ? 'SHG Profile' : 'Seller Profile' },
     { id: 'updateAadhaar', label: 'Update Aadhaar' },
     { id: 'changePassword', label: 'Change Password' },
     { id: 'changeEmail', label: 'Change Email' },
@@ -110,7 +112,9 @@ export const GeMSellerSidebar: React.FC<GeMSellerSidebarProps> = ({
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Business Profile</h3>
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+            {isShg ? 'SHG Profile' : 'Business Profile'}
+          </h3>
           {onClose && (
             <button onClick={onClose} className="lg:hidden p-1 rounded-lg hover:bg-gray-100">
               <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

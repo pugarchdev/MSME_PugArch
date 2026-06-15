@@ -2974,29 +2974,71 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
       return res.status(400).json({ message: Object.values(finalSellerErrors)[0], errors: finalSellerErrors });
     }
 
-    const requiredDocs: string[] = ['pan_copy', 'bank_passbook', 'address_proof'];
     const regDetails = (existingUser.registrationDetails as Record<string, any>) || {};
+    const isHerShg = String(profile.organizationType || regDetails.businessType || '').toLowerCase() === 'hershg';
+    const shgType = String(regDetails.shgType || '').trim();
+    const requiredDocs: string[] = isHerShg
+      ? [
+        'shg_registration_certificate',
+        'group_leader_aadhaar',
+        'bank_passbook_cancelled_cheque',
+        'member_list',
+        'address_proof'
+      ]
+      : ['pan_copy', 'bank_passbook', 'address_proof'];
 
-    if (profile.isUdyamCertified || regDetails.udyamNumber) {
+    if (isHerShg) {
+      requiredDocs.push('pan_card_group_representative');
+      requiredDocs.push('udyam_registration_certificate');
+      if (regDetails.gstin || profile.offices?.some((o: any) => o.gst)) {
+        requiredDocs.push('gst_certificate');
+      }
+      if (shgType === 'Women SHG (Mahila Bachat Gat)') {
+        requiredDocs.push('nrlm_mission_certificate');
+        requiredDocs.push('women_empowerment_training_certificate');
+      } else if (shgType === 'Farmer SHG') {
+        requiredDocs.push('farmer_id_card');
+        requiredDocs.push('land_record_7_12');
+        requiredDocs.push('fpo_fpc_certificate');
+      } else if (shgType === 'Artisan / Handicraft SHG') {
+        requiredDocs.push('artisan_card');
+        requiredDocs.push('handicraft_certification');
+        requiredDocs.push('product_catalogue');
+      } else if (shgType === 'Dairy SHG') {
+        requiredDocs.push('dairy_cooperative_membership_certificate');
+        requiredDocs.push('livestock_ownership_proof');
+      } else if (shgType === 'Livelihood SHG') {
+        requiredDocs.push('skill_development_certificates');
+        requiredDocs.push('business_activity_proof');
+      } else if (shgType === 'Tribal SHG') {
+        requiredDocs.push('tribal_community_certificate');
+        requiredDocs.push('tribal_development_scheme_registration');
+      } else if (shgType === 'Youth SHG') {
+        requiredDocs.push('skill_training_certificate');
+        requiredDocs.push('startup_entrepreneurship_training_certificate');
+      } else if (shgType === 'Other SHG') {
+        requiredDocs.push('activity_specific_supporting_documents');
+      }
+    } else if (profile.isUdyamCertified || regDetails.udyamNumber) {
       requiredDocs.push('udyam_certificate');
     }
 
-    if (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
+    if (!isHerShg && (profile.isStartup || String(profile.organizationType || regDetails.businessType).toLowerCase() === 'startup')) {
       requiredDocs.push('dipp_certificate');
     }
 
     const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gst);
-    if (hasGstin) {
+    if (!isHerShg && hasGstin) {
       requiredDocs.push('gst_certificate');
     }
 
-    if (regDetails.verificationMethod === 'Aadhaar' || regDetails.aadhaarNumber) {
+    if (!isHerShg && (regDetails.verificationMethod === 'Aadhaar' || regDetails.aadhaarNumber)) {
       requiredDocs.push('aadhaar_card');
     }
 
     const corporateTypes = ['Company', 'LLP', 'Partnership', 'Cooperative', 'Society', 'Trust'];
     const isCorporate = corporateTypes.some(t => String(profile.organizationType || regDetails.businessType).toLowerCase().includes(t.toLowerCase()));
-    if (isCorporate && (regDetails.cinNumber || regDetails.registrationNumber || regDetails.cin)) {
+    if (!isHerShg && isCorporate && (regDetails.cinNumber || regDetails.registrationNumber || regDetails.cin)) {
       requiredDocs.push('business_registration_proof');
     }
 
@@ -3005,11 +3047,36 @@ app.post('/api/seller/submit', authenticate, authorize('seller'), async (req: Au
 
     if (missingDocs.length > 0) {
       const labels: Record<string, string> = {
+        shg_registration_certificate: 'SHG Registration Certificate',
+        group_leader_aadhaar: 'Aadhaar of Group Leader',
+        bank_passbook_cancelled_cheque: 'Bank Passbook / Cancelled Cheque',
+        member_list: 'Member List',
+        address_proof: 'Address Proof',
+        pan_card_group_representative: 'PAN Card (Group or Representative)',
+        udyam_registration_certificate: 'Udyam Registration Certificate',
+        gst_certificate: 'GST Certificate (if applicable)',
+        product_images: 'Product Images',
+        training_skill_certificates: 'Training/Skill Certificates',
+        nrlm_mission_certificate: 'NRLM Mission Certificate',
+        women_empowerment_training_certificate: 'Women Empowerment Training Certificate',
+        farmer_id_card: 'Farmer ID Card',
+        land_record_7_12: 'Land Record (7/12)',
+        fpo_fpc_certificate: 'FPO/FPC Certificate',
+        artisan_card: 'Artisan Card',
+        handicraft_certification: 'Handicraft Certification',
+        product_catalogue: 'Product Catalogue',
+        dairy_cooperative_membership_certificate: 'Dairy Cooperative Membership Certificate',
+        livestock_ownership_proof: 'Livestock Ownership Proof',
+        skill_development_certificates: 'Skill Development Certificates',
+        business_activity_proof: 'Business Activity Proof',
+        tribal_community_certificate: 'Tribal Community Certificate',
+        tribal_development_scheme_registration: 'Tribal Development Scheme Registration',
+        skill_training_certificate: 'Skill Training Certificate',
+        startup_entrepreneurship_training_certificate: 'Startup/Entrepreneurship Training Certificate',
+        activity_specific_supporting_documents: 'Activity-specific Supporting Documents',
         pan_copy: 'PAN Card Copy',
         bank_passbook: 'Bank Passbook / Cancelled Cheque',
-        address_proof: 'Address Proof',
         udyam_certificate: 'Udyam Certificate',
-        gst_certificate: 'GST Certificate',
         aadhaar_card: 'Aadhaar of Authorized Person',
         business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
         dipp_certificate: 'DIPP Certificate'

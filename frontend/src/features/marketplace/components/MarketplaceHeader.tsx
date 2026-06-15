@@ -15,7 +15,7 @@ interface Props { user: any; }
 const signupOptions = [
     { href: '/seller/register', label: 'Sign Up as Seller', icon: <Store className="h-4 w-4" /> },
     { href: '/buyer/register', label: 'Sign Up as Buyer', icon: <Building2 className="h-4 w-4" /> },
-    { href: '/seller/register?entity=shg', label: 'Sign Up as SHG', icon: <User className="h-4 w-4" /> }
+    { href: '/hershg/register', label: 'Sign Up as SHG', icon: <User className="h-4 w-4" /> }
 ];
 
 function SignupMenu({ onSelect }: { onSelect: () => void }) {
@@ -275,6 +275,7 @@ export function MarketplaceHeader({ user }: Props) {
                                             {[
                                                 { href: '/login', label: 'Buyer Login', icon: <Building2 className="h-3 w-3 text-blue-600" />, bg: 'bg-blue-50' },
                                                 { href: '/login', label: 'Seller Login', icon: <Store className="h-3 w-3 text-green-600" />, bg: 'bg-green-50' },
+                                                { href: '/login', label: 'SHG Login', icon: <User className="h-3 w-3 text-emerald-600" />, bg: 'bg-emerald-50' },
                                             ].map(item => (
                                                 <Link
                                                     key={item.label}

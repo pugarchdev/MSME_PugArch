@@ -32,7 +32,8 @@ const AdminOnboarding = lazy(() => import('./views/AdminOnboarding'));
 const AdminOperations = lazy(() => import('./views/AdminOperations'));
 const SellerRegistrationFlow = lazy(() => import('./views/SellerRegistrationFlow'));
 const BuyerRegistrationFlow = lazy(() => import('./views/BuyerRegistrationFlow'));
-const HerShgRegistrationFlow = lazy(() => import('./views/HerShgRegistrationFlow'));
+const ShgRegistrationFlow = lazy(() => import('./views/ShgRegistrationFlow'));
+//const ShgLogin = lazy(() => import('./views/ShgLogin'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
 const Tenders = lazy(() => import('./views/Tenders'));
@@ -170,7 +171,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -245,11 +246,12 @@ export default function App() {
     if (loading && !user) return <PremiumLoader />;
     if (pathname === '/') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
     if (pathname === '/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
+    if (pathname === '/shg/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
     if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
-    if (pathname === '/hershg/register') return <HerShgRegistrationFlow />;
+    if (pathname === '/hershg/register') return <ShgRegistrationFlow />;
     if (pathname === '/admin/register') return <Register type="admin" />;
     // Invite routes must be reachable WITHOUT an authenticated session: a brand
     // new invitee has no account yet. AcceptInvitePage decides whether to log

@@ -16,6 +16,7 @@ export const isShgBusinessType = (value: unknown) => {
 export const isShgUser = (user: any) => {
   if (!user || user.role !== 'seller') return false;
   return isShgBusinessType(user?.registrationDetails?.businessType)
+    || isShgBusinessType(user?.registrationDetails?.shgType)
     || isShgBusinessType(user?.profile?.organizationType)
     || isShgBusinessType(user?.organizationType)
     || isShgBusinessType(user?.businessType);

@@ -137,43 +137,6 @@ export default function ShgOnboarding() {
         const prof = data.profile || {};
         setSellerDocuments(prof.sellerDocuments || []);
 
-        if (!data.profile && data.user?.role === 'seller') {
-          const initialPayload = {
-            pan: reg.pan || `PENDING${data.user.id}`,
-            businessName: reg.shgName || reg.businessName || data.user.name || '',
-            mobile: reg.leaderMobile || data.user.mobile || '',
-            roleInOrg: reg.leaderRole || '',
-            registrationDetails: {
-              shgType: reg.shgType || reg.businessType || 'women_shg',
-              shgName: reg.shgName || reg.businessName || data.user.name || '',
-              state: reg.state || '',
-              district: reg.district || '',
-              village: reg.village || '',
-              formationYear: reg.formationYear || '',
-              totalMembers: reg.totalMembers || reg.memberCount || '',
-              mainActivity: reg.mainActivity || '',
-              registrationStatus: reg.registrationStatus || '',
-              ...reg
-            }
-          };
-
-          api.post('/api/seller/register', initialPayload, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
-          }).then(registerRes => {
-            if (registerRes.ok) {
-              registerRes.json().then(registerData => {
-                const updatedProfile = registerData.profile || registerData;
-                if (updatedProfile) {
-                  setMe(prev => prev ? { ...prev, profile: updatedProfile } : prev);
-                  setSellerDocuments(updatedProfile.sellerDocuments || []);
-                }
-              });
-            }
-          }).catch(err => {
-            console.error('Failed to auto-create profile', err);
-          });
-        }
-
         setFormData(prev => ({
           ...prev,
           // Step 1: SHG Verification
@@ -217,10 +180,54 @@ export default function ShgOnboarding() {
           data.user?.sectionStatus?.submitted === true ||
           data.user?.onboardingStatus === 'under_compliance_review'
         );
+
+        if (!data.profile && data.user?.role === 'seller') {
+          const initialPayload = {
+            pan: reg.pan || `PENDING${data.user.id}`,
+            businessName: reg.shgName || reg.businessName || data.user.name || '',
+            mobile: reg.leaderMobile || data.user.mobile || '',
+            roleInOrg: reg.leaderRole || '',
+            registrationDetails: {
+              shgType: reg.shgType || reg.businessType || 'women_shg',
+              shgName: reg.shgName || reg.businessName || data.user.name || '',
+              state: reg.state || '',
+              district: reg.district || '',
+              village: reg.village || '',
+              formationYear: reg.formationYear || '',
+              totalMembers: reg.totalMembers || reg.memberCount || '',
+              mainActivity: reg.mainActivity || '',
+              registrationStatus: reg.registrationStatus || '',
+              ...reg
+            }
+          };
+
+          api.post('/api/seller/register', initialPayload, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+          }).then(registerRes => {
+            if (registerRes.ok) {
+              registerRes.json().then(registerData => {
+                const updatedProfile = registerData.profile || registerData;
+                if (updatedProfile) {
+                  setMe(prev => prev ? { ...prev, profile: updatedProfile } : prev);
+                  setSellerDocuments(updatedProfile.sellerDocuments || []);
+                }
+                setIsFetching(false);
+              });
+            } else {
+              setIsFetching(false);
+            }
+          }).catch(err => {
+            console.error('Failed to auto-create profile', err);
+            setIsFetching(false);
+          });
+        } else {
+          setIsFetching(false);
+        }
+      } else {
+        setIsFetching(false);
       }
     } catch (err) {
       toast.error('Failed to load user profile details');
-    } finally {
       setIsFetching(false);
     }
   }, []);
@@ -545,18 +552,18 @@ export default function ShgOnboarding() {
 
   const documentList = [
     // Mandatory Documents
-    { id: 'leader_aadhaar', label: 'Group Leader Aadhaar Card *', desc: 'Scanned copy of Aadhaar Card of the SHG Leader.' },
-    { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque *', desc: 'First page of passbook showing Account No. and IFSC.' },
-    { id: 'member_list', label: 'Member List *', desc: 'List of all active group members with signatures.' },
-    { id: 'address_proof', label: 'Address Proof *', desc: 'Aadhaar, Utility Bill or Local Authority certificate.' },
+    { id: 'leader_aadhaar', label: 'Group Leader Aadhaar Card', desc: 'Scanned copy of Aadhaar Card of the SHG Leader.', mandatory: true },
+    { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque', desc: 'First page of passbook showing Account No. and IFSC.', mandatory: true },
+    { id: 'member_list', label: 'Member List', desc: 'List of all active group members with signatures.', mandatory: true },
+    { id: 'address_proof', label: 'Address Proof', desc: 'Aadhaar, Utility Bill or Local Authority certificate.', mandatory: true },
 
     // Optional Documents
-    { id: 'registration_certificate', label: 'SHG Registration Certificate', desc: 'Certificate issued by NRLM/SRLM/Cooperative registrar.' },
-    { id: 'pan_copy', label: 'PAN Card', desc: 'PAN Card of the SHG or Leader.' },
-    { id: 'udyam_certificate', label: 'Udyam Registration Certificate', desc: 'Udyam registration certificate of the SHG.' },
-    { id: 'gst_certificate', label: 'GST Certificate', desc: 'GST registration certificate of the SHG.' },
-    { id: 'training_certificate', label: 'Training / Skill Certificates', desc: 'Certificates of any training or skills acquired by members.' },
-    { id: 'product_photos', label: 'Product Photos / Catalogue', desc: 'Photos or catalog of SHG products.' }
+    { id: 'registration_certificate', label: 'SHG Registration Certificate', desc: 'Certificate issued by NRLM/SRLM/Cooperative registrar.', mandatory: false },
+    { id: 'pan_copy', label: 'PAN Card', desc: 'PAN Card of the SHG or Leader.', mandatory: false },
+    { id: 'udyam_certificate', label: 'Udyam Registration Certificate', desc: 'Udyam registration certificate of the SHG.', mandatory: false },
+    { id: 'gst_certificate', label: 'GST Certificate', desc: 'GST registration certificate of the SHG.', mandatory: false },
+    { id: 'training_certificate', label: 'Training / Skill Certificates', desc: 'Certificates of any training or skills acquired by members.', mandatory: false },
+    { id: 'product_photos', label: 'Product Photos / Catalogue', desc: 'Photos or catalog of SHG products.', mandatory: false }
   ];
 
   if (isFetching) {
@@ -1056,93 +1063,199 @@ export default function ShgOnboarding() {
                       Please upload scanned copy of mandatory verification documents. Uploaded files must be in PDF, JPG, JPEG, or PNG format and less than 10MB in size.
                     </div>
 
-                    <div className="divide-y divide-slate-100">
-                      {documentList.map((doc) => {
-                        const isMandatory = ['leader_aadhaar', 'bank_passbook', 'member_list', 'address_proof'].includes(doc.id);
+                    {/* Mandatory Documents Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="text-[11px] font-black uppercase tracking-wider text-red-600">Mandatory Documents</h4>
+                        <span className="h-px flex-1 bg-red-100" />
+                      </div>
+                      <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                        {documentList.filter(d => d.mandatory).map((doc) => {
+                          const uploadedDoc = sellerDocuments.find(d => d.documentType === doc.id);
+                          const fileAsset = uploadedDoc?.fileAsset;
+                          const isUploading = isUploadingMap[doc.id];
+                          const verificationStatus = uploadedDoc?.verificationStatus || 'NOT_UPLOADED';
 
-                        const uploadedDoc = sellerDocuments.find(d => d.documentType === doc.id);
-                        const fileAsset = uploadedDoc?.fileAsset;
-                        const isUploading = isUploadingMap[doc.id];
-                        const verificationStatus = uploadedDoc?.verificationStatus || 'NOT_UPLOADED';
-
-                        return (
-                          <div key={doc.id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-xs font-bold text-slate-800 tracking-tight">{doc.label}</h4>
-                              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{doc.desc}</p>
-                              {fileAsset && (
-                                <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer" onClick={() => openFileAsset(fileAsset, doc.label)}>
-                                  <FileText className="h-3.5 w-3.5" />
-                                  <span className="underline truncate max-w-xs">{fileAsset.originalName || 'View Document'}</span>
-                                  <ExternalLink className="h-3 w-3 inline" />
+                          return (
+                            <div key={doc.id} className="py-4 px-4 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-xs font-bold text-slate-800 tracking-tight">{doc.label}</h4>
+                                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200">
+                                    Required
+                                  </span>
                                 </div>
-                              )}
-                            </div>
+                                <p className="text-[10px] text-slate-400 font-medium mt-0.5">{doc.desc}</p>
+                                {fileAsset && (
+                                  <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer" onClick={() => openFileAsset(fileAsset, doc.label)}>
+                                    <FileText className="h-3.5 w-3.5" />
+                                    <span className="underline truncate max-w-xs">{fileAsset.originalName || 'View Document'}</span>
+                                    <ExternalLink className="h-3 w-3 inline" />
+                                  </div>
+                                )}
+                              </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
-                              {/* Status Badge */}
-                              <span className={cn(
-                                "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded",
-                                verificationStatus === 'APPROVED' ? "bg-green-100 text-green-700" :
-                                verificationStatus === 'PENDING' ? "bg-amber-100 text-amber-700" :
-                                verificationStatus === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"
-                              )}>
-                                {verificationStatus.replace(/_/g, ' ')}
-                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Status Badge */}
+                                <span className={cn(
+                                  "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded",
+                                  verificationStatus === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                  verificationStatus === 'PENDING' ? "bg-amber-100 text-amber-700" :
+                                  verificationStatus === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"
+                                )}>
+                                  {verificationStatus.replace(/_/g, ' ')}
+                                </span>
 
-                              {/* Action Buttons */}
-                              {fileAsset && (
-                                <button
-                                  type="button"
-                                  onClick={() => openFileAsset(fileAsset, doc.label)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 text-[11px] font-bold cursor-pointer transition-all shadow-sm"
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                  View
-                                </button>
-                              )}
-
-                              {!isProfileLocked && (
-                                <div className="relative">
-                                  <input
-                                    type="file"
-                                    id={`file-input-${doc.id}`}
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleUploadDocument(doc.id, file);
-                                    }}
-                                    disabled={isUploading}
-                                  />
-                                  <label
-                                    htmlFor={`file-input-${doc.id}`}
-                                    className={cn(
-                                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold cursor-pointer border shadow-sm transition-all",
-                                      isUploading 
-                                        ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed" 
-                                        : fileAsset
-                                          ? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
-                                          : "bg-[#12335f] text-white border-transparent hover:bg-[#0c2340]"
-                                    )}
+                                {/* View Button */}
+                                {fileAsset && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openFileAsset(fileAsset, doc.label)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 text-[11px] font-bold cursor-pointer transition-all shadow-sm"
                                   >
-                                    {isUploading ? (
-                                      <>
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                                        Uploading...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <UploadCloud className="h-3.5 w-3.5" />
-                                        {fileAsset ? 'Change' : 'Upload'}
-                                      </>
-                                    )}
-                                  </label>
-                                </div>
-                              )}
+                                    <FileText className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
+                                )}
+
+                                {/* Upload Button */}
+                                {!isProfileLocked && (
+                                  <div className="relative">
+                                    <input
+                                      type="file"
+                                      id={`file-input-${doc.id}`}
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadDocument(doc.id, file);
+                                      }}
+                                      disabled={isUploading}
+                                    />
+                                    <label
+                                      htmlFor={`file-input-${doc.id}`}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold cursor-pointer border shadow-sm transition-all",
+                                        isUploading 
+                                          ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed" 
+                                          : fileAsset
+                                            ? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                                            : "bg-[#12335f] text-white border-transparent hover:bg-[#0c2340]"
+                                      )}
+                                    >
+                                      {isUploading ? (
+                                        <>
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                                          Uploading...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UploadCloud className="h-3.5 w-3.5" />
+                                          {fileAsset ? 'Change' : 'Upload'}
+                                        </>
+                                      )}
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Optional Documents Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500">Optional Documents</h4>
+                        <span className="h-px flex-1 bg-slate-100" />
+                      </div>
+                      <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                        {documentList.filter(d => !d.mandatory).map((doc) => {
+                          const uploadedDoc = sellerDocuments.find(d => d.documentType === doc.id);
+                          const fileAsset = uploadedDoc?.fileAsset;
+                          const isUploading = isUploadingMap[doc.id];
+                          const verificationStatus = uploadedDoc?.verificationStatus || 'NOT_UPLOADED';
+
+                          return (
+                            <div key={doc.id} className="py-4 px-4 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs font-bold text-slate-800 tracking-tight">{doc.label}</h4>
+                                <p className="text-[10px] text-slate-400 font-medium mt-0.5">{doc.desc}</p>
+                                {fileAsset && (
+                                  <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer" onClick={() => openFileAsset(fileAsset, doc.label)}>
+                                    <FileText className="h-3.5 w-3.5" />
+                                    <span className="underline truncate max-w-xs">{fileAsset.originalName || 'View Document'}</span>
+                                    <ExternalLink className="h-3 w-3 inline" />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Status Badge */}
+                                <span className={cn(
+                                  "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded",
+                                  verificationStatus === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                  verificationStatus === 'PENDING' ? "bg-amber-100 text-amber-700" :
+                                  verificationStatus === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"
+                                )}>
+                                  {verificationStatus.replace(/_/g, ' ')}
+                                </span>
+
+                                {/* View Button */}
+                                {fileAsset && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openFileAsset(fileAsset, doc.label)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 text-[11px] font-bold cursor-pointer transition-all shadow-sm"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
+                                )}
+
+                                {/* Upload Button */}
+                                {!isProfileLocked && (
+                                  <div className="relative">
+                                    <input
+                                      type="file"
+                                      id={`file-input-${doc.id}`}
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadDocument(doc.id, file);
+                                      }}
+                                      disabled={isUploading}
+                                    />
+                                    <label
+                                      htmlFor={`file-input-${doc.id}`}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold cursor-pointer border shadow-sm transition-all",
+                                        isUploading 
+                                          ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed" 
+                                          : fileAsset
+                                            ? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                                            : "bg-[#12335f] text-white border-transparent hover:bg-[#0c2340]"
+                                      )}
+                                    >
+                                      {isUploading ? (
+                                        <>
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                                          Uploading...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UploadCloud className="h-3.5 w-3.5" />
+                                          {fileAsset ? 'Change' : 'Upload'}
+                                        </>
+                                      )}
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}

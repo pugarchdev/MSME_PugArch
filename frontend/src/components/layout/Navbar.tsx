@@ -866,8 +866,8 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                   My Profile
                 </button>
 
-                {/* DUAL ROLE SWITCHER / ACTIVATION */}
-                {user?.role !== 'admin' && (
+                {/* DUAL ROLE SWITCHER / ACTIVATION — hidden for SHG users */}
+                {user?.role !== 'admin' && !isShgUser(user) && (
                   <>
                     <div className="h-px bg-slate-100 my-1" />
                     {user?.isDualRole ? (

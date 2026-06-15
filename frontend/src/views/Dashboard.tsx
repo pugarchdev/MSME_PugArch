@@ -600,9 +600,7 @@ export default function Dashboard() {
 
       {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Onboarding Status Tracker */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="space-y-4">
           {!hasGst && (
             <Card className="rounded-lg border border-slate-200 shadow-sm overflow-hidden bg-gradient-to-br from-slate-700 to-slate-900 text-white relative">
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -737,97 +735,6 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
-        </div>
-
-        {/* Notification Panel */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1.5">
-              <Bell className="h-3.5 w-3.5" />
-              Notifications
-            </h3>
-            {(sectionMessages.length > 0 || (Array.isArray(notifications) && notifications.some(n => !n.isRead))) && (
-              <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {/* Dynamic Notifications */}
-            {isNotifLoading && notifications.length === 0 ? (
-              [1, 2, 3].map(i => (
-                <div key={i} className="p-3.5 rounded-xl border border-slate-100 bg-white space-y-2 animate-pulse">
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded bg-slate-100" />
-                    <div className="h-2.5 w-20 bg-slate-100 rounded" />
-                  </div>
-                  <div className="h-2.5 w-full bg-slate-100 rounded" />
-                  <div className="h-2 w-1/3 bg-slate-100 rounded mt-1.5" />
-                </div>
-              ))
-            ) : (
-              Array.isArray(notifications) && notifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  className={cn(
-                    "p-3 rounded-xl border transition-all duration-300 animate-in slide-in-from-right-4",
-                    notif.isRead
-                      ? "bg-white border-slate-100 opacity-60"
-                      : "bg-indigo-50/50 border-indigo-100 shadow-sm"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className={cn(
-                      "h-6 w-6 rounded flex items-center justify-center shrink-0",
-                      notif.type === 'quote_request' ? "bg-slate-100 text-[#12335f]" : "bg-blue-100 text-[#12335f]"
-                    )}>
-                      {notif.type === 'quote_request' ? <FileText className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
-                    </div>
-                    <p className="text-[8.5px] font-black uppercase tracking-wider text-slate-400">{notif.title}</p>
-                  </div>
-                  <p className="text-[11px] font-semibold text-slate-800 leading-snug">{notif.message}</p>
-                  <p className="text-[8px] font-black text-slate-400 uppercase mt-2">{new Date(notif.createdAt).toLocaleString()}</p>
-                </div>
-              ))
-            )}
-
-            {user?.adminFeedback && (
-              <div className="bg-amber-50 border border-amber-100 p-3.5 rounded-xl space-y-2 animate-in slide-in-from-right-4 duration-500">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-amber-600" />
-                  <p className="text-[8.5px] font-black text-amber-600 uppercase tracking-wider">Admin Remark</p>
-                </div>
-                <p className="text-[11px] font-semibold text-amber-900 leading-snug">"{user.adminFeedback}"</p>
-              </div>
-            )}
-
-            {sectionMessages.length > 0 && (
-              sectionMessages.map(([section, reason]) => (
-                <button
-                  key={section}
-                  onClick={() => router.push(user?.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding')}
-                  className="block w-full text-left bg-red-50 border border-red-100 p-3.5 rounded-xl space-y-2 transition-all hover:shadow-md hover:border-red-200 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px group animate-in slide-in-from-right-4 duration-500"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                      <p className="text-[8.5px] font-black text-red-600 uppercase tracking-wider">Rejection Alert</p>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-red-300 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                  <p className="text-[9px] font-black text-slate-900 uppercase">Section: {section}</p>
-                  <p className="text-[11px] font-semibold text-red-900 leading-snug">"{reason}"</p>
-                </button>
-              ))
-            )}
-
-            {(!Array.isArray(notifications) || notifications.length === 0) && sectionMessages.length === 0 && !user?.adminFeedback && (
-              <div className="bg-white border border-slate-100 p-8 rounded-xl text-center space-y-2 opacity-60">
-                <Bell className="h-6 w-6 text-slate-300 mx-auto" />
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">No New Notifications</p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );

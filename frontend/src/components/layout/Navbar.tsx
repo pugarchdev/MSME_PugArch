@@ -888,7 +888,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                 {(user?.role === 'buyer' || user?.role === 'seller') && (
                   <>
                     <div className="h-px bg-slate-100 my-1" />
-                    {user?.isDualRole ? (
+                    {(user?.role === 'seller' ? !!user?.buyerProfile : !!user?.sellerProfile) ? (
                       <button
                         onClick={() => {
                           setIsProfileDropdownOpen(false);

@@ -1,3 +1,5 @@
+import { getSellerPortalPath } from './shg';
+
 export interface PortalNotification {
   id: number | string;
   title: string;
@@ -12,6 +14,7 @@ export interface PortalNotification {
 export const routeForNotification = (
   item: PortalNotification,
   role?: string,
+  user?: any,
 ) => {
   const explicitRoute = item.route || item.redirectUrl;
   if (explicitRoute) return explicitRoute;
@@ -20,7 +23,8 @@ export const routeForNotification = (
 
   if (type.includes('onboarding') || type.includes('section_') || type.includes('admin_feedback') || type.includes('gst_verified')) {
     if (role === 'admin') return '/admin/onboarding';
-    return role === 'buyer' ? '/buyer/onboarding' : '/seller/onboarding';
+    if (role === 'buyer') return '/buyer/onboarding';
+    return getSellerPortalPath(user);
   }
 
   if (type.includes('quote') || type.includes('rfq')) return '/quotations';

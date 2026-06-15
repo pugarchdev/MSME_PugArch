@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { User, Lock, Mail, Shield, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import Link from 'next/link';
+import { getSellerPortalPath, isShgUser } from '../lib/shg';
 
 export default function Profile() {
   const { user, logout, refreshUser } = useAuth();
@@ -183,8 +184,8 @@ export default function Profile() {
                 </Link>
               )}
               {user.role === 'seller' && (
-                <Link href="/seller/onboarding" className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#12335f]/40 hover:text-[#12335f]">
-                  Seller profile details
+                <Link href={getSellerPortalPath(user)} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#12335f]/40 hover:text-[#12335f]">
+                  {isShgUser(user) ? 'SHG profile details' : 'Seller profile details'}
                   <ExternalLink className="h-4 w-4" />
                 </Link>
               )}

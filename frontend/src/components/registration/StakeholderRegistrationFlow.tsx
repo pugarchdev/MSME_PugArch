@@ -23,7 +23,7 @@ const variantCopy: Record<RegistrationVariant, { footer: string; maxWidth: strin
     maxWidth: 'max-w-5xl'
   },
   hershg: {
-    footer: 'herSHG | Women Self-Help Group Seller Registration',
+    footer: 'SHG | Women Self-Help Group Registration',
     maxWidth: 'max-w-7xl'
   }
 };

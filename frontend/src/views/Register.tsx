@@ -8,6 +8,7 @@ import { Input, Select } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
 import { Store, Building2, ShieldCheck, Mail, Key } from 'lucide-react';
+import { getSellerPortalPath } from '../lib/shg';
 
 export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' }) {
   const [formData, setFormData] = useState({
@@ -121,11 +122,11 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
         // If there's a returnUrl (e.g., from invite), go there after onboarding
         if (returnUrl) {
-          if (type === 'seller') router.push(`/seller/onboarding?returnUrl=${encodeURIComponent(returnUrl)}`);
+          if (type === 'seller') router.push(`${getSellerPortalPath(data.user)}?returnUrl=${encodeURIComponent(returnUrl)}`);
           else if (type === 'buyer') router.push(`/buyer/onboarding?returnUrl=${encodeURIComponent(returnUrl)}`);
           else router.push(decodeURIComponent(returnUrl));
         } else {
-          if (type === 'seller') router.push('/seller/onboarding');
+          if (type === 'seller') router.push(getSellerPortalPath(data.user));
           else if (type === 'buyer') router.push('/buyer/onboarding');
           else router.push('/dashboard');
         }

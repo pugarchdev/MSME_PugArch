@@ -65,6 +65,11 @@ const SELLER_ONBOARDING_DOCUMENT_TYPES = new Set([
   "dipp_certificate",
   "itr_3_years",
   "nsic_certificate",
+  "leader_aadhaar",
+  "member_list",
+  "registration_certificate",
+  "training_certificate",
+  "product_photos",
 ]);
 
 const getDocumentFiles = (document: any) => {
@@ -84,6 +89,11 @@ const DOCUMENT_LABELS: Record<string, string> = {
   addressProof: "ADDRESS_PROOF",
   authLetter: "AUTHORIZATION_LETTER",
   uploaded_files: "UPLOADED_FILES",
+  leader_aadhaar: "GROUP_LEADER_AADHAAR_CARD",
+  member_list: "MEMBER_LIST",
+  registration_certificate: "SHG_REGISTRATION_CERTIFICATE",
+  training_certificate: "TRAINING_SKILL_CERTIFICATE",
+  product_photos: "PRODUCT_PHOTOS_CATALOGUE",
 };
 
 const getDocumentLabel = (key: string) =>

@@ -996,11 +996,27 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
     const profile = user.sellerProfile;
     if (!profile) throw new ApiError(400, 'Seller profile not found');
 
-    const requiredDocs: string[] = ['pan_copy', 'bank_passbook', 'address_proof'];
     const regDetails = (user.registrationDetails as Record<string, any>) || {};
+    const isShg = [
+      'hershg',
+      'women_shg',
+      'farmer_shg',
+      'artisan_shg',
+      'dairy_shg',
+      'livelihood_shg',
+      'tribal_shg',
+      'youth_shg',
+      'other_shg'
+    ].includes(String(regDetails.businessType || regDetails.shgType || '').trim().toLowerCase());
+
+    const requiredDocs: string[] = isShg
+      ? ['bank_passbook', 'address_proof', 'leader_aadhaar', 'member_list']
+      : ['pan_copy', 'bank_passbook', 'address_proof'];
+
     const addRequiredDoc = (docType: string) => {
       if (!requiredDocs.includes(docType)) requiredDocs.push(docType);
     };
+
     if (Array.isArray(regDetails.selectedDocuments)) {
       for (const docType of regDetails.selectedDocuments) {
         if (typeof docType === 'string' && docType.trim()) addRequiredDoc(docType.trim());
@@ -1044,7 +1060,10 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
         business_registration_proof: 'Business Registration Proof (CIN/Shop Act)',
         dipp_certificate: 'DIPP Certificate',
         itr_3_years: 'Income Tax Returns of Last 3 Years',
-        nsic_certificate: 'NSIC Registration Certificate'
+        nsic_certificate: 'NSIC Registration Certificate',
+        leader_aadhaar: 'Group Leader Aadhaar Card',
+        registration_certificate: 'SHG Registration Certificate',
+        member_list: 'Member List'
       };
       const missingLabels = missingDocs.map(d => labels[d] || d).join(', ');
       throw new ApiError(400, `Missing required documents: ${missingLabels}. Please upload them before submitting.`, 'MISSING_MANDATORY_DOCUMENTS');

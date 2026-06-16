@@ -222,7 +222,7 @@ export function MarketplaceHeader({ user }: Props) {
                     {/* Logo ── always visible */}
                     <Link href="/" className="flex items-center gap-2.5 shrink-0">
                         <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0 p-0.5 shadow-sm border border-slate-200 transition-all hover:scale-105">
-                            <img src="/msme-logo.png" alt="Logo" className="w-full h-full object-contain" />
+                            <img src="/logoo.png" alt="SMiLE MSME Logo" className="w-full h-full object-contain" />
                         </div>
                         <div className="hidden sm:block leading-none">
                             <p className="text-sm font-black text-[#0b2447]">JsgSmile</p>

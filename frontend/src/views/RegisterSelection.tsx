@@ -48,7 +48,7 @@ export default function RegisterSelection() {
       <div className="relative z-10 w-full max-w-6xl px-1 text-center sm:px-4">
         <div className="mb-6 text-center sm:mb-8">
           <div className="mx-auto mb-2 flex h-24 w-24 items-center justify-center rounded-2xl bg-white p-1.5 shadow-md border border-slate-200 sm:h-28 sm:w-28 md:h-30 md:w-30 transition-all duration-500 hover:scale-105">
-            <img src="/msme-logo.png" alt="Official MSME Logo" className="h-full w-full object-contain" />
+            <img src="/logoo.png" alt="SMiLE MSME Logo" className="h-full w-full object-contain" />
           </div>
           <h2 className="text-2xl font-black uppercase tracking-tight text-slate-800 sm:text-3xl md:text-4xl">
             <span className="mb-1.5 block text-xs font-bold uppercase tracking-[0.3em] text-[#f9a825]">Join JsgSmile</span>

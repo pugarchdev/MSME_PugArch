@@ -58,8 +58,8 @@ export default function PremiumLoader() {
         <div className="relative w-28 h-28 mb-6 flex items-center justify-center">
           <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-brand-gold/10 to-brand-saffron/10 blur-xl animate-pulse" />
           <img 
-            src="/msme-logo.png" 
-            alt="JsgSmile Logo" 
+            src="/logoo.png" 
+            alt="SMiLE MSME Logo" 
             className="w-24 h-24 object-contain filter drop-shadow-[0_4px_12px_rgba(200,164,92,0.3)] animate-pulse"
             style={{ animationDuration: '3s' }}
           />

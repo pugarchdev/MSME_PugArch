@@ -404,7 +404,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
           >
             <div className="w-11 h-11 bg-white rounded-md flex items-center justify-center overflow-hidden shadow-sm border border-white/20 shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/msme-logo.png" alt="Logo" className="h-full w-full scale-150 object-contain" />
+              <img src="/logoo.png" alt="SMiLE MSME Logo" className="h-full w-full object-contain" />
             </div>
             <div className={cn("flex flex-col leading-tight min-w-0", isActuallyCollapsed && "lg:hidden")}>
               <span className="font-bold tracking-tight text-base truncate text-white">MSME Portal</span>

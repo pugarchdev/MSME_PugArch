@@ -26,7 +26,7 @@ export default function Home() {
             {/* Logo + Portal Badge */}
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 rounded-2xl bg-white flex items-center justify-center overflow-hidden shrink-0 p-1 sm:p-1.5 shadow-md border border-slate-200 transition-all hover:scale-105">
-                <img src="/msme-logo.png" alt="JsgSmile MSME Logo" className="w-full h-full object-contain" />
+                <img src="/logoo.png" alt="SMiLE - Synergy for MSME and Industry Linkage Ecosystem" className="w-full h-full object-contain" />
               </div>
               <div>
                 <p className="text-[10px] sm:text-xs md:text-sm font-black text-[#c8a45c] uppercase tracking-[0.2em]">Government of India</p>

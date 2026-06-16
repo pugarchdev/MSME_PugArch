@@ -4,9 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { ShieldCheck, Mail, Key, Eye, EyeOff, RefreshCw, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Mail, Key, Eye, EyeOff, ArrowLeft, CheckCircle2, Building2, Store, UsersRound } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { isShgUser } from '../lib/shg';
 
@@ -41,7 +40,6 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      // If there's a returnUrl (e.g., from invite), go there; otherwise go to dashboard
       if (returnUrl) {
         router.replace(decodeURIComponent(returnUrl));
       } else {
@@ -56,13 +54,6 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // if (userCaptcha !== captchaValue) {
-    //   toast.error('Invalid security code. Please try again.');
-    //   generateCaptcha();
-    //   return;
-    // }
-
     setIsLoading(true);
     const loadToast = toast.loading('Authenticating credentials...');
 
@@ -110,40 +101,145 @@ export default function Login() {
   };
 
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-slate-50 px-3 py-6 sm:px-4">
-      {/* BACK BUTTON */}
-      <Link
-        href="/"
-        className="group absolute top-6 left-6 z-20 flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 shadow-[0_8px_16px_-6px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all hover:-translate-x-1 hover:text-[#12335f] hover:shadow-[0_12px_20px_-8px_rgba(18,51,95,0.15)] active:scale-[0.98]"
-      >
-        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-        <span>Back to Home</span>
-      </Link>
+    <div className="relative flex min-h-dvh w-full overflow-hidden bg-slate-50">
 
-      {/* BACKGROUND DECORATIONS */}
-      <div className="absolute top-[-10%] left-[-10%] h-[40%] w-[40%] rounded-full bg-blue-200/40 blur-[120px] animate-pulse" />
-      <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-slate-200/40 blur-[120px] animate-pulse" />
+      {/* ═══════════════════════════════════════════════════════════════════
+          LEFT PANEL — Brand showcase with prominent logo
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="relative hidden lg:flex lg:w-[52%] xl:w-[55%] flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#07172e] via-[#0b2447] to-[#0a1e3d]">
+        {/* Tricolor accent strip at top */}
+        <div className="brand-tricolor-strip absolute top-0 left-0 w-full z-10" />
 
-      <Card className="animate-in relative z-10 w-full max-w-[370px] overflow-hidden rounded-[2.5rem] border border-white/40 bg-white/70 backdrop-blur-2xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] fade-in zoom-in duration-700">
-        <CardHeader className="relative bg-gradient-to-br from-[#0b1b33] via-[#12335f] to-[#0b1b33] pb-1 pt-2 text-center text-white">
-          <div className="absolute top-0 right-0 p-6 opacity-5">
-            <ShieldCheck className="h-28 w-28" />
+        {/* Animated background orbs */}
+        <div className="absolute top-[10%] left-[5%] h-[45%] w-[45%] rounded-full bg-blue-500/[0.08] blur-[140px] animate-pulse pointer-events-none" style={{ animationDuration: '7s' }} />
+        <div className="absolute bottom-[5%] right-[10%] h-[40%] w-[40%] rounded-full bg-[#c8a45c]/[0.06] blur-[120px] animate-pulse pointer-events-none" style={{ animationDuration: '5s' }} />
+        <div className="absolute top-[50%] left-[40%] h-[30%] w-[30%] rounded-full bg-emerald-500/[0.05] blur-[100px] animate-pulse pointer-events-none" style={{ animationDuration: '9s' }} />
+
+        {/* Subtle grid pattern overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }} />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center px-10 xl:px-16 text-center max-w-xl">
+          {/* Logo — large and prominent */}
+          <div className="relative group">
+            <div className="absolute -inset-6 rounded-full bg-gradient-to-tr from-[#c8a45c]/20 to-white/10 blur-3xl opacity-80 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="relative w-80 h-80 xl:w-96 xl:h-96 bg-white rounded-[2.5rem] shadow-[0_32px_80px_-16px_rgba(0,0,0,0.5)] flex items-center justify-center p-4 xl:p-6 border-2 border-white/30 overflow-hidden transition-all duration-500 group-hover:scale-[1.02] group-hover:shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logoo.png"
+                alt="SMiLE - Synergy for MSME and Industry Linkage Ecosystem"
+                className="w-full h-full object-contain drop-shadow-md transition-transform duration-500 group-hover:scale-[1.04]"
+              />
+            </div>
           </div>
-          <div className="relative mx-auto w-20 h-20 bg-white shadow-[0_12px_24px_-8px_rgba(0,0,0,0.3)] rounded-2xl flex items-center justify-center mb-1 border-2 border-white/30 transition-all duration-500 hover:scale-105 overflow-hidden p-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/msme-logo.png" alt="Official MSME Logo" className="w-full h-full object-contain" />
-          </div>
-          <CardTitle className="text-2xl font-black uppercase tracking-tight sm:text-3xl text-white">
-            <span className="block text-[#f9a825] text-[10px] tracking-[0.3em] mb-1 text-center">Secure Portal</span>
-            Stakeholder Access
-          </CardTitle>
-          <p className="text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-[0.2em]  opacity-80 text-center">Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</p>
-        </CardHeader>
 
-        <CardContent className="p-5 sm:p-8">
-          <form onSubmit={twoFactorPending ? handleTwoFactorSubmit : handleSubmit} className="space-y-4">
+          {/* Separator */}
+          <div className="mt-6 w-16 h-[2px] bg-gradient-to-r from-transparent via-[#c8a45c]/60 to-transparent" />
+
+          {/* Title */}
+          <h1 className="mt-4 text-2xl xl:text-3xl font-black tracking-tight text-white leading-tight">
+            <span className="block text-[#c8a45c] text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.35em] mb-1.5">Government of India</span>
+            JSG <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#c8a45c] to-amber-400">SMiLE</span> Portal
+          </h1>
+          <p className="mt-3 text-[13px] xl:text-sm font-medium text-slate-300/90 leading-relaxed max-w-sm">
+            Jharsuguda Synergy for MSME and Industry Linkage Ecosystem
+          </p>
+
+          {/* Trust badges */}
+          <div className="mt-6 grid grid-cols-3 gap-3 w-full max-w-sm">
+            {[
+              { icon: ShieldCheck, label: 'AES-256 Encrypted' },
+              { icon: CheckCircle2, label: 'Govt. Verified' },
+              { icon: Building2, label: 'MSME Linked' },
+            ].map((badge) => (
+              <div key={badge.label} className="flex flex-col items-center gap-2 rounded-xl bg-white/5 border border-white/[0.08] py-3.5 px-2 backdrop-blur-sm transition-all hover:bg-white/[0.08] hover:border-white/[0.12]">
+                <badge.icon className="h-5 w-5 text-[#c8a45c]" />
+                <span className="text-[9px] font-bold text-slate-300/80 uppercase tracking-wider text-center leading-tight">{badge.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Tagline */}
+          <p className="mt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400/70">
+            Connect &bull; Collaborate &bull; Grow
+          </p>
+        </div>
+
+        {/* Bottom footer */}
+        <div className="absolute bottom-5 left-0 right-0 text-center">
+          <p className="text-[9px] font-medium text-slate-400/50 tracking-wider">
+            &copy; {new Date().getFullYear()} District Administration, Jharsuguda, Odisha
+          </p>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          RIGHT PANEL — Login form
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="relative flex-1 flex flex-col items-center justify-center px-4 py-8 sm:px-6 lg:px-12 xl:px-16">
+        {/* Back button */}
+        <Link
+          href="/"
+          className="group absolute top-5 left-5 z-20 flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 shadow-[0_8px_16px_-6px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all hover:-translate-x-1 hover:text-[#12335f] hover:shadow-[0_12px_20px_-8px_rgba(18,51,95,0.15)] active:scale-[0.98]"
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+          <span>Back to Home</span>
+        </Link>
+
+        {/* Background decorations */}
+        <div className="absolute top-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-blue-100/50 blur-[120px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-[-10%] left-[-10%] h-[35%] w-[35%] rounded-full bg-amber-100/30 blur-[100px] animate-pulse pointer-events-none" />
+
+        {/* Mobile-only logo banner (visible on < lg) */}
+        <div className="lg:hidden w-full max-w-md mb-6 animate-in fade-in zoom-in duration-500">
+          <div className="relative rounded-3xl bg-gradient-to-br from-[#07172e] via-[#0b2447] to-[#0a1e3d] p-6 text-center overflow-hidden">
+            <div className="brand-tricolor-strip absolute top-0 left-0 w-full" />
+            <div className="absolute top-0 right-0 p-4 opacity-5">
+              <ShieldCheck className="h-24 w-24 text-white" />
+            </div>
+            <div className="relative flex flex-col items-center">
+              <div className="w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-2xl shadow-[0_12px_32px_-8px_rgba(0,0,0,0.4)] flex items-center justify-center p-2 border-2 border-white/20 overflow-hidden transition-all duration-500 hover:scale-105">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logoo.png" alt="SMiLE MSME Logo" className="w-full h-full object-contain" />
+              </div>
+              <h2 className="mt-4 text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                <span className="block text-[#c8a45c] text-[10px] tracking-[0.3em] mb-1">Secure Portal</span>
+                JSG SMiLE
+              </h2>
+              <p className="mt-2 text-[10px] font-bold text-slate-300/70 uppercase tracking-[0.15em]">
+                Jharsuguda Synergy for MSME &amp; Industry Linkage
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Login form card */}
+        <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-right-4 duration-700">
+          {/* Header */}
+          <div className="mb-7">
+            <div className="hidden lg:flex items-center gap-3 mb-5">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#0b2447] to-[#12335f] flex items-center justify-center shadow-md">
+                <ShieldCheck className="h-5 w-5 text-[#c8a45c]" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-[#c8a45c] uppercase tracking-[0.2em]">Secure Portal</p>
+                <p className="text-xs font-bold text-slate-500">Government-grade authentication</p>
+              </div>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-[#0b2447]">
+              Stakeholder Access
+            </h2>
+            <p className="mt-1.5 text-sm font-medium text-slate-500">
+              Sign in to your MSME procurement portal account
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={twoFactorPending ? handleTwoFactorSubmit : handleSubmit} className="space-y-5">
             {twoFactorPending ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Two-Factor Code</label>
                 <input
                   type="text"
@@ -151,45 +247,48 @@ export default function Login() {
                   maxLength={6}
                   value={twoFactorOtp}
                   onChange={(e) => setTwoFactorOtp(e.target.value.replace(/\D/g, ''))}
-                  className="w-full h-12 rounded-2xl border border-slate-200 bg-white/50 px-4 text-center text-lg font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  className="w-full h-14 rounded-2xl border border-slate-200 bg-white px-4 text-center text-xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all shadow-sm"
                   required
                 />
-                <button type="button" onClick={() => setTwoFactorPending(false)} className="text-xs font-bold text-slate-500 underline">
+                <button type="button" onClick={() => setTwoFactorPending(false)} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4">
                   Use different credentials
                 </button>
               </div>
             ) : (
               <>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]  ml-1">Official Email</label>
+                {/* Email Field */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Official Email</label>
                   <div className="group relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-4 text-slate-400 group-focus-within:text-[#12335f] transition-colors" />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#12335f] transition-colors" />
                     <input
                       type="email"
                       placeholder="name@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
-                      className="w-full h-10 pl-12 pr-4 rounded-2xl border border-slate-200 bg-white/50 text-sm focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all font-semibold"
+                      className="w-full h-12 pl-12 pr-4 rounded-2xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all font-semibold shadow-sm hover:border-slate-300"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <div className='flex gap-3 '> <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]  ml-1 pr-3">Secure Password</label>
-                    <Link href="/forgot-password" className="mb-3 block text-[10px] font-black uppercase tracking-widest text-[#12335f] underline decoration-blue-200 underline-offset-4 pl-6">
+                {/* Password Field */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Secure Password</label>
+                    <Link href="/forgot-password" className="text-[10px] font-black uppercase tracking-widest text-[#12335f] hover:text-[#0b2445] underline decoration-blue-200 underline-offset-4 transition-colors">
                       Forgot password?
                     </Link>
                   </div>
                   <div className="group relative">
-                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-4 text-slate-400 group-focus-within:text-[#12335f] transition-colors" />
+                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#12335f] transition-colors" />
                     <input
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      className="w-full h-10 pl-12 pr-12 rounded-2xl border border-slate-200 bg-white/50 text-sm focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all font-semibold"
+                      className="w-full h-12 pl-12 pr-12 rounded-2xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all font-semibold shadow-sm hover:border-slate-300"
                     />
                     <button
                       type="button"
@@ -200,38 +299,14 @@ export default function Login() {
                     </button>
                   </div>
                 </div>
-
-                {/* Captcha Verification */}
-                {/* <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-3">
-               <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block ml-1">Security Code</label>
-                  <button type="button" onClick={generateCaptcha} className="text-[10px] flex items-center gap-1.5 font-black text-[#12335f] hover:text-[#0b2445] transition-colors uppercase tracking-widest">
-                     <RefreshCw className="h-3 w-3" /> Refresh
-                  </button>
-               </div>
-               <div className="flex gap-3 items-center">
-                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 px-4 py-2.5 rounded-xl select-none flex-1 text-center relative overflow-hidden font-serif tracking-[0.3em] text-lg font-black text-slate-700 italic line-through decoration-slate-400/50 decoration-2">
-                     {captchaValue}
-                     <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSIjMDAwMDAwMTUiPjwvcmVjdD4KPC9zdmc+')] opacity-20 pointer-events-none" />
-                  </div>
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={userCaptcha}
-                    onChange={(e) => setUserCaptcha(e.target.value)}
-                    placeholder="Code"
-                    className="w-24 h-10 text-center text-sm font-black tracking-widest bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#12335f]/10 focus:border-[#12335f] outline-none transition-all placeholder:tracking-normal placeholder:font-bold"
-                    required
-                  />
-               </div>
-            </div> */}
               </>
             )}
 
-            <div className="pt-2">
+            {/* Submit Button */}
+            <div className="pt-1">
               <Button
                 type="submit"
-                className="w-full h-10 rounded-[1.25rem] bg-gradient-to-r from-[#12335f] to-[#0b2445] hover:from-[#0b2445] hover:to-[#071830] text-white font-black uppercase tracking-[0.2em]  shadow-[0_20px_40px_-10px_rgba(18,51,95,0.3)] transition-all hover:translate-y-[-2px] active:scale-[0.98] disabled:opacity-50"
+                className="w-full h-12 rounded-2xl bg-gradient-to-r from-[#0b2447] to-[#12335f] hover:from-[#12335f] hover:to-[#0b2447] text-white font-black uppercase tracking-[0.2em] shadow-[0_20px_40px_-10px_rgba(18,51,95,0.3)] transition-all hover:translate-y-[-2px] hover:shadow-[0_24px_48px_-12px_rgba(18,51,95,0.4)] active:scale-[0.98] disabled:opacity-50 text-sm"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -243,9 +318,16 @@ export default function Login() {
               </Button>
             </div>
 
-            <div className="text-center py-2">
+            {/* Divider */}
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">or</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
 
-              <p className="text-xs font-bold text-slate-500">
+            {/* Registration CTA */}
+            <div className="text-center space-y-3">
+              <p className="text-xs font-semibold text-slate-500">
                 New to the platform?{' '}
                 <Link
                   href={returnUrl ? `/register?returnUrl=${encodeURIComponent(returnUrl)}` : '/register'}
@@ -254,10 +336,40 @@ export default function Login() {
                   Create Profile
                 </Link>
               </p>
+
+              {/* Quick register shortcuts */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Link
+                  href="/seller/register"
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 hover:border-[#12335f]/30 hover:text-[#12335f] transition-all shadow-sm hover:shadow"
+                >
+                  <Store className="h-3 w-3" />
+                  Join as Seller
+                </Link>
+                <Link
+                  href="/buyer/register"
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 hover:border-[#12335f]/30 hover:text-[#12335f] transition-all shadow-sm hover:shadow"
+                >
+                  <Building2 className="h-3 w-3" />
+                  Join as Buyer
+                </Link>
+                <Link
+                  href="/hershg/register"
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 hover:border-[#12335f]/30 hover:text-[#12335f] transition-all shadow-sm hover:shadow"
+                >
+                  <UsersRound className="h-3 w-3" />
+                  Join as SHG
+                </Link>
+              </div>
             </div>
           </form>
-        </CardContent>
-      </Card>
+
+          {/* Footer text */}
+          <p className="mt-8 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+            Protected by 256-bit SSL &bull; Government of India Portal
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

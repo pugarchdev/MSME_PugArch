@@ -598,6 +598,26 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {user?.role === 'buyer' && (
+        <section className="rounded-lg border border-[#12335f]/20 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Primary Buyer Action</p>
+              <h2 className="text-base font-black text-slate-950">Create Procurement</h2>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                Start once, choose the business intent, and continue to marketplace, request quotations, large procurement, auction, or open requirement.
+              </p>
+            </div>
+            <Link href="/buyer/procurement/create">
+              <Button className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
+                Create Procurement
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </section>
+      )}
+
       {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
       <div className="space-y-4">

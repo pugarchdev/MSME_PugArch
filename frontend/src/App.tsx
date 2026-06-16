@@ -105,6 +105,8 @@ const AdminBannerManagementPage = lazy(() => import('./features/banners/pages/Ad
 const MonthlyRankingsAdminPage = lazy(() => import('./features/banners/pages/MonthlyRankingsAdminPage'));
 const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/pages/OrganizationBannerEligibilityPage'));
 const AdminMarketplaceHomeSectionsPage = lazy(() => import('./features/marketplace/pages/AdminMarketplaceHomeSectionsPage'));
+const CreateProcurementPage = lazy(() => import('./features/procurementWizard/pages/CreateProcurementPage'));
+const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -206,6 +208,7 @@ export default function App() {
         import('./views/ShgOnboarding');
         import('./features/payments/pages/PaymentHistoryPage');
       } else if (user.role === 'buyer') {
+        import('./features/procurementWizard/pages/CreateProcurementPage');
         import('./views/Tenders');
         import('./views/Vendors');
         import('./features/requirements/pages/RequirementsPage');
@@ -214,6 +217,7 @@ export default function App() {
         import('./features/directPurchase/pages/DirectPurchasePage');
         import('./features/rfq/pages/RfqPage');
       } else if (user.role === 'seller') {
+        import('./features/sellerOpportunities/pages/SellerOpportunitiesPage');
         import('./views/SellerTenders');
         import('./features/sellerDelivery/pages/SellerDeliveryManagementPage');
         import('./features/payments/pages/PaymentHistoryPage');
@@ -305,7 +309,9 @@ export default function App() {
     if (pathname === '/shg/settings' && shgRouteOk) return <ShgOnboarding section="settings" />;
     if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
+    if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
+    if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
     if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
     if (/^\/seller\/products\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
@@ -323,6 +329,10 @@ export default function App() {
     if (/^\/seller\/tenders\/[^/]+\/bid$/.test(pathname) && roleOk(user.role, ['seller'])) return <CreateQuotation />;
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
+    if (pathname === '/buyer/procurement/create' && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
+    if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
+    if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <Quotations />;
+    if (pathname === '/buyer/procurement/approvals' && roleOk(user.role, ['buyer'])) return <ApprovalQueuePage />;
     if (pathname === '/buyer/marketplace' && roleOk(user.role, ['buyer'])) return <MarketplaceProductList />;
     if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
@@ -343,7 +353,17 @@ export default function App() {
     if (pathname === '/buyer/messages' && roleOk(user.role, ['buyer'])) return <MessagesPage />;
     if (pathname === '/buyer/ratings' && roleOk(user.role, ['buyer'])) return <RatingsPage endpoint={`/api/ratings/buyer/${user.id}`} mode="buyer" />;
     if (pathname === '/payments' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <PaymentHistoryPage admin={user.role === 'admin'} />;
+    if (pathname === '/payments/transactions' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <PaymentHistoryPage admin={user.role === 'admin'} />;
+    if (pathname === '/payments/invoices' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <InvoiceRegisterPage role={user.role === 'admin' ? 'admin' : user.role === 'seller' ? 'seller' : 'buyer'} />;
     if (pathname === '/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
+    if (pathname === '/payments/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
+    if (pathname === '/orders' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
+    if (pathname === '/orders/delivery-confirmation' && roleOk(user.role, ['buyer'])) return <GrnListPage />;
+    if (pathname === '/orders/tracking' && roleOk(user.role, ['buyer', 'seller', 'admin'])) {
+      if (user.role === 'seller') return <SellerDeliveryManagementPage />;
+      if (user.role === 'admin') return <DeliveryListPage scope="admin" />;
+      return <ParcelTracking />;
+    }
     if (pathname === '/buyer/tracking' && roleOk(user.role, ['buyer'])) return <ParcelTracking />;
     if (pathname === '/admin/delivery' && roleOk(user.role, ['admin'])) return <DeliveryListPage scope="admin" />;
     {
@@ -354,6 +374,7 @@ export default function App() {
       }
     }
     if (pathname === '/profile') return <Profile />;
+    if (pathname === '/reports' && roleOk(user.role, ['buyer', 'seller'])) return <GenericFeaturePage title="Reports" eyebrow="Reports" description="Role-based procurement and payment reports will appear here as reporting modules are enabled." endpoint="/api/dashboard/summary" />;
     if (pathname === '/admin/onboarding' && roleOk(user.role, ['admin'])) return <AdminOnboarding />;
     if (pathname === '/admin/shg-applications' && roleOk(user.role, ['admin'])) return <AdminShgApplications />;
     if (/^\/admin\/shg-applications\/\d+$/.test(pathname) && roleOk(user.role, ['admin'])) return <AdminShgApplications />;
@@ -419,6 +440,8 @@ export default function App() {
         if (Number.isFinite(id) && id > 0) return <ReverseAuctionDetailPage id={id} />;
       }
     }
+    if (['/seller/awards', '/buyer/procurement-orders', '/admin/procurement-orders'].includes(pathname) && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
+    if (/^\/procurement-orders\/\d+$/.test(pathname) && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
     if (pathname === '/settings/security') return <SecuritySettingsPage />;
     if (pathname === '/settings/notifications') return <NotificationPrefsPage />;
     if (pathname === '/admin/reports/procurement' && roleOk(user.role, ['admin'])) return <ProcurementReportPage />;

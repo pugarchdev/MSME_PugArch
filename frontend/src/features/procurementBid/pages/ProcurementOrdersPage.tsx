@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CheckCircle2, ClipboardCheck, CreditCard, ReceiptText, RefreshCcw, Search, Truck } from 'lucide-react';
+import { ClipboardCheck, CreditCard, ReceiptText, RefreshCcw, Search, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
@@ -15,20 +15,8 @@ import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
-
-const timeline = [
-  ['Bid Awarded', 'AWARDED'],
-  ['PO Issued', 'issued'],
-  ['Seller Accepted', 'SELLER_ACCEPTED'],
-  ['Delivery Started', 'DISPATCHED'],
-  ['Delivered', 'DELIVERED'],
-  ['GRN Approved', 'APPROVED'],
-  ['Invoice Approved', 'approved'],
-  ['Payment Initiated', 'gateway_order_created'],
-  ['Payment Held', 'success'],
-  ['Settlement Completed', 'RELEASED'],
-  ['Order Closed', 'completed'],
-];
+import ProcurementLifecycleTracker from '../../procurementLifecycle/components/ProcurementLifecycleTracker';
+import { inferCurrentLifecycleStage, mapProcurementOrderToLifecycle } from '../../procurementLifecycle/statusMapper';
 
 const fmt = (value?: string) => value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Pending';
 const roleTitle = (role?: string) => role === 'seller' ? 'Seller Awarded Bids' : role === 'admin' ? 'Admin Procurement Orders' : 'Buyer Awarded Orders';
@@ -318,36 +306,20 @@ function OrderDetail({ order, role, busy, remarks, setRemarks, run }: any) {
   const grn = order.grns?.[0];
   const invoice = order.invoices?.[0];
   const payment = order.payments?.[0] || invoice?.payments?.[0];
-  const settlement = delivery?.settlement || payment?.paymentSettlements?.[0];
-  const completed = new Set([
-    'AWARDED',
-    order.status,
-    delivery?.status,
-    grn?.status,
-    invoice?.status,
-    payment?.status,
-    settlement?.status
-  ].filter(Boolean));
+  const lifecycleEvents = mapProcurementOrderToLifecycle(order);
+  const currentStage = inferCurrentLifecycleStage(lifecycleEvents);
 
   return (
     <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
       <section className="space-y-5">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-base font-black text-[#0b2447]">Status Timeline</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {timeline.map(([label, key], index) => {
-              const done = completed.has(key) || (key === 'issued' && ['issued', 'accepted', 'in_fulfillment', 'delivered', 'inspection_accepted', 'invoice_submitted', 'payment_initiated', 'completed'].includes(order.status));
-              return (
-                <div key={label} className={`rounded-lg border p-3 ${done ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className={`h-4 w-4 ${done ? 'text-emerald-700' : 'text-slate-300'}`} />
-                    <p className="text-xs font-black text-slate-800">{index + 1}. {label}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ProcurementLifecycleTracker
+          currentStage={currentStage}
+          events={lifecycleEvents}
+          role={role}
+          sourceType="Procurement Order"
+          showTechnicalStatus
+          nextAction={role === 'seller' ? 'Update delivery and upload invoice when the order moves forward.' : 'Confirm delivery, approve invoice, and initiate payment from the actions panel when ready.'}
+        />
 
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-base font-black text-[#0b2447]">PO / Work Order</h2>

@@ -452,7 +452,13 @@ export default function App() {
   };
 
   const fixedAuthRoutes = ['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register'];
-  const isMarketplaceRoute = pathname.startsWith('/marketplace') || pathname.startsWith('/bids') || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
+  const useDashboardShellForMarketplace =
+    pathname === '/marketplace/compare' ||
+    pathname === '/marketplace/products' ||
+    pathname === '/marketplace/services' ||
+    /^\/marketplace\/products\/\d+$/.test(pathname) ||
+    /^\/marketplace\/services\/\d+$/.test(pathname);
+  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname.startsWith('/bids') || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 

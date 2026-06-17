@@ -41,6 +41,7 @@ export default function MarketplaceProductDetail() {
     const router = useRouter();
     const productId = Number(pathname.split('/').pop());
     const queryClient = useQueryClient();
+    const useDashboardShell = Boolean(user);
 
     const { data: detailData, isLoading: loading } = useQuery({
         queryKey: ['marketplaceProduct', productId],
@@ -142,9 +143,9 @@ export default function MarketplaceProductDetail() {
 
     if (!product) {
         return (
-            <div className="min-h-dvh bg-white flex flex-col">
-                <div className="brand-tricolor-strip w-full" />
-                <MarketplaceHeader user={user} />
+            <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
+                {!useDashboardShell && <div className="brand-tricolor-strip w-full" />}
+                {!useDashboardShell && <MarketplaceHeader user={user} />}
                 <main className="flex-1 flex items-center justify-center">
                     <div className="text-center">
                         <Package className="h-16 w-16 text-slate-300 mx-auto mb-4" />
@@ -155,7 +156,7 @@ export default function MarketplaceProductDetail() {
                         </Link>
                     </div>
                 </main>
-                <MarketplaceFooter />
+                {!useDashboardShell && <MarketplaceFooter />}
             </div>
         );
     }
@@ -224,9 +225,9 @@ export default function MarketplaceProductDetail() {
     ];
 
     return (
-        <div className="min-h-dvh bg-white flex flex-col">
-            <div className="brand-tricolor-strip w-full" />
-            <MarketplaceHeader user={user} />
+        <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
+            {!useDashboardShell && <div className="brand-tricolor-strip w-full" />}
+            {!useDashboardShell && <MarketplaceHeader user={user} />}
 
             <main className="flex-1">
                 {/* Breadcrumb */}
@@ -252,7 +253,7 @@ export default function MarketplaceProductDetail() {
                         <ArrowLeft className="h-3.5 w-3.5" /> Back to results
                     </button>
 
-                    <div className="grid lg:grid-cols-2 gap-8">
+                    <div className="grid gap-8 lg:grid-cols-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)_320px]">
                         {/* Image Gallery */}
                         <div>
                             <div className="flex aspect-[4/3] max-h-[440px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white mb-3">
@@ -364,10 +365,40 @@ export default function MarketplaceProductDetail() {
                                 </div>
                             )}
 
-                            {/* Action Buttons */}
-                            <div className="flex flex-col gap-3 pt-4 sm:flex-row">
+                        </div>
+
+                        {/* Sidebar - Buyer Actions */}
+                        <aside className="lg:col-span-2 xl:col-span-1">
+                            <div className="sticky top-28 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="space-y-1">
+                                    <h2 className="text-sm font-bold text-[#0b2447]">Procurement actions</h2>
+                                    <p className="text-[11px] font-semibold leading-relaxed text-slate-500">
+                                        Add this listing to cart, compare suppliers, or request a quote from the seller.
+                                    </p>
+                                </div>
+
+                                <div className="my-4 border-y border-slate-100 py-4">
+                                    {displayPrice > 0 ? (
+                                        <div>
+                                            <div className="flex flex-wrap items-end gap-2">
+                                                <p className="text-2xl font-bold text-[#0b2447]">Rs. {displayPrice.toLocaleString('en-IN')}</p>
+                                                {hasOffer && <p className="pb-0.5 text-xs font-bold text-slate-400 line-through">Rs. {price.toLocaleString('en-IN')}</p>}
+                                            </div>
+                                            <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                                                Per {product.unitOfMeasure || 'unit'}
+                                                {product.taxRate ? ` | GST ${product.taxRate}% extra` : ''}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-700">
+                                            Price on Request
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
                                 {cartQuantity > 0 ? (
-                                    <div className="flex-1 inline-flex items-center justify-between h-11 rounded-lg border-2 border-[#0b2447] bg-white overflow-hidden shadow-sm">
+                                    <div className="inline-flex h-11 w-full items-center justify-between overflow-hidden rounded-lg border-2 border-[#0b2447] bg-white shadow-sm">
                                         <button 
                                             onClick={() => handleQuantityChange(-1)} 
                                             className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
@@ -387,30 +418,44 @@ export default function MarketplaceProductDetail() {
                                 ) : (
                                     <button
                                         onClick={handleAddToCart}
-                                        className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-[#0b2447] text-white text-sm font-bold hover:bg-[#12335f] active:scale-[0.97] transition shadow-sm"
+                                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0b2447] text-sm font-bold text-white shadow-sm transition hover:bg-[#12335f] active:scale-[0.97]"
                                     >
                                         <ShoppingCart className="h-4 w-4" /> Add to Cart
                                     </button>
                                 )}
                                 <button
                                     onClick={handleRequestQuote}
-                                    className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-lg border-2 border-[#0b2447] text-[#0b2447] text-sm font-bold hover:bg-[#0b2447] hover:text-white active:scale-[0.97] transition"
+                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#0b2447] text-sm font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white active:scale-[0.97]"
                                 >
                                     <FileText className="h-4 w-4" /> Request Quote
                                 </button>
                                 <CompareToggleButton
                                     item={{ type: 'product', id: product.id, categoryId: product.category?.id }}
-                                    className="h-11 flex-1 border-[#0b2447]/20 text-[#0b2447] sm:flex-none sm:px-5"
+                                    className="h-11 w-full border-[#0b2447]/20 text-[#0b2447]"
                                 />
                                 <button
                                     type="button"
                                     onClick={handleSaveSupplier}
-                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.97] sm:flex-none"
+                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.97]"
                                 >
                                     <BookmarkPlus className="h-4 w-4" /> Save Supplier
                                 </button>
+                                </div>
+
+                                <div className="mt-4 rounded-md border border-slate-100 bg-slate-50 p-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Seller</p>
+                                    <p className="mt-1 text-xs font-bold text-slate-800">{product.organization?.organizationName || product.seller?.name || 'Verified supplier'}</p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {isVerified && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">Verified</span>}
+                                        {location && <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600">{location}</span>}
+                                    </div>
+                                </div>
+
+                                <p className="mt-3 text-center text-[10px] font-semibold text-slate-400">
+                                    {user ? 'You are logged in and can submit requests.' : 'Login required to submit quote requests.'}
+                                </p>
                             </div>
-                        </div>
+                        </aside>
                     </div>
 
                     {/* Specifications */}
@@ -528,7 +573,7 @@ export default function MarketplaceProductDetail() {
                 </div>
             </main>
 
-            <MarketplaceFooter />
+            {!useDashboardShell && <MarketplaceFooter />}
         </div>
     );
 }

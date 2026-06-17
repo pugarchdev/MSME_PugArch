@@ -49,6 +49,7 @@ export default function MarketplaceServiceDetail() {
     const router = useRouter();
     const serviceId = Number(pathname.split('/').pop());
     const queryClient = useQueryClient();
+    const useDashboardShell = Boolean(user);
 
     const { data: detailData, isLoading: loading } = useQuery({
         queryKey: ['marketplaceService', serviceId],
@@ -146,9 +147,9 @@ export default function MarketplaceServiceDetail() {
 
     if (!service) {
         return (
-            <div className="min-h-dvh bg-white flex flex-col">
-                <div className="brand-tricolor-strip w-full" />
-                <MarketplaceHeader user={user} />
+            <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
+                {!useDashboardShell && <div className="brand-tricolor-strip w-full" />}
+                {!useDashboardShell && <MarketplaceHeader user={user} />}
                 <main className="flex-1 flex items-center justify-center">
                     <div className="text-center">
                         <Wrench className="h-16 w-16 text-slate-300 mx-auto mb-4" />
@@ -159,7 +160,7 @@ export default function MarketplaceServiceDetail() {
                         </Link>
                     </div>
                 </main>
-                <MarketplaceFooter />
+                {!useDashboardShell && <MarketplaceFooter />}
             </div>
         );
     }
@@ -219,9 +220,9 @@ export default function MarketplaceServiceDetail() {
     ];
 
     return (
-        <div className="min-h-dvh bg-white flex flex-col">
-            <div className="brand-tricolor-strip w-full" />
-            <MarketplaceHeader user={user} />
+        <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
+            {!useDashboardShell && <div className="brand-tricolor-strip w-full" />}
+            {!useDashboardShell && <MarketplaceHeader user={user} />}
 
             <main className="flex-1">
                 {/* Breadcrumb */}
@@ -473,7 +474,7 @@ export default function MarketplaceServiceDetail() {
                 </div>
             </main>
 
-            <MarketplaceFooter />
+            {!useDashboardShell && <MarketplaceFooter />}
         </div>
     );
 }

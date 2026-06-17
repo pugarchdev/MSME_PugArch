@@ -28,6 +28,7 @@ export default function MarketplaceProductList() {
     const searchParams = useSearchParams();
     const pathname = usePathname() || '';
     const isBuyerMarketplace = pathname === '/buyer/marketplace';
+    const useDashboardShell = Boolean(user) && (isBuyerMarketplace || pathname === '/marketplace/products' || pathname === '/marketplace/services');
     const router = useRouter();
     const isServices = pathname.includes('/services') || searchParams?.get('type') === 'services';
     const queryClient = useQueryClient();
@@ -350,9 +351,9 @@ export default function MarketplaceProductList() {
     };
 
     return (
-        <div className={isBuyerMarketplace ? "w-full" : "min-h-dvh bg-white flex flex-col"}>
-            {!isBuyerMarketplace && <div className="brand-tricolor-strip w-full" />}
-            {!isBuyerMarketplace && <MarketplaceHeader user={user} />}
+        <div className={useDashboardShell ? "w-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
+            {!useDashboardShell && <div className="brand-tricolor-strip w-full" />}
+            {!useDashboardShell && <MarketplaceHeader user={user} />}
 
             <main className="flex-1">
                 {/* Breadcrumb */}
@@ -799,7 +800,7 @@ export default function MarketplaceProductList() {
                 </div>
             </main>
 
-            <MarketplaceFooter />
+            {!useDashboardShell && <MarketplaceFooter />}
             <CompareTray />
         </div>
     );

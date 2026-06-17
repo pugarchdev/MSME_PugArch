@@ -137,6 +137,7 @@ export function MarketplaceHeader({ user }: Props) {
           Left  : portal name · email · phone
           Right : A- A A+ · contrast · language
           ════════════════════════════════════════════════════════════════════ */}
+            {false && (
             <div className="bg-[#0b2447] text-white marketplace-util-bar" style={{ height: 36 }}>
                 <div className="mx-auto flex h-full max-w-[1680px] items-center justify-between px-4 sm:px-6 2xl:px-8">
 
@@ -211,6 +212,7 @@ export function MarketplaceHeader({ user }: Props) {
                     </div>
                 </div>
             </div>
+            )}
 
             {/* ════════════════════════════════════════════════════════════════════
           MAIN NAVBAR  (white, 64 px)

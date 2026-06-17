@@ -93,10 +93,10 @@ export default function MarketplaceComparePage() {
 
   if (compare.ids.length === 0) {
     return (
-      <div className="min-h-dvh bg-slate-50 p-4">
-        <div className="mx-auto max-w-5xl">
+      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 p-4">
+        <div className="mx-auto w-full max-w-xl text-center">
           <EmptyState title="No items selected for comparison" description="Choose products or services from the marketplace, then open compare again." />
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-6 flex justify-center gap-3">
             <Link href="/marketplace/products"><Button>Browse Products</Button></Link>
             <Link href="/marketplace/services"><Button variant="outline">Browse Services</Button></Link>
           </div>
@@ -104,12 +104,24 @@ export default function MarketplaceComparePage() {
       </div>
     );
   }
-  if (query.isLoading) return <LoadingState label="Loading comparison..." />;
-  if (query.error) return <InlineError message={(query.error as Error).message} onRetry={() => query.refetch()} />;
+  if (query.isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 p-4">
+        <LoadingState label="Loading comparison..." />
+      </div>
+    );
+  }
+  if (query.error) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 p-4">
+        <InlineError message={(query.error as Error).message} onRetry={() => query.refetch()} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-dvh bg-slate-50 p-4">
-      <div className="mx-auto max-w-7xl space-y-4">
+    <div className="flex min-h-full flex-col items-center bg-slate-50 p-4 sm:p-6 lg:p-8">
+      <div className="w-full max-w-7xl space-y-6">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Link href="/marketplace/products" className="mb-2 inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-[#12335f]">

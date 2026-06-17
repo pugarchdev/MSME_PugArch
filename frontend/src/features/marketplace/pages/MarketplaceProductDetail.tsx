@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ChevronRight, ShoppingCart, FileText, MapPin, BadgeCheck, Package, ArrowLeft, Building2, ShieldCheck, ClipboardList, Tags } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronRight, ShoppingCart, FileText, MapPin, BadgeCheck, Package, ArrowLeft, Building2, ShieldCheck, ClipboardList, Tags, BookmarkPlus } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { marketplaceApi, type MarketplaceProduct } from '../api';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
@@ -14,6 +14,7 @@ import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
 import { getMarketplaceImageCandidates, resolveMarketplaceImage } from '../utils/marketplaceImages';
 import { CompareToggleButton } from '../components/CompareToggleButton';
+import { saveSupplier } from '../utils/savedSuppliers';
 
 const formatValue = (value: unknown, fallback = 'Not provided') => {
     if (value === null || value === undefined || value === '') return fallback;
@@ -37,6 +38,7 @@ const isImageFile = (file: any) => String(file?.mimeType || '').toLowerCase().st
 export default function MarketplaceProductDetail() {
     const { user } = useAuth();
     const pathname = usePathname() || '';
+    const router = useRouter();
     const productId = Number(pathname.split('/').pop());
     const queryClient = useQueryClient();
 
@@ -112,12 +114,28 @@ export default function MarketplaceProductDetail() {
     };
 
     const handleRequestQuote = () => {
-        if (cartQuantity === 0) {
-            handleAddToCart();
+        if (!product) return;
+        if (!user) {
+            toast.info('Login is required to send a quote request.', {
+                action: { label: 'Login', onClick: () => router.push(`/login?redirect=${encodeURIComponent(pathname)}`) },
+            });
+            return;
         }
-        toast.info('Login is required only when you submit inquiry or checkout.', {
-            action: { label: 'Continue', onClick: () => { window.location.href = '/cart'; } },
+        if (user.role !== 'buyer') {
+            toast.info('Quote requests are available from buyer accounts.');
+            return;
+        }
+        const sellerUserId = Number(product.seller?.id || 0);
+        if (!sellerUserId) {
+            toast.error('Seller contact is not available for this listing.');
+            return;
+        }
+        const params = new URLSearchParams({
+            sellerId: String(sellerUserId),
+            subject: `Quote request: ${product.name}`,
+            message: `Hello, I would like to request a quotation for ${product.name}.\n\nCategory: ${product.category?.name || 'Not specified'}\nQuantity: Please confirm minimum order quantity and availability.\nDelivery: Please share delivery timeline, payment terms, and applicable taxes.`
         });
+        router.push(`/buyer/messages?${params.toString()}`);
     };
 
     if (loading) return <PremiumLoader />;
@@ -148,6 +166,22 @@ export default function MarketplaceProductDetail() {
     const location = product.organization?.city || product.organization?.district || product.organization?.state;
     const productAny = product as any;
     const price = Number(product.price || 0);
+
+    const handleSaveSupplier = () => {
+        if (!product.organization?.id) {
+            toast.error('Supplier details are not available for this listing.');
+            return;
+        }
+        saveSupplier({
+            id: product.organization.id,
+            sellerUserId: product.seller?.id || null,
+            name: product.organization.organizationName || product.seller?.name || 'Verified supplier',
+            location: [product.organization.city, product.organization.district, product.organization.state].filter(Boolean).join(', '),
+            verificationStatus: product.organization.verificationStatus,
+            source: product.name,
+        });
+        toast.success('Supplier saved');
+    };
     const discountPrice = Number(productAny.discountPrice || 0);
     const hasOffer = discountPrice > 0 && price > 0 && discountPrice < price;
     const displayPrice = hasOffer ? discountPrice : price;
@@ -368,6 +402,13 @@ export default function MarketplaceProductDetail() {
                                     item={{ type: 'product', id: product.id, categoryId: product.category?.id }}
                                     className="h-11 flex-1 border-[#0b2447]/20 text-[#0b2447] sm:flex-none sm:px-5"
                                 />
+                                <button
+                                    type="button"
+                                    onClick={handleSaveSupplier}
+                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.97] sm:flex-none"
+                                >
+                                    <BookmarkPlus className="h-4 w-4" /> Save Supplier
+                                </button>
                             </div>
                         </div>
                     </div>

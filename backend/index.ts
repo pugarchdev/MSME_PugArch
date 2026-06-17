@@ -134,6 +134,7 @@ const createBackgroundFailureLogger = (label: string) => {
 const logAuctionFinalizerFailure = createBackgroundFailureLogger('AuctionFinalizer failed');
 const logAuctionFinalizerSkipped = createBackgroundFailureLogger('AuctionFinalizer skipped auction finalization');
 const logDbKeepaliveFailure = createBackgroundFailureLogger('DB keepalive ping failed');
+const logMessageSideEffectFailure = createBackgroundFailureLogger('Message side effects failed');
 
 const serverlessApp = createApp();
 
@@ -4725,25 +4726,31 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: AuthReques
       include: { attachments: true, sender: { select: { id: true, name: true, role: true } } }
     });
     await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
-    const recipientId = Number(req.user?.id) === conversation.buyerId ? conversation.sellerId : conversation.buyerId;
-    await createNotificationSafe({
-      userId: recipientId,
-      title: 'New procurement question',
-      message: `A new question or message was sent for ${conversation.subject}.`,
-      type: 'message_received',
-      redirectUrl: recipientId === conversation.sellerId ? '/seller/messages' : '/buyer/messages'
-    });
-    await auditLog({
-      actorUserId: Number(req.user?.id),
-      actorRole: req.user?.role,
-      action: 'message.sent',
-      entityType: 'message',
-      entityId: message.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: { conversationId: conversation.id, recipientId }
-    });
     res.status(201).json(maskSensitive(message));
+    const recipientId = Number(req.user?.id) === conversation.buyerId ? conversation.sellerId : conversation.buyerId;
+    const actorUserId = Number(req.user?.id);
+    const actorRole = req.user?.role;
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'];
+    void Promise.allSettled([
+      createNotificationSafe({
+        userId: recipientId,
+        title: 'New procurement question',
+        message: `A new question or message was sent for ${conversation.subject}.`,
+        type: 'message_received',
+        redirectUrl: recipientId === conversation.sellerId ? '/seller/messages' : '/buyer/messages'
+      }),
+      auditLog({
+        actorUserId,
+        actorRole,
+        action: 'message.sent',
+        entityType: 'message',
+        entityId: message.id,
+        ipAddress,
+        userAgent,
+        metadata: { conversationId: conversation.id, recipientId }
+      })
+    ]).catch(logMessageSideEffectFailure);
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to send message');
   }

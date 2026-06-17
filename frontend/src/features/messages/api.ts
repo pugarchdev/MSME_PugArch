@@ -11,6 +11,7 @@ export interface MessageDto {
     createdAt: string;
     sender?: { id: number; name: string; role: string };
     attachments?: Array<{ id: number; fileAssetId: number }>;
+    pending?: boolean;
 }
 
 export interface ConversationDto {

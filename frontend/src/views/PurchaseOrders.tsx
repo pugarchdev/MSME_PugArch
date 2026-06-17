@@ -40,6 +40,7 @@ export default function PurchaseOrders() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+  const viewerScope = `${user?.role || 'guest'}-${user?.id || 'none'}`;
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -65,13 +66,14 @@ export default function PurchaseOrders() {
     {
       q: debouncedSearch,
       status: purchaseOrderStatusParam(activeTab),
-      sortBy
+      sortBy,
+      viewerScope
     },
     10
   );
 
   const { data: allOrders, reload: reloadAllOrders } = useFeatureQuery<PurchaseOrderDto[]>(
-    '/api/purchase-orders?take=500',
+    `/api/purchase-orders?take=500&viewerScope=${encodeURIComponent(viewerScope)}`,
     []
   );
 

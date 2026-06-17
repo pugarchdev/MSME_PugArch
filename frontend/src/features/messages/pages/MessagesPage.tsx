@@ -3,9 +3,11 @@
  *
  * Routes: /buyer/messages, /seller/messages
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, FileText, MessageSquare, Plus, RefreshCw, Send, X } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -15,15 +17,44 @@ import { formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import { toast } from 'sonner';
 import { useConversation, useConversations, useCreateConversation, useSendMessage } from '../hooks';
-import type { ConversationDto } from '../api';
+import type { ConversationDto, MessageDto } from '../api';
 
 export default function MessagesPage() {
     const { user } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname() || (user?.role === 'seller' ? '/seller/messages' : '/buyer/messages');
+    const searchParams = useSearchParams();
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [showCreate, setShowCreate] = useState(false);
+    const queryInitializedRef = useRef(false);
     const list = useConversations();
 
     const conversations = list.data || [];
+    const initialModalValues = useMemo(() => {
+        const sellerId = searchParams?.get('sellerId') || '';
+        const buyerId = searchParams?.get('buyerId') || '';
+        const counterpartyId = searchParams?.get('counterpartyId') || '';
+        return {
+            counterpartyId: user?.role === 'buyer' ? (sellerId || counterpartyId) : (buyerId || counterpartyId),
+            subject: searchParams?.get('subject') || '',
+            message: searchParams?.get('message') || '',
+        };
+    }, [searchParams, user?.role]);
+
+    useEffect(() => {
+        if (!user || queryInitializedRef.current) return;
+        if (!initialModalValues.counterpartyId) return;
+        queryInitializedRef.current = true;
+        setShowCreate(true);
+    }, [initialModalValues.counterpartyId, user]);
+
+    const handleCreated = (id: number) => {
+        setShowCreate(false);
+        setSelectedId(id);
+        if (searchParams?.toString()) {
+            router.replace(pathname);
+        }
+    };
 
     return (
         <div className="space-y-4">
@@ -73,8 +104,12 @@ export default function MessagesPage() {
 
             {showCreate && (
                 <CreateConversationModal
+                    key={`${initialModalValues.counterpartyId}-${initialModalValues.subject}`}
+                    initialCounterpartyId={initialModalValues.counterpartyId}
+                    initialSubject={initialModalValues.subject}
+                    initialMessage={initialModalValues.message}
                     onClose={() => setShowCreate(false)}
-                    onCreated={(id) => { setShowCreate(false); setSelectedId(id); }}
+                    onCreated={handleCreated}
                 />
             )}
         </div>
@@ -130,6 +165,7 @@ function ConversationList({ conversations, selectedId, isLoading, error, onSelec
 
 function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) {
     const { user } = useAuth();
+    const queryClient = useQueryClient();
     const { data: conv, isLoading, error, refetch } = useConversation(id);
     const sendMut = useSendMessage();
     const [content, setContent] = useState('');
@@ -139,11 +175,41 @@ function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) 
     if (!conv) return null;
 
     const handleSend = async () => {
-        if (content.trim().length < 1) return;
-        await runWithToast(() => sendMut.mutateAsync({ id: conv.id, data: { content: content.trim() } }), {
-            loading: 'Sending...', success: 'Message sent', error: 'Send failed'
-        });
+        const messageText = content.trim();
+        if (messageText.length < 1) return;
+        const optimisticId = -Date.now();
+        const optimisticMessage: MessageDto = {
+            id: optimisticId,
+            conversationId: conv.id,
+            senderId: Number(user?.id),
+            content: messageText,
+            createdAt: new Date().toISOString(),
+            sender: user ? { id: Number(user.id), name: user.name || 'You', role: user.role } : undefined,
+            attachments: [],
+            pending: true,
+        };
         setContent('');
+        queryClient.setQueryData<ConversationDto>(['conversations', 'detail', conv.id], (current) => current ? ({
+            ...current,
+            lastMessageAt: optimisticMessage.createdAt,
+            messages: [...(current.messages || []), optimisticMessage],
+        }) : current);
+
+        try {
+            const saved = await sendMut.mutateAsync({ id: conv.id, data: { content: messageText } });
+            queryClient.setQueryData<ConversationDto>(['conversations', 'detail', conv.id], (current) => current ? ({
+                ...current,
+                lastMessageAt: saved.createdAt || optimisticMessage.createdAt,
+                messages: (current.messages || []).map((message) => message.id === optimisticId ? saved : message),
+            }) : current);
+        } catch (err) {
+            queryClient.setQueryData<ConversationDto>(['conversations', 'detail', conv.id], (current) => current ? ({
+                ...current,
+                messages: (current.messages || []).filter((message) => message.id !== optimisticId),
+            }) : current);
+            setContent(messageText);
+            toast.error(err instanceof Error ? err.message : 'Unable to send message');
+        }
     };
 
     return (
@@ -188,7 +254,7 @@ function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) 
                                                 </div>
                                             )}
                                             <p className={`mt-1 text-[10px] ${isMe ? 'text-white/60' : 'text-slate-400'}`}>
-                                                {formatRelative(m.createdAt)}
+                                                {m.pending ? 'sending...' : formatRelative(m.createdAt)}
                                             </p>
                                         </div>
                                     </div>
@@ -215,8 +281,8 @@ function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) 
                     />
                     <div className="flex items-center justify-between">
                         <p className="text-[10px] text-slate-400">Ctrl+Enter to send · {content.length}/2000</p>
-                        <Button onClick={handleSend} disabled={sendMut.isPending || content.trim().length < 1} className="bg-[#12335f] text-white">
-                            {sendMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        <Button onClick={handleSend} disabled={content.trim().length < 1} className="bg-[#12335f] text-white">
+                            <Send className="mr-2 h-4 w-4" />
                             Send
                         </Button>
                     </div>
@@ -226,11 +292,26 @@ function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) 
     );
 }
 
-function CreateConversationModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+function CreateConversationModal({
+    onClose,
+    onCreated,
+    initialCounterpartyId = '',
+    initialSubject = '',
+    initialMessage = '',
+}: {
+    onClose: () => void;
+    onCreated: (id: number) => void;
+    initialCounterpartyId?: string;
+    initialSubject?: string;
+    initialMessage?: string;
+}) {
     const { user } = useAuth();
-    const [counterpartyId, setCounterpartyId] = useState<number | ''>('');
-    const [subject, setSubject] = useState('');
-    const [message, setMessage] = useState('');
+    const [counterpartyId, setCounterpartyId] = useState<number | ''>(() => {
+        const id = Number(initialCounterpartyId);
+        return Number.isFinite(id) && id > 0 ? id : '';
+    });
+    const [subject, setSubject] = useState(initialSubject);
+    const [message, setMessage] = useState(initialMessage);
     const mut = useCreateConversation();
 
     const isBuyer = user?.role === 'buyer';
@@ -285,10 +366,16 @@ function CreateConversationModal({ onClose, onCreated }: { onClose: () => void; 
                                 const payload = isBuyer
                                     ? { sellerId: counterpartyId as number, subject: subject.trim(), initialMessage: message.trim() || undefined }
                                     : { buyerId: counterpartyId as number, subject: subject.trim(), initialMessage: message.trim() || undefined };
-                                const result = await runWithToast(() => mut.mutateAsync(payload), {
-                                    loading: 'Creating...', success: 'Conversation created', error: 'Failed'
-                                });
-                                if (result?.conversation?.id) onCreated(result.conversation.id);
+                                try {
+                                    const result = await runWithToast(() => mut.mutateAsync(payload), {
+                                        loading: 'Creating...',
+                                        success: 'Conversation created',
+                                        error: (err) => err instanceof Error ? err.message : 'Unable to create conversation'
+                                    });
+                                    if (result?.conversation?.id) onCreated(result.conversation.id);
+                                } catch {
+                                    // runWithToast already displays the API validation message.
+                                }
                             }}
                             disabled={mut.isPending}
                             className="bg-[#12335f] text-white"

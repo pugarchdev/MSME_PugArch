@@ -125,7 +125,7 @@ export default function VendorStorefrontPage({ id }: Props) {
                     <Button variant="outline" onClick={() => router.push(`/buyer/direct-purchase?sellerId=${id}`)}>
                         <ShoppingCart className="mr-2 h-4 w-4" /> Direct Purchase
                     </Button>
-                    <Button variant="outline" onClick={() => router.push(`/buyer/messages?counterpartyId=${id}`)}>
+                    <Button variant="outline" onClick={() => router.push(`/buyer/messages?sellerId=${id}&subject=${encodeURIComponent(`Supplier inquiry: ${profile.businessName || v.name}`)}`)}>
                         <Send className="mr-2 h-4 w-4" /> Message
                     </Button>
                 </div>

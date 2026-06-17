@@ -152,7 +152,22 @@ export function MarketplaceItemCard({
             action: 'REQUIREMENT_POSTED',
             metadata: { source: 'request-quote-button' },
         }).catch(() => undefined);
-        router.push(`/buyer/requirements/new?itemType=${type.toUpperCase()}&itemId=${item.id}`);
+        if (user.role !== 'buyer') {
+            toast.info('Quote requests are available from buyer accounts.');
+            return;
+        }
+        const sellerUserId = Number((item as any).seller?.id || (item as any).sellerId || 0);
+        if (!sellerUserId) {
+            router.push(detailHref);
+            toast.info('Open the listing details to contact this seller.');
+            return;
+        }
+        const params = new URLSearchParams({
+            sellerId: String(sellerUserId),
+            subject: `Quote request: ${item.name}`,
+            message: `Hello, I would like to request a quotation for ${item.name}.\n\nCategory: ${category?.name || 'Not specified'}\nPlease share best price, availability, delivery timeline, payment terms, and applicable taxes.`
+        });
+        router.push(`/buyer/messages?${params.toString()}`);
     };
 
     return (

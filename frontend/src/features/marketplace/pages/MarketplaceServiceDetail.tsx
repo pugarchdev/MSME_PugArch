@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ChevronRight, FileText, MapPin, BadgeCheck, Wrench, ArrowLeft, ShoppingCart, Building2, ShieldCheck, ClipboardList } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronRight, FileText, MapPin, BadgeCheck, Wrench, ArrowLeft, ShoppingCart, Building2, ShieldCheck, ClipboardList, BookmarkPlus } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { marketplaceApi, type MarketplaceService } from '../api';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
+import { saveSupplier } from '../utils/savedSuppliers';
 
 const pricingLabels: Record<string, string> = {
     FIXED: 'Fixed Price',
@@ -45,6 +46,7 @@ const isImageFile = (file: any) => String(file?.mimeType || '').toLowerCase().st
 export default function MarketplaceServiceDetail() {
     const { user } = useAuth();
     const pathname = usePathname() || '';
+    const router = useRouter();
     const serviceId = Number(pathname.split('/').pop());
     const queryClient = useQueryClient();
 
@@ -116,12 +118,28 @@ export default function MarketplaceServiceDetail() {
     };
 
     const handleRequestQuote = () => {
-        if (cartQuantity === 0) {
-            handleAddToCart();
+        if (!service) return;
+        if (!user) {
+            toast.info('Login is required to send a quote request.', {
+                action: { label: 'Login', onClick: () => router.push(`/login?redirect=${encodeURIComponent(pathname)}`) },
+            });
+            return;
         }
-        toast.info('Login is required only when you submit inquiry or checkout.', {
-            action: { label: 'Continue', onClick: () => { window.location.href = '/cart'; } },
+        if (user.role !== 'buyer') {
+            toast.info('Quote requests are available from buyer accounts.');
+            return;
+        }
+        const sellerUserId = Number(service.seller?.id || 0);
+        if (!sellerUserId) {
+            toast.error('Seller contact is not available for this listing.');
+            return;
+        }
+        const params = new URLSearchParams({
+            sellerId: String(sellerUserId),
+            subject: `Quote request: ${service.name}`,
+            message: `Hello, I would like to request a quotation for ${service.name}.\n\nCategory: ${service.category?.name || 'Not specified'}\nService area: ${service.serviceArea || 'Please confirm'}\nPlease share scope, delivery timeline, payment terms, and applicable taxes.`
         });
+        router.push(`/buyer/messages?${params.toString()}`);
     };
 
     if (loading) return <PremiumLoader />;
@@ -148,6 +166,22 @@ export default function MarketplaceServiceDetail() {
 
     const isVerified = service.organization?.verificationStatus === 'VERIFIED';
     const location = service.organization?.city || service.organization?.district || service.organization?.state;
+
+    const handleSaveSupplier = () => {
+        if (!service.organization?.id) {
+            toast.error('Supplier details are not available for this listing.');
+            return;
+        }
+        saveSupplier({
+            id: service.organization.id,
+            sellerUserId: service.seller?.id || null,
+            name: service.organization.organizationName || service.seller?.name || 'Verified supplier',
+            location: [service.organization.city, service.organization.district, service.organization.state].filter(Boolean).join(', '),
+            verificationStatus: service.organization.verificationStatus,
+            source: service.name,
+        });
+        toast.success('Supplier saved');
+    };
     const imageUrl = imageFailed ? '' : resolveMarketplaceImage(service, 'service');
     const serviceAny = service as any;
     const serviceDocuments = [
@@ -366,6 +400,14 @@ export default function MarketplaceServiceDetail() {
                                     className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-[#0b2447] text-white text-sm font-bold hover:bg-[#12335f] active:scale-[0.97] transition"
                                 >
                                     <FileText className="h-4 w-4" /> Request Quote
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSaveSupplier}
+                                    className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 active:scale-[0.97] transition"
+                                >
+                                    <BookmarkPlus className="h-4 w-4" /> Save Supplier
                                 </button>
 
                                 {cartQuantity > 0 ? (

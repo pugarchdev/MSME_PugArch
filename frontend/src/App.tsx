@@ -79,6 +79,7 @@ const DisputesPage = lazy(() => import('./features/disputes/pages/DisputesPage')
 const MessagesPage = lazy(() => import('./features/messages/pages/MessagesPage'));
 const SecuritySettingsPage = lazy(() => import('./features/settings/pages/SecuritySettingsPage'));
 const NotificationPrefsPage = lazy(() => import('./features/settings/pages/NotificationPrefsPage'));
+const RoleReportsPage = lazy(() => import('./features/reports/pages/RoleReportsPage'));
 const ProcurementReportPage = lazy(() => import('./features/reports/pages/ProcurementReportPage'));
 const PaymentsReportPage = lazy(() => import('./features/reports/pages/PaymentsReportPage'));
 const SuppliersReportPage = lazy(() => import('./features/reports/pages/SuppliersReportPage'));
@@ -87,6 +88,7 @@ const MarketplaceSellerStore = lazy(() => import('./features/marketplace/pages/M
 const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
 const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
 const PortalDocumentation = lazy(() => import('./views/PortalDocumentation'));
+const HelpPage = lazy(() => import('./views/HelpPage'));
 const MasterAdminPage = lazy(() => import('./features/masterAdmin/pages/MasterAdminPage'));
 const BidsListingPage = lazy(() => import('./features/procurementBid/pages/BidsListingPage'));
 const BidDetailsPage = lazy(() => import('./features/procurementBid/pages/BidDetailsPage'));
@@ -101,6 +103,7 @@ const ReverseAuctionDetailPage = lazy(() => import('./features/reverseAuctions/p
 const ReverseAuctionLivePage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionLivePage'));
 const AuctionResultPage = lazy(() => import('./features/reverseAuctions/pages/AuctionResultPage'));
 const MarketplaceComparePage = lazy(() => import('./features/marketplace/pages/MarketplaceComparePage'));
+const SavedSuppliersPage = lazy(() => import('./features/marketplace/pages/SavedSuppliersPage'));
 const AdminBannerManagementPage = lazy(() => import('./features/banners/pages/AdminBannerManagementPage'));
 const MonthlyRankingsAdminPage = lazy(() => import('./features/banners/pages/MonthlyRankingsAdminPage'));
 const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/pages/OrganizationBannerEligibilityPage'));
@@ -175,7 +178,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -268,6 +271,8 @@ export default function App() {
     // in, sign up, or auto-accept; InviteSignupPage creates the account.
     if (pathname === '/invite/accept') return <AcceptInvitePage />;
     if (pathname === '/invite/signup') return <InviteSignupPage />;
+    if (pathname === '/help') return <HelpPage />;
+    if (pathname === '/user-guide') return <PortalDocumentation />;
     // Public marketplace routes (accessible without login)
     if (pathname === '/marketplace/products') return <MarketplaceProductList />;
     if (pathname === '/marketplace/services') return <MarketplaceProductList />;
@@ -308,7 +313,6 @@ export default function App() {
     if (pathname === '/shg/support' && shgRouteOk) return <ShgOnboarding section="support" />;
     if (pathname === '/shg/settings' && shgRouteOk) return <ShgOnboarding section="settings" />;
     if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
-    if (pathname === '/user-guide') return <PortalDocumentation />;
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
@@ -343,6 +347,7 @@ export default function App() {
     if (/^\/buyer\/tenders\/[^/]+$/.test(pathname) && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Tender Detail" eyebrow="Tendering" description="Tender detail and linked procurement records." endpoint="/api/tenders" />;
     if (pathname === '/buyer/tenders' && roleOk(user.role, ['buyer'])) return <Tenders />;
     if (pathname === '/buyer/vendors' && roleOk(user.role, ['buyer'])) return <Vendors />;
+    if (pathname === '/buyer/saved-suppliers' && roleOk(user.role, ['buyer'])) return <SavedSuppliersPage />;
     if (pathname === '/quotations' && roleOk(user.role, ['buyer', 'seller'])) return <Quotations />;
     if (pathname === '/buyer/orders' && roleOk(user.role, ['buyer'])) return <PurchaseOrders />;
     if (pathname === '/buyer/inspection' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Inspection" eyebrow="Quality Control" description="Inspection reports connected to purchase orders." endpoint="/api/purchase-orders" />;
@@ -357,7 +362,8 @@ export default function App() {
     if (pathname === '/payments/invoices' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <InvoiceRegisterPage role={user.role === 'admin' ? 'admin' : user.role === 'seller' ? 'seller' : 'buyer'} />;
     if (pathname === '/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
     if (pathname === '/payments/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
-    if (pathname === '/orders' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
+    if (pathname === '/orders' && roleOk(user.role, ['buyer', 'seller'])) return <PurchaseOrders />;
+    if (pathname === '/orders' && roleOk(user.role, ['admin'])) return <ProcurementOrdersPage />;
     if (pathname === '/orders/delivery-confirmation' && roleOk(user.role, ['buyer'])) return <GrnListPage />;
     if (pathname === '/orders/tracking' && roleOk(user.role, ['buyer', 'seller', 'admin'])) {
       if (user.role === 'seller') return <SellerDeliveryManagementPage />;
@@ -374,7 +380,7 @@ export default function App() {
       }
     }
     if (pathname === '/profile') return <Profile />;
-    if (pathname === '/reports' && roleOk(user.role, ['buyer', 'seller'])) return <GenericFeaturePage title="Reports" eyebrow="Reports" description="Role-based procurement and payment reports will appear here as reporting modules are enabled." endpoint="/api/dashboard/summary" />;
+    if (pathname === '/reports' && roleOk(user.role, ['buyer', 'seller'])) return <RoleReportsPage />;
     if (pathname === '/admin/onboarding' && roleOk(user.role, ['admin'])) return <AdminOnboarding />;
     if (pathname === '/admin/shg-applications' && roleOk(user.role, ['admin'])) return <AdminShgApplications />;
     if (/^\/admin\/shg-applications\/\d+$/.test(pathname) && roleOk(user.role, ['admin'])) return <AdminShgApplications />;

@@ -191,6 +191,7 @@ export interface MarketplaceHomeSectionConfig {
 
 export interface MarketplaceSeller {
     id: number;
+    sellerUserId?: number | null;
     organizationName: string;
     organizationType: string;
     city?: string;

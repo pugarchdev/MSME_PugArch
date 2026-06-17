@@ -7,7 +7,7 @@ import { createConversation, fetchConversation, fetchConversations, sendMessage 
 const KEY = ['conversations'] as const;
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
-    qc.invalidateQueries({ queryKey: KEY });
+    qc.invalidateQueries({ queryKey: [...KEY, 'list'] });
 };
 
 export const useConversations = () =>

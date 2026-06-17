@@ -353,7 +353,7 @@ export function MarketplaceHeader({ user }: Props) {
 
                         {/* Help (desktop) */}
                         <button
-                            onClick={() => document.getElementById('help')?.scrollIntoView({ behavior: 'smooth' })}
+                            onClick={() => router.push('/help')}
                             className="hidden lg:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 active:scale-95 transition-colors [&:not(:disabled):hover]:translate-y-0"
                         >
                             <HelpCircle className="h-3.5 w-3.5 shrink-0" />

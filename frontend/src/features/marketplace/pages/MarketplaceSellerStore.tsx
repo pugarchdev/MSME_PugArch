@@ -16,6 +16,7 @@ import {
 import { useGuestCart } from '../hooks/useGuestCart';
 import { useQueryClient } from '@tanstack/react-query';
 import { MarketplaceItemCard } from '../components/MarketplaceItemCard';
+import { saveSupplier } from '../utils/savedSuppliers';
 
 const PRICING_LABELS: Record<string, string> = {
     FIXED: 'Fixed', HOURLY: '/hr', DAILY: '/day', MONTHLY: '/mo',
@@ -127,6 +128,21 @@ export default function MarketplaceSellerStore() {
     const loc = [office.city, office.state].filter(Boolean).join(', ') || vendor.city || '';
     const name = profile.businessName || vendor.name || 'Seller';
     const initial = name.charAt(0).toUpperCase();
+    const sellerUserId = Number(vendor.sellerUserId || 0);
+
+    const handleSaveSupplier = () => {
+        saveSupplier({
+            id: vendor.id,
+            sellerUserId: sellerUserId || null,
+            name,
+            location: loc,
+            verificationStatus: 'VERIFIED',
+            email: vendor.email,
+            mobile: vendor.mobile,
+            source: 'Seller store',
+        });
+        toast.success('Supplier saved');
+    };
 
     return (
         <div className="min-h-dvh bg-slate-50 flex flex-col font-sans">
@@ -216,22 +232,28 @@ export default function MarketplaceSellerStore() {
                         {user?.role === 'buyer' && (
                             <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-white/10">
                                 <button
-                                    onClick={() => router.push(`/buyer/rfq?sellerId=${vendor.sellerUserId || vendor.id}`)}
+                                    onClick={() => router.push(`/buyer/rfq?sellerId=${sellerUserId || vendor.id}`)}
                                     className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-orange-500 text-white text-xs font-bold uppercase tracking-wider hover:bg-orange-600 active:scale-95 transition-all shadow-md shadow-orange-500/25 cursor-pointer"
                                 >
                                     <Send className="h-4 w-4" /> Send RFQ
                                 </button>
                                 <button
-                                    onClick={() => router.push(`/buyer/direct-purchase?sellerId=${vendor.sellerUserId || vendor.id}`)}
+                                    onClick={() => router.push(`/buyer/direct-purchase?sellerId=${sellerUserId || vendor.id}`)}
                                     className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                                 >
                                     <ShoppingCart className="h-4 w-4" /> Direct Purchase
                                 </button>
                                 <button
-                                    onClick={() => router.push(`/buyer/messages?counterpartyId=${vendor.sellerUserId || vendor.id}`)}
+                                    onClick={() => sellerUserId ? router.push(`/buyer/messages?sellerId=${sellerUserId}&subject=${encodeURIComponent(`Supplier inquiry: ${name}`)}`) : toast.error('Seller contact is not available for this store.')}
                                     className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                                 >
                                     <MessageSquare className="h-4 w-4" /> Message Seller
+                                </button>
+                                <button
+                                    onClick={handleSaveSupplier}
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                                >
+                                    <Building2 className="h-4 w-4" /> Save Supplier
                                 </button>
                             </div>
                         )}

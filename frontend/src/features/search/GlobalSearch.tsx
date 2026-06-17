@@ -32,6 +32,7 @@ const QUICK_PAGES = (role: string): Result[] => {
         { id: 'p:tenders-seller', label: 'Large Procurements', secondary: 'Tenders and procurement bids', icon: FileText, href: '/bids', roles: ['seller'] },
         { id: 'p:rfq-buyer', label: 'Supplier Responses', secondary: 'RFQ responses and quotations', icon: FileText, href: '/buyer/procurement/responses', roles: ['buyer'] },
         { id: 'p:rfq-seller', label: 'Request Quotations', secondary: 'RFQs received', icon: FileText, href: '/seller/rfq', roles: ['seller'] },
+        { id: 'p:saved-suppliers', label: 'Saved Suppliers', secondary: 'Buyer supplier shortlist', icon: Store, href: '/buyer/saved-suppliers', roles: ['buyer'] },
         { id: 'p:orders-buyer', label: 'Active Orders', icon: ArrowRight, href: '/orders', roles: ['buyer'] },
         { id: 'p:orders-seller', label: 'Orders Received', icon: ArrowRight, href: '/orders', roles: ['seller'] },
         { id: 'p:delivery-mgmt', label: 'Delivery Updates', icon: ArrowRight, href: '/orders/tracking', roles: ['seller'] },
@@ -40,6 +41,7 @@ const QUICK_PAGES = (role: string): Result[] => {
         { id: 'p:escrow', label: 'Payment Hold / Escrow', secondary: 'Escrow', icon: ArrowRight, href: '/payments/escrow', roles: ['buyer', 'seller', 'admin'] },
         { id: 'p:disputes', label: 'Disputes', icon: ArrowRight, href: role === 'admin' ? '/admin/disputes' : `/${role}/disputes` },
         { id: 'p:messages', label: 'Messages', icon: ArrowRight, href: `/${role}/messages`, roles: ['buyer', 'seller'] },
+        { id: 'p:help', label: 'Help', secondary: 'Standard procedure and support', icon: ArrowRight, href: '/help', roles: ['buyer', 'seller', 'admin'] },
         { id: 'p:settings-security', label: 'Security Settings', icon: ArrowRight, href: '/settings/security' },
         { id: 'p:settings-notifications', label: 'Notification Preferences', icon: ArrowRight, href: '/settings/notifications' },
         { id: 'p:team', label: 'Team Management', icon: ArrowRight, href: '/org/team', roles: ['buyer', 'seller'] }

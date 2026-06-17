@@ -302,7 +302,6 @@ export default function MarketplaceProductList() {
             return;
         }
 
-        handleAddToCart(item, { showToast: false });
         marketplaceApi.trackInteraction({
             itemId: item.id,
             itemType: isServices ? 'SERVICE' : 'PRODUCT',
@@ -311,9 +310,29 @@ export default function MarketplaceProductList() {
             metadata: { source: isServices ? 'services-list' : 'products-list' },
         }).catch(() => undefined);
 
-        toast.info('Login is required only when you submit inquiry or checkout.', {
-            action: { label: 'Continue', onClick: () => { window.location.href = '/cart'; } },
+        const detailPath = isServices ? `/marketplace/services/${item.id}` : `/marketplace/products/${item.id}`;
+        if (!user) {
+            toast.info('Login is required to send a quote request.', {
+                action: { label: 'Login', onClick: () => router.push(`/login?redirect=${encodeURIComponent(detailPath)}`) },
+            });
+            return;
+        }
+        if (user.role !== 'buyer') {
+            toast.info('Quote requests are available from buyer accounts.');
+            return;
+        }
+        const sellerUserId = Number(item.seller?.id || item.sellerId || 0);
+        if (!sellerUserId) {
+            router.push(detailPath);
+            toast.info('Open the listing details to contact this seller.');
+            return;
+        }
+        const params = new URLSearchParams({
+            sellerId: String(sellerUserId),
+            subject: `Quote request: ${item.name}`,
+            message: `Hello, I would like to request a quotation for ${item.name}.\n\nCategory: ${item.category?.name || 'Not specified'}\nPlease share best price, availability, delivery timeline, payment terms, and applicable taxes.`
         });
+        router.push(`/buyer/messages?${params.toString()}`);
     };
 
     const cacheAndTrackItem = (item: any) => {

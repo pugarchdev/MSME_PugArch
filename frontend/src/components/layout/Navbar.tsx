@@ -42,7 +42,8 @@ import {
   Images,
   Trophy,
   Gavel,
-  UsersRound
+  UsersRound,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -96,9 +97,13 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/seller/delivery-management': () => import('../../features/sellerDelivery/pages/SellerDeliveryManagementPage'),
   '/seller/ratings': () => import('../../features/ratings/pages/RatingsPage'),
   '/buyer/vendors': () => import('../../views/Vendors'),
+  '/buyer/saved-suppliers': () => import('../../features/marketplace/pages/SavedSuppliersPage'),
+  '/buyer/messages': () => import('../../features/messages/pages/MessagesPage'),
+  '/seller/messages': () => import('../../features/messages/pages/MessagesPage'),
   '/buyer/requirements': () => import('../../features/requirements/pages/RequirementsPage'),
   '/buyer/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/rfq': () => import('../../features/rfq/pages/RfqPage'),
+  '/reports': () => import('../../features/reports/pages/RoleReportsPage'),
   '/seller/rfq': () => import('../../features/rfq/pages/RfqPage'),
   '/reverse-auctions': () => import('../../features/reverseAuctions/pages/ReverseAuctionListPage'),
   '/reverse-auctions/create': () => import('../../features/reverseAuctions/pages/ReverseAuctionCreatePage'),
@@ -132,6 +137,7 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/seller/settings': () => import('../../views/SellerSettings'),
   '/buyer/profile': () => import('../../views/BuyerProfile'),
   '/user-guide': () => import('../../views/PortalDocumentation'),
+  '/help': () => import('../../views/HelpPage'),
   '/profile': () => import('../../views/Profile'),
 };
 
@@ -436,7 +442,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Suppliers', icon: Users, roles: ['buyer'], children: [
       { label: 'Supplier Directory', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
-      { label: 'Saved Suppliers', path: '/buyer/vendors', icon: CheckCircle2, roles: ['buyer'] },
+      { label: 'Saved Suppliers', path: '/buyer/saved-suppliers', icon: CheckCircle2, roles: ['buyer'] },
+      { label: 'Messages', path: '/buyer/messages', icon: MessageSquare, roles: ['buyer'] },
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
     { label: 'Opportunities', icon: FileSearch, roles: ['seller'], children: [
@@ -447,6 +454,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Auctions', path: '/seller/opportunities?type=auction', icon: Gavel, roles: ['seller'] },
     ] },
     { label: 'My Bids', path: '/bids', icon: ClipboardCheck, roles: ['seller'] },
+    { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
     { label: 'Orders', icon: Truck, roles: ['seller'], children: [
       { label: 'Orders Received', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
       { label: 'Delivery Updates', path: '/orders/tracking', icon: Truck, roles: ['seller'] },
@@ -466,7 +474,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Administration', icon: Settings, roles: ['buyer', 'seller'], children: [
       { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
       { label: 'Settings', path: user?.role === 'seller' ? '/seller/settings' : '/buyer/profile', icon: Settings, roles: ['buyer', 'seller'] },
-      { label: 'Help', path: '/user-guide', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
+      { label: 'Help', path: '/help', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
     ] },
     { label: 'Disputes', path: '/buyer/disputes', icon: AlertTriangle, roles: ['buyer'] },
     { label: 'Disputes', path: '/seller/disputes', icon: AlertTriangle, roles: ['seller'] },

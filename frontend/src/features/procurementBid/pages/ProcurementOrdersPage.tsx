@@ -6,8 +6,6 @@ import { usePathname } from 'next/navigation';
 import { ClipboardCheck, CreditCard, ReceiptText, RefreshCcw, Search, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import { PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, StatusBadge } from '../components';
 import { money } from '../data';
 import { procurementOrderApi } from '../orderApi';
@@ -130,7 +128,6 @@ export default function ProcurementOrdersPage() {
   return (
     <PageShell>
       <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
       <main className="mx-auto w-full max-w-7xl px-4 py-5">
         <ProcurementHero
           title={order ? order.poNumber || `Order #${order.id}` : roleTitle(user?.role)}
@@ -196,7 +193,6 @@ export default function ProcurementOrdersPage() {
           </section>
         )}
       </main>
-      <MarketplaceFooter />
     </PageShell>
   );
 }

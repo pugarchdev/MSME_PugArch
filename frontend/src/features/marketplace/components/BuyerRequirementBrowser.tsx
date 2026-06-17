@@ -2,7 +2,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { BadgeCheck, Building2, ChevronRight, MapPin, List, LayoutGrid } from 'lucide-react';
+import { BadgeCheck, Building2, ChevronLeft, ChevronRight, MapPin, List, Grid2X2 } from 'lucide-react';
+import { cn } from '../../../lib/utils';
 import { marketplaceApi, type BuyerRequirement, type MarketplaceOrganization } from '../api';
 import { RequirementCard } from './BuyerRequirementsSection';
 import { formatBudgetRange, formatDateIN, getProcurementStatus, getStatusBadgeClass } from '../utils/procurementDisplay';
@@ -87,6 +88,22 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
 
     const [selectedBuyerId, setSelectedBuyerId] = useState<number | 'all'>('all');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const scrollRef = React.useRef<HTMLDivElement>(null);
+
+    const scroll = (direction: 'left' | 'right') => {
+        scrollRef.current?.scrollBy({ left: direction === 'left' ? -320 : 320, behavior: 'smooth' });
+    };
+
+    const getInitialsBg = (id: number) => {
+        const gradients = [
+            'from-blue-50 to-indigo-100 text-[#0b2447] border-indigo-200/60 shadow-inner',
+            'from-emerald-50 to-teal-100 text-emerald-800 border-emerald-200/60 shadow-inner',
+            'from-purple-50 to-violet-100 text-purple-800 border-purple-200/60 shadow-inner',
+            'from-amber-50 to-orange-100 text-amber-800 border-amber-200/60 shadow-inner',
+            'from-rose-50 to-pink-100 text-rose-800 border-rose-200/60 shadow-inner',
+        ];
+        return gradients[Math.abs(id) % gradients.length];
+    };
 
     useEffect(() => {
         if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -122,45 +139,112 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                     </Link>
                 </div>
 
-                <div className="flex gap-3 overflow-x-auto pb-3 [scrollbar-width:thin]" role="list" aria-label="Buyers with requirements">
+                <div className="relative group/strip">
+                    {/* Left Scroll Button */}
                     <button
                         type="button"
-                        onClick={() => setSelectedBuyerId('all')}
-                        className={`flex min-w-[150px] shrink-0 items-center gap-3 rounded-xl border p-3 text-left transition ${selectedBuyerId === 'all' ? 'border-[#0b2447] bg-[#0b2447] text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-[#0b2447]/40'}`}
+                        onClick={() => scroll('left')}
+                        className="absolute -left-2 lg:-left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/70 bg-white/90 shadow-md backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#0b2447] hover:text-white hover:border-[#0b2447] hover:shadow-lg active:scale-95 lg:flex text-slate-600"
+                        aria-label="Scroll buyers left"
                     >
-                        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${selectedBuyerId === 'all' ? 'bg-white/15' : 'bg-white'} shadow-sm`}><Building2 className="h-5 w-5" /></span>
-                        <span className="min-w-0">
-                            <span className="block text-sm font-black">All Buyers</span>
-                            <span className="block text-[11px] font-semibold opacity-80">{requirements.length} requirement{requirements.length === 1 ? '' : 's'}</span>
-                        </span>
+                        <ChevronLeft className="h-5 w-5" />
                     </button>
 
-                    {buyerSummaries.length === 0 ? (
-                        <div className="min-w-[260px] shrink-0 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-bold text-slate-600">No verified buyers available right now.</div>
-                    ) : buyerSummaries.map(buyer => {
-                        const isActive = selectedBuyerId === buyer.id;
-                        return (
-                            <button
-                                key={buyer.id}
-                                type="button"
-                                onClick={() => setSelectedBuyerId(buyer.id)}
-                                className={`flex min-w-[220px] shrink-0 items-center gap-3 rounded-xl border p-3 text-left transition ${isActive ? 'border-[#0b2447] bg-[#0b2447] text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-[#0b2447]/40 hover:bg-white'}`}
-                                role="listitem"
-                            >
-                                <span className={`flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl ${isActive ? 'bg-white' : 'bg-white'} text-sm font-black text-[#0b2447] shadow-sm`}>
-                                    {buyer.logoUrl ? <img src={buyer.logoUrl} alt={`${buyer.name} logo`} className="h-full w-full object-contain p-1.5" loading="lazy" /> : initials(buyer.name)}
+                    <div
+                        ref={scrollRef}
+                        className="flex gap-4 overflow-x-auto pb-4 pt-1 no-scrollbar lg:px-4"
+                        role="list"
+                        aria-label="Buyers with requirements"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setSelectedBuyerId('all')}
+                            className={cn(
+                                "group flex h-[82px] min-w-[210px] shrink-0 items-center gap-3.5 rounded-2xl border px-3.5 text-left transition-all duration-300 ease-out",
+                                selectedBuyerId === 'all'
+                                    ? "border-[#0b2447] bg-gradient-to-r from-[#0b2447] to-[#12335f] text-white shadow-lg shadow-[#0b2447]/15 ring-2 ring-[#0b2447]/15"
+                                    : "border-slate-200/60 bg-white/85 backdrop-blur-md shadow-sm hover:-translate-y-0.5 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md text-slate-800"
+                            )}
+                        >
+                            <span className={cn(
+                                "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 group-hover:scale-105",
+                                selectedBuyerId === 'all' ? "bg-white/15 border-white/20 text-white" : "bg-gradient-to-br from-slate-50 to-slate-100 text-slate-600 border-slate-200"
+                            )}>
+                                <Building2 className="h-5 w-5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-xs font-black tracking-tight">All Buyers</span>
+                                <span className={cn("mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider", selectedBuyerId === 'all' ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500")}>
+                                    {requirements.length} requirement{requirements.length === 1 ? '' : 's'}
                                 </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="flex items-center gap-1.5">
-                                        <span className="truncate text-sm font-black">{buyer.name}</span>
-                                        {buyer.verified && <BadgeCheck className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-emerald-200' : 'text-emerald-600'}`} />}
+                            </span>
+                        </button>
+
+                        {buyerSummaries.length === 0 ? (
+                            <div className="min-w-[260px] shrink-0 rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-4 text-xs font-bold text-slate-500 flex items-center justify-center">
+                                No verified buyers available right now.
+                            </div>
+                        ) : buyerSummaries.map(buyer => {
+                            const isActive = selectedBuyerId === buyer.id;
+                            const initialsText = initials(buyer.name);
+                            const initialsBgClass = getInitialsBg(buyer.id);
+
+                            return (
+                                <button
+                                    key={buyer.id}
+                                    type="button"
+                                    onClick={() => setSelectedBuyerId(buyer.id)}
+                                    className={cn(
+                                        "group flex h-[82px] min-w-[240px] max-w-[320px] shrink-0 items-center gap-3.5 rounded-2xl border px-3.5 text-left transition-all duration-300 ease-out",
+                                        isActive
+                                            ? "border-[#0b2447] bg-gradient-to-r from-[#0b2447] to-[#12335f] text-white shadow-lg shadow-[#0b2447]/15 ring-2 ring-[#0b2447]/15"
+                                            : "border-slate-200/60 bg-white/85 backdrop-blur-md shadow-sm hover:-translate-y-0.5 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md text-slate-800"
+                                    )}
+                                    role="listitem"
+                                >
+                                    <span className={cn(
+                                        "flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-xl border transition-all duration-300 group-hover:scale-105 shadow-inner",
+                                        isActive ? "bg-white border-white/20 text-[#0b2447]" : `bg-gradient-to-br ${initialsBgClass}`
+                                    )}>
+                                        {buyer.logoUrl ? (
+                                            <img src={buyer.logoUrl} alt={`${buyer.name} logo`} className="h-full w-full object-contain p-1.5" loading="lazy" />
+                                        ) : (
+                                            <span className="text-xs font-black tracking-wider">{initialsText}</span>
+                                        )}
                                     </span>
-                                    {buyer.location && <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold opacity-80"><MapPin className="h-3 w-3" /> {buyer.location}</span>}
-                                    <span className="mt-1 block text-[11px] font-semibold opacity-80">{buyer.requirementCount} requirement{buyer.requirementCount === 1 ? '' : 's'}</span>
-                                </span>
-                            </button>
-                        );
-                    })}
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="truncate text-xs font-black leading-tight">{buyer.name}</span>
+                                            {buyer.verified && (
+                                                <BadgeCheck className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-blue-200" : "text-emerald-600")} />
+                                            )}
+                                        </span>
+                                        {buyer.location && (
+                                            <span className="mt-0.5 flex items-center gap-1 text-[10px] font-bold opacity-80 truncate">
+                                                <MapPin className="h-3 w-3 shrink-0 text-[#8a6a2f]" /> {buyer.location}
+                                            </span>
+                                        )}
+                                        <span className={cn(
+                                            "mt-1.5 inline-block rounded-full px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider",
+                                            isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                                        )}>
+                                            {buyer.requirementCount} requirement{buyer.requirementCount === 1 ? '' : 's'}
+                                        </span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Right Scroll Button */}
+                    <button
+                        type="button"
+                        onClick={() => scroll('right')}
+                        className="absolute -right-2 lg:-right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/70 bg-white/90 shadow-md backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#0b2447] hover:text-white hover:border-[#0b2447] hover:shadow-lg active:scale-95 lg:flex text-slate-600"
+                        aria-label="Scroll buyers right"
+                    >
+                        <ChevronRight className="h-5 w-5" />
+                    </button>
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -169,30 +253,32 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                             <h3 className="text-base font-black text-[#0b2447]">{selectedBuyer ? `${selectedBuyer.name} requirements` : 'All buyer requirements'}</h3>
                             <p className="text-xs font-medium text-slate-500">{selectedBuyerRequirementQuery.isFetching ? 'Loading published requirements...' : `${selectedRequirements.length} matching requirement${selectedRequirements.length === 1 ? '' : 's'} found.`}</p>
                         </div>
-                        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm self-start sm:self-auto">
-                            <button
-                                type="button"
-                                onClick={() => setViewMode('list')}
-                                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                                    viewMode === 'list'
-                                        ? 'bg-[#0b2447] text-white'
-                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                                }`}
-                                title="List View"
-                            >
-                                <List className="h-4 w-4" />
-                            </button>
+                        <div className="inline-flex self-start rounded-lg border border-slate-200 bg-white p-1 sm:self-auto" aria-label="Requirement display mode">
                             <button
                                 type="button"
                                 onClick={() => setViewMode('grid')}
-                                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                                aria-pressed={viewMode === 'grid'}
+                                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-bold transition ${
                                     viewMode === 'grid'
-                                        ? 'bg-[#0b2447] text-white'
-                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                        ? 'bg-[#0b2447] text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-slate-50'
                                 }`}
-                                title="Grid View"
+                                title="Grid view"
                             >
-                                <LayoutGrid className="h-4 w-4" />
+                                <Grid2X2 className="h-3.5 w-3.5" /> Grid
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('list')}
+                                aria-pressed={viewMode === 'list'}
+                                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-bold transition ${
+                                    viewMode === 'list'
+                                        ? 'bg-[#0b2447] text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-slate-50'
+                                }`}
+                                title="List view"
+                            >
+                                <List className="h-3.5 w-3.5" /> List
                             </button>
                         </div>
                     </div>

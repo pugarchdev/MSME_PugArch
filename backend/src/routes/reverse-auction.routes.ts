@@ -127,7 +127,7 @@ const recalculateRanks = async (tx: any, auctionId: number) => {
   }
 };
 
-router.use(authenticate);
+router.use('/reverse-auctions', authenticate);
 
 router.post('/reverse-auctions', authorize('buyer', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
   try {

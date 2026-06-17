@@ -200,14 +200,6 @@ export default function GuestCartPage() {
                                                 {hasPrice ? `Rs ${total.toLocaleString('en-IN')}` : 'Quote required'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between text-slate-500">
-                                            <span>Delivery Charges</span>
-                                            <span className="text-green-600 font-bold">FREE</span>
-                                        </div>
-                                        <div className="flex justify-between text-slate-500">
-                                            <span>Platform Handling</span>
-                                            <span className="text-green-600 font-bold">FREE</span>
-                                        </div>
                                         {hasPrice && items.some(i => !i.price) && (
                                             <p className="text-[10px] text-amber-600 italic bg-amber-50/50 p-2 rounded border border-amber-100">+ Additional quote requests required for some items</p>
                                         )}

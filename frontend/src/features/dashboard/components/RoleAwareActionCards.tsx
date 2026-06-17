@@ -188,34 +188,34 @@ function RoleAwareActionCards() {
     const cards: ActionCardConfig[] = useMemo(() => [
         // ─── Buyer baseline tiles ───
         {
-            label: 'My Tenders',
+            label: 'Active Procurements',
             count: data.myTendersCount || 0,
-            href: '/buyer/tenders',
+            href: '/buyer/procurements',
             icon: Gavel,
             tone: 'indigo',
             show: isBuyer,
             priority: false
         },
         {
-            label: 'Active POs',
+            label: 'Active Orders',
             count: data.myActivePOsCount || 0,
-            href: '/buyer/orders',
+            href: '/orders',
             icon: Package,
             tone: 'emerald',
             show: isBuyer,
             priority: false
         },
         {
-            label: 'RFQs',
+            label: 'Supplier Responses',
             count: data.myRfqsCount || 0,
-            href: '/buyer/rfq',
+            href: '/buyer/procurement/responses',
             icon: Send,
             tone: 'blue',
             show: isBuyer,
             priority: false
         },
         {
-            label: 'Reverse Auctions',
+            label: 'Negotiate Price',
             count: data.reverseAuctionsActive || data.reverseAuctionsScheduled || 0,
             href: '/reverse-auctions',
             icon: Gavel,
@@ -224,18 +224,18 @@ function RoleAwareActionCards() {
             priority: false
         },
         {
-            label: 'Pending Invoices',
+            label: 'Pending Payments',
             count: data.myPendingInvoicesCount || 0,
-            href: '/buyer/invoices',
+            href: '/payments/invoices',
             icon: Receipt,
             tone: 'rose',
             show: isBuyer,
             priority: false
         },
         {
-            label: 'GRNs to Approve',
+            label: 'Delivery Confirmation',
             count: data.grnsToApproveCount || 0,
-            href: '/grn',
+            href: '/orders/delivery-confirmation',
             icon: ClipboardList,
             tone: 'emerald',
             show: isBuyer,
@@ -244,18 +244,18 @@ function RoleAwareActionCards() {
 
         // ─── Seller baseline tiles ───
         {
-            label: 'Open Tenders',
+            label: 'New Opportunities',
             count: data.sellerOpenTendersCount || 0,
-            href: '/seller/tenders',
+            href: '/seller/opportunities',
             icon: Gavel,
             tone: 'indigo',
             show: isSeller,
             priority: false
         },
         {
-            label: 'Active POs',
+            label: 'Orders Received',
             count: data.sellerActivePOsCount || 0,
-            href: '/seller/orders',
+            href: '/orders',
             icon: Package,
             tone: 'emerald',
             show: isSeller,
@@ -280,18 +280,18 @@ function RoleAwareActionCards() {
             priority: false
         },
         {
-            label: 'Pending Invoices',
+            label: 'Payment Status',
             count: data.sellerPendingInvoicesCount || 0,
-            href: '/seller/invoices',
+            href: '/payments/transactions',
             icon: Receipt,
             tone: 'rose',
             show: isSeller,
             priority: false
         },
         {
-            label: 'Quotations',
+            label: 'Request Quotations',
             count: data.sellerQuotationsCount || 0,
-            href: '/quotations',
+            href: '/seller/rfq',
             icon: FileText,
             tone: 'purple',
             show: isSeller,

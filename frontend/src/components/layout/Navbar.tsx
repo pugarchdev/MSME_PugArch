@@ -50,11 +50,12 @@ import { isShgUser, getSellerPortalPath } from '../../lib/shg';
 
 interface SidebarItem {
   label: string;
-  path: string;
+  path?: string;
   icon: any;
   roles: string[];
   permission?: string;
   featureCode?: string;
+  children?: SidebarItem[];
 }
 
 interface SidebarProps {
@@ -68,6 +69,15 @@ interface SidebarProps {
 const preloadRegistry: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('../../views/Dashboard'),
   '/master-admin': () => import('../../features/masterAdmin/pages/MasterAdminPage'),
+  '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
+  '/buyer/procurements': () => import('../../features/requirements/pages/RequirementsPage'),
+  '/seller/opportunities': () => import('../../features/sellerOpportunities/pages/SellerOpportunitiesPage'),
+  '/orders': () => import('../../features/procurementBid/pages/ProcurementOrdersPage'),
+  '/orders/delivery-confirmation': () => import('../../features/grn/pages/GrnListPage'),
+  '/orders/tracking': () => import('../../views/ParcelTracking'),
+  '/payments/invoices': () => Promise.resolve(),
+  '/payments/transactions': () => Promise.resolve(),
+  '/payments/escrow': () => import('../../features/escrow/pages/EscrowPage'),
   '/admin/onboarding': () => import('../../views/AdminOnboarding'),
   '/admin/shg-applications': () => import('../../views/AdminShgApplications'),
   '/shg/onboarding': () => import('../../views/ShgOnboarding'),
@@ -126,13 +136,22 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
 };
 
 const preloadRoute = (path: string) => {
-  const load = preloadRegistry[path];
+  const load = preloadRegistry[path.split('?')[0]];
   if (load) {
     load().catch((err) => {
       console.warn(`Failed to preload chunk for path ${path}:`, err);
     });
   }
 };
+
+const collectPaths = (items: SidebarItem[]) =>
+  items.flatMap(item => item.children?.length ? collectPaths(item.children) : item.path ? [item.path] : []);
+
+const SIDEBAR_GROUP_STATE_KEY = 'msme-sidebar-open-groups';
+type SidebarGroupState = Record<string, boolean | undefined>;
+
+const getSidebarGroupId = (label: string) =>
+  `sidebar-group-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
 const HIGH_PRIORITY_PREFETCH_ROUTES = [
   '/dashboard',
@@ -159,15 +178,19 @@ const SidebarNavLink = memo(function SidebarNavLink({
   isCollapsed: boolean;
   onClose: () => void;
 }) {
-  const handlePreload = useCallback(() => preloadRoute(item.path), [item.path]);
+  const path = item.path;
+  const handlePreload = useCallback(() => {
+    if (path) preloadRoute(path);
+  }, [path]);
   const handlePointerDown = useCallback(() => {
-    preloadRoute(item.path);
-  }, [item.path]);
+    if (path) preloadRoute(path);
+  }, [path]);
   const Icon = item.icon;
+  if (!path) return null;
 
   return (
     <Link
-      href={item.path}
+      href={path}
       scroll={false}
       onClick={onClose}
       onPointerDown={handlePointerDown}
@@ -192,11 +215,77 @@ const SidebarNavLink = memo(function SidebarNavLink({
   );
 });
 
+const SidebarNavGroup = memo(function SidebarNavGroup({
+  item,
+  pathname,
+  isCollapsed,
+  isOpen,
+  onToggle,
+  onClose
+}: {
+  item: SidebarItem;
+  pathname?: string | null;
+  isCollapsed: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const Icon = item.icon;
+  const children = item.children || [];
+  const groupId = getSidebarGroupId(item.label);
+  const active = children.some(child => {
+    const childPath = child.path?.split('?')[0];
+    return childPath === pathname || Boolean(childPath && pathname?.startsWith(`${childPath}/`));
+  });
+
+  if (!children.length) {
+    const itemPath = item.path?.split('?')[0];
+    return item.path ? (
+      <SidebarNavLink item={item} isActive={pathname === itemPath} isCollapsed={isCollapsed} onClose={onClose} />
+    ) : null;
+  }
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={groupId}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.16em] transition-colors",
+          active ? "bg-white/10 text-white" : "text-white/45 hover:bg-white/5 hover:text-white",
+          isCollapsed && "lg:justify-center lg:px-0"
+        )}
+        title={isCollapsed ? item.label : undefined}
+      >
+        <Icon className={cn("h-4 w-4 shrink-0", active ? "text-[#c8a45c]" : "text-white/45")} />
+        <span className={cn(isCollapsed && "lg:hidden")}>{item.label}</span>
+        <ChevronDown className={cn("ml-auto h-3 w-3 transition-transform", isOpen && "rotate-180", isCollapsed && "lg:hidden")} />
+      </button>
+      {isOpen && (
+        <div id={groupId} className={cn("space-y-1", !isCollapsed && "pl-3")}>
+          {children.map(child => (
+            <SidebarNavLink
+              key={`${item.label}-${child.label}`}
+              item={child}
+              isActive={pathname === child.path?.split('?')[0]}
+              isCollapsed={isCollapsed}
+              onClose={onClose}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse, onHoverChange }: SidebarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isHovered, setIsHovered] = useState(false);
+  const [openGroups, setOpenGroups] = useState<SidebarGroupState>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
@@ -205,6 +294,18 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       const saved = sessionStorage.getItem('sidebarScrollPosition');
       if (saved && navRef.current) {
         navRef.current.scrollTop = Number(saved);
+      }
+
+      const savedGroups = localStorage.getItem(SIDEBAR_GROUP_STATE_KEY);
+      if (savedGroups) {
+        try {
+          const parsedGroups = JSON.parse(savedGroups);
+          if (parsedGroups && typeof parsedGroups === 'object' && !Array.isArray(parsedGroups)) {
+            setOpenGroups(parsedGroups);
+          }
+        } catch {
+          localStorage.removeItem(SIDEBAR_GROUP_STATE_KEY);
+        }
       }
     }
   }, []);
@@ -275,63 +376,108 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Meetings', path: '/shg/meetings', icon: ClipboardCheck, roles: ['shg'] },
     { label: 'Support', path: '/shg/support', icon: Bell, roles: ['shg'] },
     { label: 'Master Console', path: '/master-admin', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },
-    { label: 'Admin Console', path: '/admin/onboarding', icon: ShieldCheck, roles: ['admin'] },
-    { label: 'SHG Applications', path: '/admin/shg-applications', icon: Store, roles: ['admin'] },
-    { label: 'Governance Desk', path: '/admin/governance', icon: ClipboardCheck, roles: ['admin'] },
-    { label: 'Marketplace', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
+    { label: 'Companies / Portals', path: '/master-admin/companies', icon: Building2, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Users & Roles', path: '/master-admin/users', icon: UsersRound, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Organizations', path: '/master-admin/organizations', icon: Store, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Procurement Control', path: '/master-admin/procurement', icon: Gavel, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Marketplace Control', path: '/master-admin/marketplace', icon: ShoppingCart, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Orders & Delivery', path: '/master-admin/orders', icon: Truck, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Payments & Escrow', path: '/master-admin/payments', icon: CreditCard, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Reports & Data Export', path: '/master-admin/reports', icon: BarChart3, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Feature Controls', path: '/master-admin/features', icon: CheckSquare, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Branding & Homepage', path: '/master-admin/branding', icon: Images, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Audit Logs', path: '/master-admin/audit-logs', icon: FileText, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'System Monitoring', path: '/master-admin/system', icon: FileSearch, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Security & Access', path: '/master-admin/security', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Settings', path: '/master-admin/settings', icon: Settings, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Approvals', icon: ClipboardCheck, roles: ['admin'], children: [
+      { label: 'Procurement Approvals', path: '/admin/governance', icon: ClipboardCheck, roles: ['admin'] },
+      { label: 'Seller / Buyer Approvals', path: '/admin/onboarding', icon: ShieldCheck, roles: ['admin'] },
+      { label: 'SHG Applications', path: '/admin/shg-applications', icon: Store, roles: ['admin'] },
+      { label: 'Tender Approvals', path: '/admin/bids', icon: FileText, roles: ['admin'] },
+      { label: 'Final Award Approvals', path: '/admin/procurement-orders', icon: Trophy, roles: ['admin'] },
+    ] },
+    { label: 'Monitoring', icon: FileSearch, roles: ['admin'], children: [
+      { label: 'Active Procurements', path: '/admin/procurement', icon: ClipboardList, roles: ['admin'] },
+      { label: 'Orders & Delivery', path: '/admin/delivery', icon: Truck, roles: ['admin'] },
+      { label: 'Payments & Escrow', path: '/payments/transactions', icon: CreditCard, roles: ['admin'] },
+      { label: 'Fraud Alerts', path: '/admin/fraud-alerts', icon: AlertTriangle, roles: ['admin'] },
+    ] },
+    { label: 'Marketplace', icon: ShoppingCart, roles: ['admin'], children: [
+      { label: 'Catalogue Review', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
+      { label: 'Categories', path: '/admin/categories', icon: ClipboardList, roles: ['admin'] },
+      { label: 'Homepage Sections', path: '/admin/marketplace/home-sections', icon: Images, roles: ['admin'] },
+      { label: 'Banners', path: '/admin/banners', icon: Images, roles: ['admin'] },
+      { label: 'Monthly Rankings', path: '/admin/monthly-rankings', icon: Trophy, roles: ['admin'] },
+    ] },
+    { label: 'Organizations', icon: Building2, roles: ['admin'], children: [
+      { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
+      { label: 'Organizations', path: '/admin/organizations', icon: Building2, roles: ['admin'] },
+      { label: 'Team & RBAC', path: '/admin/rbac', icon: ShieldCheck, roles: ['admin'], featureCode: 'role-management' },
+    ] },
+    { label: 'Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
+    { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
+      { label: 'Create Procurement', path: '/buyer/procurement/create', icon: ClipboardCheck, roles: ['buyer'] },
+      { label: 'My Procurements', path: '/buyer/procurements', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },
+      { label: 'Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },
+    ] },
+    { label: 'Orders', icon: Truck, roles: ['buyer'], children: [
+      { label: 'Active Orders', path: '/orders', icon: ShoppingCart, roles: ['buyer'] },
+      { label: 'Delivery Confirmation', path: '/orders/delivery-confirmation', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Delivery Tracking', path: '/orders/tracking', icon: Truck, roles: ['buyer'] },
+    ] },
+    { label: 'Payments', icon: CreditCard, roles: ['buyer'], featureCode: 'payment-module', children: [
+      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['buyer'], featureCode: 'payment-module' },
+      { label: 'Transactions', path: '/payments/transactions', icon: CreditCard, roles: ['buyer'], featureCode: 'payment-module' },
+      { label: 'Payment Hold / Escrow', path: '/payments/escrow', icon: Landmark, roles: ['buyer'], featureCode: 'escrow-nodal-bank' },
+    ] },
+    { label: 'Suppliers', icon: Users, roles: ['buyer'], children: [
+      { label: 'Supplier Directory', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
+      { label: 'Saved Suppliers', path: '/buyer/vendors', icon: CheckCircle2, roles: ['buyer'] },
+    ] },
+    { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
+    { label: 'Opportunities', icon: FileSearch, roles: ['seller'], children: [
+      { label: 'New Opportunities', path: '/seller/opportunities', icon: FileSearch, roles: ['seller'] },
+      { label: 'Request Quotations', path: '/seller/opportunities?type=quote', icon: ClipboardCheck, roles: ['seller'] },
+      { label: 'Large Procurements', path: '/seller/opportunities?type=large', icon: FileText, roles: ['seller'] },
+      { label: 'Buyer Requirements', path: '/seller/opportunities?type=requirement', icon: ClipboardList, roles: ['seller'] },
+      { label: 'Auctions', path: '/seller/opportunities?type=auction', icon: Gavel, roles: ['seller'] },
+    ] },
+    { label: 'My Bids', path: '/bids', icon: ClipboardCheck, roles: ['seller'] },
+    { label: 'Orders', icon: Truck, roles: ['seller'], children: [
+      { label: 'Orders Received', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
+      { label: 'Delivery Updates', path: '/orders/tracking', icon: Truck, roles: ['seller'] },
+    ] },
+    { label: 'Payments', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module', children: [
+      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['seller'], featureCode: 'payment-module' },
+      { label: 'Payment Status', path: '/payments/transactions', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module' },
+    ] },
+    { label: 'Marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog', children: [
+      { label: 'Products & Services', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
+      { label: 'Storefront', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: Store, roles: ['seller'] },
+    ] },
+    { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['seller'] },
     { label: 'Banner Eligibility', path: '/my-org/banner-eligibility', icon: Images, roles: ['seller', 'buyer'] },
-    { label: 'Tenders', path: '/buyer/tenders', icon: FileText, roles: ['buyer'], featureCode: 'tender-management' },
-    { label: 'Tenders', path: '/seller/tenders', icon: FileText, roles: ['seller'], featureCode: 'tender-management' },
-    { label: 'Quotations', path: '/quotations', icon: ClipboardCheck, roles: ['seller', 'buyer'], featureCode: 'bid-submission' },
-    { label: 'Purchase Orders', path: '/seller/orders', icon: ShoppingCart, roles: ['seller'] },
-    { label: 'Purchase Orders', path: '/buyer/orders', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'Invoices', path: '/seller/invoices', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module' },
-    { label: 'Invoices', path: '/buyer/invoices', icon: FileText, roles: ['buyer'], featureCode: 'payment-module' },
-    { label: 'Delivery', path: '/seller/delivery', icon: Truck, roles: ['seller'], featureCode: 'lpi-logistics-partner' },
-    { label: 'Delivery Mgmt', path: '/seller/delivery-management', icon: Truck, roles: ['seller'] },
     { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
-    { label: 'Vendors', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
-    { label: 'Requirements', path: '/buyer/requirements', icon: ClipboardCheck, roles: ['buyer'] },
-    { label: 'Direct Purchase', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'RFQ', path: '/buyer/rfq', icon: FileSearch, roles: ['buyer'] },
-    { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['buyer', 'seller', 'admin', 'master_admin'] },
-    { label: 'Create Auction', path: '/reverse-auctions/create', icon: Gavel, roles: ['buyer', 'admin', 'master_admin'] },
-    { label: 'RFQ', path: '/seller/rfq', icon: FileSearch, roles: ['seller'] },
-    { label: 'Direct Purchase', path: '/seller/direct-purchase', icon: ShoppingCart, roles: ['seller'] },
-    { label: 'Parcel Tracking', path: '/buyer/tracking', icon: Truck, roles: ['buyer'] },
-    { label: 'Delivery Console', path: '/admin/delivery', icon: Truck, roles: ['admin'] },
-    { label: 'MIS Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
     { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'Cart Approvals', path: '/cart/approvals', icon: CheckSquare, roles: ['buyer'] },
-    { label: 'Technical Review', path: '/cart/technical-review', icon: ShieldCheck, roles: ['buyer'] },
-    { label: 'Approval Queue', path: '/approvals', icon: ClipboardCheck, roles: ['buyer'] },
-    { label: 'Goods Receipt', path: '/grn', icon: ClipboardList, roles: ['buyer'] },
-    
-    { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['buyer', 'seller', 'admin'], featureCode: 'payment-module' },
-    { label: 'Escrow', path: '/escrow', icon: Landmark, roles: ['buyer', 'seller', 'admin'], featureCode: 'escrow-nodal-bank' },
-    { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+    { label: 'Administration', icon: Settings, roles: ['buyer', 'seller'], children: [
+      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+      { label: 'Settings', path: user?.role === 'seller' ? '/seller/settings' : '/buyer/profile', icon: Settings, roles: ['buyer', 'seller'] },
+      { label: 'Help', path: '/user-guide', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
+    ] },
     { label: 'Disputes', path: '/buyer/disputes', icon: AlertTriangle, roles: ['buyer'] },
     { label: 'Disputes', path: '/seller/disputes', icon: AlertTriangle, roles: ['seller'] },
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
-    { label: 'Users', path: '/admin/users', icon: Users, roles: ['admin'] },
-    { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingCart, roles: ['admin'] },
     { label: 'Disputes', path: '/admin/disputes', icon: AlertTriangle, roles: ['admin'] },
-    { label: 'Monthly Rankings', path: '/admin/monthly-rankings', icon: Trophy, roles: ['admin'] },
-    { label: 'Banners', path: '/admin/banners', icon: Images, roles: ['admin'] },
-    { label: 'Organizations', path: '/admin/organizations', icon: Building2, roles: ['admin'] },
-    { label: 'RBAC Control', path: '/admin/rbac', icon: ShieldCheck, roles: ['admin'], featureCode: 'role-management' },
-    // { label: 'Audit Logs', path: '/admin/audit-logs', icon: FileSearch, roles: ['admin'] },
-    { label: 'Fraud Alerts', path: '/admin/fraud-alerts', icon: AlertTriangle, roles: ['admin'] },
-    { label: 'Compliance Rules', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
     { label: isShgAccount ? 'SHG Hub' : 'Seller Hub', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: isShgAccount ? UsersRound : Store, roles: ['seller'] },
     { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
-    { label: 'Account Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] },
-    { label: 'Account Settings', path: '/buyer/profile', icon: UserIcon, roles: ['buyer'] },
-    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['seller', 'buyer', 'admin'] },
+    { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['admin'] },
   ], [isShgAccount, user]);
 
-  const filteredNav = useMemo(() => navItems.filter(item => {
+  const isAllowed = useCallback((item: SidebarItem) => {
     if (!user) return false;
     const hasRole = item.roles.includes(user.role) || (isShgAccount && item.roles.includes('shg'));
     if (!hasRole) return false;
@@ -343,7 +489,27 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       return user.permissions?.includes(item.permission);
     }
     return true;
-  }), [navItems, user, isShgAccount]);
+  }, [user, isShgAccount]);
+
+  const filteredNav = useMemo(() => navItems
+    .map(item => {
+      if (!isAllowed(item)) return null;
+      if (!item.children?.length) return item;
+      const children = item.children.filter(isAllowed);
+      return children.length ? { ...item, children } : null;
+    })
+    .filter(Boolean) as SidebarItem[], [isAllowed, navItems]);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_GROUP_STATE_KEY, JSON.stringify(openGroups));
+  }, [openGroups]);
+
+  const handleToggleGroup = useCallback((label: string, defaultOpen: boolean) => {
+    setOpenGroups(prev => ({
+      ...prev,
+      [label]: !(prev[label] ?? defaultOpen)
+    }));
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -351,7 +517,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       const routes = new Set<string>([
         pathname || '/dashboard',
         ...HIGH_PRIORITY_PREFETCH_ROUTES.slice(0, 4),
-        ...filteredNav.slice(0, 5).map(item => item.path)
+        ...collectPaths(filteredNav).slice(0, 5)
       ]);
       routes.forEach(path => {
         router.prefetch(path);
@@ -424,13 +590,18 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
         >
           <div className={cn("text-white/40 text-[10px] font-bold uppercase tracking-[0.18em] px-3 mb-2", isActuallyCollapsed && "lg:hidden")}>Navigation</div>
           {filteredNav.map((item) => {
-            const isActive = pathname === item.path;
+            const isGroupActive = Boolean(item.children?.some(child => {
+              const childPath = child.path?.split('?')[0];
+              return childPath === pathname || Boolean(childPath && pathname?.startsWith(`${childPath}/`));
+            }));
             return (
-              <SidebarNavLink
+              <SidebarNavGroup
                 key={item.label}
                 item={item}
-                isActive={isActive}
+                pathname={pathname}
                 isCollapsed={isActuallyCollapsed}
+                isOpen={!isActuallyCollapsed && Boolean(openGroups[item.label] ?? isGroupActive)}
+                onToggle={() => handleToggleGroup(item.label, isGroupActive)}
                 onClose={onClose}
               />
             );

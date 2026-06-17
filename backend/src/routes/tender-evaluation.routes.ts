@@ -23,8 +23,12 @@ import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
 import { quotedBidTotal } from '../utils/bidPricing.js';
+import { checkFeatureEnabled } from '../middleware/authorize.js';
 
 const router = Router();
+
+router.use('/tender-eval', authenticate);
+router.use('/tender-eval', checkFeatureEnabled('tender-management'));
 
 const asyncRoute = (handler: (req: AuthRequest, res: Response) => Promise<unknown>) =>
     async (req: AuthRequest, res: Response) => {

@@ -345,7 +345,7 @@ export function MarketplaceHeader({ user }: Props) {
                         >
                             <ShoppingCart className="h-4 w-4 text-slate-600" />
                             {cartCount > 0 && (
-                                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#ef4444] text-white text-[9px] font-black flex items-center justify-center leading-none tabular-nums">
+                                <span className="absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#ef4444] px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white tabular-nums">
                                     {cartCount > 99 ? '99+' : cartCount}
                                 </span>
                             )}

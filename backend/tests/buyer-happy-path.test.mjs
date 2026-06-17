@@ -163,7 +163,7 @@ test('Stage 5c: cart, GRN, approvals, tender-eval routes apply requireApprovedOr
 
 test('Stage 6a: org admin can invite team members', () => {
     assert.match(orgRoutes, /'\/org\/invite'/);
-    assert.match(orgRoutes, /requireOrgRole\('ORG_ADMIN'\)/);
+    assert.match(orgRoutes, /requireOrgPermission\('TEAM_INVITE'\)/);
     assert.match(orgRoutes, /generateToken/);
     // 7-day expiry: const expiresAt = new Date(Date.now() + 7 * 24 * ...)
     assert.match(orgRoutes, /Date\.now\(\)\s*\+\s*7\s*\*\s*24/);

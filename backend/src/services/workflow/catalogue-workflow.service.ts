@@ -36,7 +36,15 @@ export const catalogueWorkflow = {
   async createProduct(actor: WorkflowActor, input: Record<string, any>) {
     await assertApprovedSeller(actor);
     const { imageIds, documentIds, ...data } = input;
-    const product = await db.product.create({ data: { ...data, sellerId: actor.id, status: data.status || 'ACTIVE' } });
+    const sellerUser = await db.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } });
+    const product = await db.product.create({
+      data: {
+        ...data,
+        sellerId: actor.id,
+        organizationId: sellerUser?.organizationId || null,
+        status: data.status || 'ACTIVE'
+      }
+    });
 
     if (Array.isArray(imageIds) && imageIds.length > 0) {
       await db.fileAsset.updateMany({
@@ -130,7 +138,15 @@ export const catalogueWorkflow = {
   async createService(actor: WorkflowActor, input: Record<string, any>) {
     await assertApprovedSeller(actor);
     const { imageIds, documentIds, ...data } = input;
-    const service = await db.service.create({ data: { ...data, sellerId: actor.id, status: data.status || 'ACTIVE' } });
+    const sellerUser = await db.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } });
+    const service = await db.service.create({
+      data: {
+        ...data,
+        sellerId: actor.id,
+        organizationId: sellerUser?.organizationId || null,
+        status: data.status || 'ACTIVE'
+      }
+    });
 
     const fileIds = [...(imageIds || []), ...(documentIds || [])];
     if (fileIds.length > 0) {
@@ -185,6 +201,8 @@ export const catalogueWorkflow = {
     return getOrSetCache(cacheKey, () => db.product.findMany({
       where: {
         status: 'ACTIVE',
+        ...(query.sellerId ? { sellerId: Number(query.sellerId) } : {}),
+        ...(query.organizationId ? { organizationId: Number(query.organizationId) } : {}),
         ...(query.q ? { name: { contains: String(query.q), mode: 'insensitive' } } : {}),
         ...(query.categoryId ? { categoryId: Number(query.categoryId) } : {})
       },
@@ -205,6 +223,8 @@ export const catalogueWorkflow = {
     return getOrSetCache(cacheKey, () => db.service.findMany({
       where: {
         status: 'ACTIVE',
+        ...(query.sellerId ? { sellerId: Number(query.sellerId) } : {}),
+        ...(query.organizationId ? { organizationId: Number(query.organizationId) } : {}),
         ...(query.q ? { name: { contains: String(query.q), mode: 'insensitive' } } : {}),
         ...(query.categoryId ? { categoryId: Number(query.categoryId) } : {})
       },

@@ -332,6 +332,17 @@ model Organization {
   createdAt                    DateTime              @default(now())
   updatedAt                    DateTime              @updatedAt
   deletedAt                    DateTime?
+  gstReuseAllowed              Boolean               @default(false)
+  gstReuseAllowedBy            Int?
+  gstReuseAllowedAt            DateTime?
+  gstReuseReason               String?
+  previousOrganizationId       Int?
+  replacementOrganizationId    Int?
+  closedAt                     DateTime?
+  closedBy                     Int?
+  archivedAt                   DateTime?
+  archivedBy                   Int?
+  closureReason                String?
   users                        User[]
   company                      Company?              @relation(fields: [companyId], references: [id])
   buyerProfiles                BuyerProfile[]
@@ -3313,6 +3324,11 @@ enum VerificationStatus {
   FAILED
   MANUAL_REVIEW_REQUIRED
   EXPIRED
+  ACTIVE
+  PENDING_CLOSURE
+  CLOSED
+  ARCHIVED
+  MERGED
 }
 
 enum MSMECategory {

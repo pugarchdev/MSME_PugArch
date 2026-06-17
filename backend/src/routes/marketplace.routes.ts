@@ -4,7 +4,7 @@ import prisma from '../config/prisma.js';
 import { getOrSetCache } from '../services/cache.service.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
-import { authorize } from '../middleware/authorize.js';
+import { authorize, checkFeatureEnabled } from '../middleware/authorize.js';
 import { verifyAccessToken } from '../services/token.service.js';
 
 const db = prisma as any;
@@ -58,6 +58,13 @@ const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: Next
     }
 
     return next();
+};
+
+const checkFeatureIfAuthenticated = (featureCode: string) => {
+    return async (req: AuthRequest, res: Response, next: NextFunction) => {
+        if (!req.user) return next();
+        return checkFeatureEnabled(featureCode)(req, res, next);
+    };
 };
 
 const organizationLogoSelect = { id: true, url: true };
@@ -1420,7 +1427,7 @@ router.get('/marketplace/banners', async (_req: Request, res: Response) => {
 });
 
 // ─── Public: Product Listing ─────────────────────────────────────────────────
-router.get('/marketplace/products', async (req: Request, res: Response) => {
+router.get('/marketplace/products', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), async (req: AuthRequest, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1512,7 +1519,7 @@ router.get('/marketplace/products', async (req: Request, res: Response) => {
 });
 
 // ─── Public: Product Detail ──────────────────────────────────────────────────
-router.get('/marketplace/products/:id', async (req: Request, res: Response) => {
+router.get('/marketplace/products/:id', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid product ID', 'INVALID_ID');
@@ -1551,7 +1558,7 @@ router.get('/marketplace/products/:id', async (req: Request, res: Response) => {
 });
 
 // ─── Public: Service Listing ─────────────────────────────────────────────────
-router.get('/marketplace/services', async (req: Request, res: Response) => {
+router.get('/marketplace/services', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), async (req: AuthRequest, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1631,7 +1638,7 @@ router.get('/marketplace/services', async (req: Request, res: Response) => {
 });
 
 // ─── Public: Service Detail ──────────────────────────────────────────────────
-router.get('/marketplace/services/:id', async (req: Request, res: Response) => {
+router.get('/marketplace/services/:id', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid service ID', 'INVALID_ID');
@@ -1705,6 +1712,62 @@ router.get('/marketplace/sellers', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('[Marketplace Sellers]', error);
         return apiResponse.error(res, 500, 'Failed to load sellers', 'MARKETPLACE_SELLERS_ERROR');
+    }
+});
+
+
+router.get('/marketplace/sellers/:id', async (req: Request, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        const org = await db.organization.findUnique({
+            where: { id },
+            include: {
+                logoFile: { select: organizationLogoSelect },
+                sellerProfiles: {
+                    include: {
+                        offices: true
+                    }
+                },
+                users: {
+                    where: { role: 'seller' },
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        mobile: true
+                    }
+                }
+            }
+        });
+        if (!org) {
+            return apiResponse.error(res, 404, 'Seller Organization not found', 'SELLER_NOT_FOUND');
+        }
+        
+        const primaryProfile = org.sellerProfiles?.[0] || {};
+        const sellerUser = org.users?.[0] || {};
+        
+        const vendor = {
+            id: org.id,
+            sellerUserId: sellerUser.id || null,
+            name: org.organizationName,
+            sellerName: org.users?.map((u: any) => u.name).filter(Boolean).join(', ') || sellerUser.name || null,
+            city: org.city,
+            state: org.state,
+            email: org.users?.map((u: any) => u.email).filter(Boolean).join(', ') || sellerUser.email || null,
+            mobile: org.users?.map((u: any) => u.mobile).filter(Boolean).join(', ') || sellerUser.mobile || null,
+            sellerProfile: {
+                ...primaryProfile,
+                businessName: org.organizationName,
+                offices: primaryProfile.offices || [],
+                website: org.website || primaryProfile.website || null,
+                productCategories: primaryProfile.productCategories || []
+            }
+        };
+
+        return ok(res, vendor);
+    } catch (error) {
+        console.error('[Marketplace Seller Detail]', error);
+        return apiResponse.error(res, 500, 'Failed to load seller details', 'SELLER_DETAIL_ERROR');
     }
 });
 

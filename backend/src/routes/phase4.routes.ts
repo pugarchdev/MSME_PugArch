@@ -187,26 +187,31 @@ const buildVerifiedAddress = (gstResult: any) => ({
 });
 
 const assertGstinNotOwnedByAnotherAccount = async (normalizedGstin: string, currentUserId: number) => {
-  const fingerprint = sha256(normalizedGstin);
-  const [sellerOffice, buyerProfile] = await Promise.all([
-    db.sellerOffice.findFirst({
-      where: {
-        gstFingerprint: fingerprint,
-        sellerProfile: { userId: { not: currentUserId } }
-      },
-      select: { id: true }
-    }),
-    db.buyerProfile.findFirst({
-      where: {
-        gstFingerprint: fingerprint,
-        userId: { not: currentUserId }
-      },
-      select: { id: true }
-    })
-  ]);
+  const currentUser = await db.user.findUnique({
+    where: { id: currentUserId },
+    select: { companyId: true }
+  });
 
-  if (sellerOffice || buyerProfile) {
-    throw new ApiError(409, 'This GSTIN is already verified with another account. Please sign in to that account or contact support.', 'GST_ALREADY_REGISTERED');
+  const existingOrgs = await db.organization.findMany({
+    where: { gstin: normalizedGstin }
+  });
+
+  for (const org of existingOrgs) {
+    const status = org.verificationStatus;
+    const isClosedOrArchived = status === 'CLOSED' || status === 'ARCHIVED';
+    const isRejectedOrMerged = status === 'REJECTED' || status === 'MERGED';
+
+    if (isClosedOrArchived) {
+      if (!org.gstReuseAllowed) {
+        throw new ApiError(400, 'This GST belongs to an archived organization but fresh registration has not been approved.', 'GST_REUSE_NOT_ALLOWED');
+      }
+    } else if (isRejectedOrMerged) {
+      // Allowed cases - do nothing
+    } else {
+      if (org.companyId === currentUser?.companyId) {
+        throw new ApiError(400, 'An active organization already exists with this GST in this company.', 'GST_ALREADY_ACTIVE');
+      }
+    }
   }
 };
 const attachBidFileAssets = async (rows: any[]) => {
@@ -322,9 +327,9 @@ const assertBuyerProcurementApproved = async (req: AuthRequest) => {
   }
 };
 
-const listProfileBackedOrganizations = async (query: { q?: string; status?: string; skip?: number; take?: number; page?: number; pageSize?: number }) => {
+const listProfileBackedOrganizations = async (query: { q?: string; status?: string; skip?: number; take?: number; page?: number; pageSize?: number }, companyIdFilter?: number | null) => {
   const window = listWindow(query);
-  const [buyers, sellers] = await Promise.all([
+  let [buyers, sellers] = await Promise.all([
     db.buyerProfile.findMany({
       include: { user: { select: { id: true, name: true, email: true, onboardingStatus: true, accountStatus: true } } },
       orderBy: { updatedAt: 'desc' }
@@ -337,6 +342,43 @@ const listProfileBackedOrganizations = async (query: { q?: string; status?: stri
       orderBy: { updatedAt: 'desc' }
     })
   ]);
+
+  // If companyIdFilter is provided, filter buyers and sellers by organization's companyId
+  if (companyIdFilter !== undefined && companyIdFilter !== null) {
+    // Collect distinct organizationIds from buyers and sellers that are not null
+    const orgIds = [...buyers, ...sellers]
+      .map(p => p.organizationId)
+      .filter((id): id is number => id !== null && id !== undefined);
+    if (orgIds.length > 0) {
+      // Fetch organizations for these ids to get their companyId
+      const organizations = await db.organization.findMany({
+        where: { id: { in: orgIds } },
+        select: { id: true, companyId: true }
+      });
+      const orgIdToCompanyId = new Map<number, number>();
+      for (const org of organizations) {
+        orgIdToCompanyId.set(org.id, org.companyId);
+      }
+      // Filter buyers: keep only those where organizationId is not null and the organization's companyId matches
+      buyers = buyers.filter(p => {
+        const orgId = p.organizationId;
+        if (orgId === null || orgId === undefined) return false;
+        const companyId = orgIdToCompanyId.get(orgId);
+        return companyId !== null && companyId !== undefined && companyId === companyIdFilter;
+      });
+      // Filter sellers similarly
+      sellers = sellers.filter(p => {
+        const orgId = p.organizationId;
+        if (orgId === null || orgId === undefined) return false;
+        const companyId = orgIdToCompanyId.get(orgId);
+        return companyId !== null && companyId !== undefined && companyId === companyIdFilter;
+      });
+    } else {
+      // If there are no organizationIds, then set arrays to empty
+      buyers = [];
+      sellers = [];
+    }
+  }
 
   const buyerRows = buyers.map((profile: any) => ({
     id: `buyer-profile-${profile.id}`,
@@ -394,7 +436,6 @@ const listProfileBackedOrganizations = async (query: { q?: string; status?: stri
 
   return { organizations: rows.slice(window.skip, window.skip + window.take), total: rows.length };
 };
-
 const parse = <T>(schema: z.ZodType<T>, value: unknown) => schema.parse(value);
 const catalogueAttachmentInclude = {
   images: { include: { fileAsset: true }, orderBy: [{ isPrimary: 'desc' as const }, { displayOrder: 'asc' as const }] },
@@ -1995,9 +2036,14 @@ async function upsertOrganizationFromGst(
   role: string,
   user?: any
 ) {
-  // Try to find an existing Organization by the same GSTIN
+  // Try to find an existing ACTIVE or PENDING_CLOSURE (non-inactive) Organization by the same GSTIN
   let org = await db.organization.findFirst({
-    where: { gstin: normalizedGstin }
+    where: {
+      gstin: normalizedGstin,
+      NOT: {
+        verificationStatus: { in: ['CLOSED', 'ARCHIVED', 'REJECTED', 'MERGED'] }
+      }
+    }
   });
 
   let fallbackName = 'Verified Organization';
@@ -2012,8 +2058,17 @@ async function upsertOrganizationFromGst(
   }
 
   if (!org) {
+    // Check if there is an inactive organization with the same GSTIN to link previousOrganizationId
+    const previousOrg = await db.organization.findFirst({
+      where: {
+        gstin: normalizedGstin,
+        verificationStatus: { in: ['CLOSED', 'ARCHIVED', 'REJECTED', 'MERGED'] }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
     const orgType = role === 'buyer' ? 'GOVERNMENT' : 'MSME';
-    org = await db.organization.create({
+    const newOrg = await db.organization.create({
       data: {
         organizationName: gstResult.legalName || gstResult.tradeName || fallbackName,
         organizationType: orgType as any,
@@ -2025,9 +2080,36 @@ async function upsertOrganizationFromGst(
         pincode: gstResult.pincode || null,
         addressLine1: gstResult.address || null,
         country: 'India',
+        companyId: user?.companyId || null,
+        previousOrganizationId: previousOrg?.id || null,
         verificationStatus: 'VERIFIED' as any
       }
     });
+
+    if (previousOrg) {
+      await db.organization.update({
+        where: { id: previousOrg.id },
+        data: { replacementOrganizationId: newOrg.id }
+      });
+
+      // Write audit log
+      await auditLog({
+        actorUserId: user?.id,
+        actorRole: user?.role,
+        action: 'ORGANIZATION_RE_REGISTERED_WITH_SAME_GST',
+        entityType: 'organization',
+        entityId: newOrg.id,
+        ipAddress: user?.ipAddress || null,
+        userAgent: user?.userAgent || null,
+        metadata: {
+          previousOrganizationId: previousOrg.id,
+          gstin: normalizedGstin,
+          companyId: user?.companyId
+        }
+      });
+    }
+
+    org = newOrg;
   } else {
     // Update the existing org with latest verified details if names changed
     await db.organization.update({
@@ -2063,7 +2145,14 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
 
   const gstResult = await verifyGstinInternal(normalizedGstin);
   requireCompleteGstProfile(gstResult);
-  await assertGstinNotOwnedByAnotherAccount(normalizedGstin, user.id);
+  try {
+    await assertGstinNotOwnedByAnotherAccount(normalizedGstin, user.id);
+  } catch (err: any) {
+    if (err instanceof ApiError && (err.code === 'GST_ALREADY_ACTIVE' || err.code === 'GST_REUSE_NOT_ALLOWED')) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    throw err;
+  }
   const verifiedAddress = buildVerifiedAddress(gstResult);
 
   await db.apiVerificationLog.create({
@@ -2084,7 +2173,14 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
     if (!sellerProfile) {
       const panToUse = gstResult.pan || `PENDING${user.id}`;
       const existingPanProfile = await db.sellerProfile.findFirst({
-        where: { pan: panToUse }
+        where: {
+          pan: panToUse,
+          organization: {
+            NOT: {
+              verificationStatus: { in: ['CLOSED', 'ARCHIVED', 'REJECTED', 'MERGED'] }
+            }
+          }
+        }
       });
       if (existingPanProfile) {
         throw new ApiError(400, 'This GSTIN/PAN is already registered with another account.');
@@ -2101,7 +2197,15 @@ router.post('/profile/verify-gst-dashboard', authenticate, asyncRoute(async (req
       const panToUse = sellerProfile.pan.startsWith('PENDING') ? (gstResult.pan || sellerProfile.pan) : sellerProfile.pan;
       if (panToUse !== sellerProfile.pan) {
         const existingPanProfile = await db.sellerProfile.findFirst({
-          where: { pan: panToUse, NOT: { id: sellerProfile.id } }
+          where: {
+            pan: panToUse,
+            NOT: { id: sellerProfile.id },
+            organization: {
+              NOT: {
+                verificationStatus: { in: ['CLOSED', 'ARCHIVED', 'REJECTED', 'MERGED'] }
+              }
+            }
+          }
         });
         if (existingPanProfile) {
           throw new ApiError(400, 'This GSTIN/PAN is already registered with another account.');
@@ -2417,8 +2521,13 @@ router.delete('/seller/products/:id', authenticate, authorize('seller'), asyncRo
 }));
 
 router.get('/products/search', asyncRoute(async (req, res) => {
-  const query = parse(paginationQuery, req.query);
+  const query = parse(paginationQuery.extend({
+    sellerId: z.coerce.number().int().positive().optional(),
+    organizationId: z.coerce.number().int().positive().optional()
+  }), req.query);
   const where: any = { status: 'ACTIVE' };
+  if (query.sellerId) where.sellerId = query.sellerId;
+  if (query.organizationId) where.organizationId = query.organizationId;
   if (query.q) where.OR = [{ name: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
   if (query.categoryId) where.categoryId = query.categoryId;
   const window = listWindow(query);
@@ -2470,8 +2579,13 @@ router.delete('/seller/services/:id', authenticate, authorize('seller'), asyncRo
 }));
 
 router.get('/services/search', asyncRoute(async (req, res) => {
-  const query = parse(paginationQuery, req.query);
+  const query = parse(paginationQuery.extend({
+    sellerId: z.coerce.number().int().positive().optional(),
+    organizationId: z.coerce.number().int().positive().optional()
+  }), req.query);
   const where: any = { status: 'ACTIVE' };
+  if (query.sellerId) where.sellerId = query.sellerId;
+  if (query.organizationId) where.organizationId = query.organizationId;
   if (query.q) where.OR = [{ name: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
   if (query.categoryId) where.categoryId = query.categoryId;
   const window = listWindow(query);
@@ -4797,7 +4911,7 @@ router.get('/admin/rbac/permissions', authenticate, authorizeAdmin, asyncRoute(a
   ok(res, permissions);
 }));
 
-router.post('/admin/rbac/update-permissions', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+router.post('/admin/rbac/update-permissions', authenticate, authorize('master_admin'), asyncRoute(async (req, res) => {
   const body = parse(z.object({
     roleId: z.coerce.number().int().positive(),
     permissionIds: z.array(z.coerce.number().int().positive())
@@ -4879,9 +4993,22 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
   }
   if (query.status) where.verificationStatus = query.status;
 
+  let organizationCompanyIdFilter: number | undefined;
+  // Tenant isolation: non-master admins can only see organizations from their own company
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId) {
+      // If the user has no company, they cannot see any organizations
+      where.companyId = -1; // This will match no records
+      organizationCompanyIdFilter = -1;
+    } else {
+      where.companyId = req.user.companyId;
+      organizationCompanyIdFilter = req.user.companyId;
+    }
+  }
+
   const total = await db.organization.count({ where });
   if (total === 0) {
-    const fallback = await listProfileBackedOrganizations(query);
+    const fallback = await listProfileBackedOrganizations(query, organizationCompanyIdFilter);
     return ok(res, fallback);
   }
 
@@ -4973,6 +5100,13 @@ router.get('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
   });
   if (!org) throw new ApiError(404, 'Organization not found', 'ORG_NOT_FOUND');
 
+  // Tenant isolation: non-master admins can only access organizations from their own company
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || org.companyId !== req.user.companyId) {
+      throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
+    }
+  }
+
   // Inject features dynamically
   const { orgFeaturesService } = await import('../services/org-features.service.js');
 
@@ -5007,6 +5141,18 @@ router.get('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
 
 router.put('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  const existingOrg = await db.organization.findUnique({
+    where: { id },
+  });
+  if (!existingOrg) throw new ApiError(404, 'Organization not found', 'ORG_NOT_FOUND');
+
+  // Tenant isolation: non-master admins can only update organizations from their own company
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
+    }
+  }
+
   const body = parse(z.object({
     verificationStatus: z.enum(['PENDING', 'VERIFIED', 'REJECTED', 'SUSPENDED']).optional(),
     isBlacklisted: z.boolean().optional(),
@@ -5072,8 +5218,323 @@ router.put('/admin/organizations/:id', authenticate, authorizeAdmin, asyncRoute(
   ok(res, { ...orgRest, organizationName: resolvedName || 'Verified Organization', features });
 }));
 
+const hasPermission = async (user: any, permissionKey: string, companyId: number): Promise<boolean> => {
+  if (user.role === 'master_admin') return true;
+  if (user.role !== 'admin') return false;
+  if (user.companyId !== companyId) return false;
+
+  // Query UserRole -> RbacRole -> RolePermission -> Permission
+  const userRoles = await db.userRole.findMany({
+    where: { userId: user.id },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: { permission: true }
+          }
+        }
+      }
+    }
+  });
+
+  const hasWildcard = userRoles.some((ur: any) =>
+    ur.role.permissions.some((rp: any) => rp.permission.code === '*' || rp.permission.code === permissionKey)
+  );
+
+  if (hasWildcard) return true;
+
+  // Fallback: if not found, check if it exists in DB at all. If it does not, default to true for admins of the company.
+  const permInDb = await db.permission.findFirst({
+    where: { code: permissionKey }
+  });
+  if (!permInDb) {
+    return true;
+  }
+
+  return false;
+};
+
+// PATCH /admin/organizations/:id/close
+router.patch('/admin/organizations/:id/close', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { reason, confirm, documentNote } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Reason is required for this action.' });
+  }
+  if (confirm !== true) {
+    return res.status(400).json({ error: 'CONFIRMATION_REQUIRED', message: 'Confirmation is required for this action.' });
+  }
+
+  const existingOrg = await db.organization.findUnique({ where: { id } });
+  if (!existingOrg) {
+    return res.status(404).json({ error: 'ORGANIZATION_NOT_FOUND', message: 'Organization not found.' });
+  }
+
+  // Tenant Isolation
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      return res.status(403).json({ error: 'TENANT_SCOPE_VIOLATION', message: 'Tenant scope violation: you cannot access another tenant\'s organization.' });
+    }
+  }
+
+  // Permission Check
+  const allowed = await hasPermission(req.user, 'organization.close', existingOrg.companyId || 0);
+  if (!allowed) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to close this organization.' });
+  }
+
+  // Dependency Blocker Check
+  const { getOrganizationClosureBlockers } = await import('../utils/closureBlockers.js');
+  const blockers = await getOrganizationClosureBlockers(id);
+  if (blockers) {
+    return res.status(409).json(blockers);
+  }
+
+  const updated = await db.organization.update({
+    where: { id },
+    data: {
+      verificationStatus: 'CLOSED' as any,
+      closedAt: new Date(),
+      closedBy: req.user?.id,
+      closureReason: reason,
+      blacklistReason: reason
+    }
+  });
+
+  await auditWrite(req, 'ORGANIZATION_CLOSED', 'organization', id, {
+    reason,
+    documentNote,
+    oldValue: { verificationStatus: existingOrg.verificationStatus },
+    newValue: { verificationStatus: 'CLOSED' }
+  });
+
+  return res.json({ success: true, organization: updated, message: 'Organization closed successfully.' });
+}));
+
+// PATCH /admin/organizations/:id/archive
+router.patch('/admin/organizations/:id/archive', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { reason, confirm, documentNote } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Reason is required for this action.' });
+  }
+  if (confirm !== true) {
+    return res.status(400).json({ error: 'CONFIRMATION_REQUIRED', message: 'Confirmation is required for this action.' });
+  }
+
+  const existingOrg = await db.organization.findUnique({ where: { id } });
+  if (!existingOrg) {
+    return res.status(404).json({ error: 'ORGANIZATION_NOT_FOUND', message: 'Organization not found.' });
+  }
+
+  // Tenant Isolation
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      return res.status(403).json({ error: 'TENANT_SCOPE_VIOLATION', message: 'Tenant scope violation: you cannot access another tenant\'s organization.' });
+    }
+  }
+
+  // Permission Check
+  const allowed = await hasPermission(req.user, 'organization.archive', existingOrg.companyId || 0);
+  if (!allowed) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to archive this organization.' });
+  }
+
+  // Dependency Blocker Check
+  const { getOrganizationClosureBlockers } = await import('../utils/closureBlockers.js');
+  const blockers = await getOrganizationClosureBlockers(id);
+  if (blockers) {
+    return res.status(409).json(blockers);
+  }
+
+  const updated = await db.organization.update({
+    where: { id },
+    data: {
+      verificationStatus: 'ARCHIVED' as any,
+      archivedAt: new Date(),
+      archivedBy: req.user?.id,
+      closureReason: reason
+    }
+  });
+
+  await auditWrite(req, 'ORGANIZATION_ARCHIVED', 'organization', id, {
+    reason,
+    documentNote,
+    oldValue: { verificationStatus: existingOrg.verificationStatus },
+    newValue: { verificationStatus: 'ARCHIVED' }
+  });
+
+  return res.json({ success: true, organization: updated, message: 'Organization archived successfully.' });
+}));
+
+// PATCH /admin/organizations/:id/restore
+router.patch('/admin/organizations/:id/restore', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { reason, documentNote } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Reason is required for this action.' });
+  }
+
+  const existingOrg = await db.organization.findUnique({ where: { id } });
+  if (!existingOrg) {
+    return res.status(404).json({ error: 'ORGANIZATION_NOT_FOUND', message: 'Organization not found.' });
+  }
+
+  // Tenant Isolation
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      return res.status(403).json({ error: 'TENANT_SCOPE_VIOLATION', message: 'Tenant scope violation: you cannot access another tenant\'s organization.' });
+    }
+  }
+
+  // Permission Check
+  const allowed = await hasPermission(req.user, 'organization.restore', existingOrg.companyId || 0);
+  if (!allowed) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to restore this organization.' });
+  }
+
+  const updated = await db.organization.update({
+    where: { id },
+    data: {
+      verificationStatus: 'VERIFIED' as any,
+      closedAt: null,
+      closedBy: null,
+      archivedAt: null,
+      archivedBy: null,
+      closureReason: null
+    }
+  });
+
+  await auditWrite(req, 'ORGANIZATION_RESTORED', 'organization', id, {
+    reason,
+    documentNote,
+    oldValue: { verificationStatus: existingOrg.verificationStatus },
+    newValue: { verificationStatus: 'VERIFIED' }
+  });
+
+  return res.json({ success: true, organization: updated, message: 'Organization restored successfully.' });
+}));
+
+// PATCH /admin/organizations/:id/allow-gst-reuse
+router.patch('/admin/organizations/:id/allow-gst-reuse', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { reason, confirm, documentNote } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Reason is required for this action.' });
+  }
+  if (confirm !== true) {
+    return res.status(400).json({ error: 'CONFIRMATION_REQUIRED', message: 'Confirmation is required for this action.' });
+  }
+
+  const existingOrg = await db.organization.findUnique({ where: { id } });
+  if (!existingOrg) {
+    return res.status(404).json({ error: 'ORGANIZATION_NOT_FOUND', message: 'Organization not found.' });
+  }
+
+  // Tenant Isolation
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      return res.status(403).json({ error: 'TENANT_SCOPE_VIOLATION', message: 'Tenant scope violation: you cannot access another tenant\'s organization.' });
+    }
+  }
+
+  // Permission Check
+  const allowed = await hasPermission(req.user, 'organization.allow_gst_reuse', existingOrg.companyId || 0);
+  if (!allowed) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to allow GST reuse on this organization.' });
+  }
+
+  if (existingOrg.verificationStatus !== 'CLOSED' && existingOrg.verificationStatus !== 'ARCHIVED') {
+    return res.status(400).json({ error: 'GST_REUSE_NOT_ALLOWED', message: 'GST reuse can only be allowed for CLOSED or ARCHIVED organizations.' });
+  }
+
+  const updated = await db.organization.update({
+    where: { id },
+    data: {
+      gstReuseAllowed: true,
+      gstReuseAllowedBy: req.user?.id,
+      gstReuseAllowedAt: new Date(),
+      gstReuseReason: reason
+    }
+  });
+
+  await auditWrite(req, 'ORGANIZATION_GST_REUSE_ALLOWED', 'organization', id, {
+    reason,
+    documentNote,
+    oldValue: { gstReuseAllowed: existingOrg.gstReuseAllowed },
+    newValue: { gstReuseAllowed: true }
+  });
+
+  return res.json({ success: true, organization: updated, message: 'GST reuse allowed successfully.' });
+}));
+
+// PATCH /admin/organizations/:id/revoke-gst-reuse
+router.patch('/admin/organizations/:id/revoke-gst-reuse', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { reason, confirm, documentNote } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Reason is required for this action.' });
+  }
+  if (confirm !== true) {
+    return res.status(400).json({ error: 'CONFIRMATION_REQUIRED', message: 'Confirmation is required for this action.' });
+  }
+
+  const existingOrg = await db.organization.findUnique({ where: { id } });
+  if (!existingOrg) {
+    return res.status(404).json({ error: 'ORGANIZATION_NOT_FOUND', message: 'Organization not found.' });
+  }
+
+  // Tenant Isolation
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      return res.status(403).json({ error: 'TENANT_SCOPE_VIOLATION', message: 'Tenant scope violation: you cannot access another tenant\'s organization.' });
+    }
+  }
+
+  // Permission Check
+  const allowed = await hasPermission(req.user, 'organization.allow_gst_reuse', existingOrg.companyId || 0);
+  if (!allowed) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to revoke GST reuse on this organization.' });
+  }
+
+  const updated = await db.organization.update({
+    where: { id },
+    data: {
+      gstReuseAllowed: false,
+      gstReuseAllowedBy: null,
+      gstReuseAllowedAt: null,
+      gstReuseReason: null
+    }
+  });
+
+  await auditWrite(req, 'ORGANIZATION_GST_REUSE_REVOKED', 'organization', id, {
+    reason,
+    documentNote,
+    oldValue: { gstReuseAllowed: existingOrg.gstReuseAllowed },
+    newValue: { gstReuseAllowed: false }
+  });
+
+  return res.json({ success: true, organization: updated, message: 'GST reuse revoked successfully.' });
+}));
+
 router.put('/admin/organizations/:id/features', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+  const existingOrg = await db.organization.findUnique({
+    where: { id },
+  });
+  if (!existingOrg) throw new ApiError(404, 'Organization not found', 'ORG_NOT_FOUND');
+
+  // Tenant isolation: non-master admins can only access organizations from their own company
+  if (req.user.role !== 'master_admin') {
+    if (!req.user.companyId || existingOrg.companyId !== req.user.companyId) {
+      throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
+    }
+  }
   const body = parse(z.object({
     products: z.boolean().optional(),
     services: z.boolean().optional(),

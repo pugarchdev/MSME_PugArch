@@ -27,8 +27,12 @@ import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { notificationService } from '../services/notification.service.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
+import { checkFeatureEnabled } from '../middleware/authorize.js';
 
 const router = Router();
+
+router.use('/cart', authenticate);
+router.use('/cart', checkFeatureEnabled('checkout'));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

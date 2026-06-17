@@ -156,39 +156,39 @@ export function MarketplaceItemCard({
     };
 
     return (
-        <article className={cn('group flex min-h-[354px] w-56 shrink-0 snap-start flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-[#0b2447]/30 hover:shadow-md sm:w-60 2xl:w-64', className)}>
-            <Link href={detailHref} onClick={cacheDetail} className="relative block h-36 overflow-hidden bg-slate-50">
+        <article className={cn('group flex min-h-[370px] w-56 shrink-0 snap-start flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/90 shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:border-[#0b2447]/30 hover:shadow-lg sm:w-60 2xl:w-64', className)}>
+            <Link href={detailHref} onClick={cacheDetail} className="relative block h-40 overflow-hidden bg-gradient-to-b from-slate-50/50 to-slate-100/30 border-b border-slate-100">
                 {imageUrl ? (
-                    <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-contain p-2 transition duration-300 group-hover:scale-105" />
+                    <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-contain p-3.5 transition-all duration-500 ease-out group-hover:scale-110 group-hover:rotate-1" />
                 ) : (
-                    <span className="flex h-full w-full items-center justify-center text-slate-300">
-                        {type === 'service' ? <Wrench className="h-10 w-10" /> : <Package className="h-10 w-10" />}
+                    <span className="flex h-full w-full items-center justify-center text-slate-300 transition-transform duration-500 group-hover:scale-110">
+                        {type === 'service' ? <Wrench className="h-12 w-12" /> : <Package className="h-12 w-12" />}
                     </span>
                 )}
-                <span className="absolute left-2 top-2 rounded bg-white/95 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#0b2447] shadow-sm">
+                <span className="absolute left-2.5 top-2.5 rounded-full bg-white/90 backdrop-blur-sm px-2.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-[#0b2447] shadow-sm border border-slate-200/50">
                     {type === 'service' ? 'Service' : 'Product'}
                 </span>
                 {discount && (
-                    <span className="absolute right-2 top-2 rounded bg-[#fff7ed] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-[#c86413] shadow-sm">
+                    <span className="absolute right-2.5 top-2.5 rounded-full bg-orange-500/90 backdrop-blur-sm px-2.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-white shadow-sm">
                         {discount.percent}% off
                     </span>
                 )}
             </Link>
 
             <div className="flex flex-1 flex-col p-3">
-                <div className="mb-2 flex flex-wrap gap-1">
+                <div className="mb-2.5 flex flex-wrap gap-1.5">
                     {sellerVerified && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">
-                            <BadgeCheck className="h-2.5 w-2.5" /> Verified
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-emerald-700 shadow-sm">
+                            <BadgeCheck className="h-2.5 w-2.5 text-emerald-600" /> Verified
                         </span>
                     )}
                     {isLocal && (
-                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase text-blue-700">
+                        <span className="inline-flex items-center gap-0.5 rounded-full border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100/50 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-blue-700 shadow-sm">
                             Local MSME
                         </span>
                     )}
                     {isHerShg && (
-                        <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[9px] font-black uppercase text-green-700">
+                        <span className="inline-flex items-center gap-0.5 rounded-full border border-saffron/20 bg-gradient-to-r from-orange-50 to-orange-100/40 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-brand-saffron shadow-sm">
                             HerSHG
                         </span>
                     )}
@@ -200,7 +200,7 @@ export function MarketplaceItemCard({
                     </Link>
                 )}
                 <Link href={detailHref} onClick={cacheDetail}>
-                    <h3 className="mt-1 line-clamp-2 min-h-[34px] text-xs font-black leading-snug text-slate-900 transition group-hover:text-[#0b2447]">
+                    <h3 className="mt-1.5 line-clamp-2 min-h-[36px] text-xs font-extrabold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-[#0b2447]">
                         {item.name}
                     </h3>
                 </Link>
@@ -231,34 +231,34 @@ export function MarketplaceItemCard({
 
                 <div className="mt-auto space-y-2 pt-3">
                     <div className="grid grid-cols-[1fr_auto] gap-2">
-                        <Link href={detailHref} onClick={cacheDetail}>
-                            <Button type="button" variant="outline" size="sm" className="w-full gap-1">
-                                <Eye className="h-3.5 w-3.5" /> Details
+                        <Link href={detailHref} onClick={cacheDetail} className="w-full">
+                            <Button type="button" variant="outline" size="sm" className="w-full h-9 gap-1.5 rounded-xl border-slate-200/80 text-[10px] font-extrabold text-slate-700 transition-all hover:bg-slate-50/80 active:scale-98">
+                                <Eye className="h-3.5 w-3.5 text-slate-500" /> Details
                             </Button>
                         </Link>
                         {showCompare && (
-                            <CompareToggleButton item={{ type, id: item.id, categoryId: category?.id }} iconOnly className="h-8 w-8" />
+                            <CompareToggleButton item={{ type, id: item.id, categoryId: category?.id }} iconOnly className="h-9 w-9 rounded-xl border-slate-200/80 hover:bg-slate-50/80 transition-all" />
                         )}
                     </div>
                     {showAddToCart && (
                         quantity > 0 ? (
-                            <div className="flex h-8 items-center justify-between overflow-hidden rounded-lg border-2 border-[#0b2447]">
-                                <button type="button" onClick={(event) => changeQuantity(event, quantity - 1)} className="flex h-full w-9 items-center justify-center text-[#0b2447] transition hover:bg-blue-50" aria-label="Decrease quantity">
+                            <div className="flex h-9 items-center justify-between overflow-hidden rounded-xl border-2 border-[#0b2447] bg-white transition-all duration-300 shadow-inner">
+                                <button type="button" onClick={(event) => changeQuantity(event, quantity - 1)} className="flex h-full w-10 items-center justify-center text-[#0b2447] transition hover:bg-[#0b2447]/5 active:scale-90" aria-label="Decrease quantity">
                                     <Minus className="h-3.5 w-3.5" />
                                 </button>
-                                <span className="text-xs font-black tabular-nums text-[#0b2447]">{quantity}</span>
-                                <button type="button" onClick={(event) => changeQuantity(event, quantity + 1)} className="flex h-full w-9 items-center justify-center text-[#0b2447] transition hover:bg-blue-50" aria-label="Increase quantity">
+                                <span className="text-xs font-extrabold tabular-nums text-[#0b2447]">{quantity}</span>
+                                <button type="button" onClick={(event) => changeQuantity(event, quantity + 1)} className="flex h-full w-10 items-center justify-center text-[#0b2447] transition hover:bg-[#0b2447]/5 active:scale-90" aria-label="Increase quantity">
                                     <Plus className="h-3.5 w-3.5" />
                                 </button>
                             </div>
                         ) : (
-                            <Button type="button" size="sm" onClick={addToCart} className="w-full gap-1">
+                            <Button type="button" size="sm" onClick={addToCart} className="w-full h-9 gap-1.5 rounded-xl bg-gradient-to-r from-[#0b2447] to-[#07172e] font-black text-[10px] tracking-wide text-white transition-all duration-300 hover:from-[#12335f] hover:to-[#0b2447] hover:shadow-md active:scale-98">
                                 <ShoppingCart className="h-3.5 w-3.5" /> Add to Cart
                             </Button>
                         )
                     )}
                     {showRequestQuote && (
-                        <Button type="button" variant="outline" size="sm" onClick={requestQuote} className="w-full gap-1 border-[#0b2447]/20 text-[#0b2447]">
+                        <Button type="button" variant="outline" size="sm" onClick={requestQuote} className="w-full h-9 gap-1.5 rounded-xl border-[#0b2447]/20 text-[10px] font-extrabold text-[#0b2447] hover:bg-blue-50/40 active:scale-98 transition-all">
                             <FileText className="h-3.5 w-3.5" /> Request Quote
                         </Button>
                     )}

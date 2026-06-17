@@ -15,6 +15,14 @@ const tokenService = fs.readFileSync(path.join(root, 'backend/src/services/token
 const otpService = fs.readFileSync(path.join(root, 'backend/src/services/otp.service.ts'), 'utf8');
 const safeErrorResponse = fs.readFileSync(path.join(root, 'backend/src/middleware/safeErrorResponse.ts'), 'utf8');
 const schema = fs.readFileSync(path.join(root, 'backend/prisma/schema.prisma'), 'utf8');
+const masterAdminRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/master-admin.routes.ts'), 'utf8');
+const masterAdminPage = fs.readFileSync(path.join(root, 'frontend/src/features/masterAdmin/pages/MasterAdminPage.tsx'), 'utf8');
+const masterAdminApi = fs.readFileSync(path.join(root, 'frontend/src/features/masterAdmin/masterAdminApi.ts'), 'utf8');
+const phase4Routes = fs.readFileSync(path.join(root, 'backend/src/routes/phase4.routes.ts'), 'utf8');
+const cartRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/cart.routes.ts'), 'utf8');
+const marketplaceRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/marketplace.routes.ts'), 'utf8');
+const tenderEvaluationRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/tender-evaluation.routes.ts'), 'utf8');
+const closureBlockers = fs.readFileSync(path.join(root, 'backend/src/utils/closureBlockers.ts'), 'utf8');
 
 test('unauthorized API access is protected by authenticate middleware', () => {
   const protectedRoutes = [
@@ -37,6 +45,182 @@ test('unauthorized API access is protected by authenticate middleware', () => {
 test('wrong role access returns 403 through authorize middleware', () => {
   assert.match(authorizeMiddleware, /403/, 'authorize middleware must reject wrong roles with 403');
   assert.match(authorizeMiddleware, /authorizeAdmin/, 'admin-only authorization helper must exist');
+});
+
+test('master admin control-center data endpoints are master-only', () => {
+  assert.match(masterAdminRoutes, /const masterOnly = \[authenticate, authorize\('master_admin'\)\]/, 'masterOnly must enforce master_admin role');
+  const endpoints = [
+    '/master-admin/dashboard',
+    '/master-admin/companies',
+    '/master-admin/organizations',
+    '/master-admin/users',
+    '/master-admin/procurement',
+    '/master-admin/tenders',
+    '/master-admin/rfqs',
+    '/master-admin/orders',
+    '/master-admin/invoices',
+    '/master-admin/payments',
+    '/master-admin/escrow-accounts',
+    '/master-admin/payment-settlements',
+    '/master-admin/documents',
+    '/master-admin/marketplace/products',
+    '/master-admin/marketplace/services',
+    '/master-admin/reports/export',
+    '/master-admin/search',
+    '/master-admin/system-health',
+    '/master-admin/portal-settings',
+    '/master-admin/audit-logs',
+    '/master-admin/security-overview'
+  ];
+
+  for (const endpoint of endpoints) {
+    const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      masterAdminRoutes,
+      new RegExp(`router\\.get\\('${escaped}', \\.\\.\\.masterOnly`),
+      `${endpoint} must be registered as a master-only GET route`
+    );
+  }
+});
+
+test('master admin action controls are master-only, reason-gated, and archive-first', () => {
+  assert.match(masterAdminRoutes, /const masterOnly = \[authenticate, authorize\('master_admin'\)\]/, 'masterOnly must enforce master_admin role');
+
+  const protectedActionRoutes = [
+    ['post', '/master-admin/companies'],
+    ['put', '/master-admin/companies/:id'],
+    ['delete', '/master-admin/companies/:id'],
+    ['put', '/master-admin/companies/:id/content'],
+    ['put', '/master-admin/companies/:id/features'],
+    ['post', '/master-admin/organizations'],
+    ['put', '/master-admin/organizations/:id'],
+    ['delete', '/master-admin/organizations/:id'],
+    ['put', '/master-admin/organizations/:id/theme'],
+    ['put', '/master-admin/organizations/:id/features'],
+    ['post', '/master-admin/users'],
+    ['put', '/master-admin/users/:id'],
+    ['delete', '/master-admin/users/:id'],
+    ['post', '/master-admin/users/:id/reset-password'],
+    ['post', '/master-admin/users/:id/invite'],
+    ['post', '/master-admin/users/:id/change-role'],
+    ['post', '/master-admin/users/:id/change-organization'],
+    ['post', '/master-admin/marketplace/products/:id/status'],
+    ['post', '/master-admin/marketplace/services/:id/status'],
+    ['post', '/master-admin/orders/:id/status'],
+    ['post', '/master-admin/invoices/:id/status'],
+    ['post', '/master-admin/payments/:id/status'],
+    ['post', '/master-admin/escrow-accounts/:id/status'],
+    ['put', '/master-admin/email-settings'],
+    ['put', '/master-admin/portal-settings']
+  ];
+
+  for (const [method, endpoint] of protectedActionRoutes) {
+    const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      masterAdminRoutes,
+      new RegExp(`router\\.${method}\\('${escaped}', \\.\\.\\.masterOnly`),
+      `${endpoint} must be registered as a master-only ${method.toUpperCase()} route`
+    );
+  }
+
+  const requiredReasonActions = [
+    'create company',
+    'update company',
+    'archive company',
+    'update branding content',
+    'update feature controls',
+    'enable feature',
+    'disable feature',
+    'create organization',
+    'update organization',
+    'archive organization',
+    'update organization theme',
+    'reset organization theme',
+    'update organization feature controls',
+    'enable organization feature',
+    'disable organization feature',
+    'create user',
+    'update user',
+    'archive user',
+    'reset user password',
+    'invite user',
+    'change user role',
+    'change user organization',
+    'update email settings',
+    'update portal settings'
+  ];
+
+  for (const action of requiredReasonActions) {
+    assert.match(
+      masterAdminRoutes,
+      new RegExp(`ensureReason\\(res, req\\.body, '${action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'\\)`),
+      `${action} must require an explicit reason`
+    );
+  }
+
+  assert.doesNotMatch(masterAdminRoutes, /(?:company|organization|user)\.delete\(/, 'company, organization, and user actions must not hard-delete records');
+  assert.match(masterAdminRoutes, /action: 'company\.archive'[\s\S]*requestedVia: 'DELETE'/, 'legacy company DELETE route must archive with audit metadata');
+  assert.match(masterAdminRoutes, /action: 'organization\.archive'[\s\S]*requestedVia: 'DELETE'/, 'legacy organization DELETE route must archive with audit metadata');
+  assert.match(masterAdminRoutes, /archiveUserDeleteBlocked\(req, id, reason, \{ requestedVia: 'DELETE' \}\)/, 'legacy user DELETE route must archive with audit metadata');
+
+  const auditActions = [
+    'company.create',
+    'company.update',
+    'company.archive',
+    'feature.toggle',
+    'feature.enable',
+    'feature.disable',
+    'content.update',
+    'organization.create',
+    'organization.update',
+    'organization.archive',
+    'organization.theme.update',
+    'organization.theme.reset',
+    'organization.features.update',
+    'organization.feature.enable',
+    'organization.feature.disable',
+    'user.create',
+    'user.update',
+    'user.password.reset',
+    'user.invite.marked',
+    'user.role.change',
+    'user.organization.change',
+    'email.settings.update',
+    'portal.settings.update'
+  ];
+
+  for (const action of auditActions) {
+    assert.match(
+      masterAdminRoutes,
+      new RegExp(`createAuditLog\\(req, \\{ action: '${action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'[\\s\\S]*metadata: \\{[\\s\\S]*reason`),
+      `${action} must write an audit log with the captured reason`
+    );
+  }
+
+  assert.match(masterAdminRoutes, /createAuditLog\(req, \{ action: `company\.\$\{action\}`[\s\S]*metadata: \{ reason \}/, 'company status changes must be audited with a reason');
+  assert.match(masterAdminRoutes, /createAuditLog\(req, \{ action: `organization\.\$\{action\}`[\s\S]*metadata: \{ reason \}/, 'organization status changes must be audited with a reason');
+  assert.match(masterAdminRoutes, /createAuditLog\(req, \{ action: `user\.\$\{action\}`[\s\S]*metadata: \{ reason, accountStatus \}/, 'user status changes must be audited with a reason');
+  assert.match(masterAdminRoutes, /router\.get\('\/master-admin\/reports\/export'[\s\S]*Reason is required to export Master Admin data\./, 'data export must require an explicit audit reason');
+  assert.match(masterAdminRoutes, /createAuditLog\(req, \{ action: 'data\.export'[\s\S]*metadata: \{ module, reason, rows:/, 'data export must write an audit log with reason and row count');
+  assert.match(masterAdminRoutes, /ensureReason\(res, req\.body, reasonAction\)/, 'marketplace status handler must require the provided reason label');
+  assert.match(masterAdminRoutes, /marketplaceStatusAction\('product', 'marketplace-product', 'update marketplace-product status'\)/, 'product marketplace status route must pass an explicit reason label');
+  assert.match(masterAdminRoutes, /marketplaceStatusAction\('service', 'marketplace-service', 'update marketplace-service status'\)/, 'service marketplace status route must pass an explicit reason label');
+  assert.match(masterAdminRoutes, /action: `\$\{entityType\}\.status\.update`[\s\S]*metadata: \{ reason, name: previous\.name, oldValue: \{ status: previous\.status \}, newValue: \{ status \} \}/, 'marketplace status updates must audit before and after status plus reason');
+  assert.match(masterAdminRoutes, /ensureReason\(res, req\.body, 'update order status'\)/, 'order status override must require a reason');
+  assert.match(masterAdminRoutes, /action: 'purchase-order\.status\.override'[\s\S]*metadata: \{ reason, oldValue: \{ status: previous\.status, poStatus: previous\.poStatus \}, newValue:/, 'order status override must audit old and new values');
+  assert.match(masterAdminRoutes, /ensureReason\(res, req\.body, 'update invoice status'\)/, 'invoice status override must require a reason');
+  assert.match(masterAdminRoutes, /action: 'invoice\.status\.override'[\s\S]*metadata: \{ reason, oldValue: \{ status: previous\.status, invoiceStatus: previous\.invoiceStatus \}, newValue:/, 'invoice status override must audit old and new values');
+  assert.match(masterAdminRoutes, /ensureReason\(res, req\.body, 'update payment status'\)/, 'payment status override must require a reason');
+  assert.match(masterAdminRoutes, /action: 'payment\.status\.override'[\s\S]*metadata: \{ reason, oldValue: \{ status: previous\.status, paymentStatus: previous\.paymentStatus \}, newValue:/, 'payment status override must audit old and new values');
+  assert.match(masterAdminRoutes, /ensureReason\(res, req\.body, 'update escrow status'\)/, 'escrow status override must require a reason');
+  assert.match(masterAdminRoutes, /action: 'escrow\.status\.override'[\s\S]*metadata: \{ reason, oldValue: \{ status: previous\.status, escrowStatus: previous\.escrowStatus \}, newValue:/, 'escrow status override must audit old and new values');
+});
+
+test('master admin frontend presents archive and restore instead of delete controls', () => {
+  assert.match(masterAdminPage, /Archive/, 'archive action must be visible in the Master Admin UI');
+  assert.match(masterAdminPage, /Restore/, 'restore action must be visible in the Master Admin UI');
+  assert.doesNotMatch(masterAdminPage, /Trash2|onDelete|Type DELETE|action: 'delete'/, 'Master Admin UI must not expose permanent-delete affordances');
+  assert.doesNotMatch(masterAdminApi, /method: 'DELETE'|deleteOrganization|deleteUser/, 'Master Admin frontend API wrapper must not expose DELETE helpers for action controls');
 });
 
 test('expired or invalid JWTs are blocked', () => {
@@ -156,4 +340,35 @@ test('raw Aadhaar and bank values are not returned by API responses', () => {
 test('safe error handler does not leak internal server messages', () => {
   assert.match(safeErrorResponse, /'Internal server error'/, '500 errors must use a generic message');
   assert.doesNotMatch(safeErrorResponse, /isProduction \?/, '500 error masking must not depend on production mode');
+});
+
+test('tenant scope enforcement on admin organization lifecycle routes', () => {
+  const endpoints = ['/close', '/archive', '/restore', '/allow-gst-reuse', '/revoke-gst-reuse'];
+  for (const endpoint of endpoints) {
+    const routePattern = new RegExp(`router\\.patch\\('/admin/organizations/:id${endpoint}'[\\s\\S]*?TENANT_SCOPE_VIOLATION`);
+    assert.match(phase4Routes, routePattern, `admin organization ${endpoint} must enforce tenant scope isolation`);
+  }
+});
+
+test('dependency blocker validation blocks organization closure and archiving', () => {
+  assert.match(phase4Routes, /getOrganizationClosureBlockers/, 'phase4 routes must use getOrganizationClosureBlockers helper');
+  assert.match(masterAdminRoutes, /getOrganizationClosureBlockers/, 'master admin routes must use getOrganizationClosureBlockers helper');
+  
+  assert.match(closureBlockers, /db\.tender\.count/, 'closure blockers must check active tenders');
+  assert.match(closureBlockers, /db\.bid\.count/, 'closure blockers must check active bids');
+  assert.match(closureBlockers, /db\.purchaseOrder\.count/, 'closure blockers must check active purchase orders');
+  assert.match(closureBlockers, /db\.goodsReceiptNote\.count/, 'closure blockers must check active GRNs');
+  assert.match(closureBlockers, /db\.invoice\.count/, 'closure blockers must check active invoices');
+});
+
+test('GST reuse lifecycle blocks re-registration unless allowed', () => {
+  assert.match(phase4Routes, /gstReuseAllowed: true/, 'GST verification must verify gstReuseAllowed status before allowing reuse');
+  assert.match(phase4Routes, /gstReuseAllowed === true|gstReuseAllowed/, 'GST verification must check gstReuseAllowed status');
+});
+
+test('feature flags restrict access to disabled features', () => {
+  assert.match(cartRoutes, /checkFeatureEnabled\('checkout'\)/, 'cart routes must enforce checkout feature flag');
+  assert.match(marketplaceRoutes, /checkFeatureIfAuthenticated\('product-marketplace'\)/, 'marketplace routes must enforce product feature flag');
+  assert.match(marketplaceRoutes, /checkFeatureIfAuthenticated\('service-marketplace'\)/, 'marketplace routes must enforce service feature flag');
+  assert.match(tenderEvaluationRoutes, /checkFeatureEnabled\('tender-management'\)/, 'tender evaluation routes must enforce tender-management feature flag');
 });

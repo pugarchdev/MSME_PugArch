@@ -64,18 +64,18 @@ export function MarketplaceSectionCarousel({
                     <button
                         type="button"
                         onClick={() => scroll('left')}
-                        className="absolute left-0 top-1/2 z-10 hidden h-16 w-9 -translate-y-1/2 items-center justify-center rounded-r-md border border-slate-200 bg-white/95 shadow-md transition hover:bg-slate-50 lg:flex"
+                        className="absolute -left-2 lg:-left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/70 bg-white/90 shadow-md backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#0b2447] hover:text-white hover:border-[#0b2447] hover:shadow-lg active:scale-95 lg:flex text-slate-600"
                         aria-label={`Scroll ${title} left`}
                     >
-                        <ChevronLeft className="h-4 w-4 text-slate-600" />
+                        <ChevronLeft className="h-5 w-5" />
                     </button>
                 )}
 
                 {loading ? (
                     <div className="flex gap-4 overflow-hidden pb-5">
                         {Array.from({ length: 5 }).map((_, index) => (
-                            <div key={index} className="h-[354px] w-56 shrink-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:w-60 2xl:w-64">
-                                <div className="h-36 rounded-md bg-slate-100" />
+                            <div key={index} className="h-[370px] w-56 shrink-0 rounded-2xl border border-slate-200/60 bg-white/90 p-3 shadow-sm sm:w-60 2xl:w-64">
+                                <div className="h-40 rounded-xl bg-slate-100" />
                                 <div className="mt-4 h-3 w-24 rounded bg-slate-100" />
                                 <div className="mt-3 h-4 w-full rounded bg-slate-100" />
                                 <div className="mt-2 h-4 w-2/3 rounded bg-slate-100" />
@@ -85,7 +85,7 @@ export function MarketplaceSectionCarousel({
                         ))}
                     </div>
                 ) : items.length > 0 ? (
-                    <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 no-scrollbar xl:gap-5">
+                    <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 pt-1 no-scrollbar xl:gap-5">
                         {items.map((item) => (
                             <MarketplaceItemCard
                                 key={`${sectionKey}-${item.id}-${(item as any).itemType || ''}`}
@@ -99,15 +99,15 @@ export function MarketplaceSectionCarousel({
                         {viewAllUrl && (
                             <Link
                                 href={viewAllUrl}
-                                className="flex min-h-[354px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 text-center transition hover:bg-slate-100 sm:w-56"
+                                className="flex min-h-[370px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-4 text-center transition hover:bg-slate-100 hover:border-[#0b2447]/30 sm:w-56"
                             >
-                                <PackageSearch className="h-8 w-8 text-[#0b2447]" />
-                                <span className="text-xs font-black text-[#0b2447]">View complete section</span>
+                                <PackageSearch className="h-8 w-8 text-[#0b2447] transition-transform duration-300 hover:scale-110" />
+                                <span className="text-xs font-extrabold text-[#0b2447]">View complete section</span>
                             </Link>
                         )}
                     </div>
                 ) : (
-                    <div className="mb-5 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                    <div className="mb-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
                         <PackageSearch className="mx-auto h-9 w-9 text-slate-300" />
                         <p className="mt-2 text-xs font-semibold text-slate-500">{emptyState}</p>
                     </div>
@@ -117,10 +117,10 @@ export function MarketplaceSectionCarousel({
                     <button
                         type="button"
                         onClick={() => scroll('right')}
-                        className="absolute right-0 top-1/2 z-10 hidden h-16 w-9 -translate-y-1/2 items-center justify-center rounded-l-md border border-slate-200 bg-white/95 shadow-md transition hover:bg-slate-50 lg:flex"
+                        className="absolute -right-2 lg:-right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/70 bg-white/90 shadow-md backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#0b2447] hover:text-white hover:border-[#0b2447] hover:shadow-lg active:scale-95 lg:flex text-slate-600"
                         aria-label={`Scroll ${title} right`}
                     >
-                        <ChevronRight className="h-4 w-4 text-slate-600" />
+                        <ChevronRight className="h-5 w-5" />
                     </button>
                 )}
             </div>

@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { bannerApi } from '../features/banners/api';
 import { marketplaceApi } from '../features/marketplace/api';
 import { resolveMarketplaceImage } from '../features/marketplace/utils/marketplaceImages';
+import { AIInsightBox } from '../features/dashboard/components/AIInsightBox';
 
 const ADMIN_REVIEW_CHECKLIST = [
   'Clear pending stakeholder approvals',
@@ -348,6 +349,30 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
+  const { data: summaryData } = useQuery({
+    queryKey: ['dashboard', 'summary'],
+    queryFn: async () => {
+      const res = await api.fetch('/api/dashboard/summary', { headers: authHeaders });
+      if (!res.ok) throw new Error('Failed to fetch summary');
+      const json = await res.json();
+      return unwrapApiData<any>(json);
+    },
+    enabled: !!token && user?.role !== 'admin',
+    staleTime: 15_000
+  });
+
+  const dashboardData = useMemo(() => {
+    return {
+      user: {
+        name: user?.name,
+        role: user?.role,
+        organizationName: (user?.organization as any)?.organizationName,
+        onboardingStatus: user?.onboardingStatus
+      },
+      metrics: user?.role === 'admin' ? (adminStats || {}) : (summaryData || {})
+    };
+  }, [user, adminStats, summaryData]);
+
   const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedGstin = gstInput.trim().toUpperCase();
@@ -539,6 +564,8 @@ export default function Dashboard() {
           {adminTiles.map(stat => <AdminKpiLink key={stat.label} stat={stat} isLoading={isAdminStatsLoading} />)}
         </div>
 
+        <AIInsightBox dashboardData={dashboardData} />
+
         <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
           <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 py-3">
@@ -597,6 +624,26 @@ export default function Dashboard() {
           </div>
         </button>
       </div>
+
+      {user?.role === 'buyer' && (
+        <section className="rounded-lg border border-[#12335f]/20 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Primary Buyer Action</p>
+              <h2 className="text-base font-black text-slate-950">Create Procurement</h2>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                Start once, choose the business intent, and continue to marketplace, request quotations, large procurement, auction, or open requirement.
+              </p>
+            </div>
+            <Link href="/buyer/procurement/create">
+              <Button className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
+                Create Procurement
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
@@ -667,6 +714,8 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           )}
+
+          <AIInsightBox dashboardData={dashboardData} />
 
           <PromotionEligibilityCard eligibility={bannerEligibility} isLoading={isBannerEligibilityLoading} />
 

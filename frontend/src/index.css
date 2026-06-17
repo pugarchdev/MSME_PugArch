@@ -143,12 +143,12 @@ canvas {
 
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
-    display: none;
+    display: none !important;
   }
 
   .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
   }
 }
 
@@ -402,47 +402,68 @@ tr:hover .col-sticky-right {
    official caption headers. */
 
 [data-sonner-toast] {
-  background-color: #ffffff !important;
-  color: #1f2937 !important;
-  /* Slate-800 body */
-  border: 1px solid #cbd5e1 !important;
-  /* Elegant slate border on all sides */
-  border-radius: 6px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+  --toast-accent: #0b2447;
+  --toast-accent-soft: #eff6ff;
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  border-radius: 10px !important;
+  box-shadow:
+    0 18px 45px -24px rgba(15, 23, 42, 0.42),
+    0 8px 18px -12px rgba(15, 23, 42, 0.22) !important;
   font-family: var(--font-body) !important;
-  padding: 14px 18px 14px 16px !important;
+  padding: 12px 38px 12px 14px !important;
   overflow: hidden !important;
   position: relative;
   display: flex;
   align-items: flex-start !important;
-  gap: 12px !important;
-  min-width: 360px;
+  gap: 11px !important;
+  min-width: min(390px, calc(100vw - 32px)) !important;
+  max-width: min(430px, calc(100vw - 32px)) !important;
+  backdrop-filter: blur(10px);
 }
 
 /* Saffron, White, Green Tricolor strip across the very top (sleek 2.5px) */
 [data-sonner-toast]::before {
   content: "" !important;
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 2.5px !important;
-  background: linear-gradient(90deg,
-      #ff9933 0%,
-      #ff9933 33.33%,
-      #ffffff 33.33%,
-      #ffffff 66.66%,
-      #138808 66.66%,
-      #138808 100%) !important;
-  z-index: 10 !important;
+  inset: 0 auto 0 0 !important;
+  width: 4px !important;
+  background: var(--toast-accent) !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  --toast-accent: #138808;
+  --toast-accent-soft: #ecfdf3;
+}
+
+[data-sonner-toast][data-type="error"] {
+  --toast-accent: #dc2626;
+  --toast-accent-soft: #fef2f2;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  --toast-accent: #d97706;
+  --toast-accent-soft: #fffbeb;
+}
+
+[data-sonner-toast][data-type="info"] {
+  --toast-accent: #0b2447;
+  --toast-accent-soft: #eff6ff;
+}
+
+[data-sonner-toast][data-type="loading"] {
+  --toast-accent: #475569;
+  --toast-accent-soft: #f8fafc;
 }
 
 /* Official Label Header injected above the title content */
 [data-sonner-toast] [data-content] {
   display: flex !important;
   flex-direction: column !important;
-  gap: 2px !important;
-  margin-top: -2px !important;
+  gap: 3px !important;
+  min-width: 0 !important;
+  padding-top: 1px !important;
 }
 
 [data-sonner-toast] [data-content]::before {
@@ -538,4 +559,72 @@ tr:hover .col-sticky-right {
   background-color: #e2e8f0 !important;
   color: #0f172a !important;
   transform: scale(1.08) !important;
+}
+
+/* Professional compact toast override. Kept after legacy rules so this wins. */
+[data-sonner-toast] [data-content]::before {
+  content: "MSME Portal" !important;
+  display: block !important;
+  width: fit-content !important;
+  border-radius: 999px !important;
+  background: #f8fafc !important;
+  padding: 2px 7px !important;
+  font-size: 8px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.11em !important;
+  color: #64748b !important;
+  line-height: 1 !important;
+  margin-bottom: 1px !important;
+}
+
+[data-sonner-toast] [data-title] {
+  color: #0b2447 !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+  line-height: 1.32 !important;
+  letter-spacing: 0 !important;
+}
+
+[data-sonner-toast] [data-description] {
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+}
+
+[data-sonner-toast] [data-icon] {
+  width: 30px !important;
+  height: 30px !important;
+  flex: 0 0 30px !important;
+  border-radius: 8px !important;
+  margin-top: 2px !important;
+  background-color: var(--toast-accent-soft) !important;
+  color: var(--toast-accent) !important;
+  padding: 0 !important;
+}
+
+[data-sonner-toast] [data-icon] svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+[data-sonner-toast] [data-close-button] {
+  top: 10px !important;
+  right: 10px !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 7px !important;
+  border: 1px solid transparent !important;
+  background-color: transparent !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+  transform: none !important;
 }

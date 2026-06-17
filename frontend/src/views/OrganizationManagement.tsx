@@ -38,9 +38,12 @@ interface Organization {
   organizationName: string;
   gstin?: string;
   panNumber?: string;
-  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED';
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'CLOSED' | 'ARCHIVED' | 'MERGED';
   isBlacklisted: boolean;
   blacklistReason?: string;
+  gstReuseAllowed?: boolean;
+  previousOrganizationId?: number | null;
+  replacementOrganizationId?: number | null;
   features: {
     products: boolean;
     services: boolean;
@@ -117,6 +120,64 @@ export default function OrganizationManagement() {
     catalog: false
   });
   const [savingAction, setSavingAction] = useState(false);
+
+  // Lifecycle action states
+  const [lifecycleOrg, setLifecycleOrg] = useState<Organization | null>(null);
+  const [lifecycleAction, setLifecycleAction] = useState<'close' | 'archive' | 'restore' | 'allow-gst-reuse' | 'revoke-gst-reuse' | null>(null);
+  const [lifecycleReason, setLifecycleReason] = useState('');
+  const [lifecycleConfirm, setLifecycleConfirm] = useState(false);
+  const [lifecycleBlockers, setLifecycleBlockers] = useState<any[] | null>(null);
+
+  const handleOpenLifecycleModal = (org: Organization, action: typeof lifecycleAction) => {
+    setLifecycleOrg(org);
+    setLifecycleAction(action);
+    setLifecycleReason('');
+    setLifecycleConfirm(false);
+    setLifecycleBlockers(null);
+  };
+
+  const handleSaveLifecycleAction = async () => {
+    if (!lifecycleOrg || !lifecycleAction) return;
+    if (!lifecycleReason.trim()) {
+      toast.error('Reason is required.');
+      return;
+    }
+    if (lifecycleAction !== 'restore' && !lifecycleConfirm) {
+      toast.error('Confirmation is required.');
+      return;
+    }
+
+    setSavingAction(true);
+    setLifecycleBlockers(null);
+
+    try {
+      const url = `/api/admin/organizations/${lifecycleOrg.id}/${lifecycleAction}`;
+      const res = await api.patch(url, {
+        reason: lifecycleReason,
+        confirm: lifecycleConfirm
+      }, authHeaders);
+
+      if (res.ok) {
+        toast.success(`Organization ${lifecycleAction.replace('-', ' ')} completed successfully.`);
+        queryClient.invalidateQueries({ queryKey: ['organizations'] });
+        setLifecycleOrg(null);
+        setLifecycleAction(null);
+      } else {
+        const body = await res.json();
+        if (body?.error === 'ORGANIZATION_HAS_ACTIVE_DEPENDENCIES' && body?.blockers) {
+          setLifecycleBlockers(body.blockers);
+          toast.error(body.message || 'Action blocked by active transactions.');
+        } else {
+          toast.error(body?.message || `Failed to perform organization ${lifecycleAction}`);
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'An error occurred.');
+    } finally {
+      setSavingAction(false);
+    }
+  };
 
   const { data, isLoading: loading, isFetching, refetch } = useQuery({
     queryKey: ['organizations', page, pageSize, statusFilter, debouncedSearch],
@@ -270,6 +331,9 @@ export default function OrganizationManagement() {
     if (status === 'VERIFIED') return 'bg-emerald-50 border-emerald-200 text-emerald-700';
     if (status === 'REJECTED') return 'bg-red-50 border-red-200 text-red-700';
     if (status === 'SUSPENDED') return 'bg-amber-50 border-amber-200 text-amber-700';
+    if (status === 'CLOSED') return 'bg-slate-50 border-slate-200 text-slate-700';
+    if (status === 'ARCHIVED') return 'bg-slate-100 border-slate-300 text-slate-600';
+    if (status === 'MERGED') return 'bg-blue-50 border-blue-200 text-blue-700';
     return 'bg-emerald-50 border-emerald-100 text-[#0c2340]';
   };
 
@@ -478,6 +542,66 @@ export default function OrganizationManagement() {
                             >
                               <Ban className="h-3 w-3 text-red-600" /> {org.isBlacklisted ? "Unrestrict" : "Restrict"}
                             </Button>
+
+                            {/* Organization Lifecycle & GST Reuse controls */}
+                            {org.verificationStatus !== 'CLOSED' && org.verificationStatus !== 'ARCHIVED' && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenLifecycleModal(org, 'close')}
+                                  title="Close Organization"
+                                  className="border-slate-200 hover:bg-slate-100 text-red-600 px-2 py-1.5 h-8 text-[10px] font-bold uppercase tracking-wider gap-1"
+                                >
+                                  <Ban className="h-3 w-3 text-red-600" /> Close
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenLifecycleModal(org, 'archive')}
+                                  title="Archive Organization"
+                                  className="border-slate-200 hover:bg-slate-100 text-slate-600 px-2 py-1.5 h-8 text-[10px] font-bold uppercase tracking-wider gap-1"
+                                >
+                                  <AlertTriangle className="h-3 w-3 text-amber-500" /> Archive
+                                </Button>
+                              </>
+                            )}
+
+                            {(org.verificationStatus === 'CLOSED' || org.verificationStatus === 'ARCHIVED') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenLifecycleModal(org, 'restore')}
+                                title="Restore Organization"
+                                className="border-slate-200 hover:bg-slate-100 text-emerald-600 px-2 py-1.5 h-8 text-[10px] font-bold uppercase tracking-wider gap-1"
+                              >
+                                <RefreshCw className="h-3 w-3 text-emerald-600" /> Restore
+                              </Button>
+                            )}
+
+                            {(org.verificationStatus === 'CLOSED' || org.verificationStatus === 'ARCHIVED') && (
+                              org.gstReuseAllowed ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenLifecycleModal(org, 'revoke-gst-reuse')}
+                                  title="Revoke GST Reuse"
+                                  className="bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700 px-2 py-1.5 h-8 text-[10px] font-bold uppercase tracking-wider gap-1"
+                                >
+                                  <AlertTriangle className="h-3 w-3 text-amber-600" /> Revoke GST
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenLifecycleModal(org, 'allow-gst-reuse')}
+                                  title="Allow GST Reuse"
+                                  className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 px-2 py-1.5 h-8 text-[10px] font-bold uppercase tracking-wider gap-1"
+                                >
+                                  <Check className="h-3 w-3 text-blue-600" /> Allow GST
+                                </Button>
+                              )
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -889,6 +1013,32 @@ export default function OrganizationManagement() {
                 </div>
               </div>
 
+              {(detailOrg.previousOrganizationId || detailOrg.replacementOrganizationId || detailOrg.gstReuseAllowed) && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">GST Reuse Standing</p>
+                  <div className="grid gap-2 text-xs">
+                    <div>
+                      <span className="font-bold text-slate-500 mr-2">GST Reuse Allowed:</span>
+                      <span className={cn("font-black px-1.5 py-0.5 rounded text-[10px]", detailOrg.gstReuseAllowed ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-800")}>
+                        {detailOrg.gstReuseAllowed ? "Yes" : "No"}
+                      </span>
+                    </div>
+                    {detailOrg.previousOrganizationId && (
+                      <div>
+                        <span className="font-bold text-slate-500 mr-2">Previous Organization ID:</span>
+                        <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">ORG-{detailOrg.previousOrganizationId}</span>
+                      </div>
+                    )}
+                    {detailOrg.replacementOrganizationId && (
+                      <div>
+                        <span className="font-bold text-slate-500 mr-2">Re-registered Organization ID:</span>
+                        <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">ORG-{detailOrg.replacementOrganizationId}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {detailOrg.isBlacklisted && detailOrg.blacklistReason && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                   <p className="text-[10px] font-black uppercase tracking-widest text-red-700 flex items-center gap-1.5">
@@ -897,6 +1047,99 @@ export default function OrganizationManagement() {
                   <p className="mt-1 text-xs font-bold text-red-900 text-wrap-anywhere">{detailOrg.blacklistReason}</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Organization Lifecycle & GST Reuse Modal */}
+      {lifecycleOrg && lifecycleAction && (
+        <div className="fixed inset-0 bg-neutral-900/45 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className={cn(
+              "p-5 text-white border-b-4 border-[#c5a556]",
+              lifecycleAction === 'close' || lifecycleAction === 'revoke-gst-reuse' ? 'bg-red-950' : 'bg-[#0c2340]'
+            )}>
+              <h3 className="font-extrabold text-lg flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-[#c5a556]" />
+                {lifecycleAction.replace('-', ' ').toUpperCase()}: {lifecycleOrg.organizationName}
+              </h3>
+              <p className="text-xs text-slate-300 mt-1">
+                {lifecycleAction === 'close' && 'Initiate permanent closure for this organization. This will blacklist the GST unless reuse is explicitly allowed.'}
+                {lifecycleAction === 'archive' && 'Archive this organization. This halts all active operations but retains auditing data.'}
+                {lifecycleAction === 'restore' && 'Restore this organization to VERIFIED status.'}
+                {lifecycleAction === 'allow-gst-reuse' && 'Allow other accounts to register using this closed/archived organization\'s GST.'}
+                {lifecycleAction === 'revoke-gst-reuse' && 'Revoke permission to register using this organization\'s GST.'}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Blockers list if API returns ORGANIZATION_HAS_ACTIVE_DEPENDENCIES */}
+              {lifecycleBlockers && lifecycleBlockers.length > 0 && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-2">
+                  <p className="text-xs font-black text-red-700 flex items-center gap-1.5 uppercase tracking-wider">
+                    <ShieldAlert className="h-4 w-4" /> Active Dependencies Found
+                  </p>
+                  <p className="text-xs text-red-900">
+                    This organization has active transactions. Please close or complete these dependencies before proceeding:
+                  </p>
+                  <ul className="divide-y divide-red-100 text-xs font-bold text-red-800">
+                    {lifecycleBlockers.map((b, idx) => (
+                      <li key={idx} className="py-1 flex justify-between">
+                        <span>{b.type}</span>
+                        <span>{b.count} active</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400">Reason (Required)</label>
+                <textarea
+                  value={lifecycleReason}
+                  onChange={(e) => setLifecycleReason(e.target.value)}
+                  placeholder="Enter reason for this action..."
+                  rows={3}
+                  className="w-full p-3 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#0c2340]/10 focus:border-[#0c2340] bg-slate-50/50 focus:bg-white transition-all resize-none font-medium"
+                />
+              </div>
+
+              {lifecycleAction !== 'restore' && (
+                <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={lifecycleConfirm}
+                    onChange={(e) => setLifecycleConfirm(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#0c2340] focus:ring-[#0c2340] mt-0.5"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-neutral-900 block">I confirm this action</span>
+                    <span className="text-[11px] text-slate-500">Check this box to acknowledge and verify the action.</span>
+                  </div>
+                </label>
+              )}
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                onClick={() => { setLifecycleOrg(null); setLifecycleAction(null); }}
+                className="border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold uppercase tracking-wider"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveLifecycleAction}
+                disabled={savingAction || !lifecycleReason.trim() || (lifecycleAction !== 'restore' && !lifecycleConfirm)}
+                className={cn(
+                  "text-white text-xs font-bold uppercase tracking-wider gap-2 px-4 shadow-sm",
+                  lifecycleAction === 'close' || lifecycleAction === 'revoke-gst-reuse' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#0c2340] hover:bg-[#0c2340]/90'
+                )}
+              >
+                {savingAction && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                Submit
+              </Button>
             </div>
           </div>
         </div>

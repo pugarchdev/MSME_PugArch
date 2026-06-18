@@ -71,6 +71,7 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('../../views/Dashboard'),
   '/master-admin': () => import('../../features/masterAdmin/pages/MasterAdminPage'),
   '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
+  '/buyer/procurement/drafts': () => import('../../features/procurementWizard/pages/ProcurementDraftsPage'),
   '/buyer/procurements': () => import('../../features/requirements/pages/RequirementsPage'),
   '/seller/opportunities': () => import('../../features/sellerOpportunities/pages/SellerOpportunitiesPage'),
   '/orders': () => import('../../features/procurementBid/pages/ProcurementOrdersPage'),
@@ -178,6 +179,7 @@ const isSidebarRouteActive = (targetPath: string | undefined, pathname?: string 
   if (!targetPath || !pathname) return false;
   const [targetBase] = targetPath.split('?');
   if (targetPath.includes('?')) return currentPathWithQuery === targetPath;
+  if (targetBase === '/orders') return pathname === '/orders' || pathname === '/seller/orders' || pathname === '/buyer/orders';
   return currentPathWithQuery === targetBase || Boolean(targetBase && pathname.startsWith(`${targetBase}/`));
 };
 
@@ -437,6 +439,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: ClipboardCheck, roles: ['buyer'] },
+      { label: 'Procurement Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
       { label: 'My Procurements', path: '/buyer/procurements', icon: ClipboardList, roles: ['buyer'] },
       { label: 'Tenders & Bids', path: '/buyer/tenders', icon: Gavel, roles: ['buyer'] },
       { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },

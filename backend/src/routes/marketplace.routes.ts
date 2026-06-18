@@ -2,10 +2,13 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { getOrSetCache } from '../services/cache.service.js';
+import { redisKeys } from '../constants/redis-keys.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
 import { authorize, checkFeatureEnabled } from '../middleware/authorize.js';
 import { verifyAccessToken } from '../services/token.service.js';
+import { longCache, shortCache } from '../middleware/httpCache.js';
+import { sha256 } from '../utils/crypto.js';
 
 const db = prisma as any;
 const router = Router();
@@ -30,6 +33,7 @@ const paginationQuery = z.object({
 }).partial();
 
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });
+const stableCacheHash = (value: unknown) => sha256(JSON.stringify(value));
 
 const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization || '';
@@ -786,7 +790,7 @@ const ensureMarketplaceHomeSections = async () => {
     return sections?.length ? sections : defaultHomeSections.map(section => ({ ...section }));
 };
 
-const loadFeaturedCategories = async () => getOrSetCache('marketplace:categories:featured:v1', async () => {
+const loadFeaturedCategories = async () => getOrSetCache(redisKeys.cacheMarketplaceFeaturedCategories(), async () => {
     const categories = await db.category.findMany({
         where: { isActive: true },
         orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
@@ -1052,7 +1056,7 @@ const buildHomeLayout = async (params: z.infer<typeof marketplaceHomeLayoutQuery
 };
 
 // ─── Public: Home Page Aggregated Data ───────────────────────────────────────
-router.get('/marketplace/categories/featured', async (_req: Request, res: Response) => {
+router.get('/marketplace/categories/featured', longCache(300), async (_req: Request, res: Response) => {
     try {
         return ok(res, { categories: await loadFeaturedCategories() });
     } catch (error) {
@@ -1061,10 +1065,11 @@ router.get('/marketplace/categories/featured', async (_req: Request, res: Respon
     }
 });
 
-router.get('/marketplace/home-layout', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/home-layout', optionalAuthenticate, shortCache(60), async (req: AuthRequest, res: Response) => {
     try {
         const query = marketplaceHomeLayoutQuery.parse(req.query);
-        const cacheKey = `marketplace:home-layout:v2:${JSON.stringify({ ...query, user: req.user?.role === 'buyer' ? req.user?.id : 'public' })}`;
+        const cacheIdentity = { ...query, user: req.user?.role === 'buyer' ? req.user?.id : 'public' };
+        const cacheKey = redisKeys.cacheMarketplaceHomeLayout(stableCacheHash(cacheIdentity));
         const data = await getOrSetCache(cacheKey, () => buildHomeLayout(query, req.user), req.user ? 60 : 180);
         return ok(res, data);
     } catch (error) {
@@ -1228,14 +1233,14 @@ router.patch('/admin/marketplace/home-sections/:key', authenticate, authorize('a
     }
 });
 
-router.get('/marketplace/home', async (_req: Request, res: Response) => {
+router.get('/marketplace/home', shortCache(60), async (_req: Request, res: Response) => {
     try {
         const [latestRequirements, latestTenders, latestBids] = await Promise.all([
             loadLatestRequirements(24),
             loadLatestTenders(6),
             loadLatestProcurementBids(6)
         ]);
-        const data = await getOrSetCache('marketplace:home:v2', async () => {
+        const data = await getOrSetCache(redisKeys.cacheMarketplaceHome(), async () => {
             const [
                 banners,
                 categories,
@@ -1414,7 +1419,7 @@ router.get('/marketplace/home', async (_req: Request, res: Response) => {
 });
 
 // ─── Public: Banners ─────────────────────────────────────────────────────────
-router.get('/marketplace/banners', async (_req: Request, res: Response) => {
+router.get('/marketplace/banners', shortCache(60), async (_req: Request, res: Response) => {
     try {
         const banners = await db.marketplaceBanner?.findMany?.({
             where: { isActive: true },
@@ -1427,7 +1432,7 @@ router.get('/marketplace/banners', async (_req: Request, res: Response) => {
 });
 
 // ─── Public: Product Listing ─────────────────────────────────────────────────
-router.get('/marketplace/products', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/products', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), shortCache(45), async (req: AuthRequest, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1519,7 +1524,7 @@ router.get('/marketplace/products', optionalAuthenticate, checkFeatureIfAuthenti
 });
 
 // ─── Public: Product Detail ──────────────────────────────────────────────────
-router.get('/marketplace/products/:id', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/products/:id', optionalAuthenticate, checkFeatureIfAuthenticated('product-marketplace'), shortCache(60), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid product ID', 'INVALID_ID');
@@ -1558,7 +1563,7 @@ router.get('/marketplace/products/:id', optionalAuthenticate, checkFeatureIfAuth
 });
 
 // ─── Public: Service Listing ─────────────────────────────────────────────────
-router.get('/marketplace/services', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/services', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), shortCache(45), async (req: AuthRequest, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1638,7 +1643,7 @@ router.get('/marketplace/services', optionalAuthenticate, checkFeatureIfAuthenti
 });
 
 // ─── Public: Service Detail ──────────────────────────────────────────────────
-router.get('/marketplace/services/:id', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/services/:id', optionalAuthenticate, checkFeatureIfAuthenticated('service-marketplace'), shortCache(60), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid service ID', 'INVALID_ID');
@@ -1674,7 +1679,7 @@ router.get('/marketplace/services/:id', optionalAuthenticate, checkFeatureIfAuth
 });
 
 // ─── Public: Verified Sellers ────────────────────────────────────────────────
-router.get('/marketplace/sellers', async (req: Request, res: Response) => {
+router.get('/marketplace/sellers', shortCache(60), async (req: Request, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1716,7 +1721,7 @@ router.get('/marketplace/sellers', async (req: Request, res: Response) => {
 });
 
 
-router.get('/marketplace/sellers/:id', async (req: Request, res: Response) => {
+router.get('/marketplace/sellers/:id', shortCache(60), async (req: Request, res: Response) => {
     try {
         const id = Number(req.params.id);
         const org = await db.organization.findUnique({
@@ -1773,7 +1778,7 @@ router.get('/marketplace/sellers/:id', async (req: Request, res: Response) => {
 
 
 // ─── Public: Verified Buyers ─────────────────────────────────────────────────
-router.get('/marketplace/buyers', async (req: Request, res: Response) => {
+router.get('/marketplace/buyers', shortCache(60), async (req: Request, res: Response) => {
     try {
         const query = paginationQuery.parse(req.query);
         const page = query.page || 1;
@@ -1825,7 +1830,7 @@ router.get('/marketplace/buyers', async (req: Request, res: Response) => {
 });
 
 // ─── Public: Notices ─────────────────────────────────────────────────────────
-router.get('/marketplace/notices', async (_req: Request, res: Response) => {
+router.get('/marketplace/notices', shortCache(60), async (_req: Request, res: Response) => {
     try {
         const notices = await db.marketplaceNotice?.findMany?.({
             where: { isActive: true },
@@ -1839,7 +1844,7 @@ router.get('/marketplace/notices', async (_req: Request, res: Response) => {
 });
 
 // ─── Public: Search ──────────────────────────────────────────────────────────
-router.get('/marketplace/requirements', async (req: Request, res: Response) => {
+router.get('/marketplace/requirements', shortCache(30), async (req: Request, res: Response) => {
     try {
         const query = paginationQuery.extend({
             type: z.enum(['PRODUCT', 'SERVICE']).optional(),
@@ -1912,7 +1917,7 @@ router.get('/marketplace/requirements', async (req: Request, res: Response) => {
     }
 });
 
-router.get('/marketplace/requirements/:id', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
+router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
         if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
@@ -1940,7 +1945,7 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, async (req: Au
     }
 });
 
-router.get('/public/requirements/latest', async (req: Request, res: Response) => {
+router.get('/public/requirements/latest', shortCache(30), async (req: Request, res: Response) => {
     try {
         const take = Math.min(Math.max(Number(req.query.limit) || 6, 1), 12);
         return ok(res, await loadLatestRequirements(take));
@@ -2274,7 +2279,7 @@ router.get('/marketplace/guest-cart/:cartToken', async (req: Request, res: Respo
     }
 });
 
-router.get('/marketplace/organizations/featured', async (_req: Request, res: Response) => {
+router.get('/marketplace/organizations/featured', shortCache(60), async (_req: Request, res: Response) => {
     try {
         const [largeIndustries, bigMsmes] = await Promise.all([
             db.organization.findMany({ where: { profile: { isLargeIndustry: true }, isBlacklisted: false, deletedAt: null }, include: { profile: true }, take: 12 }),
@@ -2286,7 +2291,7 @@ router.get('/marketplace/organizations/featured', async (_req: Request, res: Res
     }
 });
 
-router.get('/marketplace/search', async (req: Request, res: Response) => {
+router.get('/marketplace/search', shortCache(15), async (req: Request, res: Response) => {
     try {
         const q = String(req.query.q || '').trim();
         if (!q || q.length < 2) return ok(res, { products: [], services: [], sellers: [] });

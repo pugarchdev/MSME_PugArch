@@ -31,25 +31,29 @@ const SUMMARY_STALE_MS = 60_000; // 1 minute - aggregates change slowly
 
 export const useSupplierRatings = (
     sellerId: number,
-    params: { page?: number; pageSize?: number } = {}
-) =>
-    useQuery({
+    params: { page?: number; pageSize?: number; enabled?: boolean } = {}
+) => {
+    const { enabled, ...queryParams } = params;
+    return useQuery({
         queryKey: queryKeys.ratings.supplier(sellerId, params),
-        queryFn: () => fetchSupplierRatings(sellerId, params),
-        enabled: Number.isFinite(sellerId) && sellerId > 0,
+        queryFn: () => fetchSupplierRatings(sellerId, queryParams),
+        enabled: enabled !== false && Number.isFinite(sellerId) && sellerId > 0,
         staleTime: SUMMARY_STALE_MS
     });
+};
 
 export const useBuyerRatings = (
     buyerId: number,
-    params: { page?: number; pageSize?: number } = {}
-) =>
-    useQuery({
+    params: { page?: number; pageSize?: number; enabled?: boolean } = {}
+) => {
+    const { enabled, ...queryParams } = params;
+    return useQuery({
         queryKey: queryKeys.ratings.buyer(buyerId, params),
-        queryFn: () => fetchBuyerRatings(buyerId, params),
-        enabled: Number.isFinite(buyerId) && buyerId > 0,
+        queryFn: () => fetchBuyerRatings(buyerId, queryParams),
+        enabled: enabled !== false && Number.isFinite(buyerId) && buyerId > 0,
         staleTime: SUMMARY_STALE_MS
     });
+};
 
 export const useSupplierSummary = (sellerId: number | undefined) =>
     useQuery({

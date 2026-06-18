@@ -16,7 +16,8 @@ import {
   FileSpreadsheet,
   Terminal,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  IndianRupee
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -74,13 +75,23 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [detailTab, setDetailTab] = useState<'receipt' | 'timeline'>('receipt');
   const [selected, setSelected] = useState<PaymentRow | null>(null);
-  const warning: string | null = null;
 
-  const { records: payments, loading, refreshing, error, reload, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<PaymentRow>('/api/payments', {
+  const { records: payments, warning, loading, refreshing, error, reload, page, pageSize, total, setPage, setPageSize } = usePaginatedFeatureQuery<PaymentRow>('/api/payments', {
     ...(searchTerm.trim() ? { q: searchTerm.trim() } : {}),
     ...(statusFilter ? { status: statusFilter } : {}),
     ...(gatewayFilter ? { gateway: gatewayFilter } : {})
   }, 20);
+
+  const paymentSummary = useMemo(() => {
+    const totalAmount = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const successful = payments.filter(payment => ['success', 'escrow_released', 'offline_proof_verified'].includes(String(payment.status || '').toLowerCase()));
+    const settledValue = successful.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const escrowHeldValue = payments
+      .filter(payment => String(payment.escrowAccount?.status || '').toLowerCase() === 'held')
+      .reduce((sum, payment) => sum + Number(payment.escrowAccount?.amount || payment.amount || 0), 0);
+    const successRate = payments.length ? Math.round((successful.length / payments.length) * 100) : 0;
+    return { totalAmount, successful: successful.length, settledValue, escrowHeldValue, successRate };
+  }, [payments]);
 
   const filtered = useMemo(() => payments.filter(payment => {
     if (!escrowFilter) return true;
@@ -130,16 +141,31 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="Payments" value={total || payments.length} icon={CreditCard} />
         <Metric
           label="Successful"
-          value={payments.filter(payment => ['success', 'escrow_released'].includes(payment.status || '')).length}
+          value={paymentSummary.successful}
           icon={ShieldCheck}
         />
         <Metric
+          label="Visible Value"
+          value={formatCurrency(paymentSummary.totalAmount)}
+          icon={IndianRupee}
+        />
+        <Metric
+          label="Success Rate"
+          value={`${paymentSummary.successRate}%`}
+          icon={CheckCircle2}
+        />
+        <Metric
+          label="Settled Value"
+          value={formatCurrency(paymentSummary.settledValue)}
+          icon={Receipt}
+        />
+        <Metric
           label="Escrow Held"
-          value={payments.filter(payment => payment.escrowAccount?.status === 'held').length}
+          value={formatCurrency(paymentSummary.escrowHeldValue)}
           icon={Lock}
         />
       </div>
@@ -205,7 +231,14 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
       </Card>
 
       {filtered.length === 0 ? (
-        <EmptyState title="No payments found" />
+        <EmptyState
+          title="No payments found"
+          description={searchTerm || statusFilter || gatewayFilter || escrowFilter
+            ? 'No transactions match the current search, status, gateway, or escrow filters.'
+            : admin
+              ? 'No payment transactions have been recorded yet. Payments appear after invoice checkout, offline proof verification, or escrow settlement.'
+              : 'No transactions are linked to your account yet. Payments appear after invoice checkout, offline proof verification, or escrow release.'}
+        />
       ) : viewMode === 'grid' ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {pagedPayments.map((payment, index) => {
@@ -364,7 +397,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   );
 }
 
-function Metric({ label, value, icon: Icon }: { label: string; value: number; icon: any }) {
+function Metric({ label, value, icon: Icon }: { label: string; value: number | string; icon: any }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between p-4">

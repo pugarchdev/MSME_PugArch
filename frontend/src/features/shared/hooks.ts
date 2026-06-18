@@ -52,6 +52,7 @@ const paginatedQueryGlobalCache = new Map<string, any>();
  */
 export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
   const isArray = Array.isArray(initialValue);
+  const initialValueRef = useRef(initialValue);
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ['feature-query', endpoint] as const, [endpoint]);
 
@@ -69,8 +70,8 @@ export const useFeatureQuery = <T,>(endpoint: string, initialValue: T) => {
       featureQueryGlobalCache.set(endpoint, normalized);
       return normalized;
     }
-    return initialValue;
-  }, [endpoint, queryClient, queryKey, isArray, initialValue]);
+    return initialValueRef.current;
+  }, [endpoint, queryClient, queryKey, isArray]);
 
   const [localData, setLocalData] = useState<T>(getCachedData);
 
@@ -259,6 +260,8 @@ export const usePaginatedFeatureQuery = <T,>(
   return useMemo(
     () => ({
       records,
+      raw: data,
+      warning: data?.warning ?? null,
       loading,
       refreshing: query.isFetching,
       error,
@@ -270,7 +273,7 @@ export const usePaginatedFeatureQuery = <T,>(
       setPage,
       setPageSize
     }),
-    [records, loading, query.isFetching, error, reload, setRecords, page, pageSize, total, setPageSize]
+    [records, data, loading, query.isFetching, error, reload, setRecords, page, pageSize, total, setPageSize]
   );
 };
 

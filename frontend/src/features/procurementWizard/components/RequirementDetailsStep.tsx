@@ -4,6 +4,7 @@ import type { ProcurementWizardDraft } from '../types';
 import {
   CATEGORY_OPTIONS,
   DELIVERY_TYPE_OPTIONS,
+  ITEM_SUGGESTIONS,
   PAYMENT_TERM_OPTIONS,
   PROCUREMENT_TYPE_OPTIONS,
   UNIT_OPTIONS,
@@ -47,12 +48,12 @@ export default function RequirementDetailsStep({
         {draft.itemType === 'OTHER' && (
           <Input label="Other procurement type" value={draft.otherItemType} onChange={(event) => onChange({ otherItemType: event.target.value })} placeholder="Enter requirement type" className={fieldClass} />
         )}
-        <Input label="Product or service name" value={draft.productOrService} onChange={(event) => onChange({ productOrService: event.target.value })} placeholder="Item, service, or work name"  />
-        {/* <datalist id="procurement-item-suggestions">
+        <Input label="Product or service name" value={draft.productOrService} onChange={(event) => onChange({ productOrService: event.target.value })} placeholder="Item, service, or work name" list="procurement-item-suggestions"  />
+        <datalist id="procurement-item-suggestions">
           {ITEM_SUGGESTIONS.map(item => (
             <option key={item} value={item} />
           ))}
-        </datalist> */}
+        </datalist>
         <Select label="Category" value={draft.categoryName} onChange={(event) => onChange({ categoryName: event.target.value, otherCategoryName: event.target.value === 'Other' ? draft.otherCategoryName : '' })} className={fieldClass}>
           <option value="">Select category</option>
           {CATEGORY_OPTIONS.map(category => (
@@ -181,7 +182,16 @@ export default function RequirementDetailsStep({
         )}
       </label>
 
-    
+      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Requirement quality checks</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {insights.map((insight, index) => (
+            <div key={`${index}-${insight}`} className="rounded-md border border-blue-100 bg-white px-3 py-2 text-xs font-semibold leading-relaxed text-slate-700">
+              {insight}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

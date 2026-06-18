@@ -74,7 +74,8 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
     page,
     pageSize,
     status: statusFilter || undefined,
-    q: debouncedSearch || undefined
+    q: debouncedSearch || undefined,
+    role: scope === 'all' ? undefined : scope
   });
   const reportQuery = useDeliveryReport(user?.role === 'admin');
 
@@ -193,7 +194,9 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
       ) : records.length === 0 ? (
         <EmptyState
           title="No deliveries found"
-          description="Adjust the filters or wait for sellers to dispatch their orders."
+          description={debouncedSearch || statusFilter
+            ? 'No delivery records match the current search or status filters.'
+            : 'No delivery records are visible for this role yet. Accepted purchase orders are auto-linked to delivery tracking when the delivery module is available.'}
         />
       ) : viewMode === 'grid' ? (
         <GridView

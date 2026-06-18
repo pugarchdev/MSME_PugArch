@@ -8,13 +8,12 @@ import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import ProcurementIntentStep from '../components/ProcurementIntentStep';
 import RequirementDetailsStep from '../components/RequirementDetailsStep';
-import RecommendationStep from '../components/RecommendationStep';
 import ReviewPublishStep from '../components/ReviewPublishStep';
 import { recommendProcurementMethod } from '../components/ProcurementMethodAdvisor';
-import { procurementWizardApi } from '../api';
+import { PROCUREMENT_DRAFTS_ROUTE, procurementWizardApi } from '../api';
 import { EMPTY_PROCUREMENT_DRAFT, METHOD_LABELS, METHOD_ROUTE_MAP, type ProcurementMethod, type ProcurementWizardDraft } from '../types';
 
-const steps = ['Choose Intent', 'Requirement Details', 'Recommendation', 'Review and Publish'] as const;
+const steps = ['Choose Path', 'Requirement Details', 'Review and Continue'] as const;
 
 const canContinue = (step: number, draft: ProcurementWizardDraft) => {
   if (step === 0) return Boolean(draft.intent);
@@ -23,7 +22,6 @@ const canContinue = (step: number, draft: ProcurementWizardDraft) => {
     const hasCategory = draft.categoryName === 'Other' ? draft.otherCategoryName.trim().length >= 2 : draft.categoryName.trim().length >= 2;
     return draft.title.trim().length >= 3 && hasItemType && hasCategory;
   }
-  if (step === 2) return Boolean(draft.selectedMethod);
   return true;
 };
 
@@ -37,6 +35,11 @@ export default function CreateProcurementPage() {
   const recommendation = useMemo(() => recommendProcurementMethod(draft), [draft]);
   const selectedMethod = draft.selectedMethod || recommendation.method;
   const ready = canContinue(step, draft);
+  const canVisitStep = (index: number) => {
+    if (index <= step) return true;
+    if (index === 1) return canContinue(0, draft);
+    return canContinue(0, draft) && canContinue(1, draft);
+  };
 
   const updateDraft = (patch: Partial<ProcurementWizardDraft>) => {
     setDraft(prev => ({ ...prev, ...patch }));
@@ -55,12 +58,6 @@ export default function CreateProcurementPage() {
     setLastSavedAt(stamp);
     toast.success('Draft saved');
   };
-
-  useEffect(() => {
-    if (!draft.selectedMethod && step >= 2) {
-      updateDraft({ selectedMethod: recommendation.method, recommendationReason: recommendation.reason });
-    }
-  }, [draft.selectedMethod, recommendation.method, recommendation.reason, step]);
 
   useEffect(() => {
     const handle = window.setInterval(() => {
@@ -102,7 +99,7 @@ export default function CreateProcurementPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Procurement</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Create Procurement</h1>
             <p className="mt-1 max-w-3xl text-sm font-semibold leading-relaxed text-slate-500">
-              Start with the business need. The portal recommends the right existing flow and keeps RFQ, tender, auction, requirement, and direct purchase routes intact.
+              Select the procurement route once, capture the requirement once, then continue into the matching executable portal workflow.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
@@ -116,18 +113,23 @@ export default function CreateProcurementPage() {
             <Button type="button" variant="outline" onClick={saveDraft} className="h-9 rounded-md text-xs">
               <Save className="mr-2 h-3.5 w-3.5" /> Save Draft
             </Button>
+            <Button type="button" variant="outline" onClick={() => router.push(PROCUREMENT_DRAFTS_ROUTE)} className="h-9 rounded-md text-xs">
+              View Drafts
+            </Button>
           </div>
         </div>
 
-        <div className="mt-5 grid gap-2 sm:grid-cols-4">
+        <div className="mt-5 grid gap-2 sm:grid-cols-3">
           {steps.map((label, index) => (
             <button
               key={label}
               type="button"
-              onClick={() => setStep(index)}
+              onClick={() => canVisitStep(index) && setStep(index)}
+              disabled={!canVisitStep(index)}
               className={cn(
                 'rounded-md border px-3 py-2 text-left text-[10px] font-black uppercase tracking-wide transition',
-                index === step ? 'border-[#12335f] bg-[#12335f] text-white' : index < step ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'
+                index === step ? 'border-[#12335f] bg-[#12335f] text-white' : index < step ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500',
+                !canVisitStep(index) && 'cursor-not-allowed opacity-60'
               )}
             >
               <span className="block text-[9px] opacity-70">Step {index + 1}</span>
@@ -141,7 +143,7 @@ export default function CreateProcurementPage() {
         {step === 0 && (
           <ProcurementIntentStep
             value={draft.intent}
-            onChange={(method) => updateDraft({ intent: method, selectedMethod: method })}
+            onChange={(method) => updateDraft({ intent: method, selectedMethod: method, recommendationReason: 'Buyer selected this route directly from the guided procurement launcher.' })}
           />
         )}
         {step === 1 && (
@@ -153,13 +155,6 @@ export default function CreateProcurementPage() {
           />
         )}
         {step === 2 && (
-          <RecommendationStep
-            recommendation={recommendation}
-            selectedMethod={selectedMethod}
-            onSelect={(method) => updateDraft({ selectedMethod: method, recommendationReason: method === recommendation.method ? recommendation.reason : 'Buyer manually selected a different method after reviewing the recommendation.' })}
-          />
-        )}
-        {step === 3 && (
           <ReviewPublishStep
             draft={draft}
             selectedMethod={selectedMethod}

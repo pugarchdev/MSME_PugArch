@@ -24,17 +24,19 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
     qc.invalidateQueries({ queryKey: KEY });
 };
 
-export const usePendingApprovals = () =>
+export const usePendingApprovals = (enabled = true) =>
     useQuery({
         queryKey: PENDING_KEY,
         queryFn: fetchPendingApprovals,
+        enabled,
         placeholderData: (previous) => previous ?? peekApi<ApprovalDto[]>('/api/approvals/pending') ?? undefined
     });
 
-export const useApprovalHistory = () =>
+export const useApprovalHistory = (enabled = true) =>
     useQuery({
         queryKey: HISTORY_KEY,
         queryFn: fetchApprovalHistory,
+        enabled,
         placeholderData: (previous) => previous ?? peekApi<ApprovalDto[]>('/api/approvals/history') ?? undefined
     });
 

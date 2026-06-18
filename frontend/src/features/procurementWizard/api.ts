@@ -2,6 +2,8 @@ import { EMPTY_PROCUREMENT_DRAFT, type ProcurementWizardDraft } from './types';
 
 const DRAFT_KEY = 'msme:create-procurement:draft';
 
+export const PROCUREMENT_DRAFTS_ROUTE = '/buyer/procurement/drafts';
+
 export const procurementWizardApi = {
   loadLocalDraft(): ProcurementWizardDraft | null {
     if (typeof window === 'undefined') return null;

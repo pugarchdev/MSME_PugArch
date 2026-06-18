@@ -40,6 +40,7 @@ type CachedResponse = {
 };
 
 const getCache = new Map<string, CachedResponse>();
+const inFlightGetResponses = new Map<string, Promise<Response>>();
 
 const resolveUrl = (endpoint: string) => {
   if (endpoint.startsWith('http')) return endpoint;
@@ -94,6 +95,26 @@ const responseFromCache = (entry: CachedResponse) => new Response(JSON.stringify
     'X-MSME-Cache': 'HIT'
   }
 });
+
+const writeGetCache = async (key: string, response: Response) => {
+  const clone = response.clone();
+  try {
+    const body = await clone.json();
+    const responseHeaders: Record<string, string> = {};
+    clone.headers.forEach((value, headerKey) => {
+      responseHeaders[headerKey] = value;
+    });
+    getCache.set(key, {
+      body,
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      timestamp: Date.now()
+    });
+  } catch {
+    // Non-JSON GET responses are intentionally not cached.
+  }
+};
 
 const isCacheFresh = (entry?: CachedResponse) => Boolean(entry && Date.now() - entry.timestamp < GET_CACHE_TTL);
 // "Usable" means we can render it instantly; if it's older than fresh we
@@ -253,9 +274,14 @@ export const api = {
         }
         return Promise.resolve(responseFromCache(cached!));
       }
+
+      const pending = inFlightGetResponses.get(key);
+      if (pending) {
+        return pending.then((response) => response.clone());
+      }
     }
 
-    return fetch(url, {
+    const request = fetch(url, {
       credentials: 'include',
       ...fetchOptions,
       headers,
@@ -276,26 +302,21 @@ export const api = {
         }
       }
       if (shouldCache && response.ok) {
-        const clone = response.clone();
-        try {
-          const body = await clone.json();
-          const responseHeaders: Record<string, string> = {};
-          clone.headers.forEach((value, headerKey) => {
-            responseHeaders[headerKey] = value;
-          });
-          getCache.set(key, {
-            body,
-            status: response.status,
-            statusText: response.statusText,
-            headers: responseHeaders,
-            timestamp: Date.now()
-          });
-        } catch {
-          // Non-JSON GET responses are intentionally not cached.
-        }
+        await writeGetCache(key, response);
       }
       return response;
     }).catch(networkErrorResponse);
+
+    if (shouldCache) {
+      inFlightGetResponses.set(
+        key,
+        request
+          .then((response) => response.clone())
+          .finally(() => inFlightGetResponses.delete(key))
+      );
+    }
+
+    return request;
   },
 
   get: (endpoint: string, options: RequestInit & { skipCache?: boolean } = {}) =>

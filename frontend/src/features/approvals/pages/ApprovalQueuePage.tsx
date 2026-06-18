@@ -6,7 +6,7 @@
  * Access: ORG_ADMIN, PROCUREMENT_OFFICER, FINANCE_OFFICER
  */
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Clock, History, Inbox, MessageCircle, RefreshCw, Shield, X, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock, History, Inbox, MessageCircle, RefreshCw, Shield, ShieldCheck, UserCheck, X, XCircle } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -46,9 +46,11 @@ const DECISION_TONE: Record<ApprovalDecision, string> = {
 };
 
 export default function ApprovalQueuePage() {
-    const { orgRole, isOrgAdmin, isProcurementOfficer, isFinanceOfficer } = useOrgRole();
-    const pending = usePendingApprovals();
-    const history = useApprovalHistory();
+    const { orgRole, orgStatus, isApproved, loading: orgLoading, isOrgAdmin, isProcurementOfficer, isFinanceOfficer } = useOrgRole();
+    const allowed = isOrgAdmin || isProcurementOfficer || isFinanceOfficer;
+    const canLoadApprovals = Boolean(orgRole && isApproved && allowed);
+    const pending = usePendingApprovals(canLoadApprovals);
+    const history = useApprovalHistory(canLoadApprovals);
     const approveMut = useApproveApproval();
     const rejectMut = useRejectApproval();
     const clarifyMut = useClarifyApproval();
@@ -59,33 +61,63 @@ export default function ApprovalQueuePage() {
     const [processedIds, setProcessedIds] = useState<Set<number>>(() => new Set());
     const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 
-    const allowed = isOrgAdmin || isProcurementOfficer || isFinanceOfficer;
-
-    if (orgRole && !allowed) {
-        return (
-            <div className="flex h-64 items-center justify-center">
-                <div className="text-center">
-                    <Shield className="mx-auto h-12 w-12 text-slate-300" />
-                    <p className="mt-3 text-sm font-black uppercase text-slate-600 tracking-widest">Access Restricted</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-400">Only approvers can view the approval queue.</p>
-                </div>
-            </div>
-        );
-    }
-
     const pendingItems = (pending.data || []).filter(p => !processedIds.has(p.id));
     const historyItems = history.data || [];
 
     const counts = useMemo(() => {
         return {
             pending: pendingItems.length,
+            history: historyItems.length,
             byStage: {
                 DEPARTMENT_HEAD: pendingItems.filter(p => p.stage === 'DEPARTMENT_HEAD').length,
                 FINANCE_DEPT: pendingItems.filter(p => p.stage === 'FINANCE_DEPT').length,
                 PROCUREMENT_HEAD: pendingItems.filter(p => p.stage === 'PROCUREMENT_HEAD').length
             }
         };
-    }, [pendingItems]);
+    }, [historyItems.length, pendingItems]);
+
+    if (orgLoading) {
+        return <LoadingState label="Checking organisation approval access..." />;
+    }
+
+    if (!orgRole) {
+        return (
+            <div className="space-y-4">
+                <ApprovalHeader onRefresh={() => { pending.refetch(); history.refetch(); }} refreshing={false} />
+                <AccessState
+                    icon={Shield}
+                    title="Organisation role required"
+                    description="Approval queues are organisation workflows. Join or create an approved organisation before using procurement approvals."
+                />
+            </div>
+        );
+    }
+
+    if (!isApproved) {
+        return (
+            <div className="space-y-4">
+                <ApprovalHeader onRefresh={() => { pending.refetch(); history.refetch(); }} refreshing={false} orgRole={orgRole} />
+                <AccessState
+                    icon={ShieldCheck}
+                    title="Organisation approval pending"
+                    description={`Your organisation status is ${orgStatus?.organization?.verificationStatus || 'not approved yet'}. Approval queues unlock after organisation approval.`}
+                />
+            </div>
+        );
+    }
+
+    if (!allowed) {
+        return (
+            <div className="space-y-4">
+                <ApprovalHeader onRefresh={() => { pending.refetch(); history.refetch(); }} refreshing={false} orgRole={orgRole} />
+                <AccessState
+                    icon={UserCheck}
+                    title="No approver role assigned"
+                    description={`Your current organisation role is ${orgRole.replace(/_/g, ' ')}. Pending approvals only appear for ORG ADMIN, PROCUREMENT OFFICER, or FINANCE OFFICER roles.`}
+                />
+            </div>
+        );
+    }
 
     const handleApprove = async (a: ApprovalDto) => {
         setProcessedIds(prev => {
@@ -142,11 +174,12 @@ export default function ApprovalQueuePage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 <MetricCard label="Total Pending" value={counts.pending} icon={Inbox} />
                 <MetricCard label="Department Head" value={counts.byStage.DEPARTMENT_HEAD} icon={Clock} />
                 <MetricCard label="Finance Dept" value={counts.byStage.FINANCE_DEPT} icon={Clock} />
                 <MetricCard label="Procurement Head" value={counts.byStage.PROCUREMENT_HEAD} icon={Clock} />
+                <MetricCard label="History" value={counts.history} icon={History} />
             </div>
 
             <div className="flex items-center gap-1 border-b border-slate-200">
@@ -299,6 +332,42 @@ export default function ApprovalQueuePage() {
     );
 }
 
+function ApprovalHeader({ onRefresh, refreshing, orgRole }: { onRefresh: () => void; refreshing: boolean; orgRole?: string | null }) {
+    return (
+        <>
+            <div className="brand-tricolor-strip rounded-full" />
+            <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement - Approvals</p>
+                    <h1 className="text-2xl font-black text-slate-950">Approval Queue</h1>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Review current-stage approvals for your organisation role{orgRole ? `: ${orgRole.replace(/_/g, ' ')}` : ''}.
+                    </p>
+                </div>
+                <Button variant="outline" onClick={onRefresh} className="h-10 rounded-lg text-xs font-black uppercase">
+                    <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+                </Button>
+            </div>
+        </>
+    );
+}
+
+function AccessState({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
+    return (
+        <Card>
+            <CardContent className="flex min-h-64 items-center justify-center p-8">
+                <div className="max-w-xl text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-[#12335f]">
+                        <Icon className="h-6 w-6" />
+                    </div>
+                    <p className="mt-4 text-sm font-black uppercase tracking-widest text-slate-700">{title}</p>
+                    <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">{description}</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 function MetricCard({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
     return (
         <Card>
@@ -346,7 +415,7 @@ function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove,
     if (items.length === 0) {
         return (
             <Card><CardContent className="py-12">
-                <EmptyState title="Inbox empty" description="No items currently need your approval." />
+                <EmptyState title="Inbox empty" description="No current-stage items need your organisation role right now. Later-stage approvals appear only after earlier stages are approved." />
             </CardContent></Card>
         );
     }

@@ -98,6 +98,27 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const totalValue = summaryData?.totalValue ?? 0;
   const pendingCount = summaryData?.pendingCount ?? 0;
   const approvedCount = summaryData?.approvedCount ?? 0;
+  const invoiceHealth = useMemo(() => {
+    const now = new Date();
+    const nextWeek = new Date(now);
+    nextWeek.setDate(now.getDate() + 7);
+    return pagedInvoices.reduce(
+      (acc, invoice) => {
+        const due = invoice.dueDate ? new Date(invoice.dueDate) : null;
+        const state = statusOf(invoice);
+        const closed = ['paid', 'cancelled', 'rejected'].includes(state);
+        if (due && !Number.isNaN(due.getTime()) && !closed) {
+          if (due < now) acc.overdue += 1;
+          else if (due <= nextWeek) acc.dueSoon += 1;
+        }
+        acc.tax += Number(invoice.totalTaxAmount || 0);
+        acc.tds += Number(invoice.tdsAmount || 0);
+        acc.submitted += state === 'submitted' ? 1 : 0;
+        return acc;
+      },
+      { overdue: 0, dueSoon: 0, tax: 0, tds: 0, submitted: 0 }
+    );
+  }, [pagedInvoices]);
 
   useEffect(() => {
     if (!selectedInvoice) {
@@ -410,11 +431,13 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         </div>
       </div>
 
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">
         <Metric label="Invoices" value={total} icon={FileText} />
         <Metric label="Pending" value={pendingCount} icon={Clock} />
         <Metric label="Approved/Paid" value={approvedCount} icon={CheckCircle2} />
         <Metric label="Invoice Value" value={formatCurrency(totalValue)} icon={IndianRupee} />
+        <Metric label="Overdue" value={invoiceHealth.overdue} icon={AlertCircle} />
+        <Metric label="GST/TDS" value={`${formatCurrency(invoiceHealth.tax)} / ${formatCurrency(invoiceHealth.tds)}`} icon={ShieldCheck} />
       </div>
 
       {error && <InlineError message={error} onRetry={reload} />}
@@ -478,6 +501,9 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         <EmptyState
           title="No invoices found"
           description={
+            searchTerm || statusFilter || acceptedPoOnly || invoiceScope !== 'all'
+              ? 'No invoice records match the selected search, status, PO, or tax-scope filters.'
+              :
             role === 'seller'
               ? 'Create invoices for accepted purchase orders using the button above. Once an invoice is added, buyers can approve and pay it.'
               : 'Invoices appear once sellers submit bills against accepted purchase orders. Ask your seller to create an invoice first.'

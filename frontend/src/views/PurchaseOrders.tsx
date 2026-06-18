@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
-import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown, Eye, X, Filter, List, LayoutGrid } from 'lucide-react';
+import { CheckCircle2, Download, FileText, RefreshCw, Search, ShieldCheck, Truck, XCircle, ArrowUp, ArrowDown, ArrowUpDown, Eye, X, Filter, List, LayoutGrid, Printer } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { cn } from '../lib/utils';
@@ -94,6 +94,24 @@ export default function PurchaseOrders() {
     () => allOrders.filter(isOpenPurchaseOrder).length,
     [allOrders]
   );
+  const poHealth = useMemo(() => {
+    const now = new Date();
+    return allOrders.reduce(
+      (acc, order) => {
+        const value = Number(order.amount || order.totalValue || 0);
+        const status = String(order.status || '').toLowerCase();
+        if (isOpenPurchaseOrder(order)) acc.openValue += value;
+        if (isSeller && status === 'accepted') acc.invoiceReady += 1;
+        if (isSeller && status === 'generated') acc.awaitingSeller += 1;
+        const expected = order.expectedDelivery ? new Date(order.expectedDelivery) : null;
+        if (expected && expected < now && !['delivered', 'cancelled', 'completed'].includes(status)) {
+          acc.deliveryRisk += 1;
+        }
+        return acc;
+      },
+      { openValue: 0, invoiceReady: 0, awaitingSeller: 0, deliveryRisk: 0 }
+    );
+  }, [allOrders, isSeller]);
 
   const refreshPurchaseOrders = async () => {
     await Promise.all([reload(), reloadAllOrders()]);
@@ -200,7 +218,8 @@ export default function PurchaseOrders() {
     return (
       <div className="flex flex-wrap justify-end gap-2 items-center">
         <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1.5 h-3.5 w-3.5" />View</Button>
-        <Button variant="outline" onClick={() => downloadPdf(order)} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
+        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'download')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />Invoice PDF</Button>
+        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'print')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Printer className="mr-1.5 h-3.5 w-3.5" />Print</Button>
         {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-200 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel</Button>}
         {isSeller && statusLower === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white hover:bg-teal-700 shadow-sm"><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
         {isSeller && statusLower === 'accepted' && (
@@ -215,37 +234,157 @@ export default function PurchaseOrders() {
     );
   };
 
-  const downloadPdf = (order: PurchaseOrderDto) => {
-    const doc = new jsPDF();
-    doc.setFillColor(18, 51, 95);
-    doc.rect(0, 0, 210, 30, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.text('PURCHASE ORDER', 14, 18);
-    doc.setFontSize(10);
-    doc.text(order.poNumber, 150, 18);
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(11);
-    doc.text(`Title: ${order.title}`, 14, 45);
-    doc.text(`Seller: ${order.seller?.name || maskEmail(order.seller?.email)}`, 14, 54);
-    doc.text(`Expected: ${formatDate(order.expectedDelivery)}`, 14, 63);
-    doc.text(`Status: ${readableStatus(order.status)}`, 120, 45);
-    if (order.paymentTerms) doc.text(`Payment: ${order.paymentTerms.replace(/_/g, ' ')}`, 120, 54);
-    if (order.deliveryType) doc.text(`Delivery: ${order.deliveryType.replace(/_/g, ' ')}`, 120, 63);
-    autoTable(doc, {
-      startY: 76,
-      head: [['Item', 'Qty', 'Unit Price', 'Total']],
-      body: (order.items?.length ? order.items : [{ itemName: order.title, quantity: 1, unitPrice: order.amount, totalAmount: order.amount }]).map(item => [
+  const moneyForPdf = (value: unknown) => {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return 'INR 0.00';
+    return `INR ${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const exportInvoicePdf = (order: PurchaseOrderDto, mode: 'download' | 'print') => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const totalValue = Number(order.amount || order.totalValue || 0);
+    const lineItems = (order.items?.length ? order.items : [{
+      itemName: order.title,
+      quantity: 1,
+      unitPrice: totalValue,
+      totalAmount: totalValue
+    }]).map((item, index) => {
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.unitPrice || 0);
+      const lineTotal = Number(item.totalAmount || qty * unitPrice || totalValue);
+      return [
+        String(index + 1),
         item.itemName || order.title,
-        item.quantity || 1,
-        formatCurrency(item.unitPrice),
-        formatCurrency(item.totalAmount || order.amount || order.totalValue)
-      ]),
-      foot: [['', '', 'Grand Total', formatCurrency(order.amount || order.totalValue)]],
-      headStyles: { fillColor: [18, 51, 95] }
+        String(qty),
+        moneyForPdf(unitPrice || lineTotal / Math.max(qty, 1)),
+        moneyForPdf(lineTotal)
+      ];
     });
-    doc.save(`${order.poNumber}.pdf`);
-    toast.success('PO PDF generated');
+    const subtotal = lineItems.reduce((sum, row) => sum + Number(String(row[4]).replace(/[^\d.-]/g, '')), 0) || totalValue;
+
+    doc.setFillColor(11, 36, 71);
+    doc.rect(0, 0, pageWidth, 34, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(17);
+    doc.text('JsgSmile MSME Procurement Portal', 14, 14);
+    doc.setFontSize(10);
+    doc.text('Purchase Order / Supplier Invoice Copy', 14, 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Document No: ${order.poNumber}`, pageWidth - 14, 14, { align: 'right' });
+    doc.text(`Generated: ${formatTimestamp(new Date())}`, pageWidth - 14, 22, { align: 'right' });
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('Procurement Invoice Details', 14, 45);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`PO Title: ${order.title}`, 14, 53);
+    doc.text(`Current Status: ${readableStatus(order.status)}`, 14, 59);
+    doc.text(`Expected Delivery: ${formatDate(order.expectedDelivery)}`, pageWidth - 14, 53, { align: 'right' });
+    doc.text(`PO Date: ${formatDate(order.createdAt)}`, pageWidth - 14, 59, { align: 'right' });
+
+    autoTable(doc, {
+      startY: 67,
+      theme: 'grid',
+      head: [['Buyer / Requesting Organization', 'Seller / Supplier Organization']],
+      body: [[
+        [
+          order.buyer?.name || 'MSME Portal Buyer',
+          order.buyer?.email ? `Email: ${maskEmail(order.buyer.email)}` : '',
+          order.deliveryAddress ? `Ship To: ${order.deliveryAddress}` : 'Ship To: As per purchase order'
+        ].filter(Boolean).join('\n'),
+        [
+          order.seller?.name || 'MSME Portal Seller',
+          order.seller?.email ? `Email: ${maskEmail(order.seller.email)}` : '',
+          `Seller ID: ${order.sellerId || '-'}`
+        ].filter(Boolean).join('\n')
+      ]],
+      headStyles: { fillColor: [18, 51, 95], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
+      columnStyles: { 0: { cellWidth: 91 }, 1: { cellWidth: 91 } }
+    });
+
+    const partyTableEnd = (doc as any).lastAutoTable?.finalY || 97;
+    autoTable(doc, {
+      startY: partyTableEnd + 6,
+      theme: 'grid',
+      head: [['Payment Terms', 'Delivery Type', 'Acknowledged At', 'Reference']],
+      body: [[
+        order.paymentTerms ? order.paymentTerms.replace(/_/g, ' ') : 'As per portal workflow',
+        order.deliveryType ? order.deliveryType.replace(/_/g, ' ') : 'Standard delivery',
+        order.acceptedAt ? formatTimestamp(order.acceptedAt) : 'Pending / Not recorded',
+        `PO ID ${order.id}`
+      ]],
+      headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42] },
+      styles: { fontSize: 8, cellPadding: 2.5 }
+    });
+
+    const termsTableEnd = (doc as any).lastAutoTable?.finalY || partyTableEnd + 24;
+    autoTable(doc, {
+      startY: termsTableEnd + 7,
+      theme: 'striped',
+      head: [['Sr.', 'Description of Goods / Services', 'Qty', 'Rate', 'Line Total']],
+      body: lineItems,
+      foot: [
+        ['', '', '', 'Taxable / Order Value', moneyForPdf(subtotal)],
+        ['', '', '', 'Grand Total Payable', moneyForPdf(totalValue || subtotal)]
+      ],
+      headStyles: { fillColor: [18, 51, 95], fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.8, overflow: 'linebreak' },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        1: { cellWidth: 88 },
+        2: { halign: 'right', cellWidth: 18 },
+        3: { halign: 'right', cellWidth: 34 },
+        4: { halign: 'right', cellWidth: 34 }
+      }
+    });
+
+    const itemTableEnd = (doc as any).lastAutoTable?.finalY || 185;
+    const notesY = Math.min(itemTableEnd + 10, pageHeight - 58);
+    doc.setDrawColor(203, 213, 225);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, notesY, pageWidth - 28, 34, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Portal Declaration & Audit Notes', 18, notesY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text([
+      '1. This document is generated from the JsgSmile MSME procurement workflow and must be read with linked GRN, invoice and payment records.',
+      '2. Supplier must fulfil quantity, quality, delivery schedule, taxes and documentation requirements recorded against the purchase order.',
+      '3. Buyer approval, payment release and settlement remain subject to portal approval matrix, delivery confirmation and invoice verification.'
+    ], 18, notesY + 14, { maxWidth: pageWidth - 36, lineHeightFactor: 1.35 });
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Authorized Buyer / Department', 22, pageHeight - 22);
+    doc.text('Authorized Supplier', pageWidth - 22, pageHeight - 22, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text('System generated document. Signature may be verified through portal audit trail.', pageWidth / 2, pageHeight - 8, { align: 'center' });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let pageNo = 1; pageNo <= pageCount; pageNo += 1) {
+      doc.setPage(pageNo);
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Page ${pageNo} of ${pageCount}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
+    }
+
+    const filename = `${order.poNumber || `PO-${order.id}`}-procurement-invoice.pdf`;
+    if (mode === 'print') {
+      doc.autoPrint();
+      window.open(doc.output('bloburl'), '_blank');
+      toast.success('Invoice opened for printing');
+      return;
+    }
+    doc.save(filename);
+    toast.success('Detailed invoice PDF generated');
   };
 
   if (loading && pagedOrders.length === 0) return <LoadingState label="Loading purchase orders..." />;
@@ -261,10 +400,13 @@ export default function PurchaseOrders() {
         <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="Open POs" value={openCount} icon={FileText} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} />
         <Metric label="Delivered" value={deliveredCount} icon={CheckCircle2} onClick={() => setActiveTab('Delivered')} active={activeTab === 'Delivered'} />
         <Metric label="Total Value" value={formatCurrency(totalSpend)} icon={ShieldCheck} onClick={() => setActiveTab('All')} active={activeTab === 'All'} />
+        <Metric label="Open Value" value={formatCurrency(poHealth.openValue)} icon={ShieldCheck} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} />
+        <Metric label={isSeller ? 'Invoice Ready' : 'Awaiting Seller'} value={isSeller ? poHealth.invoiceReady : allOrders.filter(order => String(order.status || '').toLowerCase() === 'generated').length} icon={Truck} onClick={() => setActiveTab('Open')} active={false} />
+        <Metric label="Delivery Risk" value={poHealth.deliveryRisk} icon={XCircle} onClick={() => setActiveTab('Open')} active={false} />
       </div>
 
       {error && <InlineError message={error} onRetry={reload} />}
@@ -311,7 +453,7 @@ export default function PurchaseOrders() {
         </CardContent>
       </Card>
 
-      {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description="No live purchase orders match the current filters." /> : viewMode === 'grid' ? (
+      {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description={searchTerm || activeTab !== 'All' ? 'No purchase orders match the current search, status tab, or sorting filters.' : 'No purchase orders have been generated from procurement awards yet.'} /> : viewMode === 'grid' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visibleOrders.map(order => (
@@ -571,8 +713,11 @@ export default function PurchaseOrders() {
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 shrink-0">
-              <Button variant="outline" onClick={() => downloadPdf(viewingOrder)} className="h-10 text-xs font-black uppercase">
-                <Download className="mr-2 h-4 w-4" /> Download PDF
+              <Button variant="outline" onClick={() => exportInvoicePdf(viewingOrder, 'print')} className="h-10 text-xs font-black uppercase">
+                <Printer className="mr-2 h-4 w-4" /> Print Invoice
+              </Button>
+              <Button variant="outline" onClick={() => exportInvoicePdf(viewingOrder, 'download')} className="h-10 text-xs font-black uppercase">
+                <Download className="mr-2 h-4 w-4" /> Download Invoice PDF
               </Button>
               <Button onClick={() => setViewingOrder(null)} className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]">
                 Close

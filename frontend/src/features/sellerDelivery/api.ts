@@ -56,13 +56,21 @@ export interface LogisticsPartner {
     isActive?: boolean;
 }
 
+export interface DeliveryListResponse {
+    records?: DeliveryDto[];
+    items?: DeliveryDto[];
+    total: number;
+    skip?: number;
+    take?: number;
+}
+
 export const fetchDeliveries = (params?: { status?: string; q?: string; role?: string }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set('status', params.status);
     if (params?.q) qs.set('q', params.q);
     if (params?.role) qs.set('role', params.role);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return getApi<{ items: DeliveryDto[]; total: number }>(`/api/delivery${suffix}`);
+    return getApi<DeliveryListResponse>(`/api/delivery${suffix}`);
 };
 
 export const fetchDelivery = (id: number) => getApi<DeliveryDto>(`/api/delivery/${id}`);

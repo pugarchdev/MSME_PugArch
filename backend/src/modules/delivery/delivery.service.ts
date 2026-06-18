@@ -423,6 +423,11 @@ export const deliveryService = {
         { purchaseOrder: { buyerId: actor.id } },
         { participants: { some: { userId: actor.id, isActive: true } } }
       ];
+      if (query.role === 'seller') where.AND = [...(where.AND || []), { purchaseOrder: { sellerId: actor.id } }];
+      if (query.role === 'buyer') where.AND = [...(where.AND || []), { purchaseOrder: { buyerId: actor.id } }];
+      if (query.role === 'consignee') where.AND = [...(where.AND || []), { participants: { some: { userId: actor.id, participantRole: 'CONSIGNEE', isActive: true } } }];
+      if (query.role === 'logistics') where.AND = [...(where.AND || []), { participants: { some: { userId: actor.id, participantRole: 'LOGISTICS_PARTNER', isActive: true } } }];
+      if (query.role === 'finance') where.AND = [...(where.AND || []), { participants: { some: { userId: actor.id, participantRole: 'FINANCE_OFFICER', isActive: true } } }];
     }
     if (query.status) where.status = query.status;
     if (query.q) {

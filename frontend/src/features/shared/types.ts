@@ -16,6 +16,8 @@ export type PaginatedResult<T> = {
   skip?: number;
   take?: number;
   filters?: Record<string, unknown>;
+  warning?: string | null;
+  summary?: Record<string, unknown>;
 };
 
 export type PurchaseOrderDto = {

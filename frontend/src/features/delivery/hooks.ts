@@ -41,6 +41,7 @@ export const useDeliveryList = (
         pageSize?: number;
         status?: DeliveryStatus;
         q?: string;
+        role?: 'seller' | 'buyer' | 'consignee' | 'logistics' | 'finance' | 'admin';
     } = {}
 ) =>
     useQuery({
@@ -50,7 +51,8 @@ export const useDeliveryList = (
                 page: params.page,
                 pageSize: params.pageSize,
                 status: params.status,
-                q: params.q
+                q: params.q,
+                role: params.role
             }),
         // Inherit global stale/gc times. placeholderData keeps the previous
         // page visible during pagination so the table doesn't blank out.

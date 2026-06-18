@@ -46,7 +46,11 @@ export default function SellerDeliveryManagementPage() {
     const { data, isLoading, error, refetch, isFetching } = useDeliveries({ role: 'seller' });
     const [actionTarget, setActionTarget] = useState<{ kind: string; delivery: DeliveryDto } | null>(null);
 
-    const items = (data?.items || []) as DeliveryDto[];
+    const items = (data?.records || data?.items || []) as DeliveryDto[];
+    const total = data?.total ?? items.length;
+    const pendingCount = items.filter(item => item.status === 'PENDING_ACCEPTANCE').length;
+    const inTransitCount = items.filter(item => ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(String(item.status))).length;
+    const completedCount = items.filter(item => ['DELIVERED', 'COMPLETED', 'CLOSED'].includes(String(item.status))).length;
 
     return (
         <div className="space-y-4">
@@ -63,11 +67,18 @@ export default function SellerDeliveryManagementPage() {
                 </Button>
             </div>
 
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <SummaryTile label="Visible Deliveries" value={total} icon={Truck} />
+                <SummaryTile label="Awaiting Acceptance" value={pendingCount} icon={Clock} />
+                <SummaryTile label="In Transit" value={inTransitCount} icon={Send} />
+                <SummaryTile label="Completed" value={completedCount} icon={CheckCircle2} />
+            </div>
+
             {error ? <InlineError message={(error as Error).message} onRetry={() => refetch()} /> :
                 isLoading ? <LoadingState label="Loading deliveries..." /> :
                     items.length === 0 ? (
                         <Card><CardContent className="py-12">
-                            <EmptyState title="No deliveries" description="Deliveries will appear here when buyers issue Purchase Orders." />
+                            <EmptyState title="No deliveries" description="No delivery records are linked to your seller account yet. Accepted purchase orders are converted into delivery tracking records before dispatch." />
                         </CardContent></Card>
                     ) : (
                         <div className="grid gap-3 lg:grid-cols-2">
@@ -86,6 +97,22 @@ export default function SellerDeliveryManagementPage() {
                 />
             )}
         </div>
+    );
+}
+
+function SummaryTile({ label, value, icon: Icon }: { label: string; value: number; icon: any }) {
+    return (
+        <Card className="border-slate-200/80 shadow-sm">
+            <CardContent className="flex items-center justify-between p-4">
+                <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">
+                    <Icon className="h-5 w-5" />
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 

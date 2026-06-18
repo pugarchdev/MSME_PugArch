@@ -66,7 +66,9 @@ export const normalizePaginated = <T>(value: unknown): PaginatedResult<T> => {
     total: Number(body?.total ?? body?.data?.total ?? records.length),
     skip: body?.skip ?? body?.filters?.skip ?? body?.data?.skip ?? body?.data?.filters?.skip,
     take: body?.take ?? body?.filters?.take ?? body?.data?.take ?? body?.data?.filters?.take,
-    filters: body?.filters ?? body?.data?.filters
+    filters: body?.filters ?? body?.data?.filters,
+    warning: body?.warning ?? body?.data?.warning ?? null,
+    summary: body?.summary ?? body?.data?.summary
   };
 };
 

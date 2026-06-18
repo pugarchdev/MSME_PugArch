@@ -36,8 +36,8 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
 
   const subjectId = subjectIdFromEndpoint(endpoint);
 
-  const supplierQuery = useSupplierRatings(subjectId, { page, pageSize });
-  const buyerQuery = useBuyerRatings(subjectId, { page, pageSize });
+  const supplierQuery = useSupplierRatings(subjectId, { page, pageSize, enabled: mode === 'supplier' });
+  const buyerQuery = useBuyerRatings(subjectId, { page, pageSize, enabled: mode === 'buyer' });
   const query = mode === 'supplier' ? supplierQuery : buyerQuery;
 
   const data = (query.data || { records: [], total: 0, summary: undefined }) as RatingsListResult<
@@ -64,6 +64,10 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
   }, [data.records, searchTerm, scoreFilter]);
 
   const summary = data.summary;
+  const writtenReviewCount = (data.records || []).filter(r => r.review).length;
+  const lowScoreCount = (summary?.distribution || []).filter(bucket => bucket.star <= 2).reduce((sum, bucket) => sum + bucket.count, 0);
+  const highScoreCount = (summary?.distribution || []).filter(bucket => bucket.star >= 4).reduce((sum, bucket) => sum + bucket.count, 0);
+  const responseCoverage = summary?.count ? Math.round((writtenReviewCount / summary.count) * 100) : 0;
 
   return (
     <div className="space-y-4">
@@ -94,16 +98,22 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
         <MetricCard label="Total Ratings" value={summary?.count ?? 0} icon="thumbs" loading={query.isLoading && !query.data} />
         <MetricCard
           label="Written Reviews"
-          value={(data.records || []).filter(r => r.review).length}
+          value={writtenReviewCount}
           icon="msg"
           loading={query.isLoading && !query.data}
         />
         <MetricCard
           label="High Score (4+)"
-          value={(summary?.distribution || []).filter(b => b.star >= 4).reduce((a, b) => a + b.count, 0)}
+          value={highScoreCount}
           icon="trend"
           loading={query.isLoading && !query.data}
         />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <InsightTile label="Review Coverage" value={`${responseCoverage}%`} hint="Written feedback compared with total ratings" />
+        <InsightTile label="Low Score Alerts" value={lowScoreCount} hint="Ratings at 1 or 2 stars" />
+        <InsightTile label="Current Dataset" value={mode === 'supplier' ? 'Supplier' : 'Buyer'} hint="Only this rating endpoint is queried" />
       </div>
 
       {query.error && (
@@ -153,7 +163,9 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No ratings found"
-          description="Ratings appear after completed purchase orders are reviewed."
+          description={searchTerm || scoreFilter
+            ? 'No reviews match the current search or score filter.'
+            : 'Ratings appear after completed purchase orders are reviewed.'}
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -219,6 +231,18 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function InsightTile({ label, value, hint }: { label: string; value: string | number; hint: string }) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+        <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{hint}</p>
+      </CardContent>
+    </Card>
   );
 }
 

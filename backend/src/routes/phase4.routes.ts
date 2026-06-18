@@ -1884,7 +1884,8 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
     });
     deleteCache('/api/auth/me').catch(() => undefined);
     deleteCache('marketplace:home:v2').catch(() => undefined);
-    deleteCache('marketplace:home-layout:v2:{"user":"public"}').catch(() => undefined);
+    deleteCache(redisKeys.cacheMarketplaceHome()).catch(() => undefined);
+    invalidateByPattern('cache:marketplace:*').catch(() => undefined);
     invalidateByPattern('cache:*dashboard*').catch(() => undefined);
   }
 

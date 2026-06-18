@@ -33,7 +33,15 @@ const buildQuery = (params: Record<string, string | number | undefined | null>) 
 };
 
 export const listDeliveries = (
-  params: { status?: DeliveryStatus; q?: string; fromDate?: string; toDate?: string; page?: number; pageSize?: number } = {}
+  params: {
+    status?: DeliveryStatus;
+    q?: string;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    pageSize?: number;
+    role?: 'seller' | 'buyer' | 'consignee' | 'logistics' | 'finance' | 'admin';
+  } = {}
 ) => getApi<DeliveryListResult>(`/api/delivery${buildQuery(params)}`);
 
 export const getDeliveryById = (id: number) => getApi<DeliveryDetailDto>(`/api/delivery/${id}`);

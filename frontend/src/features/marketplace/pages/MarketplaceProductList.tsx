@@ -28,6 +28,8 @@ export default function MarketplaceProductList() {
     const searchParams = useSearchParams();
     const pathname = usePathname() || '';
     const isDashboardMarketplace = pathname === '/buyer/marketplace' || pathname === '/seller/marketplace';
+    const isSellerDashboardMarketplace = pathname === '/seller/marketplace' && user?.role === 'seller';
+    const showBuyerMarketplaceActions = !isSellerDashboardMarketplace;
     const useDashboardShell = Boolean(user) && (isDashboardMarketplace || pathname === '/marketplace/products' || pathname === '/marketplace/services');
     const router = useRouter();
     const isServices = pathname.includes('/services') || searchParams?.get('type') === 'services';
@@ -396,8 +398,7 @@ export default function MarketplaceProductList() {
                             Services Directory
                         </button>
 
-                        {/* Cart Button */}
-                        {/* <div className="ml-auto pb-2">
+                        <div className="ml-auto pb-2">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -417,7 +418,7 @@ export default function MarketplaceProductList() {
                                     </span>
                                 )}
                             </button>
-                        </div> */}
+                        </div>
                     </div>
 
                     <div className="-mx-4 mb-5 sm:mx-0">
@@ -629,12 +630,12 @@ export default function MarketplaceProductList() {
                                                             {!isFallback && (
                                                                 <CompareToggleButton item={{ type: isServices ? 'service' : 'product', id: item.id, categoryId: item.category?.id }} iconOnly />
                                                             )}
-                                                            {!isFallback && (
+                                                            {!isFallback && showBuyerMarketplaceActions && (
                                                                 <button type="button" onClick={() => handleRequestQuote(item)} className="inline-flex h-8 items-center gap-1 rounded-md border border-[#0b2447]/20 bg-white px-3 text-[10px] font-black text-[#0b2447] hover:bg-blue-50">
                                                                     <FileText className="h-3 w-3" /> Request Quote
                                                                 </button>
                                                             )}
-                                                            {!isFallback && (
+                                                            {!isFallback && showBuyerMarketplaceActions && (
                                                                 cartQuantity > 0 ? (
                                                                     <div className="inline-flex h-8 min-w-[96px] items-center justify-between overflow-hidden rounded-md border border-[#0b2447]/25 bg-white text-[#0b2447] shadow-sm">
                                                                         <button
@@ -756,10 +757,10 @@ export default function MarketplaceProductList() {
                                                 {!isFallback && (
                                                     <CompareToggleButton item={{ type: isServices ? 'service' : 'product', id: item.id, categoryId: item.category?.id }} iconOnly className="h-7 w-7" />
                                                 )}
-                                                {!isFallback && (
+                                                {!isFallback && showBuyerMarketplaceActions && (
                                                     <button type="button" onClick={() => handleRequestQuote(item)} className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-[#0b2447]/20 bg-white text-[#0b2447] hover:bg-blue-50 active:scale-90 transition" aria-label="Request quote" title="Request quote"><FileText className="h-3 w-3" /></button>
                                                 )}
-                                                {!isFallback && (
+                                                {!isFallback && showBuyerMarketplaceActions && (
                                                     cartQuantity > 0 ? (
                                                         <div className="inline-flex h-7 min-w-[82px] items-center justify-between overflow-hidden rounded-md border border-[#0b2447]/25 bg-white text-[#0b2447] shadow-sm">
                                                             <button

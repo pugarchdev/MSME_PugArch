@@ -10,14 +10,14 @@ import Home from './views/Home';
 import Login from './views/Login';
 import ForgotPassword from './views/ForgotPassword';
 import Register from './views/Register';
-import Dashboard from './views/Dashboard';
-import MarketplaceHome from './features/marketplace/pages/MarketplaceHome';
 
 // Lazy-loaded route components. Splitting these out shrinks the initial
 // JS bundle dramatically (the App tree was ~500kB; without lazy, every page
 // load shipped the entire portal). React.lazy + Suspense lets Next.js
 // stream chunks per route so navigation only downloads what the user needs.
 const MarketplaceProductList = lazy(() => import('./features/marketplace/pages/MarketplaceProductList'));
+const MarketplaceHome = lazy(() => import('./features/marketplace/pages/MarketplaceHome'));
+const Dashboard = lazy(() => import('./views/Dashboard'));
 const MarketplaceProductDetail = lazy(() => import('./features/marketplace/pages/MarketplaceProductDetail'));
 const MarketplaceServiceDetail = lazy(() => import('./features/marketplace/pages/MarketplaceServiceDetail'));
 const PurchaseOrders = lazy(() => import('./views/PurchaseOrders'));
@@ -111,6 +111,7 @@ const MonthlyRankingsAdminPage = lazy(() => import('./features/banners/pages/Mon
 const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/pages/OrganizationBannerEligibilityPage'));
 const AdminMarketplaceHomeSectionsPage = lazy(() => import('./features/marketplace/pages/AdminMarketplaceHomeSectionsPage'));
 const CreateProcurementPage = lazy(() => import('./features/procurementWizard/pages/CreateProcurementPage'));
+const ProcurementDraftsPage = lazy(() => import('./features/procurementWizard/pages/ProcurementDraftsPage'));
 const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
@@ -125,6 +126,73 @@ import PremiumLoader from './components/PremiumLoader';
 function RouteFallback() {
   return <PremiumLoader />;
 }
+
+const scheduleIdle = (callback: () => void, timeout = 2500) => {
+  if (typeof window === 'undefined') return () => undefined;
+  const idleWindow = window as Window & typeof globalThis & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  const id = idleWindow.requestIdleCallback
+    ? idleWindow.requestIdleCallback(callback, { timeout })
+    : window.setTimeout(callback, Math.min(timeout, 800));
+
+  return () => {
+    if (idleWindow.cancelIdleCallback && typeof id === 'number') {
+      idleWindow.cancelIdleCallback(id);
+      return;
+    }
+    window.clearTimeout(id as number);
+  };
+};
+
+const preloadInBatches = (loaders: ReadonlyArray<() => Promise<unknown>>) => {
+  let cancelled = false;
+  const run = (index: number) => {
+    if (cancelled || index >= loaders.length) return;
+    loaders[index]()
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) window.setTimeout(() => run(index + 1), 80);
+      });
+  };
+  run(0);
+  return () => {
+    cancelled = true;
+  };
+};
+
+const rolePreloaders = {
+  shg: [
+    () => import('./views/ShgOnboarding'),
+    () => import('./features/payments/pages/PaymentHistoryPage'),
+  ],
+  buyer: [
+    () => import('./features/procurementWizard/pages/CreateProcurementPage'),
+    () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
+    () => import('./views/Tenders'),
+    () => import('./views/Vendors'),
+    () => import('./features/requirements/pages/RequirementsPage'),
+    () => import('./features/cart/pages/CartPage'),
+    () => import('./features/payments/pages/PaymentHistoryPage'),
+    () => import('./features/directPurchase/pages/DirectPurchasePage'),
+    () => import('./features/rfq/pages/RfqPage'),
+  ],
+  seller: [
+    () => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'),
+    () => import('./views/SellerTenders'),
+    () => import('./features/sellerDelivery/pages/SellerDeliveryManagementPage'),
+    () => import('./features/payments/pages/PaymentHistoryPage'),
+    () => import('./features/rfq/pages/RfqPage'),
+    () => import('./features/directPurchase/pages/DirectPurchasePage'),
+  ],
+  admin: [
+    () => import('./features/admin/pages/AdminRecordsPage'),
+    () => import('./views/OrganizationManagement'),
+    () => import('./features/fraudAlerts/pages/FraudAlertsPage'),
+    () => import('./views/RbacPanel'),
+  ],
+} as const;
 
 
 const roleOk = (role?: string, allowed?: string[]) => {
@@ -219,34 +287,25 @@ export default function App() {
 
   // Background preloading of high-probability lazy-loaded dashboard pages after login.
   React.useEffect(() => {
-    if (mounted && user) {
-      // Preload critical dynamic pages for current role in the background.
-      if (isShgUser(user)) {
-        import('./views/ShgOnboarding');
-        import('./features/payments/pages/PaymentHistoryPage');
-      } else if (user.role === 'buyer') {
-        import('./features/procurementWizard/pages/CreateProcurementPage');
-        import('./views/Tenders');
-        import('./views/Vendors');
-        import('./features/requirements/pages/RequirementsPage');
-        import('./features/cart/pages/CartPage');
-        import('./features/payments/pages/PaymentHistoryPage');
-        import('./features/directPurchase/pages/DirectPurchasePage');
-        import('./features/rfq/pages/RfqPage');
-      } else if (user.role === 'seller') {
-        import('./features/sellerOpportunities/pages/SellerOpportunitiesPage');
-        import('./views/SellerTenders');
-        import('./features/sellerDelivery/pages/SellerDeliveryManagementPage');
-        import('./features/payments/pages/PaymentHistoryPage');
-        import('./features/rfq/pages/RfqPage');
-        import('./features/directPurchase/pages/DirectPurchasePage');
-      } else if (user.role === 'admin') {
-        import('./features/admin/pages/AdminRecordsPage');
-        import('./views/OrganizationManagement');
-        import('./features/fraudAlerts/pages/FraudAlertsPage');
-        import('./views/RbacPanel');
-      }
-    }
+    if (!mounted || !user) return;
+    const loaders = isShgUser(user)
+      ? rolePreloaders.shg
+      : user.role === 'buyer'
+        ? rolePreloaders.buyer
+        : user.role === 'seller'
+          ? rolePreloaders.seller
+          : user.role === 'admin'
+            ? rolePreloaders.admin
+            : [];
+
+    let cancelBatches = () => {};
+    const cancelIdle = scheduleIdle(() => {
+      cancelBatches = preloadInBatches(loaders);
+    });
+    return () => {
+      cancelIdle();
+      cancelBatches();
+    };
   }, [mounted, user]);
 
   if (!mounted) {
@@ -317,6 +376,7 @@ export default function App() {
     if (pathname === '/shg/support' && shgRouteOk) return <ShgOnboarding section="support" />;
     if (pathname === '/shg/settings' && shgRouteOk) return <ShgOnboarding section="settings" />;
     if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
+    if (pathname === '/cart' && roleOk(user.role, ['buyer', 'seller'])) return <CartPage />;
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
@@ -339,6 +399,7 @@ export default function App() {
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
     if (pathname === '/buyer/procurement/create' && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
+    if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
     if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <Quotations />;
     if (pathname === '/buyer/procurement/approvals' && roleOk(user.role, ['buyer'])) return <ApprovalQueuePage />;

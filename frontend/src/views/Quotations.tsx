@@ -15,6 +15,12 @@ import {
   LayoutGrid,
   List,
   FileSpreadsheet,
+  CalendarDays,
+  Building2,
+  UserRound,
+  Percent,
+  IndianRupee,
+  ShieldCheck,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -232,6 +238,7 @@ const getQuotePricing = (quote: Quotation) => {
   return { subtotal, taxRate, taxAmount, discountAmount, discountPercent, totalAmount };
 };
 const formatDateTime = (val?: string) => val ? new Date(val).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', hour12: true }) : '-';
+const formatDate = (val?: string) => val ? new Date(val).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '-';
 const toDateInputValue = (val?: string) => val ? val.split('T')[0] : '';
 const getQuoteSubmittedAt = (q: Quotation) => (q as any).createdAt || (q as any).submittedAt;
 const getQuoteUpdatedAt = (q: Quotation) => (q as any).updatedAt || (q as any).lastModified;
@@ -245,6 +252,35 @@ const getFileNameFromUrl = (url?: string, fallback = 'Quotation document') => {
     return name || fallback;
   }
 };
+
+const getPartyInfo = (quote: Quotation, role?: string) => {
+  const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
+  const sellerLocation = quote.seller?.sellerProfile?.offices?.[0]
+    ? [quote.seller.sellerProfile.offices[0].city, quote.seller.sellerProfile.offices[0].state].filter(Boolean).join(', ')
+    : '-';
+  const buyerName = quote.buyer?.buyerProfile?.organizationName || quote.buyer?.name || '-';
+  const buyerLocation = [quote.buyer?.buyerProfile?.city, quote.buyer?.buyerProfile?.state].filter(Boolean).join(', ') || '-';
+  return {
+    sellerName,
+    sellerLocation,
+    buyerName,
+    buyerLocation,
+    counterpartyName: role === 'seller' ? buyerName : sellerName,
+    counterpartyLabel: role === 'seller' ? 'Buyer' : 'Supplier'
+  };
+};
+
+const getValidityState = (quote: Quotation) => {
+  if (!quote.validTill) return { label: 'Validity not provided', tone: 'slate' as const };
+  const validDate = new Date(quote.validTill);
+  const now = new Date();
+  const diffDays = Math.ceil((validDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { label: `Expired ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'} ago`, tone: 'red' as const };
+  if (diffDays <= 7) return { label: `Expires in ${diffDays} day${diffDays === 1 ? '' : 's'}`, tone: 'amber' as const };
+  return { label: `Valid for ${diffDays} day${diffDays === 1 ? '' : 's'}`, tone: 'green' as const };
+};
+
+const getDocumentCount = (quote: Quotation) => Number(Boolean(getQuoteDocument(quote))) + Number(Boolean(quote.rfqDocumentUrl));
 
 const getQuoteDocument = (quote: Quotation) => {
   const responseDocument = quote.quoteResponses?.find(response => response.fileAssetId || response.documentUrl || response.fileAsset);
@@ -285,6 +321,77 @@ function InfoBox({ label, value, strong = false }: { label: string; value: strin
   );
 }
 
+function DetailMetric({
+  label,
+  value,
+  icon: Icon,
+  tone = 'slate'
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+  tone?: 'slate' | 'blue' | 'green' | 'amber' | 'red';
+}) {
+  const toneClass = tone === 'green'
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    : tone === 'amber'
+      ? 'bg-amber-50 text-amber-700 border-amber-100'
+      : tone === 'red'
+        ? 'bg-red-50 text-red-700 border-red-100'
+        : tone === 'blue'
+          ? 'bg-blue-50 text-[#12335f] border-blue-100'
+          : 'bg-slate-50 text-slate-700 border-slate-200';
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <div className="flex items-center gap-3">
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md border', toneClass)}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
+          <p className="mt-0.5 break-words text-sm font-black text-slate-900">{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentRow({
+  title,
+  label,
+  tone,
+  onOpen
+}: {
+  title: string;
+  label: string;
+  tone: 'blue' | 'green';
+  onOpen: () => void;
+}) {
+  const toneClass = tone === 'green'
+    ? 'border-emerald-200 bg-emerald-50/50 text-emerald-700'
+    : 'border-blue-200 bg-blue-50/50 text-[#12335f]';
+  return (
+    <div className={cn('rounded-md border p-3', toneClass)}>
+      <p className="text-[10px] font-black uppercase tracking-[0.16em]">{title}</p>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-black text-slate-900">{label}</p>
+        <Button type="button" variant="outline" onClick={onOpen} className="h-8 shrink-0 bg-white px-3 text-[10px] font-black uppercase">
+          <FileText className="mr-1.5 h-3.5 w-3.5" />
+          View
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DocumentEmpty({ label }: { label: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">
+      {label}
+    </div>
+  );
+}
+
 function QuotationDetailsModal({
   quote,
   role,
@@ -299,12 +406,15 @@ function QuotationDetailsModal({
   const StatusIcon = statusIcons[quote.status] || Clock;
   const sellerName = quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-';
   const buyerName = quote.buyer?.buyerProfile?.organizationName || quote.buyer?.name || '-';
+  const parties = getPartyInfo(quote, role);
   const pricing = getQuotePricing(quote);
   const quoteDocument = getQuoteDocument(quote);
+  const validity = getValidityState(quote);
+  const netBeforeDiscount = pricing.subtotal + pricing.taxAmount;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+      <div className="w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Quotation Details</p>
@@ -319,90 +429,144 @@ function QuotationDetailsModal({
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto p-5">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className={cn('inline-flex items-center gap-1 rounded border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', statusStyles[quote.status])}>
-              <StatusIcon className="h-3.5 w-3.5" />
-              {getStatusLabel(quote.status)}
-            </span>
-            {quote.isLowest && (
-              <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                <Trophy className="h-3.5 w-3.5" />
-                Lowest quoted rate
-              </span>
-            )}
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <DetailMetric label="Total quoted value" value={formatMoney(pricing.totalAmount)} icon={IndianRupee} tone="blue" />
+            <DetailMetric label="Validity status" value={validity.label} icon={CalendarDays} tone={validity.tone} />
+            <DetailMetric label="Delivery commitment" value={quote.deliveryDays ? `${quote.deliveryDays} days` : 'Not provided'} icon={Clock} tone={quote.deliveryDays ? 'green' : 'amber'} />
+            <DetailMetric label="Document coverage" value={`${getDocumentCount(quote)} attached`} icon={FileSpreadsheet} tone={getDocumentCount(quote) ? 'green' : 'amber'} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <InfoBox label={role === 'seller' ? 'Buyer' : 'Supplier'} value={role === 'seller' ? buyerName : sellerName} />
-            <InfoBox label="Category" value={quote.tender?.category || 'General Procurement'} />
-            <InfoBox label="Unit Rate" value={formatMoney(quote.unitPrice)} />
-            <InfoBox label="Subtotal" value={formatMoney(pricing.subtotal)} />
-            <InfoBox label="Tax" value={`${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`} />
-            <InfoBox label="Discount" value={`${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`} />
-            <InfoBox label="Total Value" value={formatMoney(pricing.totalAmount)} strong />
-            <InfoBox label="Quantity" value={quote.quantity || '-'} />
-            <InfoBox label="Delivery" value={quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} />
-            <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
-            <InfoBox label="Valid Till" value={formatDateTime(quote.validTill)} />
-            <InfoBox label="Submitted Date & Time" value={formatDateTime(getQuoteSubmittedAt(quote))} />
-            <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
-            <InfoBox label={quote.source === 'rfq' ? 'RFQ Deadline' : 'Tender Closing'} value={formatDateTime(quote.tender?.closesAt)} />
-
-            {/* Buyer RFQ Document */}
-            {quote.rfqDocumentUrl ? (
-              <div className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2 lg:col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#12335f]">RFQ Specifications</p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-slate-800">
-                      {quote.rfqDocumentName || getFileNameFromUrl(quote.rfqDocumentUrl, 'RFQ Specifications')}
-                    </p>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Attached by buyer</p>
+          <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-5">
+              <section className="rounded-md border border-slate-200 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Commercial breakdown</p>
+                    <h3 className="mt-0.5 text-sm font-black text-slate-950">Rate, taxes, discount, and payable value</h3>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => onOpenDocument(quote.rfqDocumentUrl!, quote.rfqDocumentName || 'RFQ Specifications', null)}
-                    className="h-8 shrink-0 rounded-md border-slate-200 bg-white px-3 text-[10px] font-black uppercase text-[#12335f] hover:bg-slate-50"
-                  >
-                    <FileText className="mr-1.5 h-3.5 w-3.5" />
-                    View Document
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Seller Response Document */}
-            {quoteDocument ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50/40 px-3 py-2 lg:col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Proposal Document</p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-slate-800">{quoteDocument.label}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Attached by seller</p>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={cn('inline-flex items-center gap-1 rounded border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', statusStyles[quote.status])}>
+                      <StatusIcon className="h-3.5 w-3.5" />
+                      {getStatusLabel(quote.status)}
+                    </span>
+                    {quote.isLowest && (
+                      <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                        <Trophy className="h-3.5 w-3.5" />
+                        Lowest quote
+                      </span>
+                    )}
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => onOpenDocument(quoteDocument.fileAsset.url || '', quoteDocument.label, quoteDocument.fileAsset.id)}
-                    className="h-8 shrink-0 rounded-md border-emerald-200 bg-white px-3 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50"
-                  >
-                    <FileText className="mr-1.5 h-3.5 w-3.5" />
-                    View Document
-                  </Button>
                 </div>
-              </div>
-            ) : (
-              !quote.rfqDocumentUrl && <InfoBox label="Document" value="Not Attached" />
-            )}
-          </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-left text-xs">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ['Unit rate', formatMoney(quote.unitPrice), 'Quoted per unit or RFQ response value'],
+                        ['Quantity', String(quote.quantity || '-'), 'Required or quoted quantity'],
+                        ['Subtotal', formatMoney(pricing.subtotal), 'Unit rate multiplied by quantity'],
+                        ['Tax', `${pricing.taxRate.toFixed(2)}% (${formatMoney(pricing.taxAmount)})`, 'GST or configured tax component'],
+                        ['Discount', `${pricing.discountPercent.toFixed(2)}% (${formatMoney(pricing.discountAmount)})`, 'Commercial discount offered by supplier'],
+                        ['Net before discount', formatMoney(netBeforeDiscount), 'Subtotal plus tax'],
+                        ['Final payable value', formatMoney(pricing.totalAmount), 'Net value after discount']
+                      ].map(([label, value, helper]) => (
+                        <tr key={label}>
+                          <td className="px-4 py-3 font-black uppercase tracking-wide text-slate-500">{label}</td>
+                          <td className="px-4 py-3 font-black text-slate-950">{value}</td>
+                          <td className="px-4 py-3 font-medium text-slate-500">{helper}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-          {quote.note && (
-            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{quote.source === 'rfq' ? 'RFQ / Response Notes' : 'Seller Note'}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700">{quote.note}</p>
+              <section className="rounded-md border border-slate-200 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tender / RFQ context</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <InfoBox label="Title" value={quote.tender?.title || '-'} strong />
+                  <InfoBox label={quote.source === 'rfq' ? 'RFQ ID' : 'Tender ID'} value={quote.tender?.tenderId || `${quote.source === 'rfq' ? 'RFQ' : 'BID'}-${String(quote.id).padStart(4, '0')}`} />
+                  <InfoBox label="Category" value={quote.tender?.category || 'General Procurement'} />
+                  <InfoBox label={quote.source === 'rfq' ? 'RFQ Deadline' : 'Tender Closing'} value={formatDateTime(quote.tender?.closesAt)} />
+                  <InfoBox label="Submitted" value={formatDateTime(getQuoteSubmittedAt(quote))} />
+                  <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
+                </div>
+              </section>
+
+              {quote.note && (
+                <section className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{quote.source === 'rfq' ? 'RFQ / Response Notes' : 'Seller Note'}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700">{quote.note}</p>
+                </section>
+              )}
             </div>
-          )}
+
+            <div className="space-y-5">
+              <section className="rounded-md border border-slate-200 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Parties</p>
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-[#12335f] shadow-sm"><Building2 className="h-4 w-4" /></div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Supplier</p>
+                        <p className="mt-1 break-words text-sm font-black text-slate-900">{sellerName}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{parties.sellerLocation}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-[#12335f] shadow-sm"><UserRound className="h-4 w-4" /></div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Buyer</p>
+                        <p className="mt-1 break-words text-sm font-black text-slate-900">{buyerName}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{parties.buyerLocation}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-md border border-slate-200 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Compliance snapshot</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <InfoBox label="Warranty" value={quote.warranty || 'Not Provided'} />
+                  <InfoBox label="Valid Till" value={formatDate(quote.validTill)} />
+                  <InfoBox label="Tax Rate" value={`${pricing.taxRate.toFixed(2)}%`} />
+                  <InfoBox label="Discount Rate" value={`${pricing.discountPercent.toFixed(2)}%`} />
+                </div>
+                <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-xs font-semibold leading-relaxed text-slate-700">
+                  Review validity, tax, documents, delivery commitment, and warranty before accepting. Acceptance may generate or reuse the connected purchase order.
+                </div>
+              </section>
+
+              <section className="rounded-md border border-slate-200 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Documents</p>
+                <div className="mt-3 space-y-3">
+                  {quote.rfqDocumentUrl ? (
+                    <DocumentRow
+                      title="RFQ Specifications"
+                      label={quote.rfqDocumentName || getFileNameFromUrl(quote.rfqDocumentUrl, 'RFQ Specifications')}
+                      tone="blue"
+                      onOpen={() => onOpenDocument(quote.rfqDocumentUrl!, quote.rfqDocumentName || 'RFQ Specifications', null)}
+                    />
+                  ) : (
+                    <DocumentEmpty label="RFQ specifications not attached" />
+                  )}
+                  {quoteDocument ? (
+                    <DocumentRow
+                      title="Proposal Document"
+                      label={quoteDocument.label}
+                      tone="green"
+                      onOpen={() => onOpenDocument(quoteDocument.fileAsset.url || '', quoteDocument.label, quoteDocument.fileAsset.id)}
+                    />
+                  ) : (
+                    <DocumentEmpty label="Seller proposal document not attached" />
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-4">
@@ -887,7 +1051,12 @@ export default function Quotations() {
     const accepted = quotes.filter(quote => quote.status === 'accepted').length;
     const rejected = quotes.filter(quote => quote.status === 'rejected' || quote.status === 'technical_rejected').length;
     const totalValue = quotes.reduce((sum, quote) => sum + getQuotePricing(quote).totalAmount, 0);
-    return { total, pending, accepted, rejected, totalValue };
+    const quotedValues = quotes.map(quote => getQuotePricing(quote).totalAmount).filter(value => value > 0);
+    const lowestValue = quotedValues.length ? Math.min(...quotedValues) : 0;
+    const averageValue = quotedValues.length ? totalValue / quotedValues.length : 0;
+    const documentCount = quotes.reduce((sum, quote) => sum + Number(getDocumentCount(quote) > 0), 0);
+    const decisionRate = total ? Math.round(((accepted + rejected) / total) * 100) : 0;
+    return { total, pending, accepted, rejected, totalValue, lowestValue, averageValue, documentCount, decisionRate };
   }, [quotes]);
 
   return (
@@ -917,11 +1086,18 @@ export default function Quotations() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryTile label={user?.role === 'buyer' ? 'Total Quotations' : 'Bids / RFQs'} value={stats.total} icon={ClipboardCheck} />
           <SummaryTile label="Pending Review" value={stats.pending} icon={Clock} tone="amber" />
           <SummaryTile label="Accepted" value={stats.accepted} icon={CheckCircle2} tone="green" />
           <SummaryTile label={user?.role === 'buyer' ? 'Quoted Value' : 'Response Value'} value={formatMoney(stats.totalValue)} icon={FileText} />
+        </div> */}
+
+        <div className="grid gap-3 lg:grid-cols-4">
+          <InsightTile icon={IndianRupee} label="Lowest quote" value={stats.lowestValue ? formatMoney(stats.lowestValue) : '-'} helper="Best available commercial value in the current quotation pool." />
+          <InsightTile icon={FileSpreadsheet} label="Average quote" value={stats.averageValue ? formatMoney(Math.round(stats.averageValue)) : '-'} helper="Useful baseline before comparing supplier outliers." />
+          <InsightTile icon={ShieldCheck} label="Decision progress" value={`${stats.decisionRate}%`} helper={`${stats.accepted + stats.rejected} of ${stats.total} quotation records finalized.`} />
+          <InsightTile icon={Percent} label="Document coverage" value={`${stats.documentCount}/${stats.total}`} helper="Records with RFQ or proposal documents attached." />
         </div>
 
         <Card className="rounded-lg border border-slate-200 shadow-sm">
@@ -966,6 +1142,10 @@ export default function Quotations() {
 
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-500">
+              <span>{filteredQuotes.length} matching record{filteredQuotes.length === 1 ? '' : 's'} from {quotes.length} total</span>
+              <span>{stats.pending} pending decision{stats.pending === 1 ? '' : 's'}{user?.role === 'buyer' ? ' for buyer review' : ' across submitted bids and RFQs'}</span>
             </div>
           </CardContent>
         </Card>
@@ -1202,6 +1382,33 @@ function SummaryTile({
   );
 }
 
+function InsightTile({
+  icon: Icon,
+  label,
+  value,
+  helper
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-50 text-[#12335f]">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+          <p className="mt-1 break-words text-lg font-black leading-snug text-slate-950">{value}</p>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{helper}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuotationCard({
   quote,
   role,
@@ -1360,7 +1567,7 @@ function RfqResponseModal({
 
     setUploadingDocument(true);
     try {
-      const optimizedFile = await compressImage(file);
+      const optimizedFile = file.type.startsWith('image/') ? await compressImage(file) : file;
       const body = new FormData();
       body.append('file', optimizedFile);
       const response = await api.fetch('/api/upload', {

@@ -6,6 +6,7 @@ import { authorize } from '../middleware/authorize.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { maskSensitive } from '../utils/maskSensitive.js';
 import { auditLog } from '../modules/audit/audit.service.js';
+import { shortCache } from '../middleware/httpCache.js';
 
 const router = Router();
 const db = prisma as any;
@@ -112,7 +113,7 @@ const withBannerImageUrls = (banners: any[]) => banners.map(banner => ({
   imageUrl: banner.imageUrl || (banner.documentId ? `/api/files/${banner.documentId}/view` : banner.imageUrl)
 }));
 
-router.get('/banners/active', async (req, res: Response) => {
+router.get('/banners/active', shortCache(60), async (req, res: Response) => {
   try {
     const query = publicLocationSchema.parse(req.query);
     const now = new Date();

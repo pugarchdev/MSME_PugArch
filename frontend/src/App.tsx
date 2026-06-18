@@ -35,7 +35,6 @@ const AdminOperations = lazy(() => import('./views/AdminOperations'));
 const SellerRegistrationFlow = lazy(() => import('./views/SellerRegistrationFlow'));
 const BuyerRegistrationFlow = lazy(() => import('./views/BuyerRegistrationFlow'));
 const ShgOnboarding = lazy(() => import('./views/ShgOnboarding'));
-const AdminShgApplications = lazy(() => import('./views/AdminShgApplications'));
 const ShgRegistrationFlow = lazy(() => import('./views/ShgRegistrationFlow'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
@@ -350,7 +349,13 @@ export default function App() {
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
     if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;
     if (pathname === '/buyer/publish-bid') return <BuyerPublishBidPage />;
-    if (pathname === '/admin/bids') return <AdminBidManagementPage />;
+    if (pathname === '/admin/bids') {
+      const isFeatureEnabled = user?.enabledFeatures?.includes('admin-bid-approval');
+      if (!isFeatureEnabled) {
+        return <Redirect to={authenticatedHome} />;
+      }
+      return <AdminBidManagementPage />;
+    }
     if (/^\/marketplace\/products\/\d+$/.test(pathname)) return <MarketplaceProductDetail />;
     if (/^\/marketplace\/services\/\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
     // Public vendor store — accessible to everyone
@@ -448,8 +453,8 @@ export default function App() {
     if (pathname === '/profile') return <Profile />;
     if (pathname === '/reports' && roleOk(user.role, ['buyer', 'seller'])) return <RoleReportsPage />;
     if (pathname === '/admin/onboarding' && roleOk(user.role, ['admin'])) return <AdminOnboarding />;
-    if (pathname === '/admin/shg-applications' && roleOk(user.role, ['admin'])) return <AdminShgApplications />;
-    if (/^\/admin\/shg-applications\/\d+$/.test(pathname) && roleOk(user.role, ['admin'])) return <AdminShgApplications />;
+    if (pathname === '/admin/shg-applications' && roleOk(user.role, ['admin'])) return <Redirect to="/admin/onboarding?tab=shg" />;
+    if (/^\/admin\/shg-applications\/\d+$/.test(pathname) && roleOk(user.role, ['admin'])) return <Redirect to="/admin/onboarding?tab=shg" />;
     if (pathname === '/admin/users' && roleOk(user.role, ['admin'])) return <AdminRecordsPage kind="users" />;
     if (pathname === '/admin/marketplace' && roleOk(user.role, ['admin'])) return <CataloguePage mode="admin" />;
     if (pathname === '/admin/marketplace/home-sections' && roleOk(user.role, ['admin'])) return <AdminMarketplaceHomeSectionsPage />;
@@ -460,7 +465,7 @@ export default function App() {
     if (pathname === '/admin/payments' && roleOk(user.role, ['admin'])) return <PaymentHistoryPage admin />;
     if (pathname === '/admin/compliance-rules' && roleOk(user.role, ['admin'])) return <ComplianceRulesPage />;
     if (pathname === '/admin/security-monitoring' && roleOk(user.role, ['admin'])) return <GenericFeaturePage title="Security Monitoring" eyebrow="Security" description="Audit and fraud signals for platform operations." endpoint="/api/admin/fraud-alerts" />;
-    if (['/admin/governance', '/admin/procurement', '/admin/compliance'].includes(pathname) && roleOk(user.role, ['admin'])) return <AdminOperations section="procurement" />;
+    if (['/admin/governance', '/admin/procurement', '/admin/compliance'].includes(pathname) && roleOk(user.role, ['admin'])) return <Redirect to="/admin/onboarding" />;
     if (pathname === '/admin/reports' && roleOk(user.role, ['admin'])) return <MISReports />;
     if (pathname === '/admin/banners' && roleOk(user.role, ['admin'])) return <AdminBannerManagementPage />;
     if (pathname === '/admin/monthly-rankings' && roleOk(user.role, ['admin'])) return <MonthlyRankingsAdminPage />;
@@ -525,7 +530,7 @@ export default function App() {
     pathname === '/marketplace/services' ||
     /^\/marketplace\/products\/\d+$/.test(pathname) ||
     /^\/marketplace\/services\/\d+$/.test(pathname);
-  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
+  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 

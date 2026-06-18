@@ -1362,6 +1362,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
         role: true,
         onboardingStatus: true,
         registrationStatus: true,
+        registrationDetails: true,
         createdAt: true,
         updatedAt: true,
         sectionStatus: true,
@@ -1466,6 +1467,7 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
       email: u.email,
       role: u.role,
       onboardingStatus: u.onboardingStatus,
+      registrationDetails: u.registrationDetails,
       createdAt: u.createdAt,
       sectionStatus: u.sectionStatus,
       adminFeedback: u.adminFeedback,
@@ -4945,6 +4947,10 @@ router.post('/admin/compliance-violations', authenticate, authorizeAdmin, asyncR
 
 router.get('/admin/rbac/roles', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
   const roles = await db.rbacRole.findMany({
+    where: {
+      code: { notIn: ['master_admin', 'MASTER_ADMIN'] },
+      name: { not: 'Master Admin' }
+    },
     include: {
       permissions: {
         include: { permission: true }
@@ -4970,6 +4976,11 @@ router.post('/admin/rbac/update-permissions', authenticate, authorize('master_ad
 
   const role = await db.rbacRole.findUnique({ where: { id: body.roleId } });
   if (!role) throw new ApiError(404, 'Role not found', 'ROLE_NOT_FOUND');
+  const roleCode = String(role.code || '').trim().toLowerCase();
+  const roleName = String(role.name || '').trim().toLowerCase();
+  if (roleCode === 'master_admin' || roleName === 'master admin') {
+    throw new ApiError(403, 'Master Admin permissions are hardcoded and cannot be viewed or modified through RBAC.', 'MASTER_ADMIN_RBAC_LOCKED');
+  }
 
   // Validate all permission IDs exist
   const validPerms = await db.permission.findMany({

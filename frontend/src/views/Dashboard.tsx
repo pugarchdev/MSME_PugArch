@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui/card';
-import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2, Images, Trophy, Package, Wrench } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2, Images, Trophy, Package, Wrench, KeyRound, UserPlus, Truck, CreditCard, Store } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { validators } from '../lib/validators';
@@ -465,7 +465,7 @@ export default function Dashboard() {
         value: adminStats?.activeSellers ?? 0,
         helper: 'Approved suppliers in the network',
         icon: Users,
-        path: '/admin/governance',
+        path: '/admin/onboarding?tab=sellers',
         tone: 'bg-emerald-50 text-emerald-700'
       },
       {
@@ -473,7 +473,7 @@ export default function Dashboard() {
         value: adminStats?.activeBuyers ?? 0,
         helper: 'Buyer departments enabled',
         icon: ClipboardCheck,
-        path: '/admin/governance',
+        path: '/admin/onboarding?tab=buyers',
         tone: 'bg-slate-50 text-[#12335f]'
       },
       {
@@ -483,14 +483,38 @@ export default function Dashboard() {
         icon: BarChart3,
         path: '/admin/reports',
         tone: 'bg-slate-100 text-slate-700'
+      },
+      {
+        label: 'Role Policies',
+        value: 6,
+        helper: 'Invite-based access roles',
+        icon: KeyRound,
+        path: '/admin/rbac',
+        tone: 'bg-blue-50 text-blue-700'
+      },
+      {
+        label: 'Tender Queue',
+        value: adminStats?.pendingTenders ?? 0,
+        helper: 'Procurement bids needing action',
+        icon: Gavel,
+        path: '/admin/bids',
+        tone: 'bg-purple-50 text-purple-700'
+      },
+      {
+        label: 'Reports Ready',
+        value: adminStats?.totalNetwork ? 3 : 0,
+        helper: 'Procurement, payments, suppliers',
+        icon: FileText,
+        path: '/admin/reports',
+        tone: 'bg-cyan-50 text-cyan-700'
       }
   ], [adminStats]);
 
   const adminModules = useMemo(() => [
       {
-        title: 'Governance Desk',
-        detail: 'Monitor procurement readiness, compliance exceptions, review queues, and approved stakeholder capacity.',
-        path: '/admin/governance',
+        title: 'Stakeholder Approvals',
+        detail: 'Review seller and buyer onboarding, compliance exceptions, review queues, and approved stakeholder capacity.',
+        path: '/admin/onboarding',
         icon: ClipboardCheck
       },
       {
@@ -498,6 +522,12 @@ export default function Dashboard() {
         detail: 'Approve, reject, request section changes, and send administrator feedback.',
         path: '/admin/onboarding',
         icon: FileSearch
+      },
+      {
+        title: 'Roles & Invite Permissions',
+        detail: 'Create role policies, assign permission scopes, and use invite-based team access for organizations.',
+        path: '/admin/rbac',
+        icon: KeyRound
       },
       {
         title: 'MIS Reports',
@@ -546,11 +576,11 @@ export default function Dashboard() {
             <p className="text-sm text-slate-500 font-medium">Manage approvals, compliance review, stakeholder access, and MIS reporting.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/admin/governance">
+            {/* <Link href="/admin/onboarding">
               <Button variant="outline" className="h-10 rounded-md border-slate-200 px-4 text-xs font-bold uppercase tracking-wide">
-                Governance Desk
+                Stakeholder Approvals
               </Button>
-            </Link>
+            </Link> */}
             <Link href="/admin/onboarding">
               <Button className="bg-[#12335f] hover:bg-[#0b2445] text-white h-10 px-4 rounded-md space-x-2 font-bold uppercase tracking-wide text-xs">
                 <ShieldCheck className="h-4 w-4" />
@@ -562,6 +592,36 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {adminTiles.map(stat => <AdminKpiLink key={stat.label} stat={stat} isLoading={isAdminStatsLoading} />)}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr]">
+          <AdminActionPanel
+            title="Review Command Center"
+            description="Fast path for stakeholder approval, tender approval, and final award checks."
+            actions={[
+              ['Stakeholder approvals', '/admin/onboarding', ShieldCheck],
+              ['Tender approvals', '/admin/bids', Gavel],
+              ['Final award approvals', '/admin/procurement-orders', Trophy],
+            ]}
+          />
+          <AdminActionPanel
+            title="Operations Monitoring"
+            description="Track marketplace, orders, delivery, payments, and compliance signals from one row."
+            actions={[
+              ['Catalogue review', '/admin/marketplace', Store],
+              ['Orders & delivery', '/admin/delivery', Truck],
+              ['Payments & escrow', '/payments/transactions', CreditCard],
+            ]}
+          />
+          <AdminActionPanel
+            title="Access & Reports"
+            description="Manage invite-based roles and audit-ready management reports."
+            actions={[
+              ['Roles & permissions', '/admin/rbac', KeyRound],
+              ['Invite team access', '/org/team', UserPlus],
+              ['MIS reports', '/admin/reports', BarChart3],
+            ]}
+          />
         </div>
 
         <AIInsightBox dashboardData={dashboardData} />
@@ -590,8 +650,8 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <Link href="/admin/governance" className="mt-5 inline-flex text-xs font-black uppercase tracking-wide text-white underline">
-              Open governance desk
+            <Link href="/admin/onboarding" className="mt-5 inline-flex text-xs font-black uppercase tracking-wide text-white underline">
+              Open stakeholder approvals
             </Link>
           </aside>
         </div>
@@ -786,5 +846,26 @@ export default function Dashboard() {
           </div>
       </div>
     </div>
+  );
+}
+
+function AdminActionPanel({ title, description, actions }: {
+  title: string;
+  description: string;
+  actions: Array<[string, string, React.ComponentType<{ className?: string }>]>;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-black uppercase tracking-wide text-slate-950">{title}</h2>
+      <p className="mt-1 min-h-10 text-xs font-semibold leading-relaxed text-slate-500">{description}</p>
+      <div className="mt-4 space-y-2">
+        {actions.map(([label, href, Icon]) => (
+          <Link key={href} href={href} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-[#12335f] transition hover:border-[#12335f]/30 hover:bg-white">
+            <span className="flex items-center gap-2"><Icon className="h-4 w-4" />{label}</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -38,17 +38,14 @@ export function PageShell({ children }: { children: React.ReactNode }) {
 
 export function ProcurementHero({ title, subtitle, action }: { title: string; subtitle: string; action?: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="brand-tricolor-strip w-full" />
-      <div className="grid gap-5 bg-[radial-gradient(circle_at_top_right,rgba(11,36,71,0.08),transparent_34%),linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-6 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c86413]">JsgSmile Procurement Control</p>
-          <h1 className="mt-2 text-2xl font-black leading-tight text-[#0b2447] sm:text-3xl">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p>
-        </div>
-        {action}
+    <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c86413]">JsgSmile Procurement Control</p>
+        <h1 className="mt-2 text-2xl font-black leading-tight text-[#0b2447] sm:text-3xl">{title}</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p>
       </div>
-    </section>
+      {action}
+    </div>
   );
 }
 

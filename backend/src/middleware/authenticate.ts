@@ -100,13 +100,27 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
             );
             authUser.permissions = Array.from(new Set([...(authUser.permissions || []), ...dynamicPermissions]));
 
+            const enabledCodes: string[] = [];
             if (userDb.companyId) {
               const companyFeatures = await (prisma as any).companyFeature.findMany({
-                where: { companyId: userDb.companyId, enabled: true },
+                where: { companyId: userDb.companyId },
                 include: { feature: true }
               });
-              authUser.enabledFeatures = companyFeatures.map((row: any) => row.feature.code);
+              const activeCodes = companyFeatures
+                .filter((row: any) => row.enabled === true)
+                .map((row: any) => row.feature.code);
+              enabledCodes.push(...activeCodes);
+              const explicitlyDisabled = companyFeatures.some(
+                (row: any) => row.feature.code === 'admin-bid-approval' && row.enabled === false
+              );
+              if (!explicitlyDisabled) {
+                enabledCodes.push('admin-bid-approval');
+              }
+            } else {
+              const allFeatures = await prisma.feature.findMany({ select: { code: true } });
+              enabledCodes.push(...allFeatures.map(f => f.code));
             }
+            authUser.enabledFeatures = Array.from(new Set(enabledCodes));
           } catch {
             // Fallback
           }

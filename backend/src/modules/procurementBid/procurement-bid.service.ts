@@ -571,6 +571,20 @@ export const uploadBuyerBidDocument = async (req: AuthRequest & { file?: Express
   return doc;
 };
 
+export const isAdminBidApprovalRequired = async (companyId: number | null): Promise<boolean> => {
+  if (!companyId) return true;
+  const feature = await db.companyFeature.findFirst({
+    where: {
+      companyId,
+      feature: { code: 'admin-bid-approval' }
+    }
+  });
+  if (feature && feature.enabled === false) {
+    return false;
+  }
+  return true;
+};
+
 export const submitForApproval = async (req: AuthRequest, bidId: string) => {
   const bid = await resolveBid(bidId, {});
   assertBuyerOwner(req.user!, bid);
@@ -578,6 +592,27 @@ export const submitForApproval = async (req: AuthRequest, bidId: string) => {
   if (!editableBidStatuses.includes(bid.status) && !editableApprovalStatuses.includes(bid.approvalStatus)) {
     throw new ApiError(400, 'Only draft or rejected bids can be submitted for approval.', 'INVALID_STATUS_TRANSITION');
   }
+
+  const isApprovalRequired = await isAdminBidApprovalRequired(req.user!.companyId);
+  if (!isApprovalRequired) {
+    const openNow = new Date(bid.startDate) <= now() && new Date(bid.endDate) > now();
+    assertBidTransition(bid.status, openNow ? 'OPEN' : 'APPROVED');
+    const updated = await db.procurementBid.update({
+      where: { id: bid.id },
+      data: {
+        approvalStatus: 'APPROVED',
+        status: openNow ? 'OPEN' : 'APPROVED',
+        lifecycleStage: openNow ? 'SELLER_PARTICIPATION' : 'BID_PUBLISHED',
+        approvedById: req.user!.id,
+        approvedAt: now(),
+        rejectedReason: null
+      }
+    });
+    await procurementAudit(req, 'BID_APPROVED', 'ProcurementBid', bid.id, updated, bid);
+    if (openNow) await procurementAudit(req, 'BID_PUBLISHED', 'ProcurementBid', bid.id, { status: 'OPEN' }, bid);
+    return updated;
+  }
+
   assertBidTransition(bid.status, 'PENDING_ADMIN_APPROVAL');
   const updated = await db.procurementBid.update({
     where: { id: bid.id },
@@ -586,6 +621,7 @@ export const submitForApproval = async (req: AuthRequest, bidId: string) => {
   await procurementAudit(req, 'BID_SUBMITTED_FOR_APPROVAL', 'ProcurementBid', bid.id, updated, bid);
   return updated;
 };
+
 
 export const approveBid = async (req: AuthRequest, bidId: string) => {
   const bid = await resolveBid(bidId, {});
@@ -923,6 +959,9 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
   if (participation.rank !== 1 && !body.adminOverrideReason) {
     throw new ApiError(400, 'Only L1 seller can be recommended without admin override reason.', 'INVALID_STATUS_TRANSITION');
   }
+
+  const isApprovalRequired = await isAdminBidApprovalRequired(req.user!.companyId);
+
   const award = await db.$transaction(async (tx: any) => {
     const created = await tx.procurementBidAward.create({
       data: {
@@ -930,16 +969,30 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
         participationId: participation.id,
         sellerId: participation.sellerId,
         awardedAmount: participation.totalAmount || participation.quotedAmount,
-        awardStatus: 'RECOMMENDED',
+        awardStatus: isApprovalRequired ? 'RECOMMENDED' : 'ADMIN_APPROVED',
         awardedById: req.user!.id,
-        remarks: body.remarks || body.adminOverrideReason
+        remarks: body.remarks || body.adminOverrideReason,
+        awardedAt: isApprovalRequired ? null : now()
       }
     });
-    await tx.procurementBid.update({ where: { id: bid.id }, data: { status: 'AWARD_RECOMMENDED', lifecycleStage: 'AWARD_RECOMMENDED' } });
+    if (isApprovalRequired) {
+      await tx.procurementBid.update({ where: { id: bid.id }, data: { status: 'AWARD_RECOMMENDED', lifecycleStage: 'AWARD_RECOMMENDED' } });
+    } else {
+      await tx.procurementBidParticipation.updateMany({ where: { bidId: bid.id, id: { not: participation.id } }, data: { finalStatus: 'NOT_SELECTED' } });
+      await tx.procurementBidParticipation.update({ where: { id: participation.id }, data: { finalStatus: 'AWARDED' } });
+      await tx.procurementBid.update({ where: { id: bid.id }, data: { status: 'AWARDED', lifecycleStage: 'AWARDED' } });
+    }
     return created;
   });
-  await procurementAudit(req, 'AWARD_RECOMMENDED', 'ProcurementBidAward', award.id, award);
-  return award;
+
+  if (isApprovalRequired) {
+    await procurementAudit(req, 'AWARD_RECOMMENDED', 'ProcurementBidAward', award.id, award);
+    return award;
+  } else {
+    await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', award.id, award);
+    const po = await createOrReuseProcurementPOForAward(req, award, bid);
+    return { award, purchaseOrder: po.purchaseOrder, purchaseOrderReused: po.reused };
+  }
 };
 
 export const approveFinalAward = async (req: AuthRequest, bidId: string, body: any) => {

@@ -42,10 +42,19 @@ export const authorizeAdmin = authorize('admin', 'master_admin');
 export const checkFeatureEnabled = (featureCode: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) return apiResponse.error(res, 401, 'Authentication required', 'AUTH_REQUIRED');
-    if (req.user.role === 'master_admin') return next();
+    if (req.user.role === 'master_admin' || req.user.role === 'admin') return next();
 
     const companyId = req.user.companyId;
     if (!companyId) return apiResponse.error(res, 403, 'Company context is required', 'COMPANY_CONTEXT_REQUIRED');
+
+    if (featureCode === 'admin-bid-approval') {
+      const disabledRecord = await (prisma as any).companyFeature.findFirst({
+        where: { companyId, enabled: false, feature: { code: featureCode } },
+        select: { companyId: true }
+      });
+      if (disabledRecord) return apiResponse.error(res, 403, 'Feature is disabled for this company', 'FEATURE_DISABLED');
+      return next();
+    }
 
     const enabled = await (prisma as any).companyFeature.findFirst({
       where: { companyId, enabled: true, feature: { code: featureCode } },

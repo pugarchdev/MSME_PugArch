@@ -21,8 +21,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import {
   PageShell,
   ProcurementEmptyState,
@@ -360,8 +358,6 @@ export default function AdminBidManagementPage() {
 
   return (
     <PageShell>
-      <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
       <main className="mx-auto w-full max-w-7xl px-4 py-5">
         <ProcurementHero
           title="Admin Bid Management"
@@ -684,7 +680,6 @@ export default function AdminBidManagementPage() {
         </div>
       )}
 
-      <MarketplaceFooter />
     </PageShell>
   );
 }

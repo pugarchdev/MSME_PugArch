@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
-  LineChart, Line, PieChart, Pie, Cell
+  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { FileBarChart, Users, ClipboardCheck, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { FileBarChart, Users, ClipboardCheck, ArrowUpRight, ArrowDownRight, Activity, Download, ShieldCheck, Clock, FileText, CreditCard, Truck, Gavel, KeyRound } from 'lucide-react';
 import { api } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useAuth } from '../hooks/useAuth';
@@ -48,12 +49,43 @@ export default function MISReports() {
   const stats = { ...kpiData, ...detailsData };
   const userGrowthData = stats?.userGrowth || [];
   const transactionData = stats?.transactions || [];
+  const approvalRateNumber = Number(String(stats?.approvalRate || '0').replace('%', '')) || 0;
+  const pendingApproval = Number(stats?.pendingApproval || 0);
+  const totalNetwork = Number(stats?.totalNetwork || 0);
+  const reviewLoad = totalNetwork ? Math.round((pendingApproval / totalNetwork) * 100) : 0;
+  const executiveSignals = [
+    { label: 'Approval throughput', value: `${approvalRateNumber}%`, helper: approvalRateNumber >= 70 ? 'Healthy conversion' : 'Needs review follow-up', icon: ShieldCheck, tone: approvalRateNumber >= 70 ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50' },
+    { label: 'Review load', value: `${reviewLoad}%`, helper: `${pendingApproval} pending of ${totalNetwork || 0}`, icon: Clock, tone: reviewLoad > 30 ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50' },
+    { label: 'Avg onboarding time', value: stats?.avgOnboardingTime || '0 Days', helper: 'Submission to approval cycle', icon: Activity, tone: 'text-slate-700 bg-slate-50' },
+  ];
 
   const distributionData = [
     { name: 'Active Sellers', value: stats?.activeSellers || 0 },
     { name: 'Active Buyers', value: stats?.activeBuyers || 0 },
     { name: 'Pending Review', value: stats?.pendingApproval || 0 },
   ];
+
+  const exportSummary = () => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Total Network', stats?.totalNetwork || 0],
+      ['Active Sellers', stats?.activeSellers || 0],
+      ['Active Buyers', stats?.activeBuyers || 0],
+      ['Pending Approval', stats?.pendingApproval || 0],
+      ['Approval Rate', stats?.approvalRate || '0%'],
+      ['Average Onboarding Time', stats?.avgOnboardingTime || '0 Days'],
+      ['Active Procurement Value', stats?.activeProcurementValue || 'Rs. 0'],
+      ['Tender Success Rate', stats?.tenderSuccessRate || '0%'],
+    ];
+    const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mis-summary-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -68,7 +100,7 @@ export default function MISReports() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
           <select 
             value={timeframe} 
             onChange={(e) => setTimeframe(e.target.value)}
@@ -89,7 +121,28 @@ export default function MISReports() {
             <option value="buyer">Buyers Only</option>
             <option value="seller">Sellers Only</option>
           </select>
+          <button type="button" onClick={exportSummary} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#12335f] px-3 text-xs font-black uppercase tracking-wide text-white">
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
         </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {executiveSignals.map(signal => (
+          <Card key={signal.label} className="shadow-sm">
+            <CardContent className="flex items-start justify-between gap-4 p-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{signal.label}</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{signal.value}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{signal.helper}</p>
+              </div>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${signal.tone}`}>
+                <signal.icon className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -173,6 +226,57 @@ export default function MISReports() {
                 </LineChart>
               </ResponsiveContainer>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase tracking-wide text-slate-900">Approval Readiness Trend</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[260px]">
+            {isDetailsLoading ? (
+              <div className="flex h-full items-center justify-center rounded-lg bg-slate-50 text-xs font-bold text-slate-400">Loading readiness trend...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={userGrowthData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="readinessFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#12335f" stopOpacity={0.28} />
+                      <stop offset="95%" stopColor="#12335f" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Area type="monotone" dataKey="sellers" name="Seller approvals" stroke="#12335f" fill="url(#readinessFill)" strokeWidth={3} />
+                  <Area type="monotone" dataKey="buyers" name="Buyer approvals" stroke="#0ea5e9" fill="#e0f2fe" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase tracking-wide text-slate-900">Report Shortcuts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {[
+              ['Procurement report', '/admin/reports/procurement', Gavel],
+              ['Payments report', '/admin/reports/payments', CreditCard],
+              ['Suppliers report', '/admin/reports/suppliers', Users],
+              ['Roles & permissions', '/admin/rbac', KeyRound],
+              ['Delivery operations', '/admin/delivery', Truck],
+              ['Invoices', '/payments/invoices', FileText],
+            ].map(([label, href, Icon]: any) => (
+              <Link key={href} href={href} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-[#12335f] hover:border-[#12335f]/30 hover:bg-white">
+                <span className="flex items-center gap-2"><Icon className="h-4 w-4" />{label}</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            ))}
           </CardContent>
         </Card>
       </div>

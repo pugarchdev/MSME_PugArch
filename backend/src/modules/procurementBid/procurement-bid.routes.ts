@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize, type AuthRequest } from '../../middleware/auth.js';
+import { authenticate, authorize, checkFeatureEnabled, type AuthRequest } from '../../middleware/auth.js';
 import { upload } from '../../config/storage.js';
 import prisma from '../../config/prisma.js';
 import { apiResponse } from '../../utils/apiResponse.js';
@@ -277,35 +277,35 @@ router.post('/buyer/bids/:bidId/recommend-award', authenticate, authorize('buyer
   return apiResponse.created(res, data, 'Award recommendation created');
 }));
 
-router.get('/admin/bids', authenticate, authorize('admin'), asyncRoute(async (req, res) => {
+router.get('/admin/bids', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), asyncRoute(async (req, res) => {
   const bids = await (prisma as any).procurementBid.findMany({ include: { documents: true, participations: true, awards: true }, orderBy: { createdAt: 'desc' } });
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeParticipants: true, includeFinancial: true })), 200, 'Admin bids fetched');
 }));
 
-router.post('/admin/bids/:bidId/approve', authenticate, authorize('admin'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/admin/bids/:bidId/approve', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const data = await service.approveBid(req, req.params.bidId);
   return apiResponse.success(res, data, 200, 'Bid approved');
 }));
 
-router.post('/admin/bids/:bidId/reject', authenticate, authorize('admin'), validate({ params: idParamSchema, body: z.object({ reason: z.string().trim().min(3).max(2000) }) }), asyncRoute(async (req, res) => {
+router.post('/admin/bids/:bidId/reject', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ reason: z.string().trim().min(3).max(2000) }) }), asyncRoute(async (req, res) => {
   const data = await service.rejectBid(req, req.params.bidId, req.body.reason);
   return apiResponse.success(res, data, 200, 'Bid rejected');
 }));
 
-router.get('/admin/bids/:bidId/audit', authenticate, authorize('admin'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/admin/bids/:bidId/audit', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, {});
   const logs = await (prisma as any).procurementAuditLog.findMany({ where: { entityId: String(bid.id) }, orderBy: { createdAt: 'desc' } });
   return apiResponse.success(res, logs, 200, 'Audit trail fetched');
 }));
 
-router.get('/admin/bids/:bidId/participants', authenticate, authorize('admin'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
-  const bid = await service.resolveBid(req.params.bidId);
-  return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial: true })), 200, 'Participants fetched');
+router.get('/admin/bids/:bidId/participants', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+  const bid = await service.resolveBid(req.params.bidId, { participations: { include: { seller: { select: { id: true, name: true, email: true, role: true } }, documents: true } } });
+  return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial: true })), 200, 'Admin bid participants fetched');
 }));
 
-router.post('/admin/bids/:bidId/final-award-approval', authenticate, authorize('admin'), validate({ params: idParamSchema, body: z.object({ awardId: z.coerce.number().int().positive().optional(), remarks: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
+router.post('/admin/bids/:bidId/final-award-approval', authenticate, authorize('admin'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ awardId: z.coerce.number().int().positive().optional(), remarks: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
   const data = await service.approveFinalAward(req, req.params.bidId, req.body);
-  return apiResponse.success(res, data, 200, 'Final award approved');
+  return apiResponse.success(res, data, 200, 'Final award approved and PO generated');
 }));
 
 router.get('/admin/procurement/reports', authenticate, authorize('admin'), asyncRoute(async (req, res) => {

@@ -361,7 +361,12 @@ export default function BuyerPublishBidPage() {
     try {
       const submitted = await procurementBidApi.submitBidForApproval(bid.bidNumber || String(bid.id));
       setDraftBid(submitted);
-      toast.success('Bid submitted for admin approval.');
+      const isFeatureEnabled = user?.enabledFeatures?.includes('admin-bid-approval');
+      if (isFeatureEnabled) {
+        toast.success('Bid submitted for admin approval.');
+      } else {
+        toast.success('Bid published and verified automatically.');
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Unable to submit for approval.');
     } finally {

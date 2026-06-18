@@ -562,7 +562,7 @@ router.get('/master-admin/companies/:id/features', ...masterOnly, wrap(async (re
       name: feature.name,
       module: feature.module,
       description: feature.description,
-      enabled: feature.companies[0]?.enabled ?? false
+      enabled: feature.companies[0]?.enabled ?? (feature.code === 'admin-bid-approval' ? true : false)
     }))
   });
 }));
@@ -1224,8 +1224,8 @@ router.get('/master-admin/organizations/:id/features', ...masterOnly, wrap(async
       featureName: feature.name,
       module: feature.module,
       description: feature.description,
-      enabled: feature.companies[0]?.enabled ?? false,
-      isEnabled: feature.companies[0]?.enabled ?? false,
+      enabled: feature.companies[0]?.enabled ?? (feature.code === 'admin-bid-approval' ? true : false),
+      isEnabled: feature.companies[0]?.enabled ?? (feature.code === 'admin-bid-approval' ? true : false),
       updatedAt: feature.companies[0]?.updatedAt ?? null
     }))
   });

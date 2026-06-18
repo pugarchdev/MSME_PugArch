@@ -208,6 +208,9 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
     return rows;
   }, [data]);
 
+  const getApprovalHref = (item: any) =>
+    `/admin/onboarding?tab=${item.role === 'buyer' ? 'buyers' : 'sellers'}`;
+
   const statusOptions = useMemo(() => {
     const statuses = Array.from(new Set(records.map(item => getRecordStatus(item))));
     return ['all', ...statuses];
@@ -578,7 +581,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                         {formatDateTime(item.createdAt)}
                       </td>
                       <td className="px-3 py-4">
-                        <Link href="/admin/onboarding" className="text-xs font-black uppercase tracking-wide text-[#12335f] hover:text-[#12335f]">
+                        <Link href={getApprovalHref(item)} className="text-xs font-black uppercase tracking-wide text-[#12335f] hover:text-[#12335f]">
                           Open Review
                         </Link>
                       </td>
@@ -747,7 +750,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                             );
                           })}
                         </div>
-                        <Link href="/admin/onboarding" className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-800 transition-colors flex items-center gap-1">
+                        <Link href={getApprovalHref(item)} className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-800 transition-colors flex items-center gap-1">
                           <span>REVIEW</span>
                           <span className="transform group-hover:translate-x-0.5 transition-transform duration-200">→</span>
                         </Link>
@@ -808,7 +811,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
                   key={`mobile-${item.role}-${item.id || item._id}`}
                   className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50 transition-all flex flex-col justify-between min-w-0"
                 >
-                  <Link href="/admin/onboarding" className="block text-left min-w-0 flex-1">
+                  <Link href={getApprovalHref(item)} className="block text-left min-w-0 flex-1">
                     {/* Top Row - Meta & Badge */}
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
                       <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">

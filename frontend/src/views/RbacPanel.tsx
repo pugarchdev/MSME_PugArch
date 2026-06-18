@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { 
   ShieldAlert, 
@@ -9,7 +10,9 @@ import {
   HelpCircle,
   Lock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  UserPlus,
+  Users
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -32,6 +35,12 @@ interface RbacRole {
     permission: Permission;
   }>;
 }
+
+const isMasterAdminRole = (role: Pick<RbacRole, 'code' | 'name'>) => {
+  const code = String(role.code || '').trim().toLowerCase();
+  const name = String(role.name || '').trim().toLowerCase();
+  return code === 'master_admin' || name === 'master admin';
+};
 
 export default function RbacPanel() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
@@ -61,7 +70,8 @@ export default function RbacPanel() {
         const rawRolesData = await rolesRes.json();
         const rawPermsData = await permsRes.json();
         
-        const rolesData = Array.isArray(rawRolesData) ? rawRolesData : (rawRolesData?.data || []);
+        const rolesData = (Array.isArray(rawRolesData) ? rawRolesData : (rawRolesData?.data || []))
+          .filter((role: RbacRole) => !isMasterAdminRole(role));
         const permsData = Array.isArray(rawPermsData) ? rawPermsData : (rawPermsData?.data || []);
 
         setRoles(rolesData);
@@ -192,7 +202,7 @@ export default function RbacPanel() {
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Role-Based Access Control (RBAC)</h1>
             <p className="mt-2 text-sm text-slate-300 max-w-2xl">
-              Master control panel to manage granular platform actions. Set which structural tabs, endpoints, and functionalities are authorized per user classification.
+              Master control panel to manage granular platform actions. Create the permission policy here, then invite users through the team workspace and assign the correct role during invitation.
             </p>
           </div>
           <Button 
@@ -203,6 +213,38 @@ export default function RbacPanel() {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Reload Profiles
           </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Link href="/org/team" className="rounded-xl border border-blue-200 bg-blue-50 p-5 shadow-sm transition hover:border-blue-300 hover:bg-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Invite-Based Access</p>
+              <h2 className="mt-2 text-base font-black text-slate-950">Invite users and assign roles</h2>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">Send invite links, bind users to the organization, and assign role policies without duplicate onboarding.</p>
+            </div>
+            <UserPlus className="h-5 w-5 shrink-0 text-blue-700" />
+          </div>
+        </Link>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Policy Flow</p>
+          <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+            <span>1. Define role permissions</span>
+            <span>2. Invite user by email</span>
+            <span>3. Assign custom role</span>
+            <span>4. User joins through invite link</span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Coverage</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">{roles.length} roles</h2>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{permissions.length} permission scopes available</p>
+            </div>
+            <Users className="h-5 w-5 shrink-0 text-[#0c2340]" />
+          </div>
         </div>
       </div>
 

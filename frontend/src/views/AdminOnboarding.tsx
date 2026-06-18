@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../lib/api";
@@ -25,6 +25,7 @@ import { Input } from "../components/ui/input";
 import { toast } from "sonner";
 import { getFileAssetPreview, type DocumentPreview } from "../lib/files";
 import { DocumentPreviewModal } from "../components/DocumentPreviewModal";
+import { isShgUser } from "../lib/shg";
 import {
   Search,
   Eye,
@@ -164,7 +165,11 @@ export default function AdminOnboarding() {
 
   const [sellers, setSellers] = useState<any[]>([]);
   const [buyers, setBuyers] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState("sellers");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "sellers";
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return ["sellers", "buyers", "shg"].includes(String(tab)) ? String(tab) : "sellers";
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 400);
 
@@ -771,6 +776,7 @@ export default function AdminOnboarding() {
     if (typeof value === "number" || typeof value === "boolean") return String(value);
     return fallback;
   };
+  const getRoleLabel = (item: any) => activeTab === "shg" || isShgUser({ ...item, sellerProfile: item.profile }) ? "SHG" : (item.role || activeTab.replace(/s$/, "")).toUpperCase();
   // Pull the registered entity name from whichever profile the user has.
   // Returns empty string if onboarding hasn't started yet, so the table can
   // render a clear "Onboarding in progress" placeholder instead of "N/A".
@@ -876,8 +882,13 @@ export default function AdminOnboarding() {
       });
   };
 
+  const shgApplications = useMemo(
+    () => sellers.filter((item) => isShgUser({ ...item, sellerProfile: item.profile })),
+    [sellers],
+  );
+
   const currentData =
-    activeTab === "sellers" ? filterData(sellers) : filterData(buyers);
+    activeTab === "sellers" ? filterData(sellers) : activeTab === "buyers" ? filterData(buyers) : filterData(shgApplications);
   const currentPage = Math.min(
     page,
     Math.max(1, Math.ceil(currentData.length / pageSize)),
@@ -1030,7 +1041,7 @@ export default function AdminOnboarding() {
   const handleExportCsv = () => {
     const rows = currentData.map((item, index) => ({
       "Sr No": index + 1,
-      "Stakeholder Type": item.role || activeTab.replace(/s$/, ""),
+      "Stakeholder Type": getRoleLabel(item),
       "Applicant Name": item.name || "",
       "Entity Name": getEntityName(item),
       PAN: item.profile?.pan || "",
@@ -1205,6 +1216,7 @@ export default function AdminOnboarding() {
                   tabs={[
                     { id: "sellers", label: "Seller Onboarding" },
                     { id: "buyers", label: "Buyer Onboarding" },
+                    { id: "shg", label: "SHG Onboarding" },
                   ]}
                   activeTab={activeTab}
                   onChange={setActiveTab}
@@ -1221,7 +1233,7 @@ export default function AdminOnboarding() {
                   </div>
                   <p className="text-xs font-medium text-slate-500">
                     Showing {currentData.length}{" "}
-                    {activeTab === "sellers" ? "seller" : "buyer"} application
+                    {activeTab === "sellers" ? "seller" : activeTab === "buyers" ? "buyer" : "SHG"} application
                     {currentData.length === 1 ? "" : "s"} for the selected
                     criteria.
                   </p>
@@ -1411,7 +1423,7 @@ export default function AdminOnboarding() {
                   </div>
                 ) : currentData.length === 0 ? (
                   <div className="py-20 text-center text-slate-400 border-2 border-dashed border-slate-100 m-6 rounded-2xl">
-                    No {activeTab} registrations in record.
+                    No {activeTab === "shg" ? "SHG" : activeTab} registrations in record.
                   </div>
                 ) : (
                   <>
@@ -1464,7 +1476,7 @@ export default function AdminOnboarding() {
                                     <Eye className="h-3 w-3 opacity-0 group-hover/name:opacity-100 text-[#12335f] transition-opacity shrink-0" />
                                   </div>
                                   <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                    {item.role || activeTab.replace(/s$/, "")}
+                                    {getRoleLabel(item)}
                                   </div>
                                 </button>
                               </TableCell>
@@ -1589,7 +1601,7 @@ export default function AdminOnboarding() {
                                 {/* Top Row - Meta & Badge */}
                                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
                                   <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-                                    {item.role || activeTab.replace(/s$/, "")}
+                                    {getRoleLabel(item)}
                                     {" · #"}
                                     {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                                   </div>
@@ -1731,7 +1743,7 @@ export default function AdminOnboarding() {
                               {/* Top Row - Meta & Badge */}
                               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
                                 <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">
-                                  {item.role || activeTab.replace(/s$/, "")}
+                                  {getRoleLabel(item)}
                                   {" · #"}
                                   {String((currentPage - 1) * pageSize + index + 1).padStart(2, "0")}
                                 </div>

@@ -202,7 +202,8 @@ export const MASTER_FEATURES = [
   ['service-marketplace', 'Enable service marketplace', 'marketplace'],
   ['public-browsing', 'Enable public browsing', 'marketplace'],
   ['checkout', 'Enable checkout', 'cart'],
-  ['request-quote', 'Enable request quote', 'quotations']
+  ['request-quote', 'Enable request quote', 'quotations'],
+  ['admin-bid-approval', 'Admin Bid Approval Requirement', 'procurement']
 ] as const;
 
 export const MASTER_PERMISSION_CODES = [

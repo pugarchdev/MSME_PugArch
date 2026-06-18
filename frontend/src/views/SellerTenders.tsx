@@ -11,7 +11,12 @@ import {
   ChevronRight,
   FileText,
   Paperclip,
+  AlertCircle,
   CheckCircle2,
+  ShieldCheck,
+  CalendarDays,
+  Trophy,
+  ClipboardCheck,
   Eye,
   X,
   ArrowUpDown,
@@ -73,6 +78,21 @@ const parseDate = (value?: string | null) => {
 const formatShortDate = (value?: string | null) => {
   const parsed = parseDate(value);
   return parsed ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Date pending';
+};
+
+const formatFullDate = (value?: string | null) => {
+  const parsed = parseDate(value);
+  return parsed ? parsed.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', hour12: true }) : 'Date pending';
+};
+
+const getDeadlineTone = (value?: string | null) => {
+  const parsed = parseDate(value);
+  if (!parsed) return { label: 'Date pending', className: 'border-slate-200 bg-slate-50 text-slate-600' };
+  const days = Math.ceil((parsed.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return { label: 'Closed', className: 'border-red-200 bg-red-50 text-red-700' };
+  if (days === 0) return { label: 'Closes today', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+  if (days <= 7) return { label: `${days} days left`, className: 'border-amber-200 bg-amber-50 text-amber-700' };
+  return { label: `${days} days left`, className: 'border-blue-200 bg-blue-50 text-blue-700' };
 };
 
 const PUBLIC_TENDERS_ENDPOINT = '/api/tenders/public?take=50';
@@ -808,14 +828,17 @@ export default function SellerTenders() {
             className="absolute inset-0 bg-blue-900/60 backdrop-blur-sm animate-in fade-in duration-300"
             onClick={closeTenderDetails}
           />
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="relative w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-300">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-blue-900 to-indigo-800 px-6 py-4 text-white">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-blue-900 to-indigo-800 px-6 py-5 text-white">
               <div className="space-y-0.5">
                 <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200">Tender Specifications & Details</p>
-                <h3 className="text-base font-bold leading-tight">
+                <h3 className="text-xl font-black leading-tight">
                   {selectedTenderForDetails.title}
                 </h3>
+                <p className="text-xs font-semibold text-indigo-100">
+                  {selectedTenderForDetails.tenderId} | {selectedTenderForDetails.category || 'General procurement'}
+                </p>
               </div>
               <button
                 onClick={closeTenderDetails}
@@ -826,54 +849,115 @@ export default function SellerTenders() {
             </div>
 
             {/* Modal Body */}
-            <div className="max-h-[70vh] overflow-y-auto p-6 space-y-6">
+            <div className="max-h-[72vh] overflow-y-auto p-6 space-y-6">
               {/* Participation Status Banner */}
-              {selectedTenderForDetails.hasParticipated && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
+              <div className={cn(
+                'rounded-xl border p-4',
+                selectedTenderForDetails.hasParticipated ? 'border-emerald-200 bg-emerald-50' : 'border-blue-200 bg-blue-50'
+              )}>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+                      selectedTenderForDetails.hasParticipated ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                    )}>
+                      {selectedTenderForDetails.hasParticipated ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <p className={cn('text-sm font-black', selectedTenderForDetails.hasParticipated ? 'text-emerald-950' : 'text-blue-950')}>
+                        {selectedTenderForDetails.hasParticipated ? 'You have already participated in this tender' : 'Review eligibility before submitting your bid'}
+                      </p>
+                      <p className={cn('mt-1 text-xs font-semibold', selectedTenderForDetails.hasParticipated ? 'text-emerald-700' : 'text-blue-700')}>
+                        {selectedTenderForDetails.hasParticipated
+                          ? `Status: ${(selectedTenderForDetails.participationStatus || 'Submitted').replace(/_/g, ' ')}${selectedTenderForDetails.myBidId ? ` | Bid ID: ${selectedTenderForDetails.myBidId}` : ''}`
+                          : 'Check buyer scope, specification documents, closing date, and budget fit before participating.'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-emerald-950">You have already participated in this Tender</p>
-                    <p className="text-[10px] font-medium text-emerald-700">
-                      Status: <span className="font-bold capitalize">{selectedTenderForDetails.participationStatus || 'Submitted'}</span>
-                      {selectedTenderForDetails.myBidId && ` | Bid ID: ${selectedTenderForDetails.myBidId}`}
-                    </p>
-                  </div>
+                  <span className={cn('inline-flex w-fit rounded-md border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide', getDeadlineTone(selectedTenderForDetails.closesAt).className)}>
+                    {getDeadlineTone(selectedTenderForDetails.closesAt).label}
+                  </span>
                 </div>
-              )}
+              </div>
 
               {/* Metadata Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tender ID</p>
-                  <p className="text-xs font-mono font-bold text-slate-900 mt-0.5">{selectedTenderForDetails.tenderId}</p>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <SellerTenderDetailMetric label="Tender ID" value={selectedTenderForDetails.tenderId} icon={FileText} />
+                <SellerTenderDetailMetric label="Category" value={selectedTenderForDetails.category || '-'} icon={ClipboardCheck} tone="blue" />
+                <SellerTenderDetailMetric label="Budget" value={`Rs. ${Number(selectedTenderForDetails.budget || 0).toLocaleString('en-IN')}`} icon={IndianRupee} tone="green" />
+                <SellerTenderDetailMetric label="Total Bids" value={`${selectedTenderForDetails.bidsCount || 0} Bid(s)`} icon={Trophy} tone={Number(selectedTenderForDetails.bidsCount || 0) > 0 ? 'green' : 'amber'} />
+                <SellerTenderDetailMetric label="Posted On" value={formatFullDate(selectedTenderForDetails.createdAt)} icon={CalendarDays} />
+                <SellerTenderDetailMetric label="Closing Date" value={formatFullDate(selectedTenderForDetails.closesAt)} icon={Clock} tone="amber" />
+                <SellerTenderDetailMetric label="Buyer" value={selectedTenderForDetails.buyer?.buyerProfile?.organizationName || selectedTenderForDetails.buyer?.name || 'Unknown Buyer'} icon={Building2} />
+                <SellerTenderDetailMetric label="Location" value={`${selectedTenderForDetails.buyer?.buyerProfile?.city || 'City N/A'}, ${selectedTenderForDetails.buyer?.buyerProfile?.state || 'State N/A'}`} icon={MapPin} />
+              </div>
+
+              {/* Seller Readiness */}
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500">Seller Readiness Checklist</h4>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">Key checks before bid submission</p>
+                    </div>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                      <ShieldCheck className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <SellerTenderReadinessLine
+                      label="Tender still open"
+                      ready={Boolean(parseDate(selectedTenderForDetails.closesAt) && parseDate(selectedTenderForDetails.closesAt)!.getTime() >= Date.now())}
+                      detail={getDeadlineTone(selectedTenderForDetails.closesAt).label}
+                    />
+                    <SellerTenderReadinessLine
+                      label="Specification available"
+                      ready={Boolean((selectedTenderForDetails.tenderDocuments && selectedTenderForDetails.tenderDocuments.length > 0) || selectedTenderForDetails.documentUrl)}
+                      detail={(selectedTenderForDetails.tenderDocuments?.length || selectedTenderForDetails.documentUrl) ? 'Document attached' : 'No buyer document'}
+                    />
+                    <SellerTenderReadinessLine
+                      label="Buyer details visible"
+                      ready={Boolean(selectedTenderForDetails.buyer?.buyerProfile?.organizationName || selectedTenderForDetails.buyer?.name)}
+                      detail={selectedTenderForDetails.buyer?.buyerProfile?.organizationName || selectedTenderForDetails.buyer?.name || 'Buyer unavailable'}
+                    />
+                    <SellerTenderReadinessLine
+                      label="Participation status"
+                      ready={Boolean(selectedTenderForDetails.hasParticipated)}
+                      detail={selectedTenderForDetails.hasParticipated ? 'Bid already submitted' : 'Ready for new bid'}
+                    />
+                  </div>
                 </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Category</p>
-                  <p className="text-xs font-bold text-indigo-700 mt-0.5 uppercase">{selectedTenderForDetails.category}</p>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Budget</p>
-                  <p className="text-xs font-bold text-emerald-700 mt-0.5">₹{selectedTenderForDetails.budget?.toLocaleString()}</p>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Bids</p>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5">{selectedTenderForDetails.bidsCount || 0} Bid(s)</p>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Posted On</p>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5">{formatShortDate(selectedTenderForDetails.createdAt)}</p>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Closing Date</p>
-                  <p className="text-xs font-bold text-amber-600 mt-0.5">{formatShortDate(selectedTenderForDetails.closesAt)} ({getDaysLeft(selectedTenderForDetails.closesAt)})</p>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500">Bid Opportunity Snapshot</h4>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                      <span className="text-xs font-bold text-slate-500">Competition</span>
+                      <span className="text-sm font-black text-slate-900">{selectedTenderForDetails.bidsCount || 0} submitted bid(s)</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                      <span className="text-xs font-bold text-slate-500">Budget Ceiling</span>
+                      <span className="text-sm font-black text-slate-900">Rs. {Number(selectedTenderForDetails.budget || 0).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-bold text-slate-500">Submission Action</span>
+                      <span className={cn(
+                        "rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wide",
+                        selectedTenderForDetails.hasParticipated ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                      )}>
+                        {selectedTenderForDetails.hasParticipated ? 'View bid' : 'Participate'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Description / Requirements */}
               <div className="space-y-2">
-                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Detailed Requirements & Scope</h4>
+                <div>
+                  <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Requirement Scope & Buyer Expectations</h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Use this scope to prepare pricing, compliance notes, and delivery commitments.</p>
+                </div>
                 <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
                   <p className="text-xs font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">
                     {selectedTenderForDetails.description || 'No detailed description provided.'}
@@ -883,7 +967,10 @@ export default function SellerTenders() {
 
               {/* Specifications Documents */}
               <div className="space-y-2">
-                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-bold">Specifications Documents</h4>
+                <div>
+                  <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Specification Documents</h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Review all attachments before submitting your commercial and technical response.</p>
+                </div>
                 {((selectedTenderForDetails.tenderDocuments && selectedTenderForDetails.tenderDocuments.length > 0) || selectedTenderForDetails.documentUrl) ? (
                   <div className="space-y-2">
                     {/* Render legacy/main documentUrl if it exists */}
@@ -934,15 +1021,16 @@ export default function SellerTenders() {
                 ) : (
                   <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
                     <Paperclip className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-bold text-slate-400">No specifications documents uploaded by buyer.</p>
+                    <p className="text-xs font-black text-slate-500">No specification documents uploaded by buyer.</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-400">Proceed only if the written scope is enough for pricing, or contact the buyer for clarification.</p>
                   </div>
                 )}
               </div>
 
               {/* Buyer Details */}
               <div className="space-y-2">
-                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Buyer Information</h4>
-                <div className="grid md:grid-cols-2 gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Buyer Information</h4>
+                <div className="grid gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
                   <div>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Organization</p>
                     <p className="text-xs font-semibold text-slate-700 mt-0.5">
@@ -953,6 +1041,12 @@ export default function SellerTenders() {
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Location</p>
                     <p className="text-xs font-semibold text-slate-700 mt-0.5">
                       {selectedTenderForDetails.buyer?.buyerProfile?.city || 'City N/A'}, {selectedTenderForDetails.buyer?.buyerProfile?.state || 'State N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tender Reference</p>
+                    <p className="text-xs font-semibold text-slate-700 mt-0.5">
+                      {selectedTenderForDetails.tenderId}
                     </p>
                   </div>
                 </div>
@@ -1001,6 +1095,58 @@ function MetricTile({ label, value, icon: Icon }: { label: string; value: string
         </div>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
           <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SellerTenderDetailMetric({
+  label,
+  value,
+  icon: Icon,
+  tone = 'slate'
+}: {
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  tone?: 'slate' | 'blue' | 'green' | 'amber';
+}) {
+  const toneClass = {
+    slate: 'bg-slate-50 text-slate-700 border-slate-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200'
+  }[tone];
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+          <p className="mt-2 break-words text-sm font-black leading-snug text-slate-950">{value}</p>
+        </div>
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border', toneClass)}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SellerTenderReadinessLine({ label, ready, detail }: { label: string; ready: boolean; detail: string }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+      <div className="flex items-start gap-2">
+        <div className={cn(
+          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+          ready ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+        )}>
+          {ready ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-black text-slate-800">{label}</p>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">{detail}</p>
         </div>
       </div>
     </div>

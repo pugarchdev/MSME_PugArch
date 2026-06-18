@@ -44,6 +44,14 @@ interface Organization {
   gstReuseAllowed?: boolean;
   previousOrganizationId?: number | null;
   replacementOrganizationId?: number | null;
+  aadhaarKyc?: {
+    status?: 'NOT_STARTED' | 'PENDING' | 'VERIFIED' | 'FAILED' | 'EXPIRED';
+    provider?: string;
+    verifiedName?: string | null;
+    verifiedAt?: string | null;
+    referenceKey?: string | null;
+    idTokenSubject?: string | null;
+  } | null;
   features: {
     products: boolean;
     services: boolean;
@@ -337,6 +345,23 @@ export default function OrganizationManagement() {
     return 'bg-emerald-50 border-emerald-100 text-[#0c2340]';
   };
 
+  const aadhaarStatus = (org: Organization) => org.aadhaarKyc?.status || 'NOT_STARTED';
+  const aadhaarTone = (status: string) => {
+    if (status === 'VERIFIED') return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+    if (status === 'FAILED') return 'bg-red-50 border-red-200 text-red-700';
+    if (status === 'EXPIRED') return 'bg-amber-50 border-amber-200 text-amber-700';
+    if (status === 'PENDING') return 'bg-blue-50 border-blue-200 text-blue-700';
+    return 'bg-slate-50 border-slate-200 text-slate-600';
+  };
+  const AadhaarBadge = ({ org }: { org: Organization }) => {
+    const status = aadhaarStatus(org);
+    return (
+      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${aadhaarTone(status)}`}>
+        Aadhaar {status.replace(/_/g, ' ')}
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Banner / Header */}
@@ -503,6 +528,7 @@ export default function OrganizationManagement() {
                             <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${statusTone(org.verificationStatus)}`}>
                               {org.verificationStatus}
                             </span>
+                            <AadhaarBadge org={org} />
                             {org.isBlacklisted && (
                               <span className="flex items-center gap-0.5 bg-red-50 border border-red-200 text-red-700 text-[9px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded" title={org.blacklistReason}>
                                 <ShieldAlert className="h-2.5 w-2.5" /> RESTRICTED
@@ -635,6 +661,9 @@ export default function OrganizationManagement() {
                       <span className={`shrink-0 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${statusTone(org.verificationStatus)}`}>
                         {org.verificationStatus}
                       </span>
+                    </div>
+                    <div className="mt-2">
+                      <AadhaarBadge org={org} />
                     </div>
                     <div className="mt-3 space-y-1 text-[11px] font-mono">
                       <div className="text-wrap-anywhere">
@@ -921,6 +950,12 @@ export default function OrganizationManagement() {
                   <span className={`mt-1 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${statusTone(detailOrg.verificationStatus)}`}>{detailOrg.verificationStatus}</span>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aadhaar KYC</p>
+                  <span className={`mt-1 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aadhaarTone(aadhaarStatus(detailOrg))}`}>
+                    {aadhaarStatus(detailOrg).replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Restriction</p>
                   <p className="mt-1 text-sm font-black text-slate-900">{detailOrg.isBlacklisted ? 'Blacklisted' : 'Active'}</p>
                 </div>
@@ -931,6 +966,32 @@ export default function OrganizationManagement() {
                   </p>
                 </div>
               </div>
+
+              {detailOrg.aadhaarKyc && (
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Aadhaar Verification</h3>
+                  </div>
+                  <div className="p-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Provider</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700">MeriPehchaan / API Setu</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Verified Name</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700 text-wrap-anywhere">{detailOrg.aadhaarKyc.verifiedName || 'Not available'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Verified At</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700">{detailOrg.aadhaarKyc.verifiedAt ? new Date(detailOrg.aadhaarKyc.verifiedAt).toLocaleDateString('en-IN') : 'Not available'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reference / Subject</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700 text-wrap-anywhere">{detailOrg.aadhaarKyc.referenceKey || detailOrg.aadhaarKyc.idTokenSubject || 'Not available'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">

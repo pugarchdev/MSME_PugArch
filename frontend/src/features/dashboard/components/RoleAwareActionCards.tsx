@@ -191,6 +191,15 @@ function RoleAwareActionCards() {
             label: 'Active Procurements',
             count: data.myTendersCount || 0,
             href: '/buyer/procurements',
+            icon: ClipboardList,
+            tone: 'indigo',
+            show: isBuyer,
+            priority: false
+        },
+        {
+            label: 'Tenders & Bids',
+            count: data.myTendersCount || 0,
+            href: '/buyer/tenders',
             icon: Gavel,
             tone: 'indigo',
             show: isBuyer,
@@ -236,7 +245,7 @@ function RoleAwareActionCards() {
             label: 'Delivery Confirmation',
             count: data.grnsToApproveCount || 0,
             href: '/orders/delivery-confirmation',
-            icon: ClipboardList,
+            icon: ClipboardCheck,
             tone: 'emerald',
             show: isBuyer,
             priority: true
@@ -247,8 +256,26 @@ function RoleAwareActionCards() {
             label: 'New Opportunities',
             count: data.sellerOpenTendersCount || 0,
             href: '/seller/opportunities',
+            icon: ClipboardList,
+            tone: 'indigo',
+            show: isSeller,
+            priority: false
+        },
+        {
+            label: 'Public Tenders',
+            count: data.sellerOpenTendersCount || 0,
+            href: '/seller/tenders',
             icon: Gavel,
             tone: 'indigo',
+            show: isSeller,
+            priority: false
+        },
+        {
+            label: 'My Bids / Quotations',
+            count: data.sellerQuotationsCount || 0,
+            href: '/bids',
+            icon: ClipboardCheck,
+            tone: 'purple',
             show: isSeller,
             priority: false
         },
@@ -264,7 +291,7 @@ function RoleAwareActionCards() {
         {
             label: 'Catalogue Items',
             count: data.sellerCatalogueItemsCount || 0,
-            href: '/seller/marketplace',
+            href: '/seller/catalogue',
             icon: Store,
             tone: 'blue',
             show: isSeller,

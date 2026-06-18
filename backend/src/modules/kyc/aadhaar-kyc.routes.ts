@@ -1,0 +1,80 @@
+import { Router, type NextFunction, type Request, type Response } from 'express';
+import { authenticate, type AuthRequest } from '../../middleware/auth.js';
+import { apiResponse } from '../../utils/apiResponse.js';
+import { aadhaarKycService } from './aadhaar-kyc.service.js';
+
+const router = Router();
+
+type RateRecord = { count: number; resetAt: number };
+const rateBuckets = new Map<string, RateRecord>();
+
+const rateLimit = (limit: number, windowMs: number) => (req: Request, res: Response, next: NextFunction) => {
+  const key = `${req.ip || 'unknown'}:${req.path}`;
+  const now = Date.now();
+  const current = rateBuckets.get(key);
+  if (!current || current.resetAt <= now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return next();
+  }
+  if (current.count >= limit) {
+    return apiResponse.error(res, 429, 'Too many Aadhaar verification requests. Please wait before trying again.', 'RATE_LIMITED');
+  }
+  current.count += 1;
+  return next();
+};
+
+const asyncRoute = (handler: (req: AuthRequest, res: Response) => Promise<unknown>) =>
+  (req: AuthRequest, res: Response, next: NextFunction) => {
+    handler(req, res).catch(next);
+  };
+
+const requestMeta = (req: Request) => {
+  const userAgent = req.headers['user-agent'];
+  return {
+    ipAddress: req.ip,
+    userAgent: Array.isArray(userAgent) ? userAgent.join(', ') : userAgent,
+  };
+};
+
+router.get('/kyc/aadhaar/start', authenticate, rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
+  if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
+  try {
+    const url = await aadhaarKycService.start(req.user, requestMeta(req));
+    return res.redirect(url);
+  } catch (error: any) {
+    return apiResponse.error(res, error?.statusCode || 500, error?.message || 'Unable to start Aadhaar verification', error?.code || 'AADHAAR_KYC_START_FAILED');
+  }
+}));
+
+router.post('/kyc/aadhaar/start-url', authenticate, rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
+  if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
+  try {
+    const url = await aadhaarKycService.start(req.user, requestMeta(req));
+    return apiResponse.success(res, { authorizationUrl: url });
+  } catch (error: any) {
+    return apiResponse.error(res, error?.statusCode || 500, error?.message || 'Unable to start Aadhaar verification', error?.code || 'AADHAAR_KYC_START_FAILED');
+  }
+}));
+
+router.get('/kyc/aadhaar/callback', rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
+  try {
+    const url = await aadhaarKycService.callback(req.query as Record<string, unknown>, requestMeta(req));
+    return res.redirect(url);
+  } catch {
+    return res.redirect(aadhaarKycService.redirectUrl('failed'));
+  }
+}));
+
+router.get('/kyc/aadhaar/status', authenticate, asyncRoute(async (req, res) => {
+  if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
+  const status = await aadhaarKycService.status(req.user);
+  return apiResponse.success(res, status);
+}));
+
+router.post('/kyc/aadhaar/reset', authenticate, rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
+  if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
+  const status = await aadhaarKycService.reset(req.user, requestMeta(req));
+  return apiResponse.success(res, status);
+}));
+
+export default router;

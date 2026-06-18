@@ -909,11 +909,11 @@ export default function Quotations() {
           </div>
 
           <Button
-            onClick={() => router.push(user?.role === 'seller' ? '/seller/marketplace' : '/buyer/tenders')}
+            onClick={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
             className="h-10 rounded-md bg-[#12335f] px-5 text-xs font-bold uppercase tracking-wide text-white hover:bg-[#0b2445]"
           >
             <Send className="mr-2 h-4 w-4" />
-            {user?.role === 'seller' ? 'Open Marketplace' : 'View Tenders'}
+            {user?.role === 'seller' ? 'My Catalogue' : 'View Tenders'}
           </Button>
         </div>
 
@@ -983,7 +983,7 @@ export default function Quotations() {
           <EmptyState
             role={user?.role}
             hasQuotes={quotes.length > 0}
-            onPrimary={() => router.push(user?.role === 'seller' ? '/seller/marketplace' : '/buyer/tenders')}
+            onPrimary={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
           />
         ) : viewMode === 'list' ? (
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-clip">

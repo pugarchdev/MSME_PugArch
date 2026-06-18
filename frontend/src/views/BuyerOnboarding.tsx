@@ -14,6 +14,7 @@ import { validateField, validateOptionalField, FieldType } from '../lib/validati
 import { compressImage } from '../lib/compress';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
+import { AadhaarVerificationCard } from '../features/kyc/AadhaarVerificationCard';
 
 const PRIMARY_USER_TYPES = ['Primary User (HOD)', 'Primary User (Co-operative)'];
 
@@ -1480,6 +1481,9 @@ export default function BuyerOnboarding() {
 
                 {activeSection === 'rep' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="md:col-span-2">
+                      <AadhaarVerificationCard compact />
+                    </div>
                     <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} required className="h-10" />
                     <div className="space-y-3">
                       <Select label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} className="h-10">

@@ -4064,6 +4064,19 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
         pan: true,
         productCategories: true
       }
+    },
+    kycVerifications: {
+      where: { provider: 'MERIPEHCHAAN' as const, verificationType: 'AADHAAR' as const },
+      take: 1,
+      select: {
+        status: true,
+        provider: true,
+        verificationType: true,
+        verifiedName: true,
+        verifiedAt: true,
+        referenceKey: true,
+        idTokenSubject: true
+      }
     }
   };
 
@@ -4111,6 +4124,8 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
     };
     return {
       ...user,
+      aadhaarKyc: user.kycVerifications?.[0] || null,
+      kycVerifications: undefined,
       profile
     };
   });
@@ -5041,6 +5056,19 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
           name: true
         }
       },
+      kycVerifications: {
+        where: { provider: 'MERIPEHCHAAN' as const, verificationType: 'AADHAAR' as const },
+        take: 1,
+        select: {
+          status: true,
+          provider: true,
+          verificationType: true,
+          verifiedName: true,
+          verifiedAt: true,
+          referenceKey: true,
+          idTokenSubject: true
+        }
+      },
       _count: {
         select: {
           users: true,
@@ -5076,10 +5104,11 @@ router.get('/admin/organizations', authenticate, authorizeAdmin, asyncRoute(asyn
       }
     }
 
-    const { buyerProfiles, sellerProfiles, users, ...orgRest } = org;
+    const { buyerProfiles, sellerProfiles, users, kycVerifications, ...orgRest } = org;
     return {
       ...orgRest,
       organizationName: resolvedName || 'Verified Organization',
+      aadhaarKyc: kycVerifications?.[0] || null,
       features: orgFeaturesService.getForOrg(org.id)
     };
   });

@@ -15,6 +15,20 @@ const envBoolean = (defaultValue = false) =>
     return value;
   }, z.boolean());
 
+const optionalString = () =>
+  z.preprocess(value => {
+    if (value === undefined || value === null) return undefined;
+    const trimmed = String(value).trim();
+    return trimmed ? trimmed : undefined;
+  }, z.string().optional());
+
+const optionalUrl = () =>
+  z.preprocess(value => {
+    if (value === undefined || value === null) return undefined;
+    const trimmed = String(value).trim();
+    return trimmed ? trimmed : undefined;
+  }, z.string().url().optional());
+
 dotenv.config({
   path: [
     path.resolve(process.cwd(), '.env'),
@@ -23,6 +37,21 @@ dotenv.config({
   ],
   override: true
 });
+
+const withFallback = <T extends z.ZodTypeAny>(fallbackKeys: string[], schema: T): T => {
+  return z.preprocess(val => {
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      return val;
+    }
+    for (const key of fallbackKeys) {
+      const fb = process.env[key];
+      if (fb !== undefined && fb !== null && String(fb).trim() !== '') {
+        return fb;
+      }
+    }
+    return undefined;
+  }, schema) as unknown as T;
+};
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -72,9 +101,19 @@ const envSchema = z.object({
   APISETU_API_KEY: z.string().optional(),
   APISETU_CLIENT_ID: z.string().optional(),
   APISETU_GST_URL: z.string().url().default('https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}'),
-  APISETU_ALLOW_INSECURE_TLS: envBoolean(false)
+  APISETU_ALLOW_INSECURE_TLS: envBoolean(false),
+  MERIPEHCHAAN_CLIENT_ID: optionalString(),
+  MERIPEHCHAAN_CLIENT_SECRET: optionalString(),
+  MERIPEHCHAAN_AUTH_URL: withFallback(['authorization_endpoint', 'AUTHORIZATION_ENDPOINT'], optionalUrl()),
+  MERIPEHCHAAN_TOKEN_URL: withFallback(['token_endpoint', 'TOKEN_ENDPOINT'], optionalUrl()),
+  MERIPEHCHAAN_USERINFO_URL: withFallback(['userinfo_endpoint', 'USERINFO_ENDPOINT'], optionalUrl()),
+  MERIPEHCHAAN_JWKS_URL: withFallback(['jwks_uri', 'JWKS_URI'], optionalUrl()),
+  MERIPEHCHAAN_ISSUER: withFallback(['issuer', 'ISSUER'], optionalString()),
+  MERIPEHCHAAN_REDIRECT_URI: optionalUrl(),
+  MERIPEHCHAAN_SCOPES: z.string().default('openid profile email'),
+  MERIPEHCHAAN_ACR: optionalString(),
+  AADHAAR_KYC_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10)
 });
-
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {

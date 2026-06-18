@@ -147,6 +147,9 @@ model User {
   procurementAwardsGranted           ProcurementBidAward[]                 @relation("ProcurementBidAwardedBy")
   procurementAuditLogs               ProcurementAuditLog[]                 @relation("ProcurementAuditUser")
   marketplaceInteractions            MarketplaceInteraction[]              @relation("MarketplaceInteractionUser")
+  kycAuthSessions                    KycAuthSession[]
+  kycVerifications                   UserKycVerification[]
+  kycAuditLogs                       KycAuditLog[]
 
   @@index([role, onboardingStatus])
   @@index([role])
@@ -374,6 +377,9 @@ model Organization {
   grns                         GoodsReceiptNote[]
   procurementBids              ProcurementBid[]      @relation("ProcurementBidOrganization")
   marketplaceInteractions      MarketplaceInteraction[] @relation("MarketplaceInteractionOrganization")
+  kycAuthSessions              KycAuthSession[]
+  kycVerifications             UserKycVerification[]
+  kycAuditLogs                 KycAuditLog[]
 
   @@index([organizationName])
   @@index([organizationType])
@@ -1611,6 +1617,80 @@ model OtpVerification {
 
   @@index([identifierHash, purpose])
   @@index([expiresAt])
+}
+
+model KycAuthSession {
+  id               Int         @id @default(autoincrement())
+  userId           Int
+  organizationId   Int?
+  provider         KycProvider @default(MERIPEHCHAAN)
+  verificationType VerificationType
+  state            String      @unique
+  codeVerifier     String
+  redirectUri      String
+  scopes           String
+  acr              String?
+  used             Boolean     @default(false)
+  expiresAt        DateTime
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([provider, verificationType])
+  @@index([organizationId])
+}
+
+model UserKycVerification {
+  id                Int                   @id @default(autoincrement())
+  userId            Int
+  organizationId    Int?
+  provider          KycProvider           @default(MERIPEHCHAAN)
+  verificationType  VerificationType
+  status            KycVerificationStatus @default(PENDING)
+  verifiedName      String?
+  verifiedDob       DateTime?
+  verifiedGender    String?
+  verifiedEmail     String?
+  verifiedAddress   Json?
+  ageVerified       Boolean?
+  digilockerId      String?
+  referenceKey      String?
+  idTokenSubject    String?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  verifiedAt        DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, provider, verificationType])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model KycAuditLog {
+  id               Int              @id @default(autoincrement())
+  userId           Int
+  organizationId   Int?
+  provider         KycProvider
+  verificationType VerificationType
+  action           String
+  status           KycAuditStatus
+  message          String?
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime         @default(now())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([provider, verificationType])
+  @@index([createdAt])
 }
 
 model QuoteRequest {
@@ -3805,6 +3885,27 @@ enum VerificationType {
   AADHAAR
   EMAIL
   MOBILE
+}
+
+enum KycProvider {
+  MERIPEHCHAAN
+}
+
+enum KycVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
+
+enum KycAuditStatus {
+  STARTED
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+  RESET
 }
 
 enum FraudAlertStatus {

@@ -91,6 +91,7 @@ type Organization = {
   createdAt?: string;
   updatedAt?: string;
   users?: Array<{ id: number }>;
+  aadhaarKyc?: AadhaarKycSummary | null;
 };
 
 type UserRecord = {
@@ -105,6 +106,17 @@ type UserRecord = {
   createdAt?: string;
   organization?: { id: number; organizationName?: string | null; organizationType?: string | null } | null;
   company?: { id: number; name?: string | null } | null;
+  aadhaarKyc?: AadhaarKycSummary | null;
+};
+
+type AadhaarKycSummary = {
+  status?: string | null;
+  provider?: string | null;
+  verificationType?: string | null;
+  verifiedName?: string | null;
+  verifiedAt?: string | null;
+  referenceKey?: string | null;
+  idTokenSubject?: string | null;
 };
 
 type Feature = {
@@ -1510,6 +1522,7 @@ export default function MasterAdminPage() {
                   ['organizationName', 'Organization'],
                   ['organizationType', 'Type'],
                   ['verificationStatus', 'Verification'],
+                  ['aadhaarKyc.status', 'Aadhaar'],
                   ['state', 'State'],
                   ['updatedAt', 'Updated']
                 ]}
@@ -1631,6 +1644,7 @@ export default function MasterAdminPage() {
                 ['role', 'Role'],
                 ['accountStatus', 'Account'],
                 ['onboardingStatus', 'Verification'],
+                ['aadhaarKyc.status', 'Aadhaar'],
                 ['createdAt', 'Created']
               ]}
               sort={sorts.users}

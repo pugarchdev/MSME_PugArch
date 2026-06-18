@@ -83,6 +83,8 @@ const statusOf = (kind: AdminKind, record: RecordMap) => {
   return record.status || 'open';
 };
 
+const aadhaarKycOf = (record: RecordMap) => record.aadhaarKyc || record.kycVerifications?.[0] || null;
+
 const severityClass = (value: unknown) => {
   const normalized = String(value || '').toLowerCase();
   if (['critical', 'high'].includes(normalized)) return 'border-rose-200 bg-rose-50 text-rose-700';
@@ -432,6 +434,18 @@ export default function AdminRecordsPage({ kind }: { kind: AdminKind }) {
                       />
                       <p className="mt-1 font-black text-slate-900 text-wrap-anywhere">{rowTitle(kind, record)}</p>
                       <p className="text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{rowSubtitle(kind, record) || `#${record.id || '-'}`}</p>
+                      {kind === 'users' && aadhaarKycOf(record) && (
+                        <span className={cn(
+                          'mt-2 inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider',
+                          aadhaarKycOf(record)?.status === 'VERIFIED'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : aadhaarKycOf(record)?.status === 'FAILED'
+                              ? 'border-rose-200 bg-rose-50 text-rose-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                        )}>
+                          Aadhaar {label(aadhaarKycOf(record)?.status)}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       {kind === 'users' ? (
@@ -605,6 +619,19 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
                 <DetailField label="Alternate Phone" value={record.alternatePhone} />
               </div>
             </DetailSection>
+
+            {aadhaarKycOf(record) && (
+              <DetailSection title="Aadhaar Verification">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailField label="Status" value={label(aadhaarKycOf(record)?.status)} />
+                  <DetailField label="Provider" value="MeriPehchaan / API Setu" />
+                  <DetailField label="Verified Name" value={aadhaarKycOf(record)?.verifiedName || 'Not available'} />
+                  <DetailField label="Verified At" value={formatDate(aadhaarKycOf(record)?.verifiedAt)} />
+                  <DetailField label="Reference Key" value={aadhaarKycOf(record)?.referenceKey || 'Not available'} />
+                  <DetailField label="Subject" value={aadhaarKycOf(record)?.idTokenSubject || 'Not available'} />
+                </div>
+              </DetailSection>
+            )}
 
             {/* Organization */}
             {(org.id || org.organizationName || profile.businessName || profile.organizationName) && (

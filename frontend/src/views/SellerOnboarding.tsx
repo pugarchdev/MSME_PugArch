@@ -14,6 +14,7 @@ import { GeMProfileHeader } from '../components/GeMProfileHeader';
 import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
 import { MSME_TYPES, VENDOR_TYPES, REGISTRATION_TYPES, PRODUCT_CATEGORIES, PRODUCT_CATEGORY_OTHER } from '../constants/dropdowns';
 import { cn } from '../lib/utils';
+import { AadhaarVerificationCard } from '../features/kyc/AadhaarVerificationCard';
 
 const toDateInputValue = (value: unknown) => {
   if (!value) return '';
@@ -1177,6 +1178,7 @@ export default function SellerOnboarding() {
 
                   {currentSection === 'details' && (
                     <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
+                      <AadhaarVerificationCard compact />
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Input
                           label="Business / Organisation Name"

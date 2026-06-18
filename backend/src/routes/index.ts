@@ -17,6 +17,7 @@ import bannerRoutes from './banner.routes.js';
 import disputeRoutes from './dispute.routes.js';
 import shgRoutes from './shg.routes.js';
 import procurementBidRoutes from '../modules/procurementBid/procurement-bid.routes.js';
+import aadhaarKycRoutes from '../modules/kyc/aadhaar-kyc.routes.js';
 import { aiRoutes } from './ai.routes.js';
 import prisma from '../config/prisma.js';
 
@@ -77,6 +78,7 @@ router.use('/', masterAdminRoutes);
 router.use('/', shgRoutes);
 router.use('/', procurementBidRoutes);
 router.use('/', reverseAuctionRoutes);
+router.use('/', aadhaarKycRoutes);
 router.use('/ai', aiRoutes);
 
 export default router;

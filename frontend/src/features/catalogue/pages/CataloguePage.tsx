@@ -406,8 +406,12 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         mode === 'seller' ? catalogueApi.sellerServices() : mode === 'admin' ? catalogueApi.adminServices() : catalogueApi.searchServices(),
         catalogueApi.categories()
       ]);
-      const normProducts = normalizeList<CatalogueItemDto>(productRows).map(item => ({ ...item, itemKind: 'product' as const }));
-      const normServices = normalizeList<CatalogueItemDto>(serviceRows).map(item => ({ ...item, itemKind: 'service' as const }));
+      let normProducts = normalizeList<CatalogueItemDto>(productRows).map(item => ({ ...item, itemKind: 'product' as const }));
+      let normServices = normalizeList<CatalogueItemDto>(serviceRows).map(item => ({ ...item, itemKind: 'service' as const }));
+      if (mode === 'seller' && user) {
+        normProducts = normProducts.filter(item => Number(item.sellerId || item.seller?.id) === Number(user.id));
+        normServices = normServices.filter(item => Number(item.sellerId || item.seller?.id) === Number(user.id));
+      }
       setProducts(normProducts);
       setServices(normServices);
       setCategoryList(categoriesData || []);

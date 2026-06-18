@@ -85,6 +85,7 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/shg/dashboard': () => import('../../views/ShgOnboarding'),
   '/admin/governance': () => import('../../views/AdminOperations'),
   '/seller/marketplace': () => Promise.resolve(),
+  '/seller/catalogue': () => Promise.resolve(),
   '/buyer/marketplace': () => Promise.resolve(),
   '/buyer/tenders': () => import('../../views/Tenders'),
   '/seller/tenders': () => import('../../views/SellerTenders'),
@@ -427,6 +428,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: ClipboardCheck, roles: ['buyer'] },
       { label: 'My Procurements', path: '/buyer/procurements', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Tenders & Bids', path: '/buyer/tenders', icon: Gavel, roles: ['buyer'] },
       { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },
       { label: 'Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },
     ] },
@@ -453,10 +455,13 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Buyer Requirements', path: '/seller/opportunities?type=requirement', icon: ClipboardList, roles: ['seller'] },
       { label: 'Auctions', path: '/seller/opportunities?type=auction', icon: Gavel, roles: ['seller'] },
     ] },
-    { label: 'My Bids', path: '/bids', icon: ClipboardCheck, roles: ['seller'] },
+    { label: 'Tenders & Bids', icon: Gavel, roles: ['seller'], children: [
+      { label: 'Public Tenders', path: '/seller/tenders', icon: Gavel, roles: ['seller'] },
+      { label: 'My Bids', path: '/bids', icon: ClipboardCheck, roles: ['seller'] },
+    ] },
     { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
     { label: 'Orders', icon: Truck, roles: ['seller'], children: [
-      { label: 'Orders Received', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
+      { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
       { label: 'Delivery Updates', path: '/orders/tracking', icon: Truck, roles: ['seller'] },
     ] },
     { label: 'Payments', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module', children: [
@@ -465,7 +470,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog', children: [
       { label: 'Products & Services', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
-      { label: 'Storefront', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: Store, roles: ['seller'] },
+      { label: 'My Catalogue', path: '/seller/catalogue', icon: Store, roles: ['seller'] },
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['seller'] },
     { label: 'Banner Eligibility', path: '/my-org/banner-eligibility', icon: Images, roles: ['seller', 'buyer'] },

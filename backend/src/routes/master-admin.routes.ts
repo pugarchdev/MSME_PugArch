@@ -169,10 +169,15 @@ const exportDateWhere = (query: Record<string, unknown>) => {
   };
 };
 
+const withAadhaarKyc = <T extends { kycVerifications?: any[] }>(record: T) => {
+  const { kycVerifications, ...rest } = record;
+  return { ...rest, aadhaarKyc: kycVerifications?.[0] || null };
+};
+
 const archiveUserDeleteBlocked = async (req: AuthRequest, id: number, reason: string, metadata: Record<string, unknown>) => {
   const user = await prisma.user.update({ where: { id }, data: { accountStatus: 'DELETED' as any, sessionVersion: { increment: 1 } }, select: userSelect });
   await createAuditLog(req, { action: 'user.archive.deleteBlocked', entityType: 'user', entityId: id, metadata: { reason, ...metadata } });
-  return user;
+  return withAadhaarKyc(user as any);
 };
 
 const companyPayload = (body: Record<string, unknown>) => ({
@@ -215,7 +220,12 @@ const organizationSelect = {
   blacklistReason: true,
   createdAt: true,
   updatedAt: true,
-  company: { select: { id: true, name: true } }
+  company: { select: { id: true, name: true } },
+  kycVerifications: {
+    where: { provider: 'MERIPEHCHAAN' as const, verificationType: 'AADHAAR' as const },
+    take: 1,
+    select: { status: true, provider: true, verificationType: true, verifiedName: true, verifiedAt: true, referenceKey: true, idTokenSubject: true }
+  }
 };
 
 const organizationListSelect = {
@@ -234,6 +244,11 @@ const organizationListSelect = {
   createdAt: true,
   updatedAt: true,
   company: { select: { id: true, name: true } },
+  kycVerifications: {
+    where: { provider: 'MERIPEHCHAAN' as const, verificationType: 'AADHAAR' as const },
+    take: 1,
+    select: { status: true, provider: true, verificationType: true, verifiedName: true, verifiedAt: true, referenceKey: true, idTokenSubject: true }
+  },
   _count: { select: { users: true } }
 };
 
@@ -253,7 +268,12 @@ const userSelect = {
   createdAt: true,
   updatedAt: true,
   company: { select: { id: true, name: true } },
-  organization: { select: { id: true, organizationName: true, organizationType: true } }
+  organization: { select: { id: true, organizationName: true, organizationType: true } },
+  kycVerifications: {
+    where: { provider: 'MERIPEHCHAAN' as const, verificationType: 'AADHAAR' as const },
+    take: 1,
+    select: { status: true, provider: true, verificationType: true, verifiedName: true, verifiedAt: true, referenceKey: true, idTokenSubject: true }
+  }
 };
 
 const organizationPayload = (body: Record<string, unknown>, partial = false) => {
@@ -665,11 +685,11 @@ router.get('/master-admin/users', ...masterOnly, wrap(async (req, res) => {
       skip,
       take,
       orderBy,
-      select: { id: true, userId: true, name: true, email: true, mobile: true, role: true, companyId: true, organizationId: true, onboardingStatus: true, accountStatus: true, createdAt: true, company: { select: { id: true, name: true } }, organization: { select: { id: true, organizationName: true, organizationType: true } } }
+      select: userSelect
     }),
     prisma.user.count({ where })
   ]);
-  res.json({ items, total, page, pageSize });
+  res.json({ items: (items as any[]).map(withAadhaarKyc), total, page, pageSize });
 }));
 
 router.post('/master-admin/users/:id/roles', ...masterOnly, requirePermission(PERMISSIONS.ROLE_ASSIGN), wrap(async (req, res) => {
@@ -728,7 +748,7 @@ router.get('/master-admin/organizations', ...masterOnly, wrap(async (req, res) =
     }),
     prisma.organization.count({ where })
   ]);
-  res.json({ items, total, page, pageSize });
+  res.json({ items: (items as any[]).map(withAadhaarKyc), total, page, pageSize });
 }));
 
 router.put('/master-admin/companies/:id/content', ...masterOnly, requirePermission(PERMISSIONS.CONTENT_UPDATE), wrap(async (req, res) => {
@@ -825,7 +845,7 @@ router.get('/master-admin/organizations/:id', ...masterOnly, wrap(async (req, re
   const id = Number(req.params.id);
   const organization = await prisma.organization.findUnique({ where: { id }, select: organizationSelect as any });
   if (!organization) return jsonError(res, 404, 'Organization not found.', 'ORGANIZATION_NOT_FOUND');
-  jsonOk(res, organization);
+  jsonOk(res, withAadhaarKyc(organization as any));
 }));
 
 router.put('/master-admin/organizations/:id', ...masterOnly, requirePermission(PERMISSIONS.ORGANIZATION_MANAGE), wrap(async (req, res) => {

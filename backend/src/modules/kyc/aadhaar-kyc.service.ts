@@ -1,0 +1,422 @@
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import prisma from '../../config/prisma.js';
+import { env, isProduction } from '../../config/env.js';
+import type { AuthenticatedUser } from '../../middleware/authenticate.js';
+
+const PROVIDER = 'MERIPEHCHAAN' as const;
+const VERIFICATION_TYPE = 'AADHAAR' as const;
+const DEFAULT_RETURN_PATH = '/onboarding/kyc';
+const ALLOWED_ID_TOKEN_ALGORITHMS: jwt.Algorithm[] = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512'];
+
+type RequestMeta = {
+  ipAddress?: string;
+  userAgent?: string;
+};
+
+type SafeProfile = {
+  name?: string;
+  dob?: Date | null;
+  gender?: string;
+  email?: string;
+  address?: unknown;
+  ageVerified?: boolean | null;
+  digilockerId?: string;
+  referenceKey?: string;
+  subject?: string;
+};
+
+const requiredConfig = () => {
+  const missing = [
+    ['MERIPEHCHAAN_CLIENT_ID', env.MERIPEHCHAAN_CLIENT_ID],
+    ['MERIPEHCHAAN_CLIENT_SECRET', env.MERIPEHCHAAN_CLIENT_SECRET],
+    ['MERIPEHCHAAN_AUTH_URL', env.MERIPEHCHAAN_AUTH_URL],
+    ['MERIPEHCHAAN_TOKEN_URL', env.MERIPEHCHAAN_TOKEN_URL],
+    ['MERIPEHCHAAN_REDIRECT_URI', env.MERIPEHCHAAN_REDIRECT_URI],
+    ['FRONTEND_URL', env.FRONTEND_URL],
+  ].filter(([, value]) => !value);
+
+  if (missing.length) {
+    const keys = missing.map(([key]) => key).join(', ');
+    throw Object.assign(new Error(`MeriPehchaan Aadhaar KYC is not configured: ${keys}`), { statusCode: 503, code: 'KYC_NOT_CONFIGURED' });
+  }
+
+  if (isProduction && !String(env.MERIPEHCHAAN_REDIRECT_URI).startsWith('https://')) {
+    throw Object.assign(new Error('HTTPS MeriPehchaan callback URL is required in production'), { statusCode: 503, code: 'KYC_REDIRECT_URI_INSECURE' });
+  }
+
+  return {
+    clientId: env.MERIPEHCHAAN_CLIENT_ID!,
+    clientSecret: env.MERIPEHCHAAN_CLIENT_SECRET!,
+    authUrl: env.MERIPEHCHAAN_AUTH_URL!,
+    tokenUrl: env.MERIPEHCHAAN_TOKEN_URL!,
+    userInfoUrl: env.MERIPEHCHAAN_USERINFO_URL,
+    jwksUrl: env.MERIPEHCHAAN_JWKS_URL,
+    issuer: env.MERIPEHCHAAN_ISSUER,
+    redirectUri: env.MERIPEHCHAAN_REDIRECT_URI!,
+    frontendUrl: env.FRONTEND_URL!,
+    scopes: env.MERIPEHCHAAN_SCOPES || 'openid profile email',
+    acr: env.MERIPEHCHAAN_ACR,
+    ttlMinutes: env.AADHAAR_KYC_SESSION_TTL_MINUTES || 10,
+  };
+};
+
+const randomUrlSafe = (bytes = 32) =>
+  crypto.randomBytes(bytes).toString('base64url');
+
+const codeChallenge = (verifier: string) =>
+  crypto.createHash('sha256').update(verifier).digest('base64url');
+
+const redirectUrl = (status: string, message?: string) => {
+  const base = env.FRONTEND_URL || 'http://localhost:3000';
+  const url = new URL(DEFAULT_RETURN_PATH, base);
+  url.searchParams.set('aadhaar', status);
+  if (message) url.searchParams.set('reason', message);
+  return url.toString();
+};
+
+const safeMessage = (value: unknown) =>
+  String(value || 'Aadhaar verification could not be completed').slice(0, 240);
+
+const getOrgId = (user: AuthenticatedUser) =>
+  user.organizationId || user.companyId || null;
+
+const audit = async (
+  userId: number,
+  organizationId: number | null | undefined,
+  action: string,
+  status: 'STARTED' | 'PENDING' | 'VERIFIED' | 'FAILED' | 'EXPIRED' | 'RESET',
+  meta: RequestMeta,
+  message?: string,
+) => {
+  await prisma.kycAuditLog.create({
+    data: {
+      userId,
+      organizationId: organizationId || null,
+      provider: PROVIDER,
+      verificationType: VERIFICATION_TYPE,
+      action,
+      status,
+      message: message ? safeMessage(message) : null,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined,
+    }
+  });
+};
+
+const parseDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const str = String(value).trim();
+  const normalized = /^(\d{2})[-/](\d{2})[-/](\d{4})$/.test(str)
+    ? str.replace(/^(\d{2})[-/](\d{2})[-/](\d{4})$/, '$3-$2-$1')
+    : str;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const firstString = (source: any, keys: string[]) => {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+};
+
+const extractSafeProfile = (userinfo: any, idTokenPayload: any): SafeProfile => {
+  const source = { ...(idTokenPayload || {}), ...(userinfo || {}) };
+  return {
+    name: firstString(source, ['name', 'full_name', 'fullname', 'verified_name']),
+    dob: parseDate(source.birthdate || source.dob || source.date_of_birth),
+    gender: firstString(source, ['gender']),
+    email: firstString(source, ['email', 'verified_email']),
+    address: source.address && typeof source.address === 'object' ? source.address : undefined,
+    ageVerified: typeof source.age_verified === 'boolean' ? source.age_verified : typeof source.ageVerified === 'boolean' ? source.ageVerified : null,
+    digilockerId: firstString(source, ['digilocker_id', 'digilockerId', 'digilockerid']),
+    referenceKey: firstString(source, ['reference_key', 'referenceKey', 'txn', 'transaction_id']),
+    subject: firstString(source, ['sub']),
+  };
+};
+
+const fetchUserInfo = async (url: string | undefined, accessToken: string) => {
+  if (!url) return null;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error('Failed to fetch MeriPehchaan user info'), { statusCode: 502, code: 'USERINFO_FAILED' });
+  }
+  return response.json();
+};
+
+const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typeof requiredConfig>) => {
+  if (!idToken) return null;
+  if (!config.jwksUrl) {
+    throw Object.assign(new Error('MeriPehchaan JWKS URL is required to verify the OIDC ID token'), { statusCode: 503, code: 'KYC_JWKS_NOT_CONFIGURED' });
+  }
+
+  const decoded = jwt.decode(idToken, { complete: true });
+  if (!decoded || typeof decoded !== 'object' || !decoded.header?.kid || !decoded.header?.alg) {
+    throw Object.assign(new Error('MeriPehchaan ID token header is invalid'), { statusCode: 502, code: 'ID_TOKEN_INVALID' });
+  }
+  if (!ALLOWED_ID_TOKEN_ALGORITHMS.includes(decoded.header.alg as jwt.Algorithm)) {
+    throw Object.assign(new Error('MeriPehchaan ID token algorithm is not allowed'), { statusCode: 502, code: 'ID_TOKEN_ALG_NOT_ALLOWED' });
+  }
+
+  const jwksResponse = await fetch(config.jwksUrl, { headers: { Accept: 'application/json' } });
+  if (!jwksResponse.ok) {
+    throw Object.assign(new Error('Failed to fetch MeriPehchaan JWKS'), { statusCode: 502, code: 'JWKS_FETCH_FAILED' });
+  }
+
+  const jwks = await jwksResponse.json() as { keys?: Array<crypto.JsonWebKey & { kid?: string }> };
+  const jwk = jwks.keys?.find((key) => key.kid === decoded.header.kid);
+  if (!jwk) {
+    throw Object.assign(new Error('MeriPehchaan signing key was not found'), { statusCode: 502, code: 'JWKS_KEY_NOT_FOUND' });
+  }
+
+  const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+  const pem = publicKey.export({ type: 'spki', format: 'pem' });
+  const verified = jwt.verify(idToken, pem, {
+    algorithms: [decoded.header.alg as jwt.Algorithm],
+    audience: config.clientId,
+    issuer: config.issuer,
+  });
+  return verified && typeof verified === 'object' ? verified : null;
+};
+
+export const aadhaarKycService = {
+  redirectUrl,
+
+  async start(user: AuthenticatedUser, meta: RequestMeta) {
+    const config = requiredConfig();
+    const organizationId = getOrgId(user);
+
+    const existing = await prisma.userKycVerification.findUnique({
+      where: { userId_provider_verificationType: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE } }
+    });
+    if (existing?.status === 'VERIFIED') {
+      await audit(user.id, organizationId, 'ALREADY_VERIFIED', 'VERIFIED', meta);
+      return redirectUrl('already_verified');
+    }
+
+    const state = randomUrlSafe(32);
+    const codeVerifier = randomUrlSafe(64);
+    const challenge = codeChallenge(codeVerifier);
+    const expiresAt = new Date(Date.now() + config.ttlMinutes * 60_000);
+
+    await prisma.$transaction([
+      prisma.kycAuthSession.create({
+        data: {
+          userId: user.id,
+          organizationId,
+          provider: PROVIDER,
+          verificationType: VERIFICATION_TYPE,
+          state,
+          codeVerifier,
+          redirectUri: config.redirectUri,
+          scopes: config.scopes,
+          acr: config.acr || null,
+          expiresAt,
+        }
+      }),
+      prisma.userKycVerification.upsert({
+        where: { userId_provider_verificationType: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+        create: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'PENDING' },
+        update: { status: 'PENDING', organizationId, lastErrorCode: null, lastErrorMessage: null }
+      }),
+      prisma.kycAuditLog.create({
+        data: {
+          userId: user.id,
+          organizationId,
+          provider: PROVIDER,
+          verificationType: VERIFICATION_TYPE,
+          action: 'STARTED',
+          status: 'STARTED',
+          ipAddress: meta.ipAddress,
+          userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined,
+        }
+      })
+    ]);
+
+    const authUrl = new URL(config.authUrl);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('client_id', config.clientId);
+    authUrl.searchParams.set('redirect_uri', config.redirectUri);
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('scope', config.scopes);
+    authUrl.searchParams.set('code_challenge', challenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
+    if (config.acr) authUrl.searchParams.set('acr', config.acr);
+
+    return authUrl.toString();
+  },
+
+  async callback(query: Record<string, unknown>, meta: RequestMeta) {
+    const config = requiredConfig();
+    const state = typeof query.state === 'string' ? query.state : '';
+    const code = typeof query.code === 'string' ? query.code : '';
+    const providerError = typeof query.error === 'string' ? query.error : '';
+    const providerErrorDescription = typeof query.error_description === 'string' ? query.error_description : '';
+
+    const session = state
+      ? await prisma.kycAuthSession.findFirst({
+          where: { state, provider: PROVIDER, verificationType: VERIFICATION_TYPE },
+        })
+      : null;
+
+    if (providerError) {
+      if (session) {
+        await prisma.userKycVerification.upsert({
+          where: { userId_provider_verificationType: { userId: session.userId, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+          create: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'FAILED', lastErrorCode: providerError, lastErrorMessage: safeMessage(providerErrorDescription) },
+          update: { status: 'FAILED', lastErrorCode: providerError, lastErrorMessage: safeMessage(providerErrorDescription) }
+        });
+        await audit(session.userId, session.organizationId, 'FAILED', 'FAILED', meta, providerError);
+      }
+      return redirectUrl('failed');
+    }
+
+    if (!state || !code || !session || session.used || session.expiresAt <= new Date()) {
+      if (session) {
+        await prisma.$transaction([
+          prisma.kycAuthSession.update({ where: { id: session.id }, data: { used: true } }),
+          prisma.userKycVerification.upsert({
+            where: { userId_provider_verificationType: { userId: session.userId, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+            create: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'EXPIRED', lastErrorCode: 'SESSION_EXPIRED' },
+            update: { status: 'EXPIRED', lastErrorCode: 'SESSION_EXPIRED', lastErrorMessage: 'Aadhaar verification session expired or was already used.' }
+          }),
+          prisma.kycAuditLog.create({
+            data: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, action: 'EXPIRED', status: 'EXPIRED', ipAddress: meta.ipAddress, userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined }
+          })
+        ]);
+      }
+      return redirectUrl('expired');
+    }
+
+    if (session.redirectUri !== config.redirectUri) {
+      await audit(session.userId, session.organizationId, 'FAILED', 'FAILED', meta, 'Redirect URI mismatch');
+      return redirectUrl('failed');
+    }
+
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: config.redirectUri,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code_verifier: session.codeVerifier,
+      });
+
+      const tokenResponse = await fetch(config.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body
+      });
+
+      const tokenBody = await tokenResponse.json().catch(() => null) as any;
+      if (!tokenResponse.ok || !tokenBody?.access_token) {
+        throw Object.assign(new Error('MeriPehchaan token exchange failed'), { statusCode: 502, code: 'TOKEN_EXCHANGE_FAILED' });
+      }
+
+      const idPayload = await verifyIdToken(tokenBody.id_token, config);
+      const userInfo = await fetchUserInfo(config.userInfoUrl, tokenBody.access_token);
+      const profile = extractSafeProfile(userInfo, idPayload);
+
+      await prisma.$transaction([
+        prisma.kycAuthSession.update({ where: { id: session.id }, data: { used: true } }),
+        prisma.userKycVerification.upsert({
+          where: { userId_provider_verificationType: { userId: session.userId, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+          create: {
+            userId: session.userId,
+            organizationId: session.organizationId,
+            provider: PROVIDER,
+            verificationType: VERIFICATION_TYPE,
+            status: 'VERIFIED',
+            verifiedName: profile.name,
+            verifiedDob: profile.dob || undefined,
+            verifiedGender: profile.gender,
+            verifiedEmail: profile.email,
+            verifiedAddress: profile.address as any,
+            ageVerified: profile.ageVerified,
+            digilockerId: profile.digilockerId,
+            referenceKey: profile.referenceKey,
+            idTokenSubject: profile.subject,
+            verifiedAt: new Date(),
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          },
+          update: {
+            organizationId: session.organizationId,
+            status: 'VERIFIED',
+            verifiedName: profile.name,
+            verifiedDob: profile.dob || undefined,
+            verifiedGender: profile.gender,
+            verifiedEmail: profile.email,
+            verifiedAddress: profile.address as any,
+            ageVerified: profile.ageVerified,
+            digilockerId: profile.digilockerId,
+            referenceKey: profile.referenceKey,
+            idTokenSubject: profile.subject,
+            verifiedAt: new Date(),
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          }
+        }),
+        prisma.kycAuditLog.create({
+          data: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, action: 'COMPLETED', status: 'VERIFIED', ipAddress: meta.ipAddress, userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined }
+        })
+      ]);
+
+      return redirectUrl('verified');
+    } catch (error: any) {
+      await prisma.$transaction([
+        prisma.kycAuthSession.update({ where: { id: session.id }, data: { used: true } }),
+        prisma.userKycVerification.upsert({
+          where: { userId_provider_verificationType: { userId: session.userId, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+          create: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'FAILED', lastErrorCode: error?.code || 'CALLBACK_FAILED', lastErrorMessage: safeMessage(error?.message) },
+          update: { status: 'FAILED', lastErrorCode: error?.code || 'CALLBACK_FAILED', lastErrorMessage: safeMessage(error?.message) }
+        }),
+        prisma.kycAuditLog.create({
+          data: { userId: session.userId, organizationId: session.organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, action: 'FAILED', status: 'FAILED', message: safeMessage(error?.message), ipAddress: meta.ipAddress, userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined }
+        })
+      ]);
+      return redirectUrl('failed');
+    }
+  },
+
+  async status(user: AuthenticatedUser) {
+    const row = await prisma.userKycVerification.findUnique({
+      where: { userId_provider_verificationType: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE } }
+    });
+    if (!row) {
+      return { status: 'NOT_STARTED', provider: PROVIDER, verificationType: VERIFICATION_TYPE };
+    }
+    return {
+      status: row.status,
+      provider: row.provider,
+      verificationType: row.verificationType,
+      verifiedName: row.verifiedName,
+      verifiedAt: row.verifiedAt,
+      ageVerified: row.ageVerified,
+    };
+  },
+
+  async reset(user: AuthenticatedUser, meta: RequestMeta) {
+    const organizationId = getOrgId(user);
+    await prisma.$transaction([
+      prisma.kycAuthSession.updateMany({
+        where: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE, used: false },
+        data: { used: true }
+      }),
+      prisma.userKycVerification.upsert({
+        where: { userId_provider_verificationType: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
+        create: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'PENDING' },
+        update: { status: 'PENDING', organizationId, lastErrorCode: null, lastErrorMessage: null }
+      }),
+      prisma.kycAuditLog.create({
+        data: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, action: 'RESET', status: 'RESET', ipAddress: meta.ipAddress, userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined }
+      })
+    ]);
+    return this.status(user);
+  }
+};

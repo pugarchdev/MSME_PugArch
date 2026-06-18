@@ -368,7 +368,7 @@ export default function CatalogueFormPage() {
       }
       uploadedImages.forEach(img => { if (img.localUrl) URL.revokeObjectURL(img.localUrl); });
       uploadedDocuments.forEach(doc => { if (doc.localUrl) URL.revokeObjectURL(doc.localUrl); });
-      router.push('/seller/marketplace');
+      router.push('/seller/catalogue');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to save marketplace item');
     } finally {
@@ -379,11 +379,11 @@ export default function CatalogueFormPage() {
   const handleCancel = () => {
     uploadedImages.forEach(img => { if (img.localUrl) URL.revokeObjectURL(img.localUrl); });
     uploadedDocuments.forEach(doc => { if (doc.localUrl) URL.revokeObjectURL(doc.localUrl); });
-    router.push('/seller/marketplace');
+    router.push('/seller/catalogue');
   };
 
   if (loading) return <LoadingState label="Loading form details..." />;
-  if (error) return <InlineError message={error} onRetry={() => router.push('/seller/marketplace')} />;
+  if (error) return <InlineError message={error} onRetry={() => router.push('/seller/catalogue')} />;
 
   const title = isEdit ? `Edit ${kind === 'product' ? 'Product' : 'Service'}` : `New ${kind === 'product' ? 'Product' : 'Service'}`;
   const descriptionText = isEdit

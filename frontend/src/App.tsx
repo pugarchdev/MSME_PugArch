@@ -79,6 +79,7 @@ const DisputesPage = lazy(() => import('./features/disputes/pages/DisputesPage')
 const MessagesPage = lazy(() => import('./features/messages/pages/MessagesPage'));
 const SecuritySettingsPage = lazy(() => import('./features/settings/pages/SecuritySettingsPage'));
 const NotificationPrefsPage = lazy(() => import('./features/settings/pages/NotificationPrefsPage'));
+const AadhaarKycPage = lazy(() => import('./features/kyc/AadhaarKycPage'));
 const RoleReportsPage = lazy(() => import('./features/reports/pages/RoleReportsPage'));
 const ProcurementReportPage = lazy(() => import('./features/reports/pages/ProcurementReportPage'));
 const PaymentsReportPage = lazy(() => import('./features/reports/pages/PaymentsReportPage'));
@@ -158,6 +159,11 @@ export default function App() {
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const visualCollapsed = isSidebarCollapsed && !isSidebarHovered;
 
+  const [hasCookie, setHasCookie] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    return document.cookie.split(';').some(c => c.trim().startsWith('token='));
+  });
+
   React.useEffect(() => {
     const saved = localStorage.getItem('isSidebarCollapsed');
     if (saved !== null) {
@@ -176,6 +182,12 @@ export default function App() {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  React.useEffect(() => {
+    if (mounted) {
+      setHasCookie(document.cookie.split(';').some(c => c.trim().startsWith('token=')));
+    }
+  }, [mounted, loading, user]);
 
   React.useEffect(() => {
     if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
@@ -199,6 +211,7 @@ export default function App() {
       if (t) {
         document.cookie = `token=${t}; path=/; max-age=900; SameSite=Lax`;
         cookieStampedRef.current = true;
+        setHasCookie(true);
       }
     }
   }, [mounted, loading, user, pathname]);
@@ -239,16 +252,6 @@ export default function App() {
     return <PremiumLoader />;
   }
 
-  // Helper: only redirect if both client (user state) and server (cookie)
-  // agree we're authenticated. If only localStorage has a token but the
-  // cookie was wiped (e.g. by middleware), render the page in place instead
-  // of redirecting - the cookie heartbeat will fix the cookie, and the next
-  // navigation will succeed without a bounce.
-  const cookieHasToken = () => {
-    if (typeof document === 'undefined') return true;
-    return document.cookie.split(';').some(c => c.trim().startsWith('token='));
-  };
-
   const renderRoute = () => {
     const isCurrentShg = isShgUser(user);
     const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : isCurrentShg ? '/shg/onboarding' : '/dashboard';
@@ -257,10 +260,10 @@ export default function App() {
     // user data yet AND no cached user from a previous session. After that,
     // background refreshes should never blank the UI.
     if (loading && !user) return <PremiumLoader />;
-    if (pathname === '/') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
-    if (pathname === '/login') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <Login />;
+    if (pathname === '/') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
+    if (pathname === '/login') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <Login />;
     if (pathname === '/shg/login') return <Redirect to="/login" />;
-    if (pathname === '/forgot-password') return user && cookieHasToken() ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
+    if (pathname === '/forgot-password') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <ForgotPassword />;
     if (pathname === '/register') return <RegisterSelection />;
     if (pathname === '/seller/register') return <SellerRegistrationFlow />;
     if (pathname === '/buyer/register') return <BuyerRegistrationFlow />;
@@ -316,7 +319,8 @@ export default function App() {
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
-    if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
+    if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <MarketplaceProductList />;
+    if (pathname === '/seller/catalogue' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
     if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
     if (/^\/seller\/products\/[^/]+\/edit$/.test(pathname) && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
     if (pathname === '/seller/services/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
@@ -445,6 +449,7 @@ export default function App() {
     if (/^\/procurement-orders\/\d+$/.test(pathname) && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
     if (pathname === '/settings/security') return <SecuritySettingsPage />;
     if (pathname === '/settings/notifications') return <NotificationPrefsPage />;
+    if (pathname === '/onboarding/kyc') return <AadhaarKycPage />;
     if (pathname === '/admin/reports/procurement' && roleOk(user.role, ['admin'])) return <ProcurementReportPage />;
     if (pathname === '/admin/reports/payments' && roleOk(user.role, ['admin'])) return <PaymentsReportPage />;
     if (pathname === '/admin/reports/suppliers' && roleOk(user.role, ['admin'])) return <SuppliersReportPage />;

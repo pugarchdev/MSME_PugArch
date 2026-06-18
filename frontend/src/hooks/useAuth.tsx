@@ -166,8 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         localStorage.setItem('msme_user_cache', JSON.stringify(data.user));
       }
-    } catch {
-      logout();
+    } catch (err) {
+      console.error('Failed to refresh user session:', err);
     } finally {
       setLoading(false);
     }

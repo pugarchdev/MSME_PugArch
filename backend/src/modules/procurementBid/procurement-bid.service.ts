@@ -401,7 +401,7 @@ export const listPublicBids = async (query: any) => {
   const pageSize = Math.min(50, Math.max(1, Number(query.pageSize || 12)));
   const takeForMergedPage = page * pageSize;
   const where: any = {
-    approvalStatus: { in: ['APPROVED', 'PENDING', 'SUBMITTED', 'PENDING_APPROVAL'] },
+    approvalStatus: { in: ['APPROVED', 'PENDING'] },
     status: { in: query.status ? [String(query.status).toUpperCase()] : publicBidStatuses }
   };
   if (query.q) {

@@ -4,8 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import { BidCard, EmptyState, PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, StatusBadge } from '../components';
 import { formatDate, money, type ProcurementBid } from '../data';
 import { procurementBidApi } from '../api';
@@ -159,9 +157,7 @@ export default function BidsListingPage() {
 
   return (
     <PageShell>
-      <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
-      <main className="mx-auto w-full max-w-7xl px-4 py-5">
+      <main className="mx-auto w-full max-w-7xl">
         <ProcurementHero
           title="Latest Buyer Requirements & Bids"
           subtitle="Search, filter, participate, download documents, and track procurement opportunities from private buyers, MSMEs, large industries, government buyers, PSUs, suppliers, and service providers."
@@ -256,7 +252,6 @@ export default function BidsListingPage() {
           </section>
         </div>
       </main>
-      <MarketplaceFooter />
     </PageShell>
   );
 }

@@ -463,7 +463,7 @@ export default function App() {
     pathname === '/marketplace/services' ||
     /^\/marketplace\/products\/\d+$/.test(pathname) ||
     /^\/marketplace\/services\/\d+$/.test(pathname);
-  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname.startsWith('/bids') || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
+  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || pathname === '/admin/bids' || /^\/vendors\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 

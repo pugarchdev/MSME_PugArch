@@ -27,12 +27,12 @@ export default function MarketplaceProductList() {
     const { user } = useAuth();
     const searchParams = useSearchParams();
     const pathname = usePathname() || '';
-    const isBuyerMarketplace = pathname === '/buyer/marketplace';
-    const useDashboardShell = Boolean(user) && (isBuyerMarketplace || pathname === '/marketplace/products' || pathname === '/marketplace/services');
+    const isDashboardMarketplace = pathname === '/buyer/marketplace' || pathname === '/seller/marketplace';
+    const useDashboardShell = Boolean(user) && (isDashboardMarketplace || pathname === '/marketplace/products' || pathname === '/marketplace/services');
     const router = useRouter();
     const isServices = pathname.includes('/services') || searchParams?.get('type') === 'services';
     const queryClient = useQueryClient();
-    const { items: cartItems, add: addGuestCartItem, update: updateGuestCartItem } = useGuestCart();
+    const { items: cartItems, add: addGuestCartItem, update: updateGuestCartItem, count: cartCount } = useGuestCart();
 
     const [query, setQuery] = useState(searchParams?.get('q') || '');
     const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
@@ -53,7 +53,7 @@ export default function MarketplaceProductList() {
         setConditionFilter('');
         setPricingModelFilter('');
         
-        if (isBuyerMarketplace) {
+        if (isDashboardMarketplace) {
             const params = new URLSearchParams(searchParams?.toString() || '');
             if (type === 'services') {
                 params.set('type', 'services');
@@ -368,7 +368,7 @@ export default function MarketplaceProductList() {
 
                 <div className="max-w-7xl mx-auto px-4 py-6">
                     {/* Products & Services Toggle Tabs */}
-                    <div className="mb-6 flex border-b border-slate-200">
+                    <div className="mb-6 flex border-b border-slate-200 items-end">
                         <button
                             type="button"
                             onClick={() => handleToggleType('products')}
@@ -395,6 +395,29 @@ export default function MarketplaceProductList() {
                             <Wrench className="h-4 w-4" />
                             Services Directory
                         </button>
+
+                        {/* Cart Button */}
+                        <div className="ml-auto pb-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (user) {
+                                        router.push('/cart');
+                                    } else {
+                                        router.push('/marketplace/cart');
+                                    }
+                                }}
+                                className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 transition shadow-sm"
+                                aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                            >
+                                <ShoppingCart className="h-4.5 w-4.5" />
+                                {cartCount > 0 && (
+                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white animate-pulse">
+                                        {cartCount > 99 ? '99+' : cartCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="-mx-4 mb-5 sm:mx-0">

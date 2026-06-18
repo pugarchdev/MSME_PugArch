@@ -397,7 +397,7 @@ export default function MarketplaceProductList() {
                         </button>
 
                         {/* Cart Button */}
-                        <div className="ml-auto pb-2">
+                        {/* <div className="ml-auto pb-2">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -417,7 +417,7 @@ export default function MarketplaceProductList() {
                                     </span>
                                 )}
                             </button>
-                        </div>
+                        </div> */}
                     </div>
 
                     <div className="-mx-4 mb-5 sm:mx-0">
@@ -665,7 +665,7 @@ export default function MarketplaceProductList() {
                                                                         aria-label={`Add ${item.name} to cart`}
                                                                     >
                                                                         <ShoppingCart className="h-3 w-3" />
-                                                                        Cart
+                                                                        Add to Cart
                                                                     </button>
                                                                 )
                                                             )}

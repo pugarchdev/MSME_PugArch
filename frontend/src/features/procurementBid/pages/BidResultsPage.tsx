@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Download, Trophy } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import { PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, ResultsTable, StatusBadge } from '../components';
 import { money, type BidResultRow, type ProcurementBid } from '../data';
 import { procurementBidApi } from '../api';
@@ -50,13 +48,10 @@ export default function BidResultsPage() {
   if (loading) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Result and Financial Ranking" subtitle="Loading live evaluation results from the backend." />
           <div className="mt-5"><ProcurementLoadingState message="Loading bid results..." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -64,13 +59,10 @@ export default function BidResultsPage() {
   if (error) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Result and Financial Ranking" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementErrorState message={error} onRetry={loadBid} /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -78,22 +70,17 @@ export default function BidResultsPage() {
   if (!bid) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Result and Financial Ranking" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementEmptyState title="No bid results available currently." message="This bid was not returned by the live backend." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
 
   return (
     <PageShell>
-      <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
-      <main className="mx-auto w-full max-w-7xl px-4 py-5">
+      <main className="mx-auto w-full max-w-7xl">
         <ProcurementHero title="Bid Result and Financial Ranking" subtitle={`${bid.id} • ${bid.title}`} action={<Link href={`/bids/${bid.id}`} className="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bid</Link>} />
         <section className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -170,7 +157,6 @@ export default function BidResultsPage() {
           ) : <ProcurementEmptyState title="No financial ranking available currently." message="Financial rankings will appear after the live backend opens financial evaluation." />}
         </section>
       </main>
-      <MarketplaceFooter />
     </PageShell>
   );
 }

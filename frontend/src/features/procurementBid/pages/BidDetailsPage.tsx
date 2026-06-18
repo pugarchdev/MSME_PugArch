@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import { ClarificationButton, LifecycleTracker, PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, ResultsTable, StatusBadge } from '../components';
 import { formatDate, money } from '../data';
 import type { ProcurementBid } from '../data';
@@ -44,13 +42,10 @@ export default function BidDetailsPage() {
   if (loading) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Details" subtitle="Loading live bid details from the backend." />
           <div className="mt-5"><ProcurementLoadingState message="Loading bid details..." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -58,13 +53,10 @@ export default function BidDetailsPage() {
   if (error) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Details" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementErrorState message={error} onRetry={loadBid} /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -72,22 +64,17 @@ export default function BidDetailsPage() {
   if (!bid) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-7xl px-4 py-5">
+        <main className="mx-auto w-full max-w-7xl">
           <ProcurementHero title="Bid Details" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementEmptyState title="No bid details available currently." message="This bid was not returned by the live backend." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
 
   return (
     <PageShell>
-      <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
-      <main className="mx-auto w-full max-w-7xl px-4 py-5">
+      <main className="mx-auto w-full max-w-7xl">
         <ProcurementHero
           title={bid.title}
           subtitle={`${loading ? 'Loading...' : bid.id} • ${bid.buyerName} • ${bid.buyerType}`}
@@ -195,7 +182,6 @@ export default function BidDetailsPage() {
           </div>
         </div>
       )}
-      <MarketplaceFooter />
     </PageShell>
   );
 }

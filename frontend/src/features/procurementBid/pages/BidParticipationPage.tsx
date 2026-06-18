@@ -27,8 +27,6 @@ import { DocumentPreviewModal } from '../../../components/DocumentPreviewModal';
 import type { DocumentPreview } from '../../../lib/files';
 import { getDocumentPreviewMode } from '../../../lib/files';
 import { useAuth } from '../../../hooks/useAuth';
-import { MarketplaceHeader } from '../../marketplace/components/MarketplaceHeader';
-import { MarketplaceFooter } from '../../marketplace/components/MarketplaceFooter';
 import {
   LifecycleTracker,
   PageShell,
@@ -373,13 +371,10 @@ export default function BidParticipationPage() {
   if (loading) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-5">
+        <main className="mx-auto w-full max-w-6xl">
           <ProcurementHero title="Seller Bid Participation" subtitle="Loading live bid participation context." />
           <div className="mt-5"><ProcurementLoadingState message="Loading bid participation..." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -387,13 +382,10 @@ export default function BidParticipationPage() {
   if (error) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-5">
+        <main className="mx-auto w-full max-w-6xl">
           <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementErrorState message={error} onRetry={loadBid} /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
@@ -401,22 +393,17 @@ export default function BidParticipationPage() {
   if (!bid) {
     return (
       <PageShell>
-        <div className="brand-tricolor-strip w-full" />
-        <MarketplaceHeader user={user} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-5">
+        <main className="mx-auto w-full max-w-6xl">
           <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
           <div className="mt-5"><ProcurementEmptyState title="No bid available currently." message="This bid was not returned by the live backend." /></div>
         </main>
-        <MarketplaceFooter />
       </PageShell>
     );
   }
 
   return (
     <PageShell>
-      <div className="brand-tricolor-strip w-full" />
-      <MarketplaceHeader user={user} />
-      <main className="mx-auto w-full max-w-7xl px-4 py-5">
+      <main className="mx-auto w-full max-w-7xl">
         <ProcurementHero title="Seller Bid Participation" subtitle={`${bid.id} - ${bid.title}`} action={<Link href={`/bids/${bid.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">View bid</Link>} />
 
         <section className="mt-5 border border-slate-200 bg-white">
@@ -537,7 +524,6 @@ export default function BidParticipationPage() {
         </div>
       </main>
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
-      <MarketplaceFooter />
     </PageShell>
   );
 }

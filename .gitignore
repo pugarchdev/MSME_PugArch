@@ -45,3 +45,11 @@ temp/
 .gemini/
 .codex-temp/
 
+# Graphify
+graphify-out/
+graphify.bat
+graphify.ps1
+
+# Codex / AI Agent config
+.codex/
+

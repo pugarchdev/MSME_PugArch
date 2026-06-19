@@ -7,7 +7,7 @@ import { useGuestCart } from '../hooks/useGuestCart';
 import {
     Search, ShoppingCart, User, Phone, Mail, Globe,
     HelpCircle, LogIn, Store, Building2, ChevronDown,
-    Sun, Moon, Menu, X
+    Sun, Moon
 } from 'lucide-react';
 
 interface Props { user: any; }
@@ -99,7 +99,6 @@ export function MarketplaceHeader({ user }: Props) {
     const [showLogin, setShowLogin] = useState(false);
     const [showSignup, setShowSignup] = useState(false);
     const [showLang, setShowLang] = useState(false);
-    const [mobileOpen, setMobileOpen] = useState(false);
 
     const loginRef = useRef<HTMLDivElement>(null);
     const signupRef = useRef<HTMLDivElement>(null);
@@ -222,12 +221,12 @@ export function MarketplaceHeader({ user }: Props) {
                 <div className="mx-auto flex h-16 max-w-[1680px] items-center gap-3 px-4 sm:px-6 2xl:px-8">
 
                     {/* Logo ── always visible */}
-                    <Link href="/" className="flex min-w-0 items-center gap-2 shrink-0 sm:gap-2.5">
+                    <Link href="/" className="flex min-w-0 items-center gap-1.5 sm:shrink-0 sm:gap-2.5">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden transition-all hover:scale-105 sm:h-10 sm:w-10 sm:rounded-lg sm:border sm:border-slate-200 sm:bg-white sm:p-0.5 sm:shadow-sm">
                             <img src="/logoo.png" alt="SMiLE MSME Logo" className="h-full w-full object-contain" />
                         </div>
                         <div className="min-w-0 leading-none">
-                            <p className="text-base font-black text-[#0b2447] sm:text-sm">JsgSMILE</p>
+                            <p className="truncate text-sm font-black text-[#0b2447] min-[390px]:text-base sm:text-sm">JsgSMILE</p>
                             <p className="mt-0.5 hidden text-[9px] font-medium text-slate-400 sm:block">MSME Marketplace Portal</p>
                         </div>
                     </Link>
@@ -254,7 +253,7 @@ export function MarketplaceHeader({ user }: Props) {
                     <div className="flex-1 md:hidden" />
 
                     {/* Right action cluster */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
 
                         {!user ? (
                             <>
@@ -262,10 +261,10 @@ export function MarketplaceHeader({ user }: Props) {
                                 <div className="relative" ref={loginRef}>
                                     <button
                                         onClick={() => { setShowLogin(v => !v); setShowLang(false); }}
-                                        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:scale-95 transition-colors [&:not(:disabled):hover]:translate-y-0"
+                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 active:scale-95 sm:px-3 [&:not(:disabled):hover]:translate-y-0"
                                     >
                                         <LogIn className="h-3.5 w-3.5 shrink-0" />
-                                        <span className="hidden sm:inline">Login</span>
+                                        <span>Login</span>
                                         <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
                                     </button>
 
@@ -311,7 +310,7 @@ export function MarketplaceHeader({ user }: Props) {
                                     <button
                                         type="button"
                                         onClick={() => setShowSignup(v => !v)}
-                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0b2447] px-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#12335f] active:scale-95 sm:px-3 [&:not(:disabled):hover]:translate-y-0"
+                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0b2447] px-2 text-xs font-semibold text-white transition-colors hover:bg-[#12335f] active:scale-95 sm:px-3 [&:not(:disabled):hover]:translate-y-0"
                                         aria-haspopup="menu"
                                         aria-expanded={showSignup}
                                     >
@@ -362,41 +361,8 @@ export function MarketplaceHeader({ user }: Props) {
                             Help
                         </button>
 
-                        {/* Mobile hamburger */}
-                        <button
-                            onClick={() => setMobileOpen(v => !v)}
-                            className="sm:hidden inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors [&:not(:disabled):hover]:translate-y-0"
-                            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-                        >
-                            {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-                        </button>
                     </div>
                 </div>
-
-                {/* ── Mobile expanded menu ── */}
-                {mobileOpen && (
-                    <div className="sm:hidden border-t border-slate-100 bg-white px-4 py-3 space-y-2.5">
-                        {!user ? (
-                            <>
-                                <Link
-                                    href="/login"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold w-full"
-                                >
-                                    <LogIn className="h-4 w-4" /> Login
-                                </Link>
-                            </>
-                        ) : (
-                            <Link
-                                href="/dashboard"
-                                onClick={() => setMobileOpen(false)}
-                                className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-[#0b2447] text-white text-xs font-semibold w-full"
-                            >
-                                <User className="h-4 w-4" /> Go to Dashboard
-                            </Link>
-                        )}
-                    </div>
-                )}
             </nav>
         </header>
     );

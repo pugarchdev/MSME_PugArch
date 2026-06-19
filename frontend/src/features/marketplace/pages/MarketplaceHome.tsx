@@ -195,20 +195,21 @@ export default function MarketplaceHome() {
                 <HeroBanner banners={activeBannerData?.banners?.length ? activeBannerData.banners : (data?.banners || [])} />
                 <div className="hidden md:block">
                     <SearchSection categories={categories} />
-
-                    <CategoryCatalogueStrip
-                        categories={categories}
-                        selectedCategoryId={activeCategoryId}
-                        onSelect={(category) => {
-                            const next = String(category.id);
-                            const selected = activeCategoryId === next ? '' : next;
-                            setActiveCategoryId(selected);
-                            router.replace(selected ? `/?categoryId=${selected}` : '/', { scroll: false });
-                        }}
-                        title="Official category catalogue"
-                        subtitle="Select a work category to focus products, services, sellers, and buyer actions"
-                    />
                 </div>
+
+                <CategoryCatalogueStrip
+                    categories={categories}
+                    selectedCategoryId={activeCategoryId}
+                    onSelect={(category) => {
+                        const next = String(category.id);
+                        const selected = activeCategoryId === next ? '' : next;
+                        setActiveCategoryId(selected);
+                        router.replace(selected ? `/?categoryId=${selected}` : '/', { scroll: false });
+                    }}
+                    title="Official category catalogue"
+                    subtitle="Select a work category to focus products, services, sellers, and buyer actions"
+                    className="md:hidden"
+                />
 
                 {activeCategory && (
                     <div className="border-b border-blue-100 bg-blue-50/70">

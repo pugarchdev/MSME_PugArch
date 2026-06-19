@@ -35,6 +35,30 @@ import {
 } from '../hooks';
 import type { QuoteRequestDto, QuoteRequestStatus } from '../types';
 
+const RFQ_HANDOFF_KEY = 'msme:rfq-create-prefill:v1';
+
+type RfqHandoff = {
+    subject?: string;
+    message?: string;
+    estimatedValue?: string;
+    deadlineDate?: string;
+    documentName?: string;
+};
+
+const readRfqHandoff = (): RfqHandoff | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = localStorage.getItem(RFQ_HANDOFF_KEY);
+        if (!raw) return null;
+        localStorage.removeItem(RFQ_HANDOFF_KEY);
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        localStorage.removeItem(RFQ_HANDOFF_KEY);
+        return null;
+    }
+};
+
 const STATUS_TONE: Record<string, string> = {
     pending: 'border-amber-200 bg-amber-50 text-amber-700',
     responded: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -54,7 +78,7 @@ export default function RfqPage() {
     const [q, setQ] = useState('');
     const [status, setStatus] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
-    const [creating, setCreating] = useState(false);
+    const [creating, setCreating] = useState(() => typeof window !== 'undefined' && Boolean(localStorage.getItem(RFQ_HANDOFF_KEY)));
     const [viewMode, setViewMode] = useResponsiveViewMode('rfq:list:view-mode');
     const debouncedQ = useDebounce(q.trim(), 250);
 
@@ -830,6 +854,7 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
 }
 
 export function RfqCreator({ onClose, initialVendor }: { onClose: () => void; initialVendor?: any }) {
+    const [prefill] = useState<RfqHandoff | null>(() => readRfqHandoff());
     const [selectedVendor, setSelectedVendor] = useState<any | null>(initialVendor || null);
     const [step, setStep] = useState(initialVendor ? 2 : 1);
     const [selectedItem, setSelectedItem] = useState<any | null>(null);
@@ -843,12 +868,12 @@ export function RfqCreator({ onClose, initialVendor }: { onClose: () => void; in
     const [selectedMsme, setSelectedMsme] = useState('All MSME categories');
 
     // RFQ details form state
-    const [subject, setSubject] = useState('');
-    const [message, setMessage] = useState('');
-    const [estimatedValue, setEstimatedValue] = useState('');
-    const [deadlineDate, setDeadlineDate] = useState('');
+    const [subject, setSubject] = useState(prefill?.subject || '');
+    const [message, setMessage] = useState(prefill?.message || '');
+    const [estimatedValue, setEstimatedValue] = useState(prefill?.estimatedValue || '');
+    const [deadlineDate, setDeadlineDate] = useState(prefill?.deadlineDate || '');
     const [documentUrl, setDocumentUrl] = useState('');
-    const [documentName, setDocumentName] = useState('');
+    const [documentName, setDocumentName] = useState(prefill?.documentName || '');
     const [uploading, setUploading] = useState(false);
 
     const createMut = useCreateQuoteRequest();

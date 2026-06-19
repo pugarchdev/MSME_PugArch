@@ -193,6 +193,9 @@ type StepConfig = {
 
 const DRAFT_KEY = 'msme:guided-procurement-create:v1';
 const TENDER_HANDOFF_KEY = 'msme:tender-create-prefill:v1';
+const REQUIREMENT_HANDOFF_KEY = 'msme:requirement-create-prefill:v1';
+const RFQ_HANDOFF_KEY = 'msme:rfq-create-prefill:v1';
+const PROCUREMENT_SUMMARIES_KEY = 'msme:procurement-intake-summaries:v1';
 const today = new Date().toISOString().slice(0, 10);
 const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const nextFortnight = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -317,8 +320,8 @@ const stepLibrary: Record<StepKind, StepConfig> = {
 };
 
 const stepsByType: Record<ProcurementType, StepKind[]> = {
-  direct: ['basics', 'items', 'vendors', 'schedule', 'approval', 'review'],
-  comparison: ['basics', 'items', 'vendors', 'schedule', 'approval', 'review'],
+  direct: ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
+  comparison: ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
   rfq: ['basics', 'items', 'vendors', 'schedule', 'rules', 'documents', 'approval', 'review'],
   tender: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
   auction: ['basics', 'items', 'vendors', 'rules', 'schedule', 'documents', 'approval', 'review'],
@@ -483,6 +486,150 @@ const recommendProcurementType = (draft: Draft): ProcurementType => {
 
 const methodLabel = (type: ProcurementType) => methodConfigs.find(method => method.id === type)?.title || type;
 
+const attachedDocuments = (draft: Draft) => draft.documents.filter(document => document.fileName);
+
+const buildProcurementSummary = (draft: Draft) => {
+  const value = draft.basics.estimatedValue || grandTotal(draft.items);
+  const documents = attachedDocuments(draft);
+  return {
+    id: `PI-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    method: draft.type,
+    methodLabel: methodLabel(draft.type),
+    title: draft.basics.title || 'Untitled procurement',
+    category: draft.basics.category,
+    subCategory: draft.basics.subCategory,
+    department: draft.basics.department,
+    requirementType: draft.basics.requirementType,
+    priority: draft.basics.priority,
+    estimatedValue: value,
+    justification: draft.basics.justification,
+    supplierSelection: draft.vendors.selection,
+    publishDate: draft.schedule.publishDate,
+    submissionDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    deliveryDate: draft.schedule.deliveryDate,
+    bidType: draft.rules.bidType,
+    evaluation: draft.type === 'tender' ? draft.tender.evaluationMethod : draft.rules.evaluation,
+    approvalWorkflow: draft.type === 'tender' ? draft.tender.approvalChain : draft.approval.workflow,
+    items: draft.items.map(item => ({
+      name: item.name,
+      specification: item.specification || item.technicalSpecification,
+      quantity: item.quantity,
+      unit: item.unit,
+      unitPrice: item.unitPrice,
+      gst: item.gst,
+      total: itemTotal(item),
+    })),
+    documents: documents.map(document => ({
+      name: document.name,
+      requirement: document.requirement,
+      fileName: document.fileName,
+      version: document.version,
+    })),
+  };
+};
+
+const formatProcurementSummaryText = (draft: Draft) => {
+  const summary = buildProcurementSummary(draft);
+  const docs = summary.documents.length
+    ? summary.documents.map(document => `- ${document.name}: ${document.fileName} (${document.requirement}, v${document.version})`).join('\n')
+    : '- No documents attached';
+  const items = summary.items.length
+    ? summary.items.map(item => `- ${item.name || 'Unnamed item'}: ${item.quantity} ${item.unit}, ${item.specification || 'No specification'}, unit ${money(item.unitPrice || 0)}`).join('\n')
+    : '- No line items';
+
+  return [
+    draft.basics.justification || draft.tender.scopeOfWork || draft.tender.shortDescription || 'Procurement requirement captured from Create Procurement.',
+    '',
+    'Procurement Intake Summary',
+    `Route: ${summary.methodLabel}`,
+    `Category: ${summary.category || '-'} / ${summary.subCategory || '-'}`,
+    `Department: ${summary.department || '-'}`,
+    `Requirement Type: ${summary.requirementType}`,
+    `Estimated Value: ${money(summary.estimatedValue)}`,
+    `Supplier Selection: ${summary.supplierSelection}`,
+    `Submission / Closing: ${summary.submissionDate || '-'}`,
+    `Delivery Required By: ${summary.deliveryDate || '-'}`,
+    `Evaluation: ${summary.evaluation}`,
+    `Approval Workflow: ${summary.approvalWorkflow || '-'}`,
+    '',
+    'Line Items',
+    items,
+    '',
+    'Attached Documents',
+    docs,
+  ].join('\n');
+};
+
+const writeProcurementSummary = (draft: Draft) => {
+  const summary = buildProcurementSummary(draft);
+  try {
+    const existing = JSON.parse(localStorage.getItem(PROCUREMENT_SUMMARIES_KEY) || '[]');
+    const list = Array.isArray(existing) ? existing : [];
+    localStorage.setItem(PROCUREMENT_SUMMARIES_KEY, JSON.stringify([summary, ...list].slice(0, 10)));
+  } catch {
+    localStorage.setItem(PROCUREMENT_SUMMARIES_KEY, JSON.stringify([summary]));
+  }
+};
+
+const buildRequirementHandoffDraft = (draft: Draft) => ({
+  draft: {
+    requirementTitle: draft.basics.title,
+    requirementType: draft.type === 'direct'
+      ? 'Direct Purchase'
+      : draft.type === 'auction'
+        ? 'Reverse Auction'
+        : draft.type === 'rfq'
+          ? 'RFQ'
+          : 'Tender',
+    procurementCategory: draft.basics.requirementType,
+    description: formatProcurementSummaryText(draft),
+    department: draft.basics.department,
+    priority: draft.basics.priority === 'Normal' ? 'Medium' : draft.basics.priority,
+    closingDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    bidEndDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    deliveryAddress: draft.tender.deliveryLocation,
+    deliveryPeriod: draft.tender.deliveryTimeline,
+    deliveryType: draft.tender.deliveryType,
+    paymentTerms: draft.tender.paymentTerms || '100% After Delivery',
+    minimumTurnover: draft.vendors.minimumTurnover,
+    experienceYears: draft.vendors.experienceYears,
+    fundingSource: draft.basics.fundingSource,
+    budgetHead: draft.basics.costCenter,
+    needReason: draft.basics.justification,
+    evaluationMethod: draft.rules.evaluation,
+    technicalWeightage: draft.tender.technicalWeightage,
+    financialWeightage: draft.tender.priceWeightage,
+    technicalContactName: draft.tender.contactName,
+    technicalContactEmail: draft.tender.contactEmail,
+    technicalContactNumber: draft.tender.contactMobile,
+    terms: draft.approval.notes || draft.vendors.complianceNotes,
+  },
+  items: draft.items.map(item => ({
+    name: item.name,
+    category: draft.basics.category || draft.basics.requirementType,
+    subCategory: draft.basics.subCategory,
+    description: item.specification || item.technicalSpecification,
+    quantity: item.quantity,
+    unit: item.unit,
+    budget: item.unitPrice,
+    equivalentBrandAllowed: item.brandPolicy !== 'OEM only',
+  })),
+  docs: draft.documents.map(document => ({
+    category: document.name,
+    requirement: document.requirement,
+    files: document.fileName ? [{ name: document.fileName, size: 0, uploadedAt: new Date().toISOString(), version: document.version }] : [],
+  })),
+});
+
+const buildRfqHandoffDraft = (draft: Draft) => ({
+  subject: draft.basics.title,
+  message: formatProcurementSummaryText(draft),
+  estimatedValue: String(draft.basics.estimatedValue || grandTotal(draft.items) || ''),
+  deadlineDate: draft.schedule.submissionDate,
+  documentName: attachedDocuments(draft)[0]?.fileName || '',
+});
+
 const buildTenderHandoffDraft = (draft: Draft) => ({
   title: draft.basics.title,
   tenderNumber: draft.tender.tenderNumber,
@@ -571,6 +718,7 @@ const buildTenderHandoffDraft = (draft: Draft) => ({
 export default function CreateProcurementPage() {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(() => defaultDraft());
+  const [methodSelected, setMethodSelected] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [preview, setPreview] = useState(false);
 
@@ -590,6 +738,7 @@ export default function CreateProcurementPage() {
   const activeSteps = stepsByType[draft.type];
   const currentStep = activeSteps[Math.min(activeStep, activeSteps.length - 1)];
   const method = methodConfigs.find(config => config.id === draft.type) || methodConfigs[2];
+  const MethodIcon = method.icon;
   const recommendedType = useMemo(() => recommendProcurementType(draft), [draft]);
   const readiness = useMemo(() => getReadiness(draft), [draft]);
 
@@ -611,6 +760,22 @@ export default function CreateProcurementPage() {
     toast.info(`${methodLabel(type)} draft started`);
   };
 
+  const goToDetails = () => {
+    setMethodSelected(true);
+    setPreview(false);
+    setActiveStep(0);
+  };
+
+  const goBack = () => {
+    if (methodSelected) {
+      setMethodSelected(false);
+      setPreview(false);
+      setActiveStep(0);
+      return;
+    }
+    router.back();
+  };
+
   const saveDraft = () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
     toast.success('Procurement draft saved');
@@ -618,6 +783,11 @@ export default function CreateProcurementPage() {
 
   const continueToModule = () => {
     saveDraft();
+    writeProcurementSummary(draft);
+    localStorage.setItem(REQUIREMENT_HANDOFF_KEY, JSON.stringify(buildRequirementHandoffDraft(draft)));
+    if (draft.type === 'rfq') {
+      localStorage.setItem(RFQ_HANDOFF_KEY, JSON.stringify(buildRfqHandoffDraft(draft)));
+    }
     if (draft.type === 'tender') {
       localStorage.setItem(TENDER_HANDOFF_KEY, JSON.stringify(buildTenderHandoffDraft(draft)));
     }
@@ -636,7 +806,7 @@ export default function CreateProcurementPage() {
             <div className="min-w-0">
               <button
                 type="button"
-                onClick={() => router.back()}
+                onClick={goBack}
                 className="mb-2 inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-[#12335f]"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Procurement
@@ -660,32 +830,81 @@ export default function CreateProcurementPage() {
               <Button type="button" variant="outline" onClick={() => router.push(PROCUREMENT_DRAFTS_ROUTE)} className="h-10">
                 <History className="mr-2 h-4 w-4" /> Drafts
               </Button>
-              <Button type="button" variant="outline" onClick={() => setPreview(value => !value)} className="h-10">
-                <Info className="mr-2 h-4 w-4" /> {preview ? 'Edit' : 'Preview'}
-              </Button>
+              {methodSelected && (
+                <Button type="button" variant="outline" onClick={() => setPreview(value => !value)} className="h-10">
+                  <Info className="mr-2 h-4 w-4" /> {preview ? 'Edit' : 'Preview'}
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={saveDraft} className="h-10">
                 <Save className="mr-2 h-4 w-4" /> Save Draft
               </Button>
-              <Button type="button" onClick={continueToModule} className="h-10 bg-[#12335f] text-white">
-                <Send className="mr-2 h-4 w-4" /> Continue
+              <Button type="button" onClick={methodSelected ? continueToModule : goToDetails} className="h-10 bg-[#12335f] text-white">
+                {methodSelected ? <Send className="mr-2 h-4 w-4" /> : <ArrowRight className="mr-2 h-4 w-4" />}
+                {methodSelected ? 'Continue' : 'Next'}
               </Button>
             </div>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-5">
-            {methodConfigs.map(config => (
-              <MethodCard
-                key={config.id}
-                config={config}
-                selected={draft.type === config.id}
-                recommended={recommendedType === config.id}
-                onSelect={() => changeType(config.id)}
-              />
-            ))}
-          </div>
+          {!methodSelected && (
+            <div className="grid gap-3 xl:grid-cols-5">
+              {methodConfigs.map(config => (
+                <MethodCard
+                  key={config.id}
+                  config={config}
+                  selected={draft.type === config.id}
+                  recommended={recommendedType === config.id}
+                  onSelect={() => changeType(config.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
+      {!methodSelected ? (
+        <div className="mx-auto max-w-[1720px] px-4 py-5 lg:px-6">
+          <div className="grid gap-4 xl:grid-cols-[1fr_330px]">
+            <section className="space-y-4">
+              <GuidanceBand draft={draft} method={method} />
+              <Panel title={`${method.title} route preview`} icon={<MethodIcon className="h-4 w-4" />}>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Use this when</p>
+                    <div className="mt-3">
+                      <Checklist rows={method.fit} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Before publishing</p>
+                    <div className="mt-3">
+                      <Checklist rows={method.gates} />
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+              <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button type="button" variant="outline" onClick={() => router.back()}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <div className="text-center text-xs font-bold text-slate-500">
+                  Select a procurement method, then continue to its form.
+                </div>
+                <Button type="button" onClick={goToDetails} className="bg-[#12335f] text-white">
+                  Next <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </section>
+            <aside className="space-y-4">
+              <SummaryCard draft={draft} readiness={readiness} method={method} />
+              <Panel title="Readiness starts after setup" icon={<CheckCircle2 className="h-4 w-4" />}>
+                <p className="text-sm font-semibold leading-6 text-slate-600">
+                  The detailed checklist appears on the next page after the route is selected.
+                </p>
+              </Panel>
+            </aside>
+          </div>
+        </div>
+      ) : (
       <div className="mx-auto grid max-w-[1720px] gap-4 px-4 py-5 lg:px-6 xl:grid-cols-[300px_1fr_330px]">
         <aside className="space-y-4">
           <Panel title="Process" icon={<ClipboardCheck className="h-4 w-4" />}>
@@ -723,6 +942,9 @@ export default function CreateProcurementPage() {
           <Panel title="Route Fit" icon={<BadgeCheck className="h-4 w-4" />}>
             <Checklist rows={method.fit} />
           </Panel>
+          <Button type="button" variant="outline" onClick={() => setMethodSelected(false)} className="w-full">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Change Method
+          </Button>
         </aside>
 
         <section className="min-w-0 space-y-4">
@@ -734,7 +956,11 @@ export default function CreateProcurementPage() {
           )}
 
           <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button type="button" variant="outline" onClick={() => setActiveStep(step => Math.max(0, step - 1))} disabled={activeStep === 0}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => activeStep === 0 ? setMethodSelected(false) : setActiveStep(step => Math.max(0, step - 1))}
+            >
               <ArrowLeft className="mr-2 h-4 w-4" /> Previous
             </Button>
             <div className="text-center text-xs font-bold text-slate-500">
@@ -771,6 +997,7 @@ export default function CreateProcurementPage() {
           </Panel>
         </aside>
       </div>
+      )}
     </main>
   );
 }

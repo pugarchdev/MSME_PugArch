@@ -7,7 +7,7 @@
  * breakdown and any tenders that have already been spun off from it.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
@@ -57,6 +57,69 @@ const PROCUREMENT_METHOD_LABELS: Record<ProcurementMethod, string> = {
     RATE_CONTRACT: 'Rate Contract'
 };
 type RequirementSortKey = 'requirementNumber' | 'title' | 'procurementMethod' | 'status' | 'estimatedValue' | 'requiredBy' | 'updatedAt';
+const REQUIREMENT_HANDOFF_KEY = 'msme:requirement-create-prefill:v1';
+const PROCUREMENT_SUMMARIES_KEY = 'msme:procurement-intake-summaries:v1';
+
+type ProcurementIntakeSummary = {
+    id: string;
+    createdAt: string;
+    methodLabel: string;
+    title: string;
+    category?: string;
+    department?: string;
+    estimatedValue?: number;
+    submissionDate?: string;
+    deliveryDate?: string;
+    documents?: Array<{ name: string; requirement: string; fileName: string; version: number }>;
+    items?: Array<{ name: string; quantity: number; unit: string; specification?: string; total?: number }>;
+};
+
+type RequirementHandoff = {
+    draft?: Record<string, string | boolean>;
+    items?: Array<Partial<RequirementItemDraft>>;
+    docs?: Array<Partial<RequirementDocDraft>>;
+};
+
+const loadProcurementSummaries = (): ProcurementIntakeSummary[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PROCUREMENT_SUMMARIES_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const readRequirementHandoff = (): RequirementHandoff | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = localStorage.getItem(REQUIREMENT_HANDOFF_KEY);
+        if (!raw) return null;
+        localStorage.removeItem(REQUIREMENT_HANDOFF_KEY);
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        localStorage.removeItem(REQUIREMENT_HANDOFF_KEY);
+        return null;
+    }
+};
+
+const parseProcurementIntakeSummary = (description?: string | null) => {
+    const text = String(description || '');
+    const marker = 'Procurement Intake Summary';
+    const index = text.indexOf(marker);
+    if (index < 0) return null;
+    const lines = text.slice(index + marker.length).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const details = lines
+        .filter(line => line.includes(':') && !line.startsWith('-'))
+        .map(line => {
+            const separator = line.indexOf(':');
+            return { label: line.slice(0, separator).trim(), value: line.slice(separator + 1).trim() };
+        });
+    const documentsIndex = lines.findIndex(line => line === 'Attached Documents');
+    const documents = documentsIndex >= 0 ? lines.slice(documentsIndex + 1).filter(line => line.startsWith('- ')) : [];
+    return { details, documents };
+};
 
 export default function RequirementsPage() {
     const isCreateRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
@@ -68,6 +131,7 @@ export default function RequirementsPage() {
     const [status, setStatus] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
+    const [procurementSummaries, setProcurementSummaries] = useState<ProcurementIntakeSummary[]>([]);
     const [viewMode, setViewMode] = useResponsiveViewMode('phase7:requirements:view-mode');
     const [sortKey, setSortKey] = useState<RequirementSortKey>('updatedAt');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -75,6 +139,10 @@ export default function RequirementsPage() {
     const list = useRequirements({ q: q || undefined, status: status || undefined, page, pageSize });
     const submitMut = useSubmitRequirement();
     const deleteMut = useDeleteRequirement();
+
+    useEffect(() => {
+        setProcurementSummaries(loadProcurementSummaries());
+    }, []);
 
     const records = list.data?.records || [];
     const total = list.data?.total || 0;
@@ -151,6 +219,27 @@ export default function RequirementsPage() {
                 <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} loading={list.isLoading && !list.data} />
                 <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
             </div>
+
+            {procurementSummaries.length > 0 && (
+                <Card className="border-blue-100 bg-blue-50/40">
+                    <CardContent className="p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Latest Create Procurement Intake</p>
+                                <h2 className="mt-1 text-base font-black text-slate-950">{procurementSummaries[0].title}</h2>
+                                <p className="mt-1 text-xs font-semibold text-slate-600">
+                                    {procurementSummaries[0].methodLabel} · {procurementSummaries[0].category || 'Uncategorised'} · {formatCurrency(procurementSummaries[0].estimatedValue)}
+                                </p>
+                            </div>
+                            <div className="grid gap-2 text-xs font-bold text-slate-700 sm:grid-cols-3 lg:min-w-[520px]">
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Items: {procurementSummaries[0].items?.length || 0}</span>
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Documents: {procurementSummaries[0].documents?.length || 0}</span>
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Closing: {formatDate(procurementSummaries[0].submissionDate)}</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <PageToolbar
                 eyebrow="Filters"
@@ -603,21 +692,38 @@ const defaultRequirementDraft = () => ({
 });
 
 function RequirementCreationWorkbench() {
+    const [prefill] = useState<RequirementHandoff | null>(() => readRequirementHandoff());
+    const [procurementSummaries] = useState<ProcurementIntakeSummary[]>(() => loadProcurementSummaries());
     const [step, setStep] = useState(0);
     const [draft, setDraft] = useState<Record<string, string | boolean>>(() => {
         try {
             const raw = localStorage.getItem(requirementDraftKey);
+            if (prefill?.draft) return { ...defaultRequirementDraft(), ...prefill.draft };
             return raw ? { ...defaultRequirementDraft(), ...JSON.parse(raw) } : defaultRequirementDraft();
         } catch {
             return defaultRequirementDraft();
         }
     });
-    const [items, setItems] = useState<RequirementItemDraft[]>([defaultRequirementItem()]);
+    const [items, setItems] = useState<RequirementItemDraft[]>(() => (
+        prefill?.items?.length
+            ? prefill.items.map(item => ({ ...defaultRequirementItem(), ...item, id: reqId() }))
+            : [defaultRequirementItem()]
+    ));
     const [specs, setSpecs] = useState<SpecificationDraft[]>([
         { id: reqId(), name: 'Warranty', value: '12 Months', unit: 'Months', min: '', max: '', mandatory: true },
         { id: reqId(), name: 'Certification', value: '', unit: '', min: '', max: '', mandatory: false },
     ]);
-    const [docs, setDocs] = useState<RequirementDocDraft[]>([
+    const [docs, setDocs] = useState<RequirementDocDraft[]>(() => prefill?.docs?.length ? prefill.docs.map(doc => ({
+        id: reqId(),
+        category: String(doc.category || 'Procurement Document'),
+        requirement: doc.requirement || 'Optional',
+        files: Array.isArray(doc.files) ? doc.files.map(file => ({
+            name: file.name,
+            size: file.size || 0,
+            uploadedAt: file.uploadedAt || new Date().toISOString(),
+            version: file.version || 1,
+        })) : [],
+    })) : [
         'BOQ File', 'Technical Specification', 'Drawings', 'Scope of Work', 'Terms & Conditions', 'Reference Images',
         'Inspection Documents', 'Eligibility Documents', 'EMD Exemption Document', 'Performance Security Document',
         'Vendor Authorization Document', 'Budget Approval Document'
@@ -704,6 +810,36 @@ function RequirementCreationWorkbench() {
                     <Button onClick={submit} disabled={createMut.isPending} className="bg-[#12335f] text-white"><Send className="mr-2 h-4 w-4" /> Submit for Approval</Button>
                 </div>
             </div>
+
+            {procurementSummaries.length > 0 && (
+                <Card className="border-blue-100 bg-blue-50/40">
+                    <CardContent className="p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Latest Create Procurement Intake</p>
+                                <h2 className="mt-1 text-base font-black text-slate-950">{procurementSummaries[0].title}</h2>
+                                <p className="mt-1 text-xs font-semibold text-slate-600">
+                                    {procurementSummaries[0].methodLabel} · {procurementSummaries[0].category || 'Uncategorised'} · {formatCurrency(procurementSummaries[0].estimatedValue)}
+                                </p>
+                            </div>
+                            <div className="grid gap-2 text-xs font-bold text-slate-700 sm:grid-cols-3 lg:min-w-[520px]">
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Items: {procurementSummaries[0].items?.length || 0}</span>
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Documents: {procurementSummaries[0].documents?.length || 0}</span>
+                                <span className="rounded-md border border-blue-100 bg-white px-3 py-2">Closing: {formatDate(procurementSummaries[0].submissionDate)}</span>
+                            </div>
+                        </div>
+                        {procurementSummaries[0].documents?.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {procurementSummaries[0].documents.slice(0, 6).map(document => (
+                                    <span key={`${document.name}-${document.fileName}`} className="rounded-md border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-black text-[#12335f]">
+                                        {document.name}: {document.fileName}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
+                    </CardContent>
+                </Card>
+            )}
 
             {validation.errors.length > 0 && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
@@ -961,6 +1097,7 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
     const detail = useRequirement(id);
     const submitMut = useSubmitRequirement();
     const requirement = detail.data;
+    const intakeSummary = parseProcurementIntakeSummary(requirement?.description);
 
     const submit = () => {
         if (!requirement) return;
@@ -1004,6 +1141,33 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                             <p className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs font-semibold text-slate-700 text-wrap-anywhere">
                                 {requirement.description}
                             </p>
+                        </Field>
+                    )}
+
+                    {intakeSummary && (
+                        <Field label="Procurement Intake Details">
+                            <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                                <div className="grid gap-2 md:grid-cols-2">
+                                    {intakeSummary.details.slice(0, 10).map(item => (
+                                        <div key={`${item.label}-${item.value}`} className="rounded-md border border-blue-100 bg-white px-3 py-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{item.label}</p>
+                                            <p className="mt-1 text-xs font-black text-slate-900">{item.value || '-'}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                {intakeSummary.documents.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attached Documents</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {intakeSummary.documents.map(document => (
+                                                <span key={document} className="rounded-md border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-black text-[#12335f]">
+                                                    {document.replace(/^- /, '')}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </Field>
                     )}
 

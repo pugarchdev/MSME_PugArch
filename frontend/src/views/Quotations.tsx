@@ -125,6 +125,23 @@ interface Quotation {
   }>;
 }
 
+type ProcurementIntakeSummary = {
+  id: string;
+  createdAt: string;
+  method?: string;
+  methodLabel?: string;
+  title?: string;
+  category?: string;
+  department?: string;
+  estimatedValue?: number;
+  submissionDate?: string;
+  deliveryDate?: string;
+  documents?: Array<{ name: string; requirement: string; fileName: string; version: number }>;
+  items?: Array<{ name: string; quantity: number; unit: string; specification?: string; total?: number }>;
+};
+
+const PROCUREMENT_SUMMARIES_KEY = 'msme:procurement-intake-summaries:v1';
+
 const normalizeBidStatus = (value?: string): BidStatus => {
   const normalized = String(value || 'pending').toLowerCase();
   if (normalized === 'sent') return 'pending';
@@ -251,6 +268,30 @@ const getFileNameFromUrl = (url?: string, fallback = 'Quotation document') => {
   } catch {
     return name || fallback;
   }
+};
+
+const loadProcurementSummaries = (): ProcurementIntakeSummary[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROCUREMENT_SUMMARIES_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const findProcurementContext = (quote: Quotation) => {
+  const summaries = loadProcurementSummaries();
+  if (summaries.length === 0) return null;
+  const title = String(quote.tender?.title || '').toLowerCase();
+  const category = String(quote.tender?.category || '').toLowerCase();
+  return summaries.find(summary => {
+    const summaryTitle = String(summary.title || '').toLowerCase();
+    const summaryCategory = String(summary.category || '').toLowerCase();
+    if (summaryTitle && title && (summaryTitle.includes(title) || title.includes(summaryTitle))) return true;
+    if (summaryCategory && category && summaryCategory === category) return true;
+    return quote.source === 'rfq' && summary.method === 'rfq';
+  }) || summaries[0];
 };
 
 const getPartyInfo = (quote: Quotation, role?: string) => {
@@ -411,6 +452,7 @@ function QuotationDetailsModal({
   const quoteDocument = getQuoteDocument(quote);
   const validity = getValidityState(quote);
   const netBeforeDiscount = pricing.subtotal + pricing.taxAmount;
+  const procurementContext = findProcurementContext(quote);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
@@ -491,6 +533,44 @@ function QuotationDetailsModal({
                   <InfoBox label="Last Updated" value={formatDateTime(getQuoteUpdatedAt(quote))} />
                 </div>
               </section>
+
+              {procurementContext && (
+                <section className="rounded-md border border-blue-100 bg-blue-50/40 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#12335f]">Create Procurement Source</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <InfoBox label="Procurement Route" value={procurementContext.methodLabel || procurementContext.method || '-'} />
+                    <InfoBox label="Original Title" value={procurementContext.title || '-'} strong />
+                    <InfoBox label="Department" value={procurementContext.department || '-'} />
+                    <InfoBox label="Estimated Value" value={formatMoney(procurementContext.estimatedValue)} />
+                    <InfoBox label="Submission / Closing" value={formatDateTime(procurementContext.submissionDate)} />
+                    <InfoBox label="Delivery Required" value={formatDate(procurementContext.deliveryDate)} />
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-md border border-blue-100 bg-white p-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Line Items</p>
+                      <div className="mt-2 space-y-1">
+                        {(procurementContext.items || []).slice(0, 4).map(item => (
+                          <p key={`${item.name}-${item.quantity}`} className="text-xs font-bold text-slate-700">
+                            {item.name || 'Item'} · {item.quantity} {item.unit} · {item.specification || 'No specification'}
+                          </p>
+                        ))}
+                        {!procurementContext.items?.length && <p className="text-xs font-bold text-slate-400">No line items captured.</p>}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-blue-100 bg-white p-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Uploaded Documents</p>
+                      <div className="mt-2 space-y-1">
+                        {(procurementContext.documents || []).slice(0, 4).map(document => (
+                          <p key={`${document.name}-${document.fileName}`} className="text-xs font-bold text-slate-700">
+                            {document.name}: {document.fileName} · v{document.version}
+                          </p>
+                        ))}
+                        {!procurementContext.documents?.length && <p className="text-xs font-bold text-slate-400">No procurement documents attached.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               {quote.note && (
                 <section className="rounded-md border border-slate-200 bg-slate-50 p-4">

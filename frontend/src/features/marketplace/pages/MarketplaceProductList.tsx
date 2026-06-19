@@ -398,27 +398,29 @@ export default function MarketplaceProductList() {
                             Services Directory
                         </button>
 
-                        <div className="ml-auto pb-2">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (user) {
-                                        router.push('/cart');
-                                    } else {
-                                        router.push('/marketplace/cart');
-                                    }
-                                }}
-                                className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 transition shadow-sm"
-                                aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
-                            >
-                                <ShoppingCart className="h-4.5 w-4.5" />
-                                {cartCount > 0 && (
-                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white animate-pulse">
-                                        {cartCount > 99 ? '99+' : cartCount}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
+                        {!isSellerDashboardMarketplace && (
+                            <div className="ml-auto pb-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (user) {
+                                            router.push('/cart');
+                                        } else {
+                                            router.push('/marketplace/cart');
+                                        }
+                                    }}
+                                    className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 transition shadow-sm"
+                                    aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                                >
+                                    <ShoppingCart className="h-4.5 w-4.5" />
+                                    {cartCount > 0 && (
+                                        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white animate-pulse">
+                                            {cartCount > 99 ? '99+' : cartCount}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="-mx-4 mb-5 sm:mx-0">

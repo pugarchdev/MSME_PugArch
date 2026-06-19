@@ -32,7 +32,10 @@ export const routeForNotification = (
   if (type.includes('tender') || type.includes('auction')) return role === 'buyer' ? '/buyer/tenders' : '/seller/tenders';
   if (type.includes('payment')) return role === 'buyer' ? '/buyer/payments' : '/payments';
   if (type.includes('escrow')) return '/escrow';
-  if (type.includes('message')) return role === 'buyer' ? '/buyer/messages' : '/seller/messages';
+  if (type.includes('message')) {
+    if (role === 'admin' || role === 'master_admin') return '/admin/messages';
+    return role === 'buyer' ? '/buyer/messages' : '/seller/messages';
+  }
   if (type.includes('dispute')) {
     if (role === 'admin') return '/admin/disputes';
     return role === 'buyer' ? '/buyer/disputes' : '/seller/disputes';

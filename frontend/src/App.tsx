@@ -112,6 +112,7 @@ const AdminMarketplaceHomeSectionsPage = lazy(() => import('./features/marketpla
 const CreateProcurementPage = lazy(() => import('./features/procurementWizard/pages/CreateProcurementPage'));
 const ProcurementDraftsPage = lazy(() => import('./features/procurementWizard/pages/ProcurementDraftsPage'));
 const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
+const FactoringDashboard = lazy(() => import('./views/FactoringDashboard'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -190,6 +191,7 @@ const rolePreloaders = {
     () => import('./views/OrganizationManagement'),
     () => import('./features/fraudAlerts/pages/FraudAlertsPage'),
     () => import('./views/RbacPanel'),
+    () => import('./features/messages/pages/MessagesPage'),
   ],
 } as const;
 
@@ -427,12 +429,14 @@ export default function App() {
     if (pathname === '/buyer/escrow' && roleOk(user.role, ['buyer'])) return <EscrowPage />;
     if (pathname === '/buyer/disputes' && roleOk(user.role, ['buyer'])) return <DisputesPage />;
     if (pathname === '/buyer/messages' && roleOk(user.role, ['buyer'])) return <MessagesPage />;
+    if (pathname === '/admin/messages' && roleOk(user.role, ['admin'])) return <MessagesPage />;
     if (pathname === '/buyer/ratings' && roleOk(user.role, ['buyer'])) return <RatingsPage endpoint={`/api/ratings/buyer/${user.id}`} mode="buyer" />;
     if (pathname === '/payments' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <PaymentHistoryPage admin={user.role === 'admin'} />;
     if (pathname === '/payments/transactions' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <PaymentHistoryPage admin={user.role === 'admin'} />;
     if (pathname === '/payments/invoices' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <InvoiceRegisterPage role={user.role === 'admin' ? 'admin' : user.role === 'seller' ? 'seller' : 'buyer'} />;
     if (pathname === '/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
     if (pathname === '/payments/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
+    if (pathname === '/factoring' && roleOk(user.role, ['seller', 'financier', 'admin'])) return <FactoringDashboard />;
     if (pathname === '/orders' && roleOk(user.role, ['buyer', 'seller'])) return <PurchaseOrders />;
     if (pathname === '/orders' && roleOk(user.role, ['admin'])) return <ProcurementOrdersPage />;
     if (pathname === '/orders/delivery-confirmation' && roleOk(user.role, ['buyer'])) return <GrnListPage />;

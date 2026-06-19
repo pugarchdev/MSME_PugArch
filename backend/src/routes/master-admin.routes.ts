@@ -63,7 +63,7 @@ const jsonOk = (res: Response, data: unknown, message = 'Operation successful', 
 const jsonError = (res: Response, status: number, message: string, errorCode: string) =>
   res.status(status).json({ success: false, message, errorCode });
 
-const allowedRoles = new Set(['master_admin', 'admin', 'buyer', 'seller']);
+const allowedRoles = new Set(['master_admin', 'admin', 'buyer', 'seller', 'financier']);
 const allowedUserStatuses = new Set(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']);
 const allowedVerificationStatuses = new Set(['PENDING', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED', 'SUSPENDED', 'FAILED', 'MANUAL_REVIEW_REQUIRED', 'EXPIRED']);
 const allowedOrganizationTypes = new Set(['MSME', 'PROPRIETORSHIP', 'PARTNERSHIP', 'PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'LLP', 'TRUST', 'SOCIETY', 'STARTUP', 'NGO', 'EDUCATIONAL_INSTITUTION', 'GOVERNMENT', 'PSU']);
@@ -2092,6 +2092,273 @@ router.post('/master-admin/email-settings/test', ...masterOnly, requirePermissio
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return jsonError(res, 400, 'Valid test email recipient is required.', 'VALIDATION_ERROR');
   await createAuditLog(req, { action: 'email.settings.test', entityType: 'portal', metadata: { to: maskSecret(to, 2) } });
   jsonOk(res, { to: maskSecret(to, 2), deliveryAttempted: false }, 'SMTP test request recorded. Live delivery uses deployment SMTP credentials.');
+}));
+
+// ─── Company-Specific Email Template Management ────────────────────────────
+type EmailTemplate = {
+  id: string;
+  slug: string;
+  name: string;
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  isActive: boolean;
+  variables: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+const slugify = (text: string) =>
+  text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const DEFAULT_TEMPLATE_VARIABLES = [
+  'userName', 'userEmail', 'organizationName', 'portalName',
+  'companyName', 'actionUrl', 'supportEmail', 'loginUrl',
+  'invoiceNumber', 'orderNumber', 'tenderTitle', 'bidReference',
+  'amount', 'currency', 'dueDate', 'currentDate'
+];
+
+const buildDefaultTemplates = (): EmailTemplate[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: 'default_user_registration',
+      slug: 'user-registration',
+      name: 'User registration',
+      subject: 'Welcome to {{portalName}}!',
+      htmlBody: '<html><body><h1>Welcome to {{portalName}}, {{userName}}!</h1><p>Your account has been created successfully.</p><p><a href="{{loginUrl}}">Log in here</a></p></body></html>',
+      textBody: 'Welcome to {{portalName}}, {{userName}}! Your account has been created successfully. Log in here: {{loginUrl}}',
+      isActive: true,
+      variables: ['userName', 'userEmail', 'portalName', 'loginUrl'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_organization_approval',
+      slug: 'organization-approval',
+      name: 'Organization approval',
+      subject: 'Your organization on {{portalName}} has been approved',
+      htmlBody: '<html><body><h1>Hello {{userName}}!</h1><p>Your organization <strong>{{organizationName}}</strong> has been approved for access on {{portalName}}.</p></body></html>',
+      textBody: 'Hello {{userName}}! Your organization {{organizationName}} has been approved for access on {{portalName}}.',
+      isActive: true,
+      variables: ['userName', 'organizationName', 'portalName'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_bid_published',
+      slug: 'bid-published',
+      name: 'Bid published',
+      subject: 'New Tender/RFQ published: {{tenderTitle}}',
+      htmlBody: '<html><body><h1>A new requirement has been published</h1><p>Title: {{tenderTitle}}</p><p>Estimated Value: {{amount}} {{currency}}</p><p>Due Date: {{dueDate}}</p><p><a href="{{actionUrl}}">View Details</a></p></body></html>',
+      textBody: 'A new requirement has been published: {{tenderTitle}}. Estimated Value: {{amount}} {{currency}}. Due Date: {{dueDate}}.',
+      isActive: true,
+      variables: ['tenderTitle', 'amount', 'currency', 'dueDate', 'actionUrl'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_seller_participated',
+      slug: 'seller-participated',
+      name: 'Seller participated',
+      subject: 'Bid submitted successfully for {{tenderTitle}}',
+      htmlBody: '<html><body><h1>Thank you for participating!</h1><p>Your bid (Ref: {{bidReference}}) for tender/RFQ <strong>{{tenderTitle}}</strong> has been submitted successfully.</p></body></html>',
+      textBody: 'Thank you for participating! Your bid (Ref: {{bidReference}}) for tender/RFQ {{tenderTitle}} has been submitted successfully.',
+      isActive: true,
+      variables: ['tenderTitle', 'bidReference'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_technical_clarification',
+      slug: 'technical-clarification',
+      name: 'Technical clarification',
+      subject: 'Action Required: Technical Clarification for {{tenderTitle}}',
+      htmlBody: '<html><body><h1>Technical clarification request</h1><p>The procurement officer has requested clarification regarding your bid for <strong>{{tenderTitle}}</strong>.</p><p><a href="{{actionUrl}}">Respond to request</a></p></body></html>',
+      textBody: 'Technical clarification request: The procurement officer has requested clarification regarding your bid for {{tenderTitle}}. Respond here: {{actionUrl}}',
+      isActive: true,
+      variables: ['tenderTitle', 'actionUrl'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_bid_awarded',
+      slug: 'bid-awarded',
+      name: 'Bid awarded',
+      subject: 'Congratulations! Bid awarded for {{tenderTitle}}',
+      htmlBody: '<html><body><h1>Bid Award Notification</h1><p>We are pleased to inform you that your bid for <strong>{{tenderTitle}}</strong> has been awarded to your organization.</p><p>Award Amount: {{amount}} {{currency}}</p></body></html>',
+      textBody: 'Congratulations! Your bid for {{tenderTitle}} has been awarded. Award Amount: {{amount}} {{currency}}.',
+      isActive: true,
+      variables: ['tenderTitle', 'amount', 'currency'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_po_generated',
+      slug: 'po-generated',
+      name: 'PO generated',
+      subject: 'Purchase Order Generated: {{orderNumber}}',
+      htmlBody: '<html><body><h1>Purchase Order Issued</h1><p>Purchase Order <strong>{{orderNumber}}</strong> has been generated for your award.</p><p>Total Value: {{amount}} {{currency}}</p><p><a href="{{actionUrl}}">View Purchase Order</a></p></body></html>',
+      textBody: 'Purchase Order Issued: Purchase Order {{orderNumber}} has been generated. Total Value: {{amount}} {{currency}}.',
+      isActive: true,
+      variables: ['orderNumber', 'amount', 'currency', 'actionUrl'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_payment_initiated',
+      slug: 'payment-initiated',
+      name: 'Payment initiated',
+      subject: 'Payment Initiated: {{amount}} {{currency}}',
+      htmlBody: '<html><body><h1>Payment Processing</h1><p>A payment of <strong>{{amount}} {{currency}}</strong> has been initiated against invoice <strong>{{invoiceNumber}}</strong>.</p></body></html>',
+      textBody: 'Payment Processing: A payment of {{amount}} {{currency}} has been initiated against invoice {{invoiceNumber}}.',
+      isActive: true,
+      variables: ['amount', 'currency', 'invoiceNumber'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_settlement_completed',
+      slug: 'settlement-completed',
+      name: 'Settlement completed',
+      subject: 'Payment Settled Successfully',
+      htmlBody: '<html><body><h1>Settlement Complete</h1><p>The payment of <strong>{{amount}} {{currency}}</strong> has been successfully settled and deposited into your account.</p></body></html>',
+      textBody: 'Payment Settled: The payment of {{amount}} {{currency}} has been successfully settled.',
+      isActive: true,
+      variables: ['amount', 'currency'],
+      createdAt: now,
+      updatedAt: now
+    }
+  ];
+};
+
+const getOrInitializeTemplates = async (companyId: number): Promise<EmailTemplate[]> => {
+  const stored = await (prisma as any).companySetting.findUnique({
+    where: { companyId_key: { companyId, key: 'email-templates' } }
+  });
+  if (stored && Array.isArray(stored.value) && stored.value.length > 0) {
+    return stored.value as EmailTemplate[];
+  }
+  const defaults = buildDefaultTemplates();
+  await (prisma as any).companySetting.upsert({
+    where: { companyId_key: { companyId, key: 'email-templates' } },
+    update: { value: defaults },
+    create: { companyId, key: 'email-templates', value: defaults }
+  });
+  return defaults;
+};
+
+router.get('/master-admin/companies/:companyId/email-templates', ...masterOnly, wrap(async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  if (!Number.isFinite(companyId) || companyId <= 0) return jsonError(res, 400, 'Invalid company ID.', 'VALIDATION_ERROR');
+  const company = await (prisma as any).company.findUnique({ where: { id: companyId }, select: { id: true, name: true } });
+  if (!company) return jsonError(res, 404, 'Company not found.', 'NOT_FOUND');
+  const templates = await getOrInitializeTemplates(companyId);
+  jsonOk(res, { companyId, companyName: company.name, templates, availableVariables: DEFAULT_TEMPLATE_VARIABLES });
+}));
+
+router.post('/master-admin/companies/:companyId/email-templates', ...masterOnly, requirePermission(PERMISSIONS.CONTENT_UPDATE), wrap(async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  if (!Number.isFinite(companyId) || companyId <= 0) return jsonError(res, 400, 'Invalid company ID.', 'VALIDATION_ERROR');
+  const company = await (prisma as any).company.findUnique({ where: { id: companyId }, select: { id: true } });
+  if (!company) return jsonError(res, 404, 'Company not found.', 'NOT_FOUND');
+  const reason = ensureReason(res, req.body, 'create email template');
+  if (!reason) return;
+  const name = textOrNull(req.body?.name);
+  const subject = textOrNull(req.body?.subject);
+  const htmlBody = textOrNull(req.body?.htmlBody);
+  if (!name) return jsonError(res, 400, 'Template name is required.', 'VALIDATION_ERROR');
+  if (!subject) return jsonError(res, 400, 'Subject line is required.', 'VALIDATION_ERROR');
+  if (!htmlBody) return jsonError(res, 400, 'HTML body is required.', 'VALIDATION_ERROR');
+
+  const templates = await getOrInitializeTemplates(companyId);
+  const slug = textOrNull(req.body?.slug) || slugify(name);
+  if (templates.some(t => t.slug === slug)) return jsonError(res, 409, `A template with slug "${slug}" already exists for this company.`, 'DUPLICATE_ERROR');
+
+  const now = new Date().toISOString();
+  const newTemplate: EmailTemplate = {
+    id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    slug,
+    name,
+    subject,
+    htmlBody,
+    textBody: textOrNull(req.body?.textBody) || undefined,
+    isActive: typeof req.body?.isActive === 'boolean' ? req.body.isActive : true,
+    variables: Array.isArray(req.body?.variables) ? req.body.variables.filter((v: unknown) => typeof v === 'string') : [],
+    createdAt: now,
+    updatedAt: now
+  };
+  templates.push(newTemplate);
+  await (prisma as any).companySetting.upsert({
+    where: { companyId_key: { companyId, key: 'email-templates' } },
+    update: { value: templates },
+    create: { companyId, key: 'email-templates', value: templates }
+  });
+  await createAuditLog(req, { action: 'email.template.create', entityType: 'email_template', entityId: companyId, metadata: { reason, templateId: newTemplate.id, slug, name } });
+  jsonOk(res, newTemplate, 'Email template created successfully.', 201);
+}));
+
+router.put('/master-admin/companies/:companyId/email-templates/:templateId', ...masterOnly, requirePermission(PERMISSIONS.CONTENT_UPDATE), wrap(async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const templateId = req.params.templateId;
+  if (!Number.isFinite(companyId) || companyId <= 0) return jsonError(res, 400, 'Invalid company ID.', 'VALIDATION_ERROR');
+  if (!templateId) return jsonError(res, 400, 'Template ID is required.', 'VALIDATION_ERROR');
+  const company = await (prisma as any).company.findUnique({ where: { id: companyId }, select: { id: true } });
+  if (!company) return jsonError(res, 404, 'Company not found.', 'NOT_FOUND');
+  const reason = ensureReason(res, req.body, 'update email template');
+  if (!reason) return;
+
+  const templates = await getOrInitializeTemplates(companyId);
+  const idx = templates.findIndex(t => t.id === templateId);
+  if (idx === -1) return jsonError(res, 404, 'Template not found.', 'NOT_FOUND');
+
+  const existing = templates[idx];
+  const name = textOrNull(req.body?.name) || existing.name;
+  const slug = textOrNull(req.body?.slug) || existing.slug;
+  if (slug !== existing.slug && templates.some((t, i) => i !== idx && t.slug === slug)) {
+    return jsonError(res, 409, `A template with slug "${slug}" already exists.`, 'DUPLICATE_ERROR');
+  }
+
+  templates[idx] = {
+    ...existing,
+    name,
+    slug,
+    subject: textOrNull(req.body?.subject) || existing.subject,
+    htmlBody: textOrNull(req.body?.htmlBody) || existing.htmlBody,
+    textBody: req.body?.textBody !== undefined ? (textOrNull(req.body.textBody) || undefined) : existing.textBody,
+    isActive: typeof req.body?.isActive === 'boolean' ? req.body.isActive : existing.isActive,
+    variables: Array.isArray(req.body?.variables) ? req.body.variables.filter((v: unknown) => typeof v === 'string') : existing.variables,
+    updatedAt: new Date().toISOString()
+  };
+  await (prisma as any).companySetting.update({
+    where: { companyId_key: { companyId, key: 'email-templates' } },
+    data: { value: templates }
+  });
+  await createAuditLog(req, { action: 'email.template.update', entityType: 'email_template', entityId: companyId, metadata: { reason, templateId, slug, name } });
+  jsonOk(res, templates[idx], 'Email template updated successfully.');
+}));
+
+router.delete('/master-admin/companies/:companyId/email-templates/:templateId', ...masterOnly, requirePermission(PERMISSIONS.CONTENT_UPDATE), wrap(async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const templateId = req.params.templateId;
+  if (!Number.isFinite(companyId) || companyId <= 0) return jsonError(res, 400, 'Invalid company ID.', 'VALIDATION_ERROR');
+  if (!templateId) return jsonError(res, 400, 'Template ID is required.', 'VALIDATION_ERROR');
+  const company = await (prisma as any).company.findUnique({ where: { id: companyId }, select: { id: true } });
+  if (!company) return jsonError(res, 404, 'Company not found.', 'NOT_FOUND');
+  const reason = ensureReason(res, req.body, 'deactivate email template');
+  if (!reason) return;
+
+  const templates = await getOrInitializeTemplates(companyId);
+  const idx = templates.findIndex(t => t.id === templateId);
+  if (idx === -1) return jsonError(res, 404, 'Template not found.', 'NOT_FOUND');
+
+  templates[idx] = { ...templates[idx], isActive: false, updatedAt: new Date().toISOString() };
+  await (prisma as any).companySetting.update({
+    where: { companyId_key: { companyId, key: 'email-templates' } },
+    data: { value: templates }
+  });
+  await createAuditLog(req, { action: 'email.template.deactivate', entityType: 'email_template', entityId: companyId, metadata: { reason, templateId, slug: templates[idx].slug } });
+  jsonOk(res, templates[idx], 'Email template deactivated.');
 }));
 
 router.get('/master-admin/portal-settings', ...masterOnly, wrap(async (_req, res) => {

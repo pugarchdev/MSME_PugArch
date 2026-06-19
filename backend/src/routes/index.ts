@@ -19,6 +19,7 @@ import shgRoutes from './shg.routes.js';
 import procurementBidRoutes from '../modules/procurementBid/procurement-bid.routes.js';
 import aadhaarKycRoutes from '../modules/kyc/aadhaar-kyc.routes.js';
 import { aiRoutes } from './ai.routes.js';
+import factoringRoutes from './factoring.routes.js';
 import prisma from '../config/prisma.js';
 
 const router = Router();
@@ -79,6 +80,7 @@ router.use('/', shgRoutes);
 router.use('/', procurementBidRoutes);
 router.use('/', reverseAuctionRoutes);
 router.use('/', aadhaarKycRoutes);
+router.use('/', factoringRoutes);
 router.use('/ai', aiRoutes);
 
 export default router;

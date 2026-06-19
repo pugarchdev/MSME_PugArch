@@ -43,7 +43,8 @@ import {
   Trophy,
   Gavel,
   UsersRound,
-  MessageSquare
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -403,6 +404,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Reports & Data Export', path: '/master-admin/reports', icon: BarChart3, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Feature Controls', path: '/master-admin/features', icon: CheckSquare, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Branding & Homepage', path: '/master-admin/branding', icon: Images, roles: ['master_admin'], permission: 'company.manage' },
+    { label: 'Email Setup', path: '/master-admin/email', icon: Mail, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Audit Logs', path: '/master-admin/audit-logs', icon: FileText, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'System Monitoring', path: '/master-admin/system', icon: FileSearch, roles: ['master_admin'], permission: 'company.manage' },
     { label: 'Security & Access', path: '/master-admin/security', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },

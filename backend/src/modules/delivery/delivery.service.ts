@@ -1029,6 +1029,37 @@ export const deliveryService = {
       );
     }
     const updated = await db.$transaction(async tx => {
+      const settlement = await tx.paymentSettlement.findUnique({
+        where: { deliveryTrackingId: id }
+      });
+      
+      let redirectMetadata = {};
+      let updatedRemarks = body.remarks;
+      
+      if (settlement?.invoiceId) {
+        const factoring = await tx.invoiceFactoring.findUnique({
+          where: { invoiceId: settlement.invoiceId }
+        });
+        
+        if (factoring && factoring.status === 'DISBURSED') {
+          await tx.invoiceFactoring.update({
+            where: { invoiceId: settlement.invoiceId },
+            data: { status: 'SETTLED' }
+          });
+          
+          redirectMetadata = {
+            factored: true,
+            factoringId: factoring.id,
+            financierId: factoring.financierId,
+            originalSellerId: factoring.sellerId,
+            discountRate: factoring.discountRate,
+            feeAmount: factoring.feeAmount
+          };
+          
+          updatedRemarks = `[Invoice Factored - Settled to Financier] ${body.remarks || ''}`.trim();
+        }
+      }
+
       await tx.paymentSettlement.update({
         where: { deliveryTrackingId: id },
         data: {
@@ -1037,13 +1068,14 @@ export const deliveryService = {
           releasedById: actor.id,
           transactionReference: body.transactionReference,
           netReleasedAmount: body.netReleasedAmount,
-          remarks: body.remarks
+          remarks: updatedRemarks,
+          metadata: settlement?.metadata ? { ...(settlement.metadata as any), ...redirectMetadata } : redirectMetadata
         }
       });
       return transitionStatus(tx, delivery, 'PAYMENT_RELEASED', actor, {
-        remarks: body.remarks,
+        remarks: updatedRemarks,
         fileAssetId: body.paymentProofFileAssetId,
-        extra: { transactionReference: body.transactionReference, netReleasedAmount: body.netReleasedAmount }
+        extra: { transactionReference: body.transactionReference, netReleasedAmount: body.netReleasedAmount, ...redirectMetadata }
       });
     }, TX_OPTIONS);
     // Auto-close delivery once payment is released; CLOSED is terminal.

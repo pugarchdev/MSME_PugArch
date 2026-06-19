@@ -113,6 +113,12 @@ export const masterAdminApi = {
   updateMarketplaceServiceStatus: (id: number, status: string, reason: string) => post(`/api/master-admin/marketplace/services/${id}/status`, { status, reason }),
   getMasterProcurementOverview: () => get('/api/master-admin/procurement-overview'),
   getMasterPaymentOverview: () => get('/api/master-admin/payment-overview'),
-  getReports: () => get('/api/master-admin/reports')
+  getReports: () => get('/api/master-admin/reports'),
+
+  // Email template management (company-scoped)
+  getEmailTemplates: (companyId: number) => get(`/api/master-admin/companies/${companyId}/email-templates`),
+  createEmailTemplate: (companyId: number, data: unknown) => post(`/api/master-admin/companies/${companyId}/email-templates`, data),
+  updateEmailTemplate: (companyId: number, templateId: string, data: unknown) => put(`/api/master-admin/companies/${companyId}/email-templates/${templateId}`, data),
+  deleteEmailTemplate: (companyId: number, templateId: string, reason: string) => request<any>(`/api/master-admin/companies/${companyId}/email-templates/${templateId}`, { method: 'delete'.toUpperCase(), body: JSON.stringify({ reason }) })
 };
 

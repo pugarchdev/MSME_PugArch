@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Eye, Plus, RefreshCw, ShoppingCart, Trash2, Truck, X, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
+import { Download, Eye, Plus, RefreshCw, Send, ShoppingCart, Trash2, Truck, Upload, X, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -514,15 +515,37 @@ function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
     const [sellerId, setSellerId] = useState('');
     const [requirementId, setRequirementId] = useState('');
     const [totalAmount, setTotalAmount] = useState('');
+    const [purchaseTitle, setPurchaseTitle] = useState('Office Stationery Purchase');
+    const [department, setDepartment] = useState('Administration');
+    const [costCenter, setCostCenter] = useState('ADM-001');
+    const [vendorName, setVendorName] = useState('ABC Enterprises');
+    const [vendorCode, setVendorCode] = useState('VEN10045');
+    const [budgetAllocated, setBudgetAllocated] = useState('100000');
+    const [budgetConsumed, setBudgetConsumed] = useState('45000');
+    const [attachments, setAttachments] = useState<Array<{ name: string; size: number }>>([]);
+    const [items, setItems] = useState([
+        { id: '1', name: 'A4 Size Paper', spec: '75 GSM, 500 sheets ream', qty: 20, unit: 'Ream', price: 220, tax: 18 },
+        { id: '2', name: 'Ball Pen (Blue)', spec: '0.7 mm blue ink', qty: 10, unit: 'Box', price: 150, tax: 18 },
+        { id: '3', name: 'File Folder', spec: 'Plastic A4 size', qty: 50, unit: 'Pcs', price: 25, tax: 18 }
+    ]);
     const createMut = useCreateDirectPurchase();
+    const subTotal = items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0), 0);
+    const taxTotal = items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0) * (Number(item.tax || 0) / 100), 0);
+    const grandTotal = totalAmount ? Number(totalAmount) : subTotal + taxTotal;
+    const budgetAvailable = Number(budgetAllocated || 0) - Number(budgetConsumed || 0);
+    const budgetRemaining = budgetAvailable - grandTotal;
 
     const submit = async () => {
+        if (budgetRemaining < 0) {
+            toast.error('Budget is insufficient for this direct purchase.');
+            return;
+        }
         await runWithToast(
             () =>
                 createMut.mutateAsync({
                     sellerId: Number(sellerId),
                     requirementId: requirementId ? Number(requirementId) : undefined,
-                    totalAmount: totalAmount ? Number(totalAmount) : undefined
+                    totalAmount: grandTotal
                 }),
             {
                 loading: 'Creating...',
@@ -536,8 +559,124 @@ function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
     const valid = sellerId && Number(sellerId) > 0;
 
     return (
-        <Modal title="New Direct Purchase" onClose={onClose}>
+        <Modal title="Direct Purchase Request Form" onClose={onClose} wide>
             <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-black text-[#12335f]">1. Purchase Details / Basic Information</h3>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <Field label="Purchase Title *">
+                            <Input value={purchaseTitle} onChange={e => setPurchaseTitle(e.target.value)} />
+                        </Field>
+                        <Field label="Seller User ID *">
+                            <Input value={sellerId} onChange={e => setSellerId(e.target.value.replace(/[^0-9]/g, ''))} type="number" min="1" placeholder="Numeric seller ID" />
+                        </Field>
+                        <Field label="Department">
+                            <Input value={department} onChange={e => setDepartment(e.target.value)} />
+                        </Field>
+                        <Field label="Cost Center">
+                            <Input value={costCenter} onChange={e => setCostCenter(e.target.value)} />
+                        </Field>
+                        <Field label="Purchase Type">
+                            <Input value="Goods" readOnly />
+                        </Field>
+                        <Field label="Procurement Method">
+                            <Input value="Direct Purchase" readOnly />
+                        </Field>
+                        <Field label="Vendor Name">
+                            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} />
+                        </Field>
+                        <Field label="Vendor Code">
+                            <Input value={vendorCode} onChange={e => setVendorCode(e.target.value)} />
+                        </Field>
+                    </div>
+                    <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
+                        Profile, organization, budget, vendor compliance, risk, workflow, and audit details are shown as auto-fetched values and should remain read-only for normal users.
+                    </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-black text-[#12335f]">2. Items / Products / Services</h3>
+                        <Button type="button" variant="outline" onClick={() => setItems(prev => [...prev, { id: String(Date.now()), name: '', spec: '', qty: 1, unit: 'Nos', price: 0, tax: 18 }])} className="h-8 text-xs">
+                            <Plus className="mr-1 h-3 w-3" /> Add Item
+                        </Button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="min-w-[760px] w-full text-xs">
+                            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                <tr>{['Product / Service', 'Specification', 'Qty', 'Unit', 'Unit Price', 'Tax %', 'Total', 'Action'].map(head => <th key={head} className="px-2 py-2 text-left">{head}</th>)}</tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {items.map(item => {
+                                    const total = Number(item.qty || 0) * Number(item.price || 0) * (1 + Number(item.tax || 0) / 100);
+                                    return (
+                                        <tr key={item.id}>
+                                            <td className="px-2 py-2"><Input value={item.name} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, name: e.target.value } : row))} /></td>
+                                            <td className="px-2 py-2"><Input value={item.spec} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, spec: e.target.value } : row))} /></td>
+                                            <td className="px-2 py-2"><Input type="number" value={item.qty} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, qty: Number(e.target.value) || 0 } : row))} /></td>
+                                            <td className="px-2 py-2"><Input value={item.unit} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, unit: e.target.value } : row))} /></td>
+                                            <td className="px-2 py-2"><Input type="number" value={item.price} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, price: Number(e.target.value) || 0 } : row))} /></td>
+                                            <td className="px-2 py-2"><Input type="number" value={item.tax} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, tax: Number(e.target.value) || 0 } : row))} /></td>
+                                            <td className="px-2 py-2 font-black">{formatCurrency(total)}</td>
+                                            <td className="px-2 py-2"><Button variant="outline" onClick={() => setItems(prev => prev.filter(row => row.id !== item.id))} disabled={items.length === 1} className="h-8 w-8 p-0 text-red-600"><Trash2 className="h-3.5 w-3.5" /></Button></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3 text-xs font-bold">
+                        <p className="rounded bg-slate-50 px-3 py-2">Sub Total: {formatCurrency(subTotal)}</p>
+                        <p className="rounded bg-slate-50 px-3 py-2">Total Tax: {formatCurrency(taxTotal)}</p>
+                        <p className="rounded bg-blue-50 px-3 py-2 text-[#12335f]">Grand Total: {formatCurrency(grandTotal)}</p>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-black text-[#12335f]">3. Delivery, Budget, Compliance & Attachments</h3>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <Field label="Budget Allocated">
+                            <Input value={budgetAllocated} onChange={e => setBudgetAllocated(e.target.value)} type="number" />
+                        </Field>
+                        <Field label="Budget Consumed">
+                            <Input value={budgetConsumed} onChange={e => setBudgetConsumed(e.target.value)} type="number" />
+                        </Field>
+                        <Field label="Budget Available">
+                            <Input value={String(budgetAvailable)} readOnly />
+                        </Field>
+                        <Field label="Budget Remaining After Purchase">
+                            <Input value={String(Math.round(budgetRemaining * 100) / 100)} readOnly />
+                        </Field>
+                        <Field label="Compliance Status">
+                            <Input value="GST, PAN, Udyam, and Bank verified" readOnly />
+                        </Field>
+                        <Field label="Risk Assessment">
+                            <Input value="Low risk · not blacklisted · not blocked" readOnly />
+                        </Field>
+                    </div>
+                    <label className="mt-3 flex min-h-20 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#12335f]/30 bg-blue-50/40 text-center text-xs font-bold text-[#12335f]">
+                        <Upload className="mb-1 h-5 w-5" /> Upload justification, vendor quotation, budget note, compliance documents
+                        <input type="file" multiple className="hidden" onChange={e => setAttachments(prev => [...prev, ...Array.from(e.target.files || []).map(file => ({ name: file.name, size: file.size }))])} />
+                    </label>
+                    <div className="mt-2 flex flex-wrap gap-2">{attachments.map(file => <span key={file.name} className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{file.name}</span>)}</div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <h3 className="text-sm font-black text-[#12335f]">Approval Workflow</h3>
+                        {['Department Head', 'Finance Officer', 'Procurement Officer', 'Competent Authority'].map(role => <p key={role} className="flex justify-between border-b border-slate-100 py-2 text-xs font-bold last:border-0"><span>{role}</span><span className="text-amber-600">Pending</span></p>)}
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <h3 className="text-sm font-black text-[#12335f]">Purchase Summary</h3>
+                        <p className="flex justify-between border-b border-slate-100 py-2 text-xs font-bold"><span>Item Count</span><span>{items.length}</span></p>
+                        <p className="flex justify-between border-b border-slate-100 py-2 text-xs font-bold"><span>Total Quantity</span><span>{items.reduce((sum, item) => sum + Number(item.qty || 0), 0)}</span></p>
+                        <p className="flex justify-between py-2 text-xs font-black text-[#12335f]"><span>Grand Total</span><span>{formatCurrency(grandTotal)}</span></p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <h3 className="text-sm font-black text-[#12335f]">Post Purchase Tracking</h3>
+                        {['Purchase Request', 'PO Generated', 'GRN Created', 'Invoice Submitted', 'Payment Released'].map((stage, index) => <p key={stage} className="flex justify-between border-b border-slate-100 py-2 text-xs font-bold last:border-0"><span>{stage}</span><span className={index === 0 ? 'text-emerald-600' : 'text-slate-400'}>{index === 0 ? 'Ready' : 'Pending'}</span></p>)}
+                    </div>
+                </div>
                 {/* <Field label="Seller User ID">
                     <Input value={sellerId} onChange={e => setSellerId(e.target.value.replace(/[^0-9]/g, ''))} type="number" min="1" placeholder="Numeric seller ID" />
                     <p className="mt-1 text-[10px] font-semibold text-slate-400">Find on the Vendors page detail panel.</p>

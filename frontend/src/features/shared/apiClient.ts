@@ -89,5 +89,8 @@ export const postApi = async <T>(endpoint: string, payload: unknown) =>
 export const putApi = async <T>(endpoint: string, payload: unknown) =>
   unwrap<T>(await api.put(endpoint, payload, { headers: authHeaders() }));
 
+export const patchApi = async <T>(endpoint: string, payload: unknown) =>
+  unwrap<T>(await api.patch(endpoint, payload, { headers: authHeaders() }));
+
 export const deleteApi = async <T>(endpoint: string) =>
   unwrap<T>(await api.delete(endpoint, { headers: authHeaders() }));

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   Archive,
@@ -20,6 +20,7 @@ import {
   List,
   Mail,
   Palette,
+  Pencil,
   Plus,
   Power,
   RefreshCw,
@@ -33,7 +34,8 @@ import {
   ToggleRight,
   Truck,
   UserPlus,
-  Users
+  Users,
+  XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDebounce } from '../../../hooks/useDebounce';
@@ -336,8 +338,21 @@ type ActionDialogState = {
   status?: string;
 } | null;
 
+type EmailTemplateRecord = {
+  id: string;
+  slug: string;
+  name: string;
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  isActive: boolean;
+  variables: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 type EditorState = {
-  type: 'company' | 'organization' | 'user' | 'email';
+  type: 'company' | 'organization' | 'user' | 'email' | 'emailTemplate';
   mode: 'create' | 'edit';
   record?: any;
 } | null;
@@ -396,11 +411,22 @@ const tabAliases: Record<string, TabId> = {
   audit: 'audit',
   system: 'security',
   security: 'security',
-  settings: 'settings'
+  settings: 'settings',
+  email: 'email',
+  'email-setup': 'email'
+};
+
+const getPathForTab = (tabId: TabId): string => {
+  if (tabId === 'overview') return '/master-admin';
+  if (tabId === 'organizations') return '/master-admin/companies';
+  if (tabId === 'exports') return '/master-admin/reports';
+  if (tabId === 'audit') return '/master-admin/audit-logs';
+  return `/master-admin/${tabId}`;
 };
 
 export default function MasterAdminPage() {
   const { token } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -424,6 +450,11 @@ export default function MasterAdminPage() {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [loadedFeatureCompanyId, setLoadedFeatureCompanyId] = useState<number | null>(null);
   const [emailSettings, setEmailSettings] = useState<any>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRecord[]>([]);
+  const [emailTemplateCompanyId, setEmailTemplateCompanyId] = useState<number | null>(null);
+  const [emailTemplateAvailableVars, setEmailTemplateAvailableVars] = useState<string[]>([]);
+  const [emailTemplateLoading, setEmailTemplateLoading] = useState(false);
+  const [templatePreviewHtml, setTemplatePreviewHtml] = useState('');
   const [auditLogs, setAuditLogs] = useState<ApiPage<AuditRecord>>({ items: [], total: 0, page: 1, pageSize: 20 });
   const [security, setSecurity] = useState<any>(null);
   const [systemHealth, setSystemHealth] = useState<any>(null);
@@ -845,6 +876,20 @@ export default function MasterAdminPage() {
     }
   };
 
+  const loadEmailTemplates = async (companyId: number) => {
+    setEmailTemplateLoading(true);
+    try {
+      const data = await masterAdminApi.getEmailTemplates(companyId) as any;
+      setEmailTemplates(data?.templates || []);
+      setEmailTemplateAvailableVars(data?.availableVariables || []);
+      setEmailTemplateCompanyId(companyId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load email templates');
+    } finally {
+      setEmailTemplateLoading(false);
+    }
+  };
+
   const loadAudit = async () => {
     setBusy('audit', true);
     try {
@@ -920,7 +965,7 @@ export default function MasterAdminPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'organizations' || activeTab === 'branding' || activeTab === 'features' || editor?.type === 'organization' || editor?.type === 'user') {
+    if (activeTab === 'organizations' || activeTab === 'branding' || activeTab === 'features' || activeTab === 'email' || editor?.type === 'organization' || editor?.type === 'user') {
       void loadCompanies();
     }
   }, [activeTab, editor?.type, pages.companies, debouncedFilters.organizations.search, debouncedFilters.organizations.status, sorts.companies]);
@@ -1012,8 +1057,12 @@ export default function MasterAdminPage() {
   useEffect(() => {
     if (activeTab === 'email') {
       void loadEmail();
+      // Auto-load templates for first company if available
+      if (companies.items.length > 0 && !emailTemplateCompanyId) {
+        void loadEmailTemplates(companies.items[0].id);
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, companies.items]);
 
   useEffect(() => {
     if (activeTab === 'security') {
@@ -1066,9 +1115,16 @@ export default function MasterAdminPage() {
   }, [debouncedGlobalSearch]);
   useEffect(() => {
     const requestedTab = pathname?.split('/').filter(Boolean)[1] || searchParams?.get('tab');
-    if (!requestedTab) return;
-    const tab = tabAliases[requestedTab];
-    if (tab) setActiveTab(tab);
+    if (!requestedTab) {
+      setActiveTab('overview');
+      return;
+    }
+    const tab = tabAliases[requestedTab] || (tabs.some(t => t.id === requestedTab) ? requestedTab as TabId : null);
+    if (tab) {
+      setActiveTab(tab);
+    } else {
+      setActiveTab('overview');
+    }
   }, [pathname, searchParams]);
 
   const summaryCards = useMemo(() => {
@@ -1141,7 +1197,7 @@ export default function MasterAdminPage() {
       payments: async () => { await Promise.all([loadPayments(), loadInvoices(), loadEscrows(), loadSettlements()]); },
       features: loadFeatures,
       exports: async () => { await Promise.all([loadReports(), loadDocuments()]); },
-      email: loadEmail,
+      email: async () => { await Promise.all([loadEmail(), loadCompanies()]); },
       audit: loadAudit,
       settings: loadSettings,
       security: async () => { await Promise.all([loadSecurity(), loadSystemHealth()]); }
@@ -1321,6 +1377,14 @@ export default function MasterAdminPage() {
         await masterAdminApi.updateEmailSettings(values);
         await loadEmail();
       }
+      if (editor.type === 'emailTemplate' && emailTemplateCompanyId) {
+        if (editor.mode === 'create') {
+          await masterAdminApi.createEmailTemplate(emailTemplateCompanyId, values);
+        } else {
+          await masterAdminApi.updateEmailTemplate(emailTemplateCompanyId, editor.record.id, values);
+        }
+        await loadEmailTemplates(emailTemplateCompanyId);
+      }
       toast.success(`${labelize(editor.type)} saved`);
       setEditor(null);
       await loadOverview();
@@ -1340,7 +1404,12 @@ export default function MasterAdminPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c27803]">JsgSmile Governance</p>
-              <h1 className="mt-1 text-2xl font-black text-[#12335f] sm:text-3xl">Master Admin Control Center</h1>
+              <h1 className="mt-1 text-2xl font-black text-[#12335f] sm:text-3xl flex flex-wrap items-center gap-2">
+                <span>Master Admin Control Center</span>
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-black uppercase tracking-wider text-slate-600">
+                  {tabs.find(t => t.id === activeTab)?.label || 'Overview'}
+                </span>
+              </h1>
               <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-600">
                 Complete portal governance, organization control, user management, feature settings, procurement monitoring, payment oversight, and security review.
               </p>
@@ -1352,7 +1421,7 @@ export default function MasterAdminPage() {
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setActiveTab(tab);
+                    router.push(getPathForTab(tab));
                     if (label === 'Add Company') setEditor({ type: 'company', mode: 'create' });
                     if (label === 'Edit Branding') setEditor({ type: 'company', mode: 'edit', record: portalSettings?.company || companies.items[0] || {} });
                     if (label === 'Add Organization') setEditor({ type: 'organization', mode: 'create' });
@@ -1373,22 +1442,7 @@ export default function MasterAdminPage() {
           </div>
         </header>
 
-        <div className="flex gap-2 overflow-x-auto rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-black transition',
-                activeTab === tab.id ? 'bg-[#12335f] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-[#12335f]'
-              )}
-            >
-              <tab.icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+
 
         <Panel title="Global Master Admin Search" icon={Search} loading={searchLoading} error={searchError}>
           <div className="space-y-3">
@@ -1473,7 +1527,7 @@ export default function MasterAdminPage() {
             <CompanyDetailTabs
               company={selectedCompany}
               reports={reports}
-              onOpenTab={setActiveTab}
+              onOpenTab={tabId => router.push(getPathForTab(tabId))}
               onEdit={() => setEditor({ type: 'company', mode: 'edit', record: selectedCompany || {} })}
             />
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -2205,33 +2259,143 @@ export default function MasterAdminPage() {
         )}
 
         {activeTab === 'email' && (
-          <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-            <Panel title="SMTP Configuration" icon={Mail} loading={loading.email} error={error.email}>
-              <div className="grid gap-3">
-                <Detail label="SMTP Host" value={emailSettings?.smtp?.host} />
-                <Detail label="SMTP Port" value={emailSettings?.smtp?.port} />
-                <Detail label="SMTP Username" value={emailSettings?.smtp?.user || 'Not configured'} />
-                <Detail label="From Email" value={emailSettings?.smtp?.fromEmail || 'Not configured'} />
-                <Detail label="From Name" value={emailSettings?.smtp?.fromName} />
-                <StatusLine label="SMTP password configured" ok={Boolean(emailSettings?.smtp?.passwordConfigured)} />
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} })}>
-                    <Mail className="mr-2 h-4 w-4" />
-                    Save Email Setup
-                  </Button>
-                  <Button type="button" variant="outline" className="h-9 rounded-md text-xs font-black" onClick={() => openAction({ entity: 'email', action: 'test', label: 'SMTP test' })}>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Send Test Email
-                  </Button>
+          <section className="space-y-6">
+            {/* SMTP Configuration */}
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+              <Panel title="SMTP Configuration" icon={Mail} loading={loading.email} error={error.email}>
+                <div className="grid gap-3">
+                  <Detail label="SMTP Host" value={emailSettings?.smtp?.host} />
+                  <Detail label="SMTP Port" value={emailSettings?.smtp?.port} />
+                  <Detail label="SMTP Username" value={emailSettings?.smtp?.user || 'Not configured'} />
+                  <Detail label="From Email" value={emailSettings?.smtp?.fromEmail || 'Not configured'} />
+                  <Detail label="From Name" value={emailSettings?.smtp?.fromName} />
+                  <StatusLine label="SMTP password configured" ok={Boolean(emailSettings?.smtp?.passwordConfigured)} />
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} })}>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Save Email Setup
+                    </Button>
+                    <Button type="button" variant="outline" className="h-9 rounded-md text-xs font-black" onClick={() => openAction({ entity: 'email', action: 'test', label: 'SMTP test' })}>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Send Test Email
+                    </Button>
+                  </div>
                 </div>
+              </Panel>
+              <Panel title="Quick Status" icon={Bell}>
+                <div className="grid gap-2">
+                  <StatusLine label="SMTP email enabled" ok={Boolean(emailSettings?.smtp?.emailEnabled)} />
+                  <StatusLine label="SMTP password configured" ok={Boolean(emailSettings?.smtp?.passwordConfigured)} />
+                  <Detail label="Total templates" value={emailTemplates.length} />
+                  <Detail label="Active templates" value={emailTemplates.filter(t => t.isActive).length} />
+                </div>
+              </Panel>
+            </div>
+
+            {/* Company-Specific Email Templates */}
+            <Panel title="Email Templates" icon={Mail}>
+              {/* Company selector */}
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <label className="text-xs font-bold text-slate-600">Company:</label>
+                <select
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                  value={emailTemplateCompanyId || ''}
+                  onChange={e => {
+                    const id = Number(e.target.value);
+                    if (id) void loadEmailTemplates(id);
+                  }}
+                >
+                  <option value="">Select company…</option>
+                  {companies.items.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  className="ml-auto h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]"
+                  disabled={!emailTemplateCompanyId}
+                  onClick={() => setEditor({ type: 'emailTemplate', mode: 'create', record: {} })}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Template
+                </Button>
               </div>
-            </Panel>
-            <Panel title="Notification Templates" icon={Bell}>
-              <div className="grid gap-2">
-                {(emailSettings?.notifications?.templates || []).map((template: string) => (
-                  <StatusLine key={template} label={template} ok={Boolean(emailSettings?.notifications?.emailEnabled)} />
-                ))}
-              </div>
+
+              {emailTemplateLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-[#12335f]" />
+                  <span className="ml-2 text-xs text-slate-500">Loading templates…</span>
+                </div>
+              )}
+
+              {!emailTemplateLoading && emailTemplateCompanyId && emailTemplates.length === 0 && (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center">
+                  <Mail className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-2 text-sm font-medium text-slate-500">No email templates yet</p>
+                  <p className="text-xs text-slate-400">Click &ldquo;Add Template&rdquo; to create one.</p>
+                </div>
+              )}
+
+              {!emailTemplateLoading && emailTemplates.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-2.5 font-bold text-slate-600">Name</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-600">Slug</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-600">Subject</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-600">Status</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-600">Updated</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-600 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emailTemplates.map(tpl => (
+                        <tr key={tpl.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70 transition-colors">
+                          <td className="px-4 py-2.5 font-semibold text-slate-800">{tpl.name}</td>
+                          <td className="px-4 py-2.5 font-mono text-slate-500">{tpl.slug}</td>
+                          <td className="px-4 py-2.5 text-slate-600 max-w-[200px] truncate">{tpl.subject}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tpl.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                              {tpl.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500">{formatDate(tpl.updatedAt)}</td>
+                          <td className="px-4 py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-7 rounded px-2 text-[10px] font-bold"
+                                onClick={() => setEditor({ type: 'emailTemplate', mode: 'edit', record: tpl })}
+                              >
+                                <Pencil className="mr-1 h-3 w-3" /> Edit
+                              </Button>
+                              {tpl.isActive && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-7 rounded border-red-200 px-2 text-[10px] font-bold text-red-600 hover:bg-red-50"
+                                  onClick={() => {
+                                    const reason = window.prompt('Audit reason for deactivating this template:');
+                                    if (reason && reason.trim().length >= 4 && emailTemplateCompanyId) {
+                                      masterAdminApi.deleteEmailTemplate(emailTemplateCompanyId, tpl.id, reason.trim())
+                                        .then(() => { toast.success('Template deactivated'); loadEmailTemplates(emailTemplateCompanyId); })
+                                        .catch((err: any) => toast.error(err.message || 'Failed to deactivate'));
+                                    }
+                                  }}
+                                >
+                                  <XCircle className="mr-1 h-3 w-3" /> Deactivate
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Panel>
           </section>
         )}
@@ -2359,6 +2523,7 @@ export default function MasterAdminPage() {
             busy={mutating}
             onCancel={() => setEditor(null)}
             onSave={saveEditor}
+            emailTemplateAvailableVars={emailTemplateAvailableVars}
           />
         )}
       </div>
@@ -3034,7 +3199,8 @@ function EntityEditor({
   organizations,
   busy,
   onCancel,
-  onSave
+  onSave,
+  emailTemplateAvailableVars = []
 }: {
   editor: NonNullable<EditorState>;
   companies: Company[];
@@ -3042,6 +3208,7 @@ function EntityEditor({
   busy: boolean;
   onCancel: () => void;
   onSave: (values: Record<string, any>) => void;
+  emailTemplateAvailableVars?: string[];
 }) {
   const record = editor.record || {};
   const [values, setValues] = useState<Record<string, any>>({
@@ -3084,6 +3251,9 @@ function EntityEditor({
     fromName: record.fromName || 'JsgSmile Portal',
     replyToEmail: record.replyToEmail || '',
     emailEnabled: record.emailEnabled ?? true,
+    subject: record.subject || '',
+    htmlBody: record.htmlBody || '',
+    textBody: record.textBody || '',
     reason: ''
   });
   const set = (key: string, value: any) => setValues(prev => ({ ...prev, [key]: value }));
@@ -3157,6 +3327,63 @@ function EntityEditor({
             <FormField label="From name" value={values.fromName} onChange={value => set('fromName', value)} />
             <FormField label="Reply-to email" value={values.replyToEmail} onChange={value => set('replyToEmail', value)} />
             <ToggleField label="Email enabled" value={Boolean(values.emailEnabled)} onChange={value => set('emailEnabled', value)} />
+          </>
+        )}
+        {editor.type === 'emailTemplate' && (
+          <>
+            <FormField label="Template name" value={values.name} onChange={value => set('name', value)} required />
+            <FormField label="Subject line" value={values.subject} onChange={value => set('subject', value)} required placeholder="e.g. Welcome to {{portalName}}, {{userName}}!" />
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">HTML Body <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[200px] resize-y"
+                value={values.htmlBody || ''}
+                onChange={e => set('htmlBody', e.target.value)}
+                placeholder="<html><body><h1>Hello {{userName}}</h1><p>Your account has been created.</p></body></html>"
+              />
+            </div>
+            {values.htmlBody && (
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Live Preview</label>
+                <div className="rounded-md border border-slate-200 bg-white p-3 max-h-[200px] overflow-y-auto">
+                  <iframe
+                    title="Template preview"
+                    srcDoc={values.htmlBody}
+                    className="w-full border-0 min-h-[120px]"
+                    sandbox=""
+                  />
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Plain Text Fallback</label>
+              <textarea
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[80px] resize-y"
+                value={values.textBody || ''}
+                onChange={e => set('textBody', e.target.value)}
+                placeholder="Hello {{userName}}, your account has been created."
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Available Variables</label>
+              <p className="mb-2 text-[10px] text-slate-400">Click to insert into subject or body. Use the format <code className="rounded bg-slate-100 px-1">{'{{variableName}}'}</code></p>
+              <div className="flex flex-wrap gap-1.5">
+                {emailTemplateAvailableVars.map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-[#12335f] hover:text-white hover:border-[#12335f] transition-colors"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`{{${v}}}`);
+                      toast.success(`{{${v}}} copied to clipboard`);
+                    }}
+                  >
+                    {`{{${v}}}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ToggleField label="Active" value={Boolean(values.isActive ?? true)} onChange={value => set('isActive', value)} />
           </>
         )}
       </div>

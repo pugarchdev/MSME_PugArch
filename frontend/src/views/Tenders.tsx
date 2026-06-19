@@ -138,6 +138,8 @@ const TENDER_CATEGORY_OPTIONS = [
   'Manpower Supply'
 ];
 
+const TENDER_HANDOFF_KEY = 'msme:tender-create-prefill:v1';
+
 type BoqLineItem = {
   id: string;
   name: string;
@@ -335,6 +337,54 @@ const createTenderDraft = (): TenderDraft => ({
 });
 
 type TenderDraftErrors = Partial<Record<keyof TenderDraft | 'items' | 'timeline' | 'documents' | 'contact', string>>;
+
+const normalizeTenderHandoffDraft = (payload: unknown): TenderDraft | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const source = payload as Partial<TenderDraft> & {
+    documents?: Array<Partial<TenderDocumentRow> & { name?: string }>;
+    items?: Array<Partial<BoqLineItem>>;
+    milestones?: Array<Partial<PaymentMilestone>>;
+  };
+  const base = createTenderDraft();
+
+  return {
+    ...base,
+    ...source,
+    items: Array.isArray(source.items) && source.items.length > 0
+      ? source.items.map(item => ({
+        ...emptyBoqItem(),
+        ...item,
+        id: item.id || createId(),
+        quantity: String(item.quantity || '1'),
+      }))
+      : base.items,
+    documents: Array.isArray(source.documents) && source.documents.length > 0
+      ? source.documents.map(document => {
+        const procurementDocument = document as Partial<TenderDocumentRow> & { name?: string };
+        return {
+          id: procurementDocument.id || createId(),
+          label: procurementDocument.label || procurementDocument.name || 'Document',
+          requirement: procurementDocument.requirement || 'Optional',
+          fileName: procurementDocument.fileName || '',
+          version: Number(procurementDocument.version || 1),
+        };
+      })
+      : base.documents,
+    milestones: Array.isArray(source.milestones) && source.milestones.length > 0
+      ? source.milestones.map(milestone => ({
+        ...emptyMilestone(),
+        ...milestone,
+        id: milestone.id || createId(),
+        percentage: String(milestone.percentage || ''),
+      }))
+      : base.milestones,
+    budget: String(source.budget || ''),
+    emdAmount: String(source.emdAmount || ''),
+    performanceSecurityAmount: String(source.performanceSecurityAmount || ''),
+    technicalWeightage: String(source.technicalWeightage || base.technicalWeightage),
+    priceWeightage: String(source.priceWeightage || base.priceWeightage),
+  };
+};
 
 const getCategorySuggestions = (category: string) => {
   const normalized = category.toLowerCase();
@@ -599,6 +649,23 @@ export default function Tenders() {
   const [editingTender, setEditingTender] = useState<Tender | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TENDER_HANDOFF_KEY);
+      if (!raw) return;
+      const handoffDraft = normalizeTenderHandoffDraft(JSON.parse(raw));
+      localStorage.removeItem(TENDER_HANDOFF_KEY);
+      if (handoffDraft) {
+        setNewTender(handoffDraft);
+        setTenderWizardStep(0);
+        setIsModalOpen(true);
+        toast.success('Tender draft loaded from Create Procurement');
+      }
+    } catch {
+      localStorage.removeItem(TENDER_HANDOFF_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     const handler = setTimeout(() => {

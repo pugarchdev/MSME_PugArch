@@ -8,7 +8,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ClipboardCheck, Eye, FileText, Plus, RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -58,6 +59,9 @@ const PROCUREMENT_METHOD_LABELS: Record<ProcurementMethod, string> = {
 type RequirementSortKey = 'requirementNumber' | 'title' | 'procurementMethod' | 'status' | 'estimatedValue' | 'requiredBy' | 'updatedAt';
 
 export default function RequirementsPage() {
+    const isCreateRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
+    if (isCreateRoute) return <RequirementCreationWorkbench />;
+
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [q, setQ] = useState('');
@@ -395,6 +399,560 @@ export default function RequirementsPage() {
             {creating && <RequirementCreator onClose={() => setCreating(false)} />}
         </div>
     );
+}
+
+/* ---------- Enterprise create requirement workbench ---------- */
+
+type RequirementItemDraft = {
+    id: string;
+    name: string;
+    category: string;
+    subCategory: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    hsn: string;
+    sac: string;
+    budget: number;
+    currency: string;
+    origin: string;
+    equivalentBrandAllowed: boolean;
+};
+
+type SpecificationDraft = { id: string; name: string; value: string; unit: string; min: string; max: string; mandatory: boolean };
+type RequirementDocDraft = { id: string; category: string; requirement: 'Mandatory' | 'Optional' | 'Not Required'; files: Array<{ name: string; size: number; uploadedAt: string; version: number }> };
+
+const reqId = () => Math.random().toString(36).slice(2, 10);
+const requirementDraftKey = 'msme:create-requirement:enterprise-draft:v1';
+const todayIso = new Date().toISOString().slice(0, 10);
+
+const requirementSteps = [
+    'Requirement Info', 'Buyer Info', 'Access', 'Items', 'Specifications', 'Delivery', 'Contract', 'Commercial',
+    'Inspection', 'Warranty', 'Penalty', 'EMD', 'Security', 'Seller Rules', 'Eligibility', 'Budget', 'Vendor',
+    'Justification', 'Tax', 'Contacts', 'Evaluation', 'Bid Timeline', 'Milestones', 'Terms', 'Attachments'
+];
+
+const defaultRequirementItem = (): RequirementItemDraft => ({
+    id: reqId(),
+    name: '',
+    category: 'Goods',
+    subCategory: '',
+    description: '',
+    quantity: 1,
+    unit: 'Nos',
+    hsn: '',
+    sac: '',
+    budget: 0,
+    currency: 'INR',
+    origin: 'India',
+    equivalentBrandAllowed: true
+});
+
+const defaultRequirementDraft = () => ({
+    requirementNumber: `REQ/${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+    requirementTitle: '',
+    requirementType: 'Tender',
+    procurementCategory: 'Goods',
+    description: '',
+    department: '',
+    priority: 'Medium',
+    requirementDate: todayIso,
+    closingDate: '',
+    organizationName: 'Government Office Complex',
+    organizationType: 'Central Government',
+    buyerName: 'Buyer User',
+    buyerDesignation: 'Procurement Officer',
+    buyerEmail: '',
+    buyerContact: '',
+    gstin: '',
+    visibility: 'Public / All Sellers',
+    participate: 'Verified Sellers',
+    publicAll: true,
+    privateInvited: false,
+    msmeOnly: false,
+    startupOnly: false,
+    womenOnly: false,
+    shgOnly: false,
+    localPreference: true,
+    subcontracting: false,
+    deliveryLocationType: 'Single Location',
+    deliveryAddress: '',
+    state: '',
+    district: '',
+    city: '',
+    pincode: '',
+    deliveryPeriod: '',
+    deliveryType: 'One Time Delivery',
+    installationRequired: false,
+    trainingRequired: false,
+    multipleLocations: false,
+    geoLocation: '',
+    contractType: 'One-time',
+    contractDuration: '',
+    contractStartDate: '',
+    contractEndDate: '',
+    rateContract: false,
+    amcRequired: false,
+    renewalOption: false,
+    renewalAllowed: false,
+    contractNotes: '',
+    paymentTerms: '100% After Delivery',
+    advanceAllowed: false,
+    advancePercent: '',
+    securityDepositRequired: false,
+    emdRequired: false,
+    inspectionRequired: false,
+    inspectionAgency: '',
+    qualityCheckRequired: true,
+    thirdPartyInspection: false,
+    inspectionLocation: '',
+    acceptanceCriteria: '',
+    warrantyRequired: true,
+    warrantyPeriod: '',
+    onsiteSupport: false,
+    guaranteePeriod: '',
+    replacementPeriod: '',
+    comprehensiveSupport: false,
+    delayPenaltyApplicable: false,
+    delayPenaltyPercent: '',
+    maximumPenalty: '',
+    performancePenalty: false,
+    slaPenalty: false,
+    emdAmount: '',
+    emdExemptionMsme: true,
+    emdValidityDays: '',
+    emdPaymentMode: 'Online',
+    emdRefundTerms: '',
+    performanceSecurityRequired: false,
+    securityDepositPercent: '',
+    securityValidityMonths: '',
+    securityDepositMode: 'Bank Guarantee',
+    manufacturer: true,
+    authorizedDealer: true,
+    distributor: true,
+    trader: false,
+    serviceProvider: true,
+    oemOnly: false,
+    oemAuthRequired: false,
+    brandAuthRequired: false,
+    individualSellersAllowed: true,
+    consortiumAllowed: false,
+    groupCompanyAllowed: false,
+    sellerConditions: '',
+    minimumTurnover: '',
+    experienceYears: '',
+    startupAllowed: true,
+    msmeReserved: false,
+    isoRequired: false,
+    gstMandatory: true,
+    panMandatory: true,
+    budgetAvailable: '',
+    budgetHead: '',
+    projectCode: '',
+    fundingSource: '',
+    budgetRemarks: '',
+    preferredVendor: '',
+    existingVendor: false,
+    oemPreference: false,
+    vendorRecommendation: '',
+    inviteSpecificVendors: false,
+    vendorList: '',
+    needReason: '',
+    businessPurpose: '',
+    emergencyProcurement: false,
+    expectedOutcome: '',
+    gstApplicable: true,
+    gstType: 'CGST + SGST',
+    taxInclusion: 'Exclusive',
+    tdsApplicable: false,
+    tdsPercent: '',
+    technicalContactName: '',
+    technicalContactEmail: '',
+    technicalContactNumber: '',
+    commercialContactName: '',
+    commercialContactEmail: '',
+    commercialContactNumber: '',
+    escalationContactName: '',
+    escalationContactEmail: '',
+    escalationContactNumber: '',
+    evaluationMethod: 'Technical + Financial Evaluation',
+    technicalWeightage: '50',
+    financialWeightage: '50',
+    experienceMarks: '',
+    complianceMarks: '',
+    certificationsMarks: '',
+    deliveryMarks: '',
+    priceMarks: '',
+    bidType: 'Two Bid',
+    bidSubmissionType: 'Two Cover',
+    bidStartDate: '',
+    bidEndDate: '',
+    technicalOpeningDate: '',
+    financialOpeningDate: '',
+    preBidMeeting: false,
+    preBidMeetingDate: '',
+    clarificationEndDate: '',
+    allowBidRevision: true,
+    multiCurrencyAllowed: false,
+    publishDate: todayIso,
+    corrigendumDate: '',
+    contractAwardDate: '',
+    milestoneContractStartDate: '',
+    milestoneContractEndDate: '',
+    terms: 'Penalty Clause\nWarranty Terms\nReplacement Terms\nSLA Requirements\nContract Duration\nInspection Terms\nQuality Requirements',
+});
+
+function RequirementCreationWorkbench() {
+    const [step, setStep] = useState(0);
+    const [draft, setDraft] = useState<Record<string, string | boolean>>(() => {
+        try {
+            const raw = localStorage.getItem(requirementDraftKey);
+            return raw ? { ...defaultRequirementDraft(), ...JSON.parse(raw) } : defaultRequirementDraft();
+        } catch {
+            return defaultRequirementDraft();
+        }
+    });
+    const [items, setItems] = useState<RequirementItemDraft[]>([defaultRequirementItem()]);
+    const [specs, setSpecs] = useState<SpecificationDraft[]>([
+        { id: reqId(), name: 'Warranty', value: '12 Months', unit: 'Months', min: '', max: '', mandatory: true },
+        { id: reqId(), name: 'Certification', value: '', unit: '', min: '', max: '', mandatory: false },
+    ]);
+    const [docs, setDocs] = useState<RequirementDocDraft[]>([
+        'BOQ File', 'Technical Specification', 'Drawings', 'Scope of Work', 'Terms & Conditions', 'Reference Images',
+        'Inspection Documents', 'Eligibility Documents', 'EMD Exemption Document', 'Performance Security Document',
+        'Vendor Authorization Document', 'Budget Approval Document'
+    ].map((category, index) => ({ id: reqId(), category, requirement: index < 4 ? 'Mandatory' : 'Optional', files: [] })));
+    const [preview, setPreview] = useState(false);
+    const createMut = useCreateRequirement();
+
+    const estimatedValue = useMemo(() => items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.budget || 0), 0), [items]);
+    const validation = useMemo(() => validateRequirementWorkbench(draft, items, docs), [draft, items, docs]);
+    const evaluationTotal = Number(draft.technicalWeightage || 0) + Number(draft.financialWeightage || 0);
+
+    const patch = (key: string, value: string | boolean) => setDraft(prev => ({ ...prev, [key]: value }));
+    const saveDraft = () => {
+        localStorage.setItem(requirementDraftKey, JSON.stringify(draft));
+        toast.success('Requirement draft saved');
+    };
+
+    const submit = async () => {
+        if (validation.errors.length) {
+            toast.error(`Resolve ${validation.errors.length} requirement issue${validation.errors.length > 1 ? 's' : ''} before submission.`);
+            return;
+        }
+        await runWithToast(
+            () => createMut.mutateAsync({
+                title: String(draft.requirementTitle),
+                description: String(draft.description || draft.needReason || ''),
+                procurementMethod: methodFromRequirement(String(draft.requirementType)),
+                estimatedValue,
+                requiredBy: String(draft.closingDate || draft.bidEndDate || ''),
+                items: items.map(item => ({
+                    itemName: item.name,
+                    description: item.description,
+                    quantity: Number(item.quantity || 0),
+                    unitOfMeasure: item.unit,
+                    estimatedUnitPrice: Number(item.budget || 0),
+                    specifications: { hsn: item.hsn, sac: item.sac, brandAllowed: item.equivalentBrandAllowed, specs }
+                }))
+            }),
+            { loading: 'Creating requirement...', success: 'Requirement submitted to the register', error: err => err instanceof Error ? err.message : 'Create failed' }
+        );
+    };
+
+    const section = [
+        <RequirementInfoSection draft={draft} patch={patch} />,
+        <BuyerInfoSection draft={draft} patch={patch} />,
+        <AccessControlSection draft={draft} patch={patch} />,
+        <RequirementItemsSection items={items} setItems={setItems} />,
+        <SpecificationsSection specs={specs} setSpecs={setSpecs} />,
+        <DeliveryRequirementSection draft={draft} patch={patch} />,
+        <ContractSection draft={draft} patch={patch} />,
+        <RequirementCommercialSection draft={draft} patch={patch} estimatedValue={estimatedValue} />,
+        <InspectionSection draft={draft} patch={patch} />,
+        <WarrantyRequirementSection draft={draft} patch={patch} />,
+        <PenaltySection draft={draft} patch={patch} />,
+        <EmdRequirementSection draft={draft} patch={patch} />,
+        <PerformanceSecuritySection draft={draft} patch={patch} />,
+        <SellerRulesSection draft={draft} patch={patch} />,
+        <EligibilityRequirementSection draft={draft} patch={patch} />,
+        <BudgetRequirementSection draft={draft} patch={patch} />,
+        <VendorPreferenceSection draft={draft} patch={patch} />,
+        <JustificationSection draft={draft} patch={patch} />,
+        <TaxSection draft={draft} patch={patch} />,
+        <ContactPersonSection draft={draft} patch={patch} />,
+        <EvaluationRequirementSection draft={draft} patch={patch} total={evaluationTotal} />,
+        <BidSubmissionSection draft={draft} patch={patch} />,
+        <TimelineMilestoneSection draft={draft} patch={patch} />,
+        <TermsSection draft={draft} patch={patch} />,
+        <RequirementDocumentsSection docs={docs} setDocs={setDocs} />,
+    ][step];
+
+    return (
+        <div className="space-y-4 pb-16">
+            <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement · Master Requirement</p>
+                    <h1 className="text-2xl font-black tracking-tight text-slate-950">Create Requirement</h1>
+                    <p className="mt-1 max-w-3xl text-xs font-semibold text-slate-500">
+                        Capture the master demand once, then route it to RFQ, tender, reverse auction, direct purchase, or service procurement.
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={saveDraft}><FileText className="mr-2 h-4 w-4" /> Save as Draft</Button>
+                    <Button variant="outline" onClick={() => setPreview(true)}><Eye className="mr-2 h-4 w-4" /> Preview Requirement</Button>
+                    <Button onClick={submit} disabled={createMut.isPending} className="bg-[#12335f] text-white"><Send className="mr-2 h-4 w-4" /> Submit for Approval</Button>
+                </div>
+            </div>
+
+            {validation.errors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+                    <AlertCircle className="mr-2 inline h-4 w-4" /> {validation.errors[0]}
+                </div>
+            )}
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
+                {requirementSteps.map((label, index) => (
+                    <button key={label} type="button" onClick={() => setStep(index)} className={cn('shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black', step === index ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-600')}>
+                        {index + 1}. {label}
+                    </button>
+                ))}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div>{section}</div>
+                <aside className="space-y-4">
+                    <WorkbenchPanel title="Review Summary" icon={ClipboardCheck}>
+                        <SummaryLine label="Requirement No." value={String(draft.requirementNumber)} />
+                        <SummaryLine label="Type" value={String(draft.requirementType)} />
+                        <SummaryLine label="Items" value={String(items.length)} />
+                        <SummaryLine label="Estimated Value" value={formatCurrency(estimatedValue)} />
+                        <SummaryLine label="Evaluation Total" value={`${evaluationTotal}%`} danger={evaluationTotal !== 100} />
+                        <SummaryLine label="Mandatory Docs Missing" value={String(docs.filter(doc => doc.requirement === 'Mandatory' && doc.files.length === 0).length)} danger={docs.some(doc => doc.requirement === 'Mandatory' && doc.files.length === 0)} />
+                    </WorkbenchPanel>
+                    <WorkbenchPanel title="Approval Status" icon={Send}>
+                        {['Department Head', 'Finance Officer', 'Procurement Officer', 'Competent Authority'].map(role => (
+                            <div key={role} className="flex items-center justify-between border-b border-slate-100 py-2 text-xs font-bold last:border-0">
+                                <span>{role}</span><span className="text-amber-600">Pending</span>
+                            </div>
+                        ))}
+                    </WorkbenchPanel>
+                </aside>
+            </div>
+
+            {preview && <RequirementPreview draft={draft} items={items} docs={docs} estimatedValue={estimatedValue} onClose={() => setPreview(false)} />}
+        </div>
+    );
+}
+
+function RequirementInfoSection({ draft, patch }: WorkbenchSectionProps) {
+    return (
+        <WorkbenchPanel title="1. Requirement Information" icon={FileText}>
+            <WorkbenchGrid>
+                <WorkbenchField label="Requirement Number" required><WorkbenchInput value={String(draft.requirementNumber)} disabled onChange={() => undefined} /></WorkbenchField>
+                <WorkbenchField label="Requirement Title" required><WorkbenchInput value={String(draft.requirementTitle)} onChange={v => patch('requirementTitle', v)} /></WorkbenchField>
+                <WorkbenchField label="Requirement Type" required><WorkbenchSelect value={String(draft.requirementType)} onChange={v => patch('requirementType', v)} options={['RFQ', 'Tender', 'Limited Tender', 'Open Tender', 'Reverse Auction', 'Direct Purchase', 'Service Requirement']} /></WorkbenchField>
+                <WorkbenchField label="Procurement Category" required><WorkbenchSelect value={String(draft.procurementCategory)} onChange={v => patch('procurementCategory', v)} options={['Goods', 'Services', 'Works', 'Consultancy']} /></WorkbenchField>
+                <WorkbenchField label="Department / Division" required><WorkbenchInput value={String(draft.department)} onChange={v => patch('department', v)} /></WorkbenchField>
+                <WorkbenchField label="Priority Level"><WorkbenchSelect value={String(draft.priority)} onChange={v => patch('priority', v)} options={['Low', 'Medium', 'High', 'Urgent', 'Critical']} /></WorkbenchField>
+                <WorkbenchField label="Requirement Date"><WorkbenchInput type="date" value={String(draft.requirementDate)} onChange={v => patch('requirementDate', v)} /></WorkbenchField>
+                <WorkbenchField label="Closing Date" required><WorkbenchInput type="date" value={String(draft.closingDate)} onChange={v => patch('closingDate', v)} /></WorkbenchField>
+                <WorkbenchField label="Requirement Description" required className="md:col-span-2 xl:col-span-3"><WorkbenchTextarea value={String(draft.description)} onChange={v => patch('description', v)} /></WorkbenchField>
+            </WorkbenchGrid>
+        </WorkbenchPanel>
+    );
+}
+
+function BuyerInfoSection({ draft, patch }: WorkbenchSectionProps) {
+    return (
+        <WorkbenchPanel title="2. Buyer Information" icon={ClipboardCheck}>
+            <WorkbenchGrid>
+                <WorkbenchField label="Organization Name" required><WorkbenchInput value={String(draft.organizationName)} onChange={v => patch('organizationName', v)} /></WorkbenchField>
+                <WorkbenchField label="Organization Type"><WorkbenchSelect value={String(draft.organizationType)} onChange={v => patch('organizationType', v)} options={['Central Government', 'State Government', 'PSU', 'Municipality', 'MSME', 'Private Company', 'Cooperative', 'SHG', 'Educational Institute']} /></WorkbenchField>
+                <WorkbenchField label="Buyer Name" required><WorkbenchInput value={String(draft.buyerName)} onChange={v => patch('buyerName', v)} /></WorkbenchField>
+                <WorkbenchField label="Buyer Designation"><WorkbenchInput value={String(draft.buyerDesignation)} onChange={v => patch('buyerDesignation', v)} /></WorkbenchField>
+                <WorkbenchField label="Buyer Email" required><WorkbenchInput value={String(draft.buyerEmail)} onChange={v => patch('buyerEmail', v)} /></WorkbenchField>
+                <WorkbenchField label="Buyer Contact Number" required><WorkbenchInput value={String(draft.buyerContact)} onChange={v => patch('buyerContact', v)} /></WorkbenchField>
+                <WorkbenchField label="GSTIN"><WorkbenchInput value={String(draft.gstin)} onChange={v => patch('gstin', v)} /></WorkbenchField>
+            </WorkbenchGrid>
+        </WorkbenchPanel>
+    );
+}
+
+function AccessControlSection({ draft, patch }: WorkbenchSectionProps) {
+    return <GenericTogglePanel title="3. Visibility & Access Control" icon={Eye} draft={draft} patch={patch} fields={[
+        ['publicAll', 'Public / All Sellers'], ['privateInvited', 'Private / Invited Sellers'], ['msmeOnly', 'MSME Only'], ['startupOnly', 'Startup Only'], ['womenOnly', 'Women-Owned Business Only'], ['shgOnly', 'SHG Only'], ['localPreference', 'Local Supplier Preference'], ['subcontracting', 'Allow Sub-contracting']
+    ]} extra={<WorkbenchGrid><WorkbenchField label="Requirement Visibility"><WorkbenchSelect value={String(draft.visibility)} onChange={v => patch('visibility', v)} options={['Public / All Sellers', 'Private / Invited Sellers', 'Verified Sellers Only']} /></WorkbenchField><WorkbenchField label="Who Can Participate"><WorkbenchInput value={String(draft.participate)} onChange={v => patch('participate', v)} /></WorkbenchField></WorkbenchGrid>} />;
+}
+
+function RequirementItemsSection({ items, setItems }: { items: RequirementItemDraft[]; setItems: (items: RequirementItemDraft[]) => void }) {
+    const update = (id: string, patch: Partial<RequirementItemDraft>) => setItems(items.map(item => item.id === id ? { ...item, ...patch } : item));
+    return (
+        <WorkbenchPanel title="4. Item / Service Details" icon={ClipboardCheck}>
+            <div className="mb-3 flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setItems([...items, defaultRequirementItem()])} className="h-8 text-xs"><Plus className="mr-1 h-3.5 w-3.5" /> Add Item</Button>
+                <Button variant="outline" onClick={() => toast.info('Use these visible columns as the Excel template.')} className="h-8 text-xs"><Download className="mr-1 h-3.5 w-3.5" /> Import / Template</Button>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-[1150px] w-full text-xs">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <tr>{['Product / Service', 'Category', 'Sub Category', 'Description', 'Qty', 'Unit', 'HSN', 'SAC', 'Budget', 'Origin', 'Brand Allowed', 'Action'].map(h => <th key={h} className="px-2 py-2 text-left">{h}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {items.map(item => (
+                            <tr key={item.id}>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.name} onChange={v => update(item.id, { name: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.category} onChange={v => update(item.id, { category: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.subCategory} onChange={v => update(item.id, { subCategory: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.description} onChange={v => update(item.id, { description: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput type="number" value={String(item.quantity)} onChange={v => update(item.id, { quantity: Number(v) || 0 })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.unit} onChange={v => update(item.id, { unit: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.hsn} onChange={v => update(item.id, { hsn: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.sac} onChange={v => update(item.id, { sac: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput type="number" value={String(item.budget)} onChange={v => update(item.id, { budget: Number(v) || 0 })} /></td>
+                                <td className="px-2 py-2"><WorkbenchInput value={item.origin} onChange={v => update(item.id, { origin: v })} /></td>
+                                <td className="px-2 py-2"><WorkbenchToggle label="Yes" checked={item.equivalentBrandAllowed} onChange={v => update(item.id, { equivalentBrandAllowed: v })} /></td>
+                                <td className="px-2 py-2"><div className="flex gap-1"><Button variant="outline" onClick={() => setItems([...items, { ...item, id: reqId() }])} className="h-8 w-8 p-0"><Copy className="h-3.5 w-3.5" /></Button><Button variant="outline" onClick={() => setItems(items.filter(row => row.id !== item.id))} disabled={items.length === 1} className="h-8 w-8 p-0 text-red-600"><Trash2 className="h-3.5 w-3.5" /></Button></div></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </WorkbenchPanel>
+    );
+}
+
+function SpecificationsSection({ specs, setSpecs }: { specs: SpecificationDraft[]; setSpecs: (rows: SpecificationDraft[]) => void }) {
+    const update = (id: string, patch: Partial<SpecificationDraft>) => setSpecs(specs.map(row => row.id === id ? { ...row, ...patch } : row));
+    return (
+        <WorkbenchPanel title="5. Technical Specifications" icon={ClipboardCheck}>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-[900px] w-full text-xs">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500"><tr>{['Specification', 'Required Value', 'Unit', 'Minimum', 'Maximum', 'Mandatory', 'Action'].map(h => <th key={h} className="px-2 py-2 text-left">{h}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-slate-100">{specs.map(row => <tr key={row.id}><td className="px-2 py-2"><WorkbenchInput value={row.name} onChange={v => update(row.id, { name: v })} /></td><td className="px-2 py-2"><WorkbenchInput value={row.value} onChange={v => update(row.id, { value: v })} /></td><td className="px-2 py-2"><WorkbenchInput value={row.unit} onChange={v => update(row.id, { unit: v })} /></td><td className="px-2 py-2"><WorkbenchInput value={row.min} onChange={v => update(row.id, { min: v })} /></td><td className="px-2 py-2"><WorkbenchInput value={row.max} onChange={v => update(row.id, { max: v })} /></td><td className="px-2 py-2"><WorkbenchToggle label="Yes" checked={row.mandatory} onChange={v => update(row.id, { mandatory: v })} /></td><td className="px-2 py-2"><Button variant="outline" onClick={() => setSpecs(specs.filter(item => item.id !== row.id))} className="h-8 w-8 p-0 text-red-600"><Trash2 className="h-3.5 w-3.5" /></Button></td></tr>)}</tbody>
+                </table>
+            </div>
+            <Button variant="outline" onClick={() => setSpecs([...specs, { id: reqId(), name: '', value: '', unit: '', min: '', max: '', mandatory: true }])} className="mt-3 h-8 text-xs"><Plus className="mr-1 h-3.5 w-3.5" /> Add Specification</Button>
+        </WorkbenchPanel>
+    );
+}
+
+function DeliveryRequirementSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="6. Delivery Requirements" icon={CalendarClock} draft={draft} patch={patch} fields={[['deliveryLocationType', 'Delivery Location Type'], ['deliveryAddress', 'Delivery Address'], ['state', 'State'], ['district', 'District'], ['city', 'City'], ['pincode', 'Pincode'], ['deliveryPeriod', 'Delivery Period'], ['deliveryType', 'Delivery Type'], ['geoLocation', 'Geo Location']] } toggles={[['installationRequired', 'Installation Required'], ['trainingRequired', 'Training Required'], ['multipleLocations', 'Multiple Delivery Locations']]} />; }
+function ContractSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="7. Contract Information" icon={FileText} draft={draft} patch={patch} fields={[['contractType', 'Contract Type'], ['contractDuration', 'Contract Duration'], ['contractStartDate', 'Contract Start Date', 'date'], ['contractEndDate', 'Contract End Date', 'date'], ['contractNotes', 'Contract Notes']] } toggles={[['rateContract', 'Rate Contract'], ['amcRequired', 'AMC Required'], ['renewalOption', 'Renewal Option'], ['renewalAllowed', 'Renewal Allowed']]} />; }
+function RequirementCommercialSection({ draft, patch, estimatedValue }: WorkbenchSectionProps & { estimatedValue: number }) { return <SimpleFieldsPanel title="8. Commercial Terms" icon={ClipboardCheck} draft={{ ...draft, estimatedValue: String(estimatedValue) }} patch={patch} fields={[['estimatedValue', 'Estimated Value'], ['currency', 'Currency'], ['paymentTerms', 'Payment Terms'], ['advancePercent', 'Advance Payment Percentage'], ['securityDepositRequired', 'Security Deposit Required'], ['emdRequired', 'EMD Required']] } toggles={[['advanceAllowed', 'Advance Payment Allowed']]} />; }
+function InspectionSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="9. Inspection & Acceptance" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['inspectionAgency', 'Inspection Agency'], ['inspectionLocation', 'Inspection Location'], ['acceptanceCriteria', 'Acceptance Criteria']] } toggles={[['inspectionRequired', 'Inspection Required'], ['qualityCheckRequired', 'Quality Check Required'], ['thirdPartyInspection', 'Third Party Inspection']]} />; }
+function WarrantyRequirementSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="10. Warranty / Guarantee" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['warrantyPeriod', 'Warranty Period'], ['guaranteePeriod', 'Guarantee Period'], ['replacementPeriod', 'Replacement Period']] } toggles={[['warrantyRequired', 'Warranty Required'], ['onsiteSupport', 'Onsite Support'], ['comprehensiveSupport', 'Comprehensive Support']]} />; }
+function PenaltySection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="11. Liquidated Damages / Penalty" icon={AlertCircle} draft={draft} patch={patch} fields={[['delayPenaltyPercent', 'Delay Penalty Percentage'], ['maximumPenalty', 'Maximum Penalty']] } toggles={[['delayPenaltyApplicable', 'Delay Penalty Applicable'], ['performancePenalty', 'Performance Penalty'], ['slaPenalty', 'SLA Penalty Applicable']]} />; }
+function EmdRequirementSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="12. EMD / Earnest Money Deposit" icon={FileText} draft={draft} patch={patch} fields={[['emdAmount', 'EMD Amount'], ['emdValidityDays', 'EMD Validity Days'], ['emdPaymentMode', 'EMD Payment Mode'], ['emdRefundTerms', 'EMD Refund Terms']] } toggles={[['emdRequired', 'EMD Required'], ['emdExemptionMsme', 'EMD Exemption for MSME']]} />; }
+function PerformanceSecuritySection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="13. Performance Security" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['securityDepositPercent', 'Security Deposit Percentage'], ['securityValidityMonths', 'Security Validity Months'], ['securityDepositMode', 'Security Deposit Mode']] } toggles={[['performanceSecurityRequired', 'Performance Security Required']]} />; }
+function SellerRulesSection({ draft, patch }: WorkbenchSectionProps) { return <GenericTogglePanel title="14. Seller Participation Rules" icon={UsersIconFallback} draft={draft} patch={patch} fields={[['manufacturer', 'Manufacturer'], ['authorizedDealer', 'Authorized Dealer'], ['distributor', 'Distributor'], ['trader', 'Trader'], ['serviceProvider', 'Service Provider'], ['oemOnly', 'OEM Only'], ['oemAuthRequired', 'OEM Authorization Required'], ['brandAuthRequired', 'Brand Authorization Required'], ['individualSellersAllowed', 'Individual Sellers Allowed'], ['consortiumAllowed', 'Consortium Allowed'], ['groupCompanyAllowed', 'Group Company Allowed']]} extra={<WorkbenchField label="Other Conditions"><WorkbenchTextarea value={String(draft.sellerConditions)} onChange={v => patch('sellerConditions', v)} /></WorkbenchField>} />; }
+function EligibilityRequirementSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="15. Eligibility Criteria" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['minimumTurnover', 'Minimum Turnover'], ['experienceYears', 'Experience Required in Years']] } toggles={[['startupAllowed', 'Startup Allowed'], ['msmeReserved', 'MSME Reserved'], ['isoRequired', 'ISO Required'], ['oemAuthRequired', 'OEM Authorization Required'], ['gstMandatory', 'GST Mandatory'], ['panMandatory', 'PAN Mandatory']]} />; }
+function BudgetRequirementSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="16. Budget Information" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['budgetAvailable', 'Budget Available'], ['budgetHead', 'Budget Head'], ['projectCode', 'Project Code'], ['fundingSource', 'Funding Source'], ['budgetRemarks', 'Budget Remarks']] } />; }
+function VendorPreferenceSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="17. Vendor Preference" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['preferredVendor', 'Preferred Vendor'], ['vendorRecommendation', 'Vendor Recommendation'], ['vendorList', 'Add Vendor']] } toggles={[['existingVendor', 'Existing Vendor'], ['oemPreference', 'OEM Preference'], ['inviteSpecificVendors', 'Invite Specific Vendors']]} />; }
+function JustificationSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="18. Procurement Justification" icon={FileText} draft={draft} patch={patch} fields={[['needReason', 'Why is this requirement needed?'], ['businessPurpose', 'Business Purpose'], ['expectedOutcome', 'Expected Outcome']] } toggles={[['emergencyProcurement', 'Emergency Procurement']]} />; }
+function TaxSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="19. Tax Information" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['gstType', 'GST Type'], ['taxInclusion', 'Tax Inclusion'], ['tdsPercent', 'TDS Percentage']] } toggles={[['gstApplicable', 'GST Applicable'], ['tdsApplicable', 'TDS Applicable']]} />; }
+function ContactPersonSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="20. Contact Person Details" icon={ClipboardCheck} draft={draft} patch={patch} fields={[['technicalContactName', 'Technical Contact Name'], ['technicalContactEmail', 'Technical Contact Email'], ['technicalContactNumber', 'Technical Contact Number'], ['commercialContactName', 'Commercial Contact Name'], ['commercialContactEmail', 'Commercial Contact Email'], ['commercialContactNumber', 'Commercial Contact Number'], ['escalationContactName', 'Escalation Contact Name'], ['escalationContactEmail', 'Escalation Contact Email'], ['escalationContactNumber', 'Escalation Contact Number']] } />; }
+function EvaluationRequirementSection({ draft, patch, total }: WorkbenchSectionProps & { total: number }) { return <SimpleFieldsPanel title={`21. Evaluation Criteria · Total ${total}%`} icon={ClipboardCheck} draft={draft} patch={patch} fields={[['evaluationMethod', 'Evaluation Method'], ['technicalWeightage', 'Technical Weightage'], ['financialWeightage', 'Financial Weightage'], ['experienceMarks', 'Experience Marks'], ['complianceMarks', 'Technical Compliance Marks'], ['certificationsMarks', 'Certifications Marks'], ['deliveryMarks', 'Delivery Capability Marks'], ['priceMarks', 'Price Marks']] } />; }
+function BidSubmissionSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="22. Bid Submission Settings & Timeline" icon={CalendarClock} draft={draft} patch={patch} fields={[['bidType', 'Bid Type'], ['bidSubmissionType', 'Bid Submission Type'], ['bidStartDate', 'Bid Start Date', 'date'], ['bidEndDate', 'Bid End Date', 'date'], ['technicalOpeningDate', 'Bid Opening Date Technical', 'date'], ['financialOpeningDate', 'Bid Opening Date Financial', 'date'], ['preBidMeetingDate', 'Pre-Bid Meeting Date', 'date'], ['clarificationEndDate', 'Clarification End Date', 'date']] } toggles={[['preBidMeeting', 'Pre-Bid Meeting'], ['allowBidRevision', 'Allow Bid Revision'], ['multiCurrencyAllowed', 'Multi Currency Allowed']]} />; }
+function TimelineMilestoneSection({ draft, patch }: WorkbenchSectionProps) { return <SimpleFieldsPanel title="23. Timeline & Milestones" icon={CalendarClock} draft={draft} patch={patch} fields={[['publishDate', 'Publish Date', 'date'], ['corrigendumDate', 'Corrigendum Date', 'date'], ['technicalOpeningDate', 'Technical Opening Date', 'date'], ['financialOpeningDate', 'Financial Opening Date', 'date'], ['contractAwardDate', 'Contract Award Date', 'date'], ['milestoneContractStartDate', 'Contract Start Date', 'date'], ['milestoneContractEndDate', 'Contract End Date', 'date']] } />; }
+function TermsSection({ draft, patch }: WorkbenchSectionProps) { return <WorkbenchPanel title="24. Terms & Conditions" icon={FileText}><WorkbenchTextarea value={String(draft.terms)} onChange={v => patch('terms', v)} /></WorkbenchPanel>; }
+
+function RequirementDocumentsSection({ docs, setDocs }: { docs: RequirementDocDraft[]; setDocs: (docs: RequirementDocDraft[]) => void }) {
+    const updateDoc = (id: string, patch: Partial<RequirementDocDraft>) => setDocs(docs.map(doc => doc.id === id ? { ...doc, ...patch } : doc));
+    return (
+        <WorkbenchPanel title="25. Attachments / Document Uploads" icon={Upload}>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {docs.map(doc => (
+                    <div key={doc.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-black text-slate-900">{doc.category}</p>
+                            <select value={doc.requirement} onChange={e => updateDoc(doc.id, { requirement: e.target.value as RequirementDocDraft['requirement'] })} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-black">
+                                <option>Mandatory</option><option>Optional</option><option>Not Required</option>
+                            </select>
+                        </div>
+                        <label className="mt-3 flex min-h-20 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#12335f]/30 bg-blue-50/40 text-center text-xs font-bold text-[#12335f]">
+                            <Upload className="mb-1 h-5 w-5" /> Browse or drop files
+                            <input type="file" multiple className="hidden" onChange={e => {
+                                const selected = Array.from(e.target.files || []);
+                                updateDoc(doc.id, { files: [...doc.files, ...selected.map(file => ({ name: file.name, size: file.size, uploadedAt: new Date().toISOString(), version: doc.files.length + 1 }))] });
+                            }} />
+                        </label>
+                        <div className="mt-2 space-y-1">{doc.files.map(file => <p key={`${file.name}-${file.uploadedAt}`} className="truncate rounded bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600">{file.name} · v{file.version}</p>)}</div>
+                    </div>
+                ))}
+            </div>
+        </WorkbenchPanel>
+    );
+}
+
+type WorkbenchSectionProps = { draft: Record<string, string | boolean>; patch: (key: string, value: string | boolean) => void };
+const UsersIconFallback = ClipboardCheck;
+
+function SimpleFieldsPanel({ title, icon, draft, patch, fields, toggles = [] }: WorkbenchSectionProps & { title: string; icon: any; fields: Array<[string, string, string?]>; toggles?: Array<[string, string]> }) {
+    return (
+        <WorkbenchPanel title={title} icon={icon}>
+            <WorkbenchGrid>
+                {fields.map(([key, label, type]) => <WorkbenchField key={key} label={label}><WorkbenchInput type={type || 'text'} value={String(draft[key] || '')} onChange={v => patch(key, v)} /></WorkbenchField>)}
+                {toggles.map(([key, label]) => <WorkbenchToggle key={key} label={label} checked={Boolean(draft[key])} onChange={v => patch(key, v)} />)}
+            </WorkbenchGrid>
+        </WorkbenchPanel>
+    );
+}
+
+function GenericTogglePanel({ title, icon, draft, patch, fields, extra }: WorkbenchSectionProps & { title: string; icon: any; fields: Array<[string, string]>; extra?: React.ReactNode }) {
+    return (
+        <WorkbenchPanel title={title} icon={icon}>
+            {extra && <div className="mb-4">{extra}</div>}
+            <WorkbenchGrid>{fields.map(([key, label]) => <WorkbenchToggle key={key} label={label} checked={Boolean(draft[key])} onChange={v => patch(key, v)} />)}</WorkbenchGrid>
+        </WorkbenchPanel>
+    );
+}
+
+function RequirementPreview({ draft, items, docs, estimatedValue, onClose }: { draft: Record<string, string | boolean>; items: RequirementItemDraft[]; docs: RequirementDocDraft[]; estimatedValue: number; onClose: () => void }) {
+    return (
+        <Modal title="Requirement Preview" onClose={onClose} wide>
+            <div className="space-y-4">
+                <SummaryLine label="Requirement" value={`${draft.requirementNumber} · ${draft.requirementTitle || 'Untitled'}`} />
+                <SummaryLine label="Route" value={String(draft.requirementType)} />
+                <SummaryLine label="Estimated Value" value={formatCurrency(estimatedValue)} />
+                <SummaryLine label="Items" value={String(items.length)} />
+                <SummaryLine label="Documents Attached" value={String(docs.reduce((sum, doc) => sum + doc.files.length, 0))} />
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{String(draft.terms || '')}</div>
+            </div>
+        </Modal>
+    );
+}
+
+function WorkbenchPanel({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
+    return <section className="rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#12335f] text-white"><Icon className="h-4 w-4" /></span><h2 className="text-sm font-black text-[#12335f]">{title}</h2></div><div className="p-4">{children}</div></section>;
+}
+function WorkbenchGrid({ children }: { children: React.ReactNode }) { return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div>; }
+function WorkbenchField({ label, children, required, className }: { label: string; children: React.ReactNode; required?: boolean; className?: string }) { return <label className={cn('block space-y-1.5', className)}><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label} {required && <span className="text-red-600">*</span>}</span>{children}</label>; }
+function WorkbenchInput({ value, onChange, type = 'text', disabled }: { value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) { return <input value={value} disabled={disabled} type={type} onChange={e => onChange(e.target.value)} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-[#12335f]/20 disabled:bg-slate-100" />; }
+function WorkbenchSelect({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) { return <select value={value} onChange={e => onChange(e.target.value)} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-[#12335f]/20">{options.map(option => <option key={option}>{option}</option>)}</select>; }
+function WorkbenchTextarea({ value, onChange }: { value: string; onChange: (value: string) => void }) { return <textarea value={value} onChange={e => onChange(e.target.value)} rows={5} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-[#12335f]/20" />; }
+function WorkbenchToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <label className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-[#12335f]" />{label}</label>; }
+function SummaryLine({ label, value, danger }: { label: string; value: string; danger?: boolean }) { return <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-2 text-xs last:border-0"><span className="font-bold text-slate-500">{label}</span><span className={cn('text-right font-black', danger ? 'text-red-600' : 'text-slate-900')}>{value}</span></div>; }
+
+function validateRequirementWorkbench(draft: Record<string, string | boolean>, items: RequirementItemDraft[], docs: RequirementDocDraft[]) {
+    const errors: string[] = [];
+    if (!String(draft.requirementTitle || '').trim()) errors.push('Requirement title is mandatory.');
+    if (!String(draft.description || '').trim()) errors.push('Requirement description is mandatory.');
+    if (!String(draft.closingDate || '').trim()) errors.push('Closing date is mandatory.');
+    if (new Date(String(draft.closingDate || 0)).getTime() < new Date(String(draft.publishDate || draft.requirementDate || 0)).getTime()) errors.push('Closing date cannot be before publish / requirement date.');
+    if (items.some(item => !item.name.trim() || Number(item.quantity) <= 0)) errors.push('Every item must have a name and valid quantity.');
+    if (docs.some(doc => doc.requirement === 'Mandatory' && doc.files.length === 0)) errors.push('Mandatory requirement documents are missing.');
+    const evalTotal = Number(draft.technicalWeightage || 0) + Number(draft.financialWeightage || 0);
+    if (evalTotal !== 100 && String(draft.requirementType) !== 'Direct Purchase') errors.push('Evaluation technical and financial weightage must total 100%.');
+    return { errors };
+}
+
+function methodFromRequirement(type: string): ProcurementMethod {
+    if (type === 'Direct Purchase') return 'DIRECT_PURCHASE';
+    if (type === 'RFQ') return 'RFQ';
+    if (type === 'Reverse Auction') return 'REVERSE_AUCTION';
+    if (type === 'Rate Contract') return 'RATE_CONTRACT';
+    return 'TENDER';
 }
 
 /* ---------- Detail drawer ---------- */

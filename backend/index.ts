@@ -732,8 +732,10 @@ const conversationCreateSchema = z.object({
   fileAssetIds: idArraySchema.optional()
 });
 const messageCreateSchema = z.object({
-  content: z.string().trim().min(1).max(2000),
+  content: z.string().trim().max(2000).optional().default(''),
   fileAssetIds: idArraySchema.optional()
+}).refine(payload => payload.content.trim().length > 0 || (payload.fileAssetIds || []).length > 0, {
+  message: 'Message text or attachment is required'
 });
 const disputeCreateSchema = z.object({
   purchaseOrderId: z.coerce.number().int().positive().optional(),
@@ -1005,8 +1007,57 @@ const assertFileAssetsAccessible = async (fileAssetIds: number[] = [], user: Non
   return assets;
 };
 
+const canModerateMessages = (user: NonNullable<AuthRequest['user']>) =>
+  ['admin', 'master_admin'].includes(String(user.role));
+
 const canAccessConversation = (conversation: any, user: NonNullable<AuthRequest['user']>) =>
-  user.role === 'admin' || conversation.buyerId === Number(user.id) || conversation.sellerId === Number(user.id);
+  canModerateMessages(user) || conversation.buyerId === Number(user.id) || conversation.sellerId === Number(user.id);
+
+const conversationRedirectUrl = (role?: string, conversationId?: number) => {
+  const suffix = conversationId ? `?conversationId=${conversationId}` : '';
+  if (role === 'seller') return `/seller/messages${suffix}`;
+  if (role === 'admin' || role === 'master_admin') return `/admin/messages${suffix}`;
+  return `/buyer/messages${suffix}`;
+};
+
+const conversationUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  organization: { select: { id: true, organizationName: true } },
+  company: { select: { id: true, name: true, portalDisplayName: true } }
+} as const;
+
+const notifyConversationParticipants = async ({
+  actor,
+  buyer,
+  seller,
+  conversationId,
+  subject,
+  title
+}: {
+  actor: NonNullable<AuthRequest['user']>;
+  buyer: { id: number; role: string } | null;
+  seller: { id: number; role: string } | null;
+  conversationId: number;
+  subject: string;
+  title: string;
+}) => {
+  const actorId = Number(actor.id);
+  const recipients = [buyer, seller].filter((user): user is { id: number; role: string } =>
+    Boolean(user?.id) && user!.id !== actorId
+  );
+  const uniqueRecipients = Array.from(new Map(recipients.map(user => [user.id, user])).values());
+  await Promise.allSettled(uniqueRecipients.map(recipient => createNotificationSafe({
+    userId: recipient.id,
+    title,
+    message: `A new message was sent for ${subject}.`,
+    type: 'message_received',
+    priority: 'medium',
+    redirectUrl: conversationRedirectUrl(recipient.role, conversationId)
+  })));
+};
 
 const canAccessDispute = (dispute: any, user: NonNullable<AuthRequest['user']>) =>
   user.role === 'admin' || dispute.buyerId === Number(user.id) || dispute.sellerId === Number(user.id) || dispute.raisedById === Number(user.id);
@@ -4580,28 +4631,99 @@ app.get('/api/admin/stats', authenticate, authorizeAdmin, async (req, res) => {
 });
 
 // --- Secure Messaging ---
+app.get('/api/messages/users/search', authenticate, authorize('admin', 'master_admin'), async (req: AuthRequest, res) => {
+  try {
+    const q = sanitizePortalText(String(req.query.q || '').trim(), 80);
+    const role = String(req.query.role || '').trim();
+    const allowedRoles = ['buyer', 'seller', 'admin', 'financier', 'shg'];
+    const where: any = {
+      id: { not: Number(req.user?.id) },
+      accountStatus: 'ACTIVE'
+    };
+    if (allowedRoles.includes(role)) where.role = role;
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { mobile: { contains: q, mode: 'insensitive' } },
+        { userId: { contains: q, mode: 'insensitive' } }
+      ];
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      select: conversationUserSelect,
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+      take: 25
+    });
+    res.json(maskSensitive(users));
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to search message users');
+  }
+});
+
+app.get('/api/messages/unread-count', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const conversationWhere = canModerateMessages(user)
+      ? {}
+      : { OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }] };
+    const unreadCount = await prisma.message.count({
+      where: {
+        senderId: { not: Number(user.id) },
+        status: { not: 'read' },
+        conversation: conversationWhere
+      }
+    });
+    res.json({ unreadCount });
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to load unread message count');
+  }
+});
+
 app.get('/api/conversations', authenticate, async (req: AuthRequest, res) => {
   try {
-    const where = req.user?.role === 'admin'
+    const user = req.user!;
+    const where = canModerateMessages(user)
       ? {}
-      : { OR: [{ buyerId: Number(req.user?.id) }, { sellerId: Number(req.user?.id) }] };
+      : { OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }] };
     const conversations = await prisma.conversation.findMany({
       where,
       include: {
         tender: { select: { id: true, tenderId: true, title: true, status: true } },
-        buyer: { select: { id: true, name: true, role: true } },
-        seller: { select: { id: true, name: true, role: true } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 }
+        buyer: { select: conversationUserSelect },
+        seller: { select: conversationUserSelect },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { sender: { select: conversationUserSelect }, attachments: true }
+        }
       },
       orderBy: { lastMessageAt: 'desc' }
     });
-    res.json(maskSensitive(conversations));
+    const unreadCounts = conversations.length
+      ? await prisma.message.groupBy({
+        by: ['conversationId'],
+        where: {
+          conversationId: { in: conversations.map(item => item.id) },
+          senderId: { not: Number(user.id) },
+          status: { not: 'read' }
+        },
+        _count: { _all: true }
+      })
+      : [];
+    const unreadByConversation = new Map(unreadCounts.map(item => [item.conversationId, item._count._all]));
+    res.json(maskSensitive(conversations.map(item => ({
+      ...item,
+      unreadCount: unreadByConversation.get(item.id) || 0,
+      muted: false
+    }))));
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to load conversations');
   }
 });
 
-app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin'), async (req: AuthRequest, res) => {
+app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin', 'master_admin'), async (req: AuthRequest, res) => {
   try {
     await consumeActionBudget(req, 'messages', 20, 60);
     const payload = parseSchema(conversationCreateSchema, req.body);
@@ -4624,12 +4746,24 @@ app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin
 
     if (actor.role === 'buyer') buyerId = Number(actor.id);
     if (actor.role === 'seller') sellerId = Number(actor.id);
+    if (canModerateMessages(actor)) {
+      if (buyerId && !sellerId) sellerId = Number(actor.id);
+      if (sellerId && !buyerId) buyerId = Number(actor.id);
+    }
     if (!buyerId || !sellerId || buyerId === sellerId) {
       return res.status(400).json({ message: 'Valid buyer and seller are required' });
     }
 
-    const buyer = await prisma.user.findFirst({ where: { id: buyerId, role: 'buyer' }, select: { id: true } });
-    const seller = await prisma.user.findFirst({ where: { id: sellerId, role: 'seller' }, select: { id: true } });
+    const buyerRoleFilter = canModerateMessages(actor) ? ['buyer', 'admin', 'master_admin'] : ['buyer'];
+    const sellerRoleFilter = canModerateMessages(actor) ? ['seller', 'admin', 'master_admin'] : ['seller'];
+    const buyer = await prisma.user.findFirst({
+      where: { id: buyerId, role: { in: buyerRoleFilter as any } },
+      select: conversationUserSelect
+    });
+    const seller = await prisma.user.findFirst({
+      where: { id: sellerId, role: { in: sellerRoleFilter as any } },
+      select: conversationUserSelect
+    });
     if (!buyer || !seller) return res.status(400).json({ message: 'Valid buyer and seller are required' });
 
     const conversation = payload.tenderId
@@ -4660,19 +4794,17 @@ app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin
             create: (payload.fileAssetIds || []).map(fileAssetId => ({ fileAssetId }))
           }
         },
-        include: { attachments: true }
+        include: { attachments: true, sender: { select: conversationUserSelect } }
       });
     }
 
-    const recipientId = Number(actor.id) === buyerId ? sellerId : buyerId;
-    await createNotificationSafe({
-      userId: recipientId,
-      title: message ? 'New procurement question' : 'New procurement conversation',
-      message: message
-        ? `A new question or message was sent for ${conversation.subject}.`
-        : `A new procurement conversation was opened for ${conversation.subject}.`,
-      type: 'message_received',
-      redirectUrl: recipientId === sellerId ? '/seller/messages' : '/buyer/messages'
+    await notifyConversationParticipants({
+      actor,
+      buyer,
+      seller,
+      conversationId: conversation.id,
+      subject: conversation.subject,
+      title: message ? 'New procurement question' : 'New procurement conversation'
     });
     await auditLog({
       actorUserId: Number(actor.id),
@@ -4682,9 +4814,18 @@ app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin
       entityId: conversation.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      metadata: { tenderId: payload.tenderId, recipientId }
+      metadata: { tenderId: payload.tenderId, buyerId, sellerId }
     });
-    res.status(201).json(maskSensitive({ conversation, message }));
+    const enrichedConversation = await prisma.conversation.findUnique({
+      where: { id: conversation.id },
+      include: {
+        tender: { select: { id: true, tenderId: true, title: true, status: true } },
+        buyer: { select: conversationUserSelect },
+        seller: { select: conversationUserSelect },
+        messages: { include: { attachments: true, sender: { select: conversationUserSelect } }, orderBy: { createdAt: 'asc' } }
+      }
+    });
+    res.status(201).json(maskSensitive({ conversation: enrichedConversation || conversation, message }));
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to create conversation');
   }
@@ -4696,15 +4837,93 @@ app.get('/api/conversations/:id', authenticate, async (req: AuthRequest, res) =>
       where: { id: Number(req.params.id) },
       include: {
         tender: { select: { id: true, tenderId: true, title: true, status: true } },
-        buyer: { select: { id: true, name: true, role: true } },
-        seller: { select: { id: true, name: true, role: true } },
-        messages: { include: { attachments: true, sender: { select: { id: true, name: true, role: true } } }, orderBy: { createdAt: 'asc' } }
+        buyer: { select: conversationUserSelect },
+        seller: { select: conversationUserSelect },
+        messages: {
+          include: { attachments: true, sender: { select: conversationUserSelect } },
+          orderBy: { createdAt: 'asc' }
+        }
       }
     });
     if (!conversation || !canAccessConversation(conversation, req.user!)) return res.status(404).json({ message: 'Conversation not found' });
-    res.json(maskSensitive(conversation));
+    const unreadCount = await prisma.message.count({
+      where: {
+        conversationId: conversation.id,
+        senderId: { not: Number(req.user?.id) },
+        status: { not: 'read' }
+      }
+    });
+    res.json(maskSensitive({ ...conversation, unreadCount, muted: false }));
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to load conversation');
+  }
+});
+
+app.patch('/api/conversations/:id/read', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const conversation = await prisma.conversation.findUnique({ where: { id: Number(req.params.id) } });
+    if (!conversation || !canAccessConversation(conversation, req.user!)) return res.status(404).json({ message: 'Conversation not found' });
+    const result = await prisma.message.updateMany({
+      where: {
+        conversationId: conversation.id,
+        senderId: { not: Number(req.user?.id) },
+        status: { not: 'read' }
+      },
+      data: { status: 'read' }
+    });
+    res.json({ success: true, readCount: result.count });
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to mark conversation read');
+  }
+});
+
+app.patch('/api/conversations/:id/archive', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const conversation = await prisma.conversation.findUnique({ where: { id: Number(req.params.id) } });
+    if (!conversation || !canAccessConversation(conversation, req.user!)) return res.status(404).json({ message: 'Conversation not found' });
+    const updated = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { status: 'archived' },
+      include: {
+        tender: { select: { id: true, tenderId: true, title: true, status: true } },
+        buyer: { select: conversationUserSelect },
+        seller: { select: conversationUserSelect },
+        messages: { include: { attachments: true, sender: { select: conversationUserSelect } }, orderBy: { createdAt: 'asc' } }
+      }
+    });
+    await auditLog({
+      actorUserId: Number(req.user?.id),
+      actorRole: req.user?.role,
+      action: 'conversation.archived',
+      entityType: 'conversation',
+      entityId: conversation.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+    res.json(maskSensitive(updated));
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to archive conversation');
+  }
+});
+
+app.patch('/api/conversations/:id/mute', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const conversation = await prisma.conversation.findUnique({ where: { id: Number(req.params.id) } });
+    if (!conversation || !canAccessConversation(conversation, req.user!)) return res.status(404).json({ message: 'Conversation not found' });
+    const muted = Boolean(req.body?.muted);
+    await auditLog({
+      actorUserId: Number(req.user?.id),
+      actorRole: req.user?.role,
+      action: muted ? 'conversation.muted' : 'conversation.unmuted',
+      entityType: 'conversation',
+      entityId: conversation.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { muted }
+    });
+    res.json({ success: true, muted });
+  } catch (err: any) {
+    handleSecureRouteError(res, err, 'Unable to update conversation notifications');
   }
 });
 
@@ -4712,7 +4931,10 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: AuthReques
   try {
     await consumeActionBudget(req, 'messages', 20, 60);
     const payload = parseSchema(messageCreateSchema, req.body);
-    const conversation = await prisma.conversation.findUnique({ where: { id: Number(req.params.id) } });
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { buyer: { select: conversationUserSelect }, seller: { select: conversationUserSelect } }
+    });
     if (!conversation || !canAccessConversation(conversation, req.user!)) return res.status(404).json({ message: 'Conversation not found' });
     await assertFileAssetsAccessible(payload.fileAssetIds || [], req.user!);
 
@@ -4723,22 +4945,22 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: AuthReques
         content: sanitizePortalText(payload.content, 2000),
         attachments: { create: (payload.fileAssetIds || []).map(fileAssetId => ({ fileAssetId })) }
       },
-      include: { attachments: true, sender: { select: { id: true, name: true, role: true } } }
+      include: { attachments: true, sender: { select: conversationUserSelect } }
     });
     await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
     res.status(201).json(maskSensitive(message));
-    const recipientId = Number(req.user?.id) === conversation.buyerId ? conversation.sellerId : conversation.buyerId;
     const actorUserId = Number(req.user?.id);
     const actorRole = req.user?.role;
     const ipAddress = req.ip;
     const userAgent = req.headers['user-agent'];
     void Promise.allSettled([
-      createNotificationSafe({
-        userId: recipientId,
+      notifyConversationParticipants({
+        actor: req.user!,
+        buyer: conversation.buyer,
+        seller: conversation.seller,
+        conversationId: conversation.id,
+        subject: conversation.subject,
         title: 'New procurement question',
-        message: `A new question or message was sent for ${conversation.subject}.`,
-        type: 'message_received',
-        redirectUrl: recipientId === conversation.sellerId ? '/seller/messages' : '/buyer/messages'
       }),
       auditLog({
         actorUserId,
@@ -4748,7 +4970,7 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: AuthReques
         entityId: message.id,
         ipAddress,
         userAgent,
-        metadata: { conversationId: conversation.id, recipientId }
+        metadata: { conversationId: conversation.id, buyerId: conversation.buyerId, sellerId: conversation.sellerId }
       })
     ]).catch(logMessageSideEffectFailure);
   } catch (err: any) {

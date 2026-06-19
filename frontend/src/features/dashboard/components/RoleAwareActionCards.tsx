@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useCallback, useMemo } from 'react';
 import {
     AlertTriangle, ArrowRight, ClipboardCheck, ClipboardList, FileText, Gavel,
-    Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck
+    Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck, Landmark
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../hooks/useAuth';
@@ -331,6 +331,24 @@ function RoleAwareActionCards() {
             icon: Gavel,
             tone: 'amber',
             show: isSeller,
+            priority: false
+        },
+        {
+            label: 'Invoice Factoring',
+            count: 0,
+            href: '/factoring',
+            icon: Landmark,
+            tone: 'indigo',
+            show: isSeller,
+            priority: false
+        },
+        {
+            label: 'Factoring Console',
+            count: 0,
+            href: '/factoring',
+            icon: Landmark,
+            tone: 'indigo',
+            show: user?.role === 'financier',
             priority: false
         },
 

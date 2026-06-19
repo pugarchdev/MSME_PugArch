@@ -150,6 +150,8 @@ model User {
   kycAuthSessions                    KycAuthSession[]
   kycVerifications                   UserKycVerification[]
   kycAuditLogs                       KycAuditLog[]
+  sellerFactoring                    InvoiceFactoring[]                    @relation("SellerFactoring")
+  financierFactoring                 InvoiceFactoring[]                    @relation("FinancierFactoring")
 
   @@index([role, onboardingStatus])
   @@index([role])
@@ -2387,6 +2389,7 @@ model Invoice {
   milestonePayments  MilestonePayment[]
   payments           PaymentTransaction[]
   paymentSettlements PaymentSettlement[]  @relation("PaymentSettlementInvoice")
+  factoring          InvoiceFactoring?
 
   @@index([purchaseOrderId, status])
   @@index([sellerId, status])
@@ -3951,6 +3954,7 @@ enum Role {
   shg
   buyer
   admin
+  financier
 }
 
 enum ShgType {
@@ -4647,4 +4651,27 @@ enum MarketplaceInteractionAction {
   ORDER
   REQUIREMENT_POSTED
   SEARCH
+}
+
+model InvoiceFactoring {
+  id              Int      @id @default(autoincrement())
+  invoiceId       Int      @unique
+  sellerId        Int
+  financierId     Int?
+  status          String   @default("INITIATED") // INITIATED, OFFERED, ACCEPTED, DISBURSED, SETTLED
+  requestedAmount Decimal  @db.Decimal(18, 2)
+  factoredAmount  Decimal? @db.Decimal(18, 2)
+  feeAmount       Decimal? @db.Decimal(18, 2)
+  discountRate    Decimal? @db.Decimal(18, 2)
+  repaymentAmount Decimal? @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  seller          User     @relation("SellerFactoring", fields: [sellerId], references: [id], onDelete: Restrict)
+  financier       User?    @relation("FinancierFactoring", fields: [financierId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([sellerId])
+  @@index([financierId])
 }

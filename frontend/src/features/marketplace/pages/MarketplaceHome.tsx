@@ -193,7 +193,9 @@ export default function MarketplaceHome() {
 
             <main className="flex-1 overflow-x-hidden">
                 <HeroBanner banners={activeBannerData?.banners?.length ? activeBannerData.banners : (data?.banners || [])} />
-                <SearchSection categories={categories} />
+                <div className="hidden md:block">
+                    <SearchSection categories={categories} />
+                </div>
 
                 <CategoryCatalogueStrip
                     categories={categories}
@@ -206,6 +208,7 @@ export default function MarketplaceHome() {
                     }}
                     title="Official category catalogue"
                     subtitle="Select a work category to focus products, services, sellers, and buyer actions"
+                    className="md:hidden"
                 />
 
                 {activeCategory && (

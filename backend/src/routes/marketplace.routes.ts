@@ -1707,13 +1707,39 @@ router.get('/marketplace/sellers', shortCache(60), async (req: Request, res: Res
                     verificationStatus: true,
                     logoFile: { select: organizationLogoSelect },
                     profile: { select: organizationProfileBrandSelect },
+                    users: {
+                        where: {
+                            role: { in: ['seller', 'shg'] },
+                            accountStatus: 'ACTIVE'
+                        },
+                        select: {
+                            id: true
+                        }
+                    },
                     _count: { select: { products: { where: { status: 'ACTIVE' } }, services: { where: { status: 'ACTIVE' } } } }
                 }
             }),
             db.organization.count({ where })
         ]);
 
-        return ok(res, { sellers, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+        const mappedSellers = sellers.map((org: any) => {
+            const sellerUser = org.users?.[0];
+            return {
+                id: org.id,
+                organizationName: org.organizationName,
+                organizationType: org.organizationType,
+                city: org.city,
+                district: org.district,
+                state: org.state,
+                verificationStatus: org.verificationStatus,
+                logoFile: org.logoFile,
+                profile: org.profile,
+                _count: org._count,
+                sellerUserId: sellerUser ? sellerUser.id : null
+            };
+        });
+
+        return ok(res, { sellers: mappedSellers, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
         console.error('[Marketplace Sellers]', error);
         return apiResponse.error(res, 500, 'Failed to load sellers', 'MARKETPLACE_SELLERS_ERROR');

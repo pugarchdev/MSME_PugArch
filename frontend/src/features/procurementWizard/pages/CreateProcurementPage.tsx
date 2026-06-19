@@ -24,6 +24,8 @@ import {
   Trash2,
   Upload,
   Users,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -31,6 +33,7 @@ import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { PROCUREMENT_DRAFTS_ROUTE } from '../api';
 import { DELIVERY_TYPES, PAYMENT_TERMS, QUANTITY_UNITS } from '../../../constants/dropdowns';
+import { marketplaceApi, type MarketplaceSeller } from '../../marketplace/api';
 
 type ProcurementType = 'direct' | 'comparison' | 'rfq' | 'tender' | 'auction';
 type StepKind = 'basics' | 'items' | 'vendors' | 'schedule' | 'rules' | 'documents' | 'approval' | 'review';
@@ -87,6 +90,9 @@ type Draft = {
     minimumTurnover: string;
     experienceYears: string;
     complianceNotes: string;
+    selectedSellerId?: number | null;
+    selectedSellerName?: string;
+    selectedSellerCode?: string;
   };
   schedule: {
     publishDate: string;
@@ -421,6 +427,9 @@ const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
     minimumTurnover: '',
     experienceYears: '',
     complianceNotes: '',
+    selectedSellerId: null,
+    selectedSellerName: '',
+    selectedSellerCode: '',
   },
   schedule: {
     publishDate: today,
@@ -790,6 +799,26 @@ export default function CreateProcurementPage() {
     }
     if (draft.type === 'tender') {
       localStorage.setItem(TENDER_HANDOFF_KEY, JSON.stringify(buildTenderHandoffDraft(draft)));
+    }
+    if (draft.type === 'direct') {
+      localStorage.setItem('msme:direct-purchase-create-prefill:v1', JSON.stringify({
+        sellerId: draft.vendors.selectedSellerId,
+        vendorName: draft.vendors.selectedSellerName,
+        vendorCode: draft.vendors.selectedSellerCode,
+        purchaseTitle: draft.basics.title,
+        department: draft.basics.department,
+        costCenter: draft.basics.costCenter,
+        totalAmount: grandTotal(draft.items),
+        items: draft.items.map(item => ({
+          id: item.id,
+          name: item.name,
+          spec: item.specification,
+          qty: item.quantity,
+          unit: item.unit,
+          price: item.unitPrice,
+          tax: item.gst
+        }))
+      }));
     }
     if (method.route) {
       router.push(method.route);
@@ -1244,11 +1273,152 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
   );
 }
 
+interface VendorSearchableDropdownProps {
+  value: string | number;
+  onChange: (seller: MarketplaceSeller | null) => void;
+  placeholder?: string;
+  className?: string;
+}
+
+function VendorSearchableDropdown({ value, onChange, placeholder = 'Search vendor name or organization...', className }: VendorSearchableDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sellers, setSellers] = useState<MarketplaceSeller[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedSeller, setSelectedSeller] = useState<MarketplaceSeller | null>(null);
+
+  // Fetch initial seller if value exists
+  useEffect(() => {
+    if (value) {
+      setLoading(true);
+      marketplaceApi.getSellers({ pageSize: 50 })
+        .then(res => {
+          const found = res?.sellers?.find((s: any) => s.sellerUserId === Number(value) || s.id === Number(value));
+          if (found) {
+            setSelectedSeller(found);
+            setSearch(found.organizationName);
+          }
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    } else {
+      setSelectedSeller(null);
+      setSearch('');
+    }
+  }, [value]);
+
+  // Debounce search query
+  useEffect(() => {
+    if (!open) return;
+    const delayDebounce = setTimeout(() => {
+      setLoading(true);
+      const params: Record<string, string | number> = { pageSize: 20 };
+      if (search) params.q = search;
+      marketplaceApi.getSellers(params)
+        .then(res => {
+          setSellers(res?.sellers || []);
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [search, open]);
+
+  return (
+    <div className={cn("relative w-full", className)}>
+      <div className="relative">
+        <input
+          type="text"
+          className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-3 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+          placeholder={placeholder}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-slate-400">
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setSelectedSeller(null);
+                onChange(null);
+                setSellers([]);
+              }}
+              className="hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg z-20">
+            {loading && sellers.length === 0 ? (
+              <div className="p-3 text-center text-xs font-semibold text-slate-500">Loading sellers...</div>
+            ) : sellers.length === 0 ? (
+              <div className="p-3 text-center text-xs font-semibold text-slate-500">No sellers found</div>
+            ) : (
+              sellers.map((seller) => {
+                const isValid = seller.sellerUserId !== null && seller.sellerUserId !== undefined;
+                const isSelected = selectedSeller?.id === seller.id;
+                return (
+                  <button
+                    key={seller.id}
+                    type="button"
+                    disabled={!isValid}
+                    onClick={() => {
+                      setSelectedSeller(seller);
+                      setSearch(seller.organizationName);
+                      onChange(seller);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-xs transition",
+                      !isValid ? "opacity-50 cursor-not-allowed bg-slate-50/50" : "hover:bg-slate-50",
+                      isSelected && "bg-blue-50 text-[#12335f]"
+                    )}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{seller.organizationName}</span>
+                      {seller.verificationStatus === 'VERIFIED' && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] uppercase font-bold border border-emerald-200 text-emerald-700">Verified</span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex w-full items-center justify-between text-[10px] text-slate-500 font-semibold">
+                      <span>
+                        {seller.organizationType} · {[seller.city, seller.state].filter(Boolean).join(', ')}
+                      </span>
+                      {!isValid && (
+                        <span className="text-red-500 font-bold">No active user account</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function VendorsStep({ draft, updateDraft }: StepProps) {
-  const updateVendors = (key: keyof Draft['vendors'], value: string | number | boolean) =>
+  const updateVendors = (key: keyof Draft['vendors'], value: string | number | boolean | null) =>
     updateDraft(current => ({ ...current, vendors: { ...current.vendors, [key]: value } }));
   const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
     updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
+
+  const showSingleVendor = draft.type === 'direct' || draft.vendors.selection === 'Single / PAC Vendor';
 
   return (
     <Panel title="Supplier Reach & Eligibility" icon={<Users className="h-4 w-4" />}>
@@ -1264,6 +1434,33 @@ function VendorsStep({ draft, updateDraft }: StepProps) {
         <Field label="Minimum turnover">
           <input value={draft.vendors.minimumTurnover} onChange={event => updateVendors('minimumTurnover', event.target.value)} className={inputClass} placeholder="e.g. Rs 10,00,000" />
         </Field>
+        {showSingleVendor && (
+          <>
+            <Field label="Select Single Vendor *" required className="lg:col-span-3">
+              <VendorSearchableDropdown
+                value={draft.vendors.selectedSellerId || ''}
+                onChange={(seller) => {
+                  updateDraft(current => ({
+                    ...current,
+                    vendors: {
+                      ...current.vendors,
+                      selectedSellerId: seller ? seller.sellerUserId || seller.id : null,
+                      selectedSellerName: seller ? seller.organizationName : '',
+                      selectedSellerCode: seller ? `VEN${10000 + seller.id}` : ''
+                    }
+                  }));
+                }}
+              />
+            </Field>
+            {draft.vendors.selectedSellerId && (
+              <div className="lg:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold space-y-1">
+                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Selected Vendor Name:</span> {draft.vendors.selectedSellerName}</p>
+                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Seller User ID:</span> {draft.vendors.selectedSellerId}</p>
+                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Vendor Code:</span> {draft.vendors.selectedSellerCode}</p>
+              </div>
+            )}
+          </>
+        )}
         <Field label="Experience required">
           <input value={draft.vendors.experienceYears} onChange={event => updateVendors('experienceYears', event.target.value)} className={inputClass} placeholder="Years" />
         </Field>

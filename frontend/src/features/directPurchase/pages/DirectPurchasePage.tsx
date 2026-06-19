@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, Eye, Plus, RefreshCw, Send, ShoppingCart, Trash2, Truck, Upload, X, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
+import { marketplaceApi, type MarketplaceSeller } from '../../marketplace/api';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -59,6 +60,25 @@ export default function DirectPurchasePage() {
     const [status, setStatus] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
+    const [prefillData, setPrefillData] = useState<any>(null);
+
+    useEffect(() => {
+        const key = 'msme:direct-purchase-create-prefill:v1';
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (parsed) {
+                    setPrefillData(parsed);
+                    setCreating(true);
+                }
+            } catch (err) {
+                console.error('Failed to parse direct purchase prefill', err);
+            } finally {
+                localStorage.removeItem(key);
+            }
+        }
+    }, []);
 
     const list = useDirectPurchases({ q: q || undefined, status: status || undefined, page, pageSize });
     const deleteMut = useDeleteDirectPurchase();
@@ -264,7 +284,7 @@ export default function DirectPurchasePage() {
             )}
 
             {openId !== null && <DirectPurchaseDetail id={openId} onClose={() => setOpenId(null)} />}
-            {creating && isBuyer && <DirectPurchaseCreator onClose={() => setCreating(false)} />}
+            {creating && isBuyer && <DirectPurchaseCreator onClose={() => { setCreating(false); setPrefillData(null); }} prefill={prefillData} />}
         </div>
     );
 }
@@ -511,19 +531,158 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
     );
 }
 
-function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
-    const [sellerId, setSellerId] = useState('');
-    const [requirementId, setRequirementId] = useState('');
-    const [totalAmount, setTotalAmount] = useState('');
-    const [purchaseTitle, setPurchaseTitle] = useState('Office Stationery Purchase');
-    const [department, setDepartment] = useState('Administration');
-    const [costCenter, setCostCenter] = useState('ADM-001');
-    const [vendorName, setVendorName] = useState('ABC Enterprises');
-    const [vendorCode, setVendorCode] = useState('VEN10045');
+interface VendorSearchableDropdownProps {
+    value: string | number;
+    onChange: (seller: MarketplaceSeller | null) => void;
+    placeholder?: string;
+    className?: string;
+}
+
+export function VendorSearchableDropdown({ value, onChange, placeholder = 'Search vendor name or organization...', className }: VendorSearchableDropdownProps) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [sellers, setSellers] = useState<MarketplaceSeller[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [selectedSeller, setSelectedSeller] = useState<MarketplaceSeller | null>(null);
+
+    // Fetch initial seller if value exists
+    useEffect(() => {
+        if (value) {
+            setLoading(true);
+            marketplaceApi.getSellers({ pageSize: 50 })
+                .then(res => {
+                    const found = res?.sellers?.find((s: any) => s.sellerUserId === Number(value) || s.id === Number(value));
+                    if (found) {
+                        setSelectedSeller(found);
+                        setSearch(found.organizationName);
+                    }
+                })
+                .catch(err => console.error(err))
+                .finally(() => setLoading(false));
+        } else {
+            setSelectedSeller(null);
+            setSearch('');
+        }
+    }, [value]);
+
+    // Debounce search query
+    useEffect(() => {
+        if (!open) return;
+        const delayDebounce = setTimeout(() => {
+            setLoading(true);
+            const params: Record<string, string | number> = { pageSize: 20 };
+            if (search) params.q = search;
+            marketplaceApi.getSellers(params)
+                .then(res => {
+                    setSellers(res?.sellers || []);
+                })
+                .catch(err => console.error(err))
+                .finally(() => setLoading(false));
+        }, 300);
+
+        return () => clearTimeout(delayDebounce);
+    }, [search, open]);
+
+    return (
+        <div className={cn("relative w-full", className)}>
+            <div className="relative">
+                <input
+                    type="text"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-3 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                    placeholder={placeholder}
+                    value={search}
+                    onChange={(e) => {
+                        setSearch(e.target.value);
+                        setOpen(true);
+                    }}
+                    onFocus={() => setOpen(true)}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-slate-400">
+                    {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearch('');
+                                setSelectedSeller(null);
+                                onChange(null);
+                                setSellers([]);
+                            }}
+                            className="hover:text-slate-600"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {open && (
+                <>
+                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+                    <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg z-20">
+                        {loading && sellers.length === 0 ? (
+                            <div className="p-3 text-center text-xs font-semibold text-slate-500">Loading sellers...</div>
+                        ) : sellers.length === 0 ? (
+                            <div className="p-3 text-center text-xs font-semibold text-slate-500">No sellers found</div>
+                        ) : (
+                            sellers.map((seller) => {
+                                const isValid = seller.sellerUserId !== null && seller.sellerUserId !== undefined;
+                                const isSelected = selectedSeller?.id === seller.id;
+                                return (
+                                    <button
+                                        key={seller.id}
+                                        type="button"
+                                        disabled={!isValid}
+                                        onClick={() => {
+                                            setSelectedSeller(seller);
+                                            setSearch(seller.organizationName);
+                                            onChange(seller);
+                                            setOpen(false);
+                                        }}
+                                        className={cn(
+                                            "flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-xs transition",
+                                            !isValid ? "opacity-50 cursor-not-allowed bg-slate-50/50" : "hover:bg-slate-50",
+                                            isSelected && "bg-blue-50 text-[#12335f]"
+                                        )}
+                                    >
+                                        <div className="flex w-full items-center justify-between gap-2">
+                                            <span className="font-bold text-slate-900">{seller.organizationName}</span>
+                                            {seller.verificationStatus === 'VERIFIED' && (
+                                                <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 rounded px-1.5 py-0 text-[9px] uppercase font-bold border border-emerald-200">Verified</Badge>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 flex w-full items-center justify-between text-[10px] text-slate-500 font-semibold">
+                                            <span>
+                                                {seller.organizationType} · {[seller.city, seller.state].filter(Boolean).join(', ')}
+                                            </span>
+                                            {!isValid && (
+                                                <span className="text-red-500 font-bold">No active user account</span>
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+function DirectPurchaseCreator({ onClose, prefill }: { onClose: () => void; prefill?: any }) {
+    const [sellerId, setSellerId] = useState(prefill?.sellerId ? String(prefill.sellerId) : '');
+    const [requirementId, setRequirementId] = useState(prefill?.requirementId ? String(prefill.requirementId) : '');
+    const [totalAmount, setTotalAmount] = useState(prefill?.totalAmount ? String(prefill.totalAmount) : '');
+    const [purchaseTitle, setPurchaseTitle] = useState(prefill?.purchaseTitle || 'Office Stationery Purchase');
+    const [department, setDepartment] = useState(prefill?.department || 'Administration');
+    const [costCenter, setCostCenter] = useState(prefill?.costCenter || 'ADM-001');
+    const [vendorName, setVendorName] = useState(prefill?.vendorName || '');
+    const [vendorCode, setVendorCode] = useState(prefill?.vendorCode || '');
     const [budgetAllocated, setBudgetAllocated] = useState('100000');
     const [budgetConsumed, setBudgetConsumed] = useState('45000');
     const [attachments, setAttachments] = useState<Array<{ name: string; size: number }>>([]);
-    const [items, setItems] = useState([
+    const [items, setItems] = useState(prefill?.items || [
         { id: '1', name: 'A4 Size Paper', spec: '75 GSM, 500 sheets ream', qty: 20, unit: 'Ream', price: 220, tax: 18 },
         { id: '2', name: 'Ball Pen (Blue)', spec: '0.7 mm blue ink', qty: 10, unit: 'Box', price: 150, tax: 18 },
         { id: '3', name: 'File Folder', spec: 'Plastic A4 size', qty: 50, unit: 'Pcs', price: 25, tax: 18 }
@@ -534,6 +693,18 @@ function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
     const grandTotal = totalAmount ? Number(totalAmount) : subTotal + taxTotal;
     const budgetAvailable = Number(budgetAllocated || 0) - Number(budgetConsumed || 0);
     const budgetRemaining = budgetAvailable - grandTotal;
+
+    const handleVendorChange = (seller: MarketplaceSeller | null) => {
+        if (seller) {
+            setSellerId(String(seller.sellerUserId || ''));
+            setVendorName(seller.organizationName);
+            setVendorCode(`VEN${10000 + seller.id}`);
+        } else {
+            setSellerId('');
+            setVendorName('');
+            setVendorCode('');
+        }
+    };
 
     const submit = async () => {
         if (budgetRemaining < 0) {
@@ -567,8 +738,11 @@ function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
                         <Field label="Purchase Title *">
                             <Input value={purchaseTitle} onChange={e => setPurchaseTitle(e.target.value)} />
                         </Field>
-                        <Field label="Seller User ID *">
-                            <Input value={sellerId} onChange={e => setSellerId(e.target.value.replace(/[^0-9]/g, ''))} type="number" min="1" placeholder="Numeric seller ID" />
+                        <Field label="Select Vendor *">
+                            <VendorSearchableDropdown value={sellerId} onChange={handleVendorChange} />
+                        </Field>
+                        <Field label="Seller User ID (Auto)">
+                            <Input value={sellerId} readOnly className="bg-slate-50 cursor-not-allowed font-mono" />
                         </Field>
                         <Field label="Department">
                             <Input value={department} onChange={e => setDepartment(e.target.value)} />
@@ -582,11 +756,11 @@ function DirectPurchaseCreator({ onClose }: { onClose: () => void }) {
                         <Field label="Procurement Method">
                             <Input value="Direct Purchase" readOnly />
                         </Field>
-                        <Field label="Vendor Name">
-                            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} />
+                        <Field label="Vendor Name (Auto)">
+                            <Input value={vendorName} readOnly className="bg-slate-50 cursor-not-allowed" />
                         </Field>
-                        <Field label="Vendor Code">
-                            <Input value={vendorCode} onChange={e => setVendorCode(e.target.value)} />
+                        <Field label="Vendor Code (Auto)">
+                            <Input value={vendorCode} readOnly className="bg-slate-50 cursor-not-allowed" />
                         </Field>
                     </div>
                     <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">

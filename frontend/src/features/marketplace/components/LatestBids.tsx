@@ -399,9 +399,9 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
     const { user } = useAuth();
     const [selected, setSelected] = useState<BuyerRequirement | null>(null);
 
-    const liveRequirements = useMemo(() => requirements || [], [requirements]);
-    const liveTenders = useMemo(() => tenders || [], [tenders]);
-    const liveBids = useMemo(() => bids || [], [bids]);
+    const liveRequirements = useMemo(() => (requirements || []).slice(0, 5), [requirements]);
+    const liveTenders = useMemo(() => (tenders || []).slice(0, 5), [tenders]);
+    const liveBids = useMemo(() => (bids || []).slice(0, 5), [bids]);
     const isSeller = user?.role === 'seller' || user?.role === 'admin' || user?.role === 'master_admin';
     const actionLabel = user ? (isSeller ? 'Submit Quote' : 'View Details') : 'Login to Submit';
 
@@ -478,11 +478,6 @@ export function LatestBids({ requirements, tenders, bids, loading = false }: Pro
                         </div>
                     )}
 
-                    <div className="mt-6 text-center" style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease 600ms' }}>
-                        <Link href="/marketplace/requirements" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0b2447] px-6 text-xs font-bold text-white transition hover:bg-[#12335f] active:scale-95">
-                            View All Buyer Requirements <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
-                    </div>
                 </div>
             </section>
         </>

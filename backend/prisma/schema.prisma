@@ -25,6 +25,9 @@ model User {
   isDualRole                         Boolean                               @default(false)
   emailVerified                      Boolean                               @default(false)
   mobileVerified                     Boolean                               @default(false)
+  smsNotificationsEnabled            Boolean                               @default(false)
+  preferredOtpChannel                String                                @default("email")
+  twoFactorChannel                   String                                @default("email")
   twoFactorEnabled                   Boolean                               @default(false)
   failedLoginCount                   Int                                   @default(0)
   lockedUntil                        DateTime?
@@ -1612,6 +1615,7 @@ model OtpVerification {
   identifier     String
   identifierHash String
   purpose        String
+  channel        String    @default("email")
   otpHash        String?
   otpHashes      Json?
   metadata       Json?
@@ -1622,6 +1626,7 @@ model OtpVerification {
   createdAt      DateTime  @default(now())
 
   @@index([identifierHash, purpose])
+  @@index([identifierHash, purpose, channel])
   @@index([expiresAt])
 }
 

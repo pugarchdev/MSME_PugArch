@@ -27,6 +27,7 @@ export default function Login() {
   const [userCaptcha, setUserCaptcha] = useState('');
   const [twoFactorPending, setTwoFactorPending] = useState(false);
   const [twoFactorOtp, setTwoFactorOtp] = useState('');
+  const [twoFactorChannel, setTwoFactorChannel] = useState<'email' | 'sms'>('email');
 
   const { user, login } = useAuth();
   const router = useRouter();
@@ -64,7 +65,8 @@ export default function Login() {
       if (res.ok) {
         if (data.requiresTwoFactor) {
           setTwoFactorPending(true);
-          toast.success('Enter the two-factor code sent to your email', { id: loadToast });
+          setTwoFactorChannel(data.channel === 'sms' ? 'sms' : 'email');
+          toast.success(`Enter the two-factor code sent to your ${data.channel === 'sms' ? 'mobile' : 'email'}`, { id: loadToast });
           return;
         }
         login(data.accessToken || data.token, data.user, data.refreshToken);
@@ -85,7 +87,7 @@ export default function Login() {
     setIsLoading(true);
     const loadToast = toast.loading('Verifying secure code...');
     try {
-      const res = await api.post('/api/auth/2fa/verify', { email, otp: twoFactorOtp });
+      const res = await api.post('/api/auth/2fa/verify', { email, channel: twoFactorChannel, otp: twoFactorOtp });
       const data = await readJsonResponse(res);
       if (!res.ok) {
         toast.error(data.message || 'Invalid verification code', { id: loadToast });
@@ -241,6 +243,9 @@ export default function Login() {
             {twoFactorPending ? (
               <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Two-Factor Code</label>
+                <p className="text-xs font-semibold text-slate-500">
+                  Code sent to your {twoFactorChannel === 'sms' ? 'verified mobile number' : 'registered email'}.
+                </p>
                 <input
                   type="text"
                   inputMode="numeric"

@@ -99,7 +99,7 @@ export function CategoryCatalogueStrip({
     return (
         <section className={cn('border-y border-slate-100 bg-white/50 backdrop-blur-md', className)} id="categories">
             <div className="mx-auto max-w-[1680px] px-4 py-5 sm:px-6 2xl:px-8">
-                {/* <div className="mb-4 flex items-end justify-between gap-3">
+                <div className="mb-4 flex items-end justify-between gap-3">
                     <div className="min-w-0">
                         <h2 className="text-sm font-extrabold tracking-tight text-[#0b2447] sm:text-base">{title}</h2>
                         <p className="mt-0.5 text-[11px] font-semibold text-slate-500/95">{subtitle}</p>
@@ -107,7 +107,7 @@ export function CategoryCatalogueStrip({
                     <Link href="/marketplace/products" className="shrink-0 text-[11px] font-black text-[#0b2447] transition hover:text-brand-amber hover:underline">
                         All categories
                     </Link>
-                </div> */}
+                </div>
 
                 <div className="relative group/strip">
                     <button

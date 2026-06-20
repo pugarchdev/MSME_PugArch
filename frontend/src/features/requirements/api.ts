@@ -19,7 +19,7 @@ const buildQuery = (params: Record<string, string | number | undefined>) => {
 };
 
 export const fetchRequirements = (
-    params: { q?: string; status?: string; page?: number; pageSize?: number } = {}
+    params: { q?: string; status?: string; procurementMethod?: string; categoryId?: number; page?: number; pageSize?: number } = {}
 ) =>
     getApi<RequirementsListResponse>(`/api/buyer/requirements${buildQuery(params)}`);
 

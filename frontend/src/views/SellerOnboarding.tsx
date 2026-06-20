@@ -2092,7 +2092,7 @@ export default function SellerOnboarding() {
                         <div>
                           <label className="block text-xs font-bold text-slate-600 mb-1">Mobile</label>
                           <div className="bg-gray-100 border border-gray-200 px-4 py-2.5 rounded text-sm text-slate-700 font-medium">
-                            {formData.mobile || user?.mobile || '9356150561'}
+                            {formData.mobile || user?.mobile || 'Registered mobile not available'}
                           </div>
                         </div>
                         <div>

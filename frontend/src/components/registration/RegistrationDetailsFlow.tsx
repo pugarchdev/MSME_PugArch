@@ -258,6 +258,10 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [mobileOtp, setMobileOtp] = useState('');
+  const [isMobileOtpVerified, setIsMobileOtpVerified] = useState(false);
+  const [mobileOtpSent, setMobileOtpSent] = useState(false);
+  const [isSendingMobileOtp, setIsSendingMobileOtp] = useState(false);
 
   const getOtpSentMessage = (data: any) => {
     if (typeof data?.sendsRemaining !== 'number') return 'OTP sent successfully';
@@ -583,6 +587,43 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       }
     } catch (err) {
       toast.error('Verification failed');
+    }
+  };
+
+  const handleSendMobileOtp = async () => {
+    const mobile = formData.mobile.trim();
+    if (!/^[6-9]\d{9}$/.test(mobile)) return toast.error('Enter a valid 10 digit mobile number.');
+    setIsSendingMobileOtp(true);
+    try {
+      const res = await api.post('/api/auth/send-mobile-otp', { mobile });
+      const data = await res.json();
+      if (res.ok) {
+        setMobileOtpSent(true);
+        toast.success(data.smsEnabled === false ? 'Mobile OTP request saved. SMS delivery is currently disabled.' : getOtpSentMessage(data));
+      } else {
+        toast.error(data.message || 'Failed to send mobile OTP');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setIsSendingMobileOtp(false);
+    }
+  };
+
+  const handleVerifyMobileOtp = async () => {
+    const mobile = formData.mobile.trim();
+    if (!mobileOtp) return toast.error('Enter mobile OTP');
+    try {
+      const res = await api.post('/api/auth/verify-mobile-otp', { mobile, otp: mobileOtp });
+      const data = await res.json();
+      if (res.ok) {
+        setIsMobileOtpVerified(true);
+        toast.success('Mobile number verified.');
+      } else {
+        toast.error(data.message || 'Invalid mobile OTP');
+      }
+    } catch {
+      toast.error('Mobile verification failed');
     }
   };
 
@@ -1726,6 +1767,65 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                           </button>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {formData.mobile && /^[6-9]\d{9}$/.test(formData.mobile.trim()) && (
+                    <div className="rounded-lg border border-slate-200 bg-white p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Mobile Verification</p>
+                          <p className="mt-1 text-sm font-bold text-slate-800">{formData.mobile}</p>
+                          {!isMobileOtpVerified && (
+                            <p className="mt-1 text-xs font-semibold text-slate-500">Optional SMS OTP verification for mobile-based alerts and OTP delivery.</p>
+                          )}
+                        </div>
+                        {isMobileOtpVerified ? (
+                          <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-black text-green-700">
+                            <ShieldCheck className="h-4 w-4" />
+                            Mobile verified
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={handleSendMobileOtp}
+                            disabled={isSendingMobileOtp || mobileOtpSent}
+                            className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black text-white"
+                          >
+                            {isSendingMobileOtp ? 'Sending...' : mobileOtpSent ? 'OTP Sent' : 'Send Mobile OTP'}
+                          </Button>
+                        )}
+                      </div>
+                      {mobileOtpSent && !isMobileOtpVerified && (
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={mobileOtp}
+                            onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6 digit OTP"
+                            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-center text-sm font-bold tracking-[0.2em] outline-none focus:ring-2 focus:ring-[#12335f]/20 sm:w-40"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleVerifyMobileOtp}
+                            className="h-10 rounded-md bg-slate-900 px-4 text-xs font-black text-white"
+                          >
+                            Verify Mobile
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileOtpSent(false);
+                              setMobileOtp('');
+                            }}
+                            className="text-xs font-bold text-[#12335f] underline underline-offset-4"
+                          >
+                            Resend
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 

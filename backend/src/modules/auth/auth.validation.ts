@@ -1,11 +1,34 @@
 import { z } from 'zod';
 
+export const otpChannelSchema = z.enum(['email', 'sms']).default('email');
+const identifierSchema = z.string().trim().min(3).max(254);
+
 export const sendEmailOtpSchema = z.object({
   email: z.string().email().max(254)
 });
 
 export const verifyEmailOtpSchema = z.object({
   email: z.string().email().max(254),
+  otp: z.string().regex(/^\d{6}$/)
+});
+
+export const sendMobileOtpSchema = z.object({
+  mobile: z.string().regex(/^(?:\+?91)?[6-9]\d{9}$/)
+});
+
+export const verifyMobileOtpSchema = z.object({
+  mobile: z.string().regex(/^(?:\+?91)?[6-9]\d{9}$/),
+  otp: z.string().regex(/^\d{6}$/)
+});
+
+export const sendUnifiedOtpSchema = z.object({
+  identifier: identifierSchema.optional(),
+  email: z.string().email().max(254).optional(),
+  mobile: z.string().regex(/^(?:\+?91)?[6-9]\d{9}$/).optional(),
+  channel: otpChannelSchema.optional()
+});
+
+export const verifyUnifiedOtpSchema = sendUnifiedOtpSchema.extend({
   otp: z.string().regex(/^\d{6}$/)
 });
 
@@ -34,15 +57,20 @@ export const changePasswordSchema = z.object({
 
 export const otpSchema = z.object({
   email: z.string().email().max(254),
+  channel: otpChannelSchema.optional(),
   otp: z.string().regex(/^\d{6}$/)
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email().max(254)
+  email: z.string().email().max(254).optional(),
+  identifier: identifierSchema.optional(),
+  channel: otpChannelSchema.optional()
 });
 
 export const resetPasswordSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().email().max(254).optional(),
+  identifier: identifierSchema.optional(),
+  channel: otpChannelSchema.optional(),
   otp: z.string().regex(/^\d{6}$/),
   newPassword: z.string().min(12).max(128)
 });

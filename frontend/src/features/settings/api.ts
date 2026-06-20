@@ -11,12 +11,14 @@ export interface NotificationPreferenceDto {
     pushNotifications: boolean;
     procurementAlerts: boolean;
     complianceAlerts: boolean;
+    mobile?: string | null;
+    mobileVerified?: boolean;
 }
 
 export const fetchNotificationPreferences = () =>
     getApi<NotificationPreferenceDto>('/api/notifications/preferences');
 
-export const updateNotificationPreferences = (data: Partial<Omit<NotificationPreferenceDto, 'id' | 'userId'>>) =>
+export const updateNotificationPreferences = (data: Partial<Omit<NotificationPreferenceDto, 'id' | 'userId' | 'mobile' | 'mobileVerified'>>) =>
     putApi<NotificationPreferenceDto>('/api/notifications/preferences', data);
 
 // 2FA endpoints

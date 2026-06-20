@@ -288,6 +288,28 @@ router.post('/shg/registration/verify-email-otp', async (req, res) => {
   return apiResponse.success(res, { verified: true });
 });
 
+router.post('/shg/registration/send-mobile-otp', async (req, res) => {
+  const { smsService, toLocalIndianMobile } = await import('../services/sms.service.js');
+  const mobile = toLocalIndianMobile(req.body?.mobile);
+  if (!mobile) return apiResponse.error(res, 400, 'Valid Indian mobile number is required', 'VALIDATION_ERROR');
+  const existing = await (prisma as any).user.findFirst({ where: { mobile }, select: { id: true } });
+  if (existing) return apiResponse.error(res, 400, 'Mobile is already registered', 'DUPLICATE_REGISTRATION');
+  const otp = generateOtp();
+  await storeOtp('registration_mobile', mobile, otp, undefined, 'sms');
+  await smsService.sendOtpSms(mobile, otp, 'registration_otp');
+  return apiResponse.success(res, { mobile, expiresInMinutes: 5, resendCooldownSeconds: 60, smsEnabled: smsService.isEnabled() });
+});
+
+router.post('/shg/registration/verify-mobile-otp', async (req, res) => {
+  const { toLocalIndianMobile } = await import('../services/sms.service.js');
+  const mobile = toLocalIndianMobile(req.body?.mobile);
+  const otp = clean(req.body?.otp);
+  if (!mobile) return apiResponse.error(res, 400, 'Valid Indian mobile number is required', 'VALIDATION_ERROR');
+  const result = await verifyOtp('registration_mobile', mobile, otp);
+  if (!result.ok) return apiResponse.error(res, 400, result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP', 'OTP_INVALID');
+  return apiResponse.success(res, { verified: true });
+});
+
 router.post('/shg/registration/create-account', async (req, res) => {
   const payload = validateBody(createAccountSchema, req, res);
   if (!payload) return;
@@ -315,6 +337,7 @@ router.post('/shg/registration/create-account', async (req, res) => {
         role: 'shg',
         mobile: payload.representative.mobile,
         emailVerified: true,
+        mobileVerified: Boolean((await assertOtpVerified('registration_mobile', payload.representative.mobile)).ok),
         lastPasswordChangeAt: now,
         registrationStatus: 'completed',
         onboardingStatus: 'pending',

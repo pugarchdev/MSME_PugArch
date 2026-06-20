@@ -438,6 +438,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: ClipboardCheck, roles: ['buyer'] },
       { label: 'Procurement Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
       { label: 'My Procurements', path: '/buyer/procurements', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Direct Purchases', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
       { label: 'Tenders & Bids', path: '/buyer/tenders', icon: Gavel, roles: ['buyer'] },
       { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },
       { label: 'Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },

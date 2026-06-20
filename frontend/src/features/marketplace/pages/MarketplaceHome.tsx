@@ -208,7 +208,7 @@ export default function MarketplaceHome() {
                     }}
                     title="Official category catalogue"
                     subtitle="Select a work category to focus products, services, sellers, and buyer actions"
-                    className="md:hidden"
+                    
                 />
 
                 {activeCategory && (

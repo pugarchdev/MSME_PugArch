@@ -16,7 +16,11 @@ import {
   registerSchema,
   resetPasswordSchema,
   sendEmailOtpSchema,
-  verifyEmailOtpSchema
+  sendMobileOtpSchema,
+  sendUnifiedOtpSchema,
+  verifyEmailOtpSchema,
+  verifyMobileOtpSchema,
+  verifyUnifiedOtpSchema
 } from './auth.validation.js';
 
 export const authRoutes = Router();
@@ -24,8 +28,10 @@ export const authRoutes = Router();
 // Public Routes with Rate Limiting and Validation
 authRoutes.post('/send-email-otp', otpSendRateLimit, validate({ body: sendEmailOtpSchema }), authController.sendEmailOtp);
 authRoutes.post('/verify-email-otp', validate({ body: verifyEmailOtpSchema }), authController.verifyEmailOtp);
-authRoutes.post('/send-otp', otpSendRateLimit, validate({ body: sendEmailOtpSchema }), authController.sendEmailOtp);
-authRoutes.post('/verify-otp', validate({ body: verifyEmailOtpSchema }), authController.verifyEmailOtp);
+authRoutes.post('/send-mobile-otp', otpSendRateLimit, validate({ body: sendMobileOtpSchema }), authController.sendMobileOtp);
+authRoutes.post('/verify-mobile-otp', validate({ body: verifyMobileOtpSchema }), authController.verifyMobileOtp);
+authRoutes.post('/send-otp', otpSendRateLimit, validate({ body: sendUnifiedOtpSchema }), authController.sendOtp);
+authRoutes.post('/verify-otp', validate({ body: verifyUnifiedOtpSchema }), authController.verifyOtp);
 authRoutes.get('/mobile-exists', validate({ query: mobileExistsSchema }), authController.mobileExists);
 authRoutes.post('/register', validate({ body: registerSchema }), authController.register);
 authRoutes.post('/login', authLoginRateLimit, validate({ body: loginSchema }), authController.login);
@@ -34,6 +40,8 @@ authRoutes.post('/refresh', authController.refresh);
 
 // Password Recovery
 authRoutes.post('/forgot-password', forgotPasswordRateLimit, validate({ body: forgotPasswordSchema }), authController.forgotPassword);
+authRoutes.post('/forgot-password/send-otp', forgotPasswordRateLimit, validate({ body: forgotPasswordSchema }), authController.forgotPassword);
+authRoutes.post('/forgot-password/verify-otp', forgotPasswordRateLimit, validate({ body: verifyUnifiedOtpSchema }), authController.verifyForgotPasswordOtp);
 authRoutes.post('/reset-password', forgotPasswordRateLimit, validate({ body: resetPasswordSchema }), authController.resetPassword);
 
 // Authenticated Routes

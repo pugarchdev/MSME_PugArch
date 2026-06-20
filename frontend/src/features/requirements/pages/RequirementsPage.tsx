@@ -8,7 +8,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X, ShoppingCart, Gavel, ClipboardList, TrendingDown } from 'lucide-react';
+import { useCategories } from '../../catalogue/hooks';
 import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
@@ -129,6 +130,8 @@ export default function RequirementsPage() {
     const [pageSize, setPageSize] = useState(10);
     const [q, setQ] = useState('');
     const [status, setStatus] = useState('');
+    const [method, setMethod] = useState('');
+    const [categoryId, setCategoryId] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
     const [procurementSummaries, setProcurementSummaries] = useState<ProcurementIntakeSummary[]>([]);
@@ -136,7 +139,16 @@ export default function RequirementsPage() {
     const [sortKey, setSortKey] = useState<RequirementSortKey>('updatedAt');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-    const list = useRequirements({ q: q || undefined, status: status || undefined, page, pageSize });
+    const list = useRequirements({
+        q: q || undefined,
+        status: status || undefined,
+        procurementMethod: method || undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        page,
+        pageSize
+    });
+    const countList = useRequirements({ pageSize: 500 });
+    const { data: categories = [] } = useCategories();
     const submitMut = useSubmitRequirement();
     const deleteMut = useDeleteRequirement();
 
@@ -147,12 +159,22 @@ export default function RequirementsPage() {
     const records = list.data?.records || [];
     const total = list.data?.total || 0;
 
-    const counters = useMemo(() => {
-        const drafts = records.filter(r => r.status === 'DRAFT').length;
-        const submitted = records.filter(r => r.status === 'SUBMITTED' || r.status === 'UNDER_REVIEW').length;
-        const approved = records.filter(r => r.status === 'APPROVED' || r.status === 'CONVERTED_TO_TENDER').length;
-        return { drafts, submitted, approved };
-    }, [records]);
+    const methodCounts = useMemo(() => {
+        const allRecs = countList.data?.records || [];
+        const direct = allRecs.filter(r => r.procurementMethod === 'DIRECT_PURCHASE').length;
+        const rfq = allRecs.filter(r => r.procurementMethod === 'RFQ').length;
+        const tender = allRecs.filter(r => r.procurementMethod === 'TENDER').length;
+        const auction = allRecs.filter(r => r.procurementMethod === 'REVERSE_AUCTION').length;
+        const rateContract = allRecs.filter(r => r.procurementMethod === 'RATE_CONTRACT').length;
+        return {
+            total: allRecs.length,
+            direct,
+            rfq,
+            tender,
+            auction,
+            rateContract
+        };
+    }, [countList.data]);
 
     const sortedRecords = useMemo(() => {
         return [...records].sort((a, b) => {
@@ -189,6 +211,16 @@ export default function RequirementsPage() {
         setPage(1);
     };
 
+    const setMethodAndReset = (value: string) => {
+        setMethod(value);
+        setPage(1);
+    };
+
+    const setCategoryIdAndReset = (value: string) => {
+        setCategoryId(value);
+        setPage(1);
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
@@ -213,11 +245,57 @@ export default function RequirementsPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <Metric label="Total" value={total} hint="In current view" tone="neutral" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
-                <Metric label="Drafts" value={counters.drafts} hint="Not yet submitted" tone="warning" icon={FileText} loading={list.isLoading && !list.data} />
-                <Metric label="In Pipeline" value={counters.submitted} hint="Submitted / under review" tone="warning" icon={Send} loading={list.isLoading && !list.data} />
-                <Metric label="Approved" value={counters.approved} hint="Ready to procure" tone="positive" icon={ClipboardCheck} loading={list.isLoading && !list.data} />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                <Metric
+                    label="Direct Purchases"
+                    value={methodCounts.direct}
+                    hint="Single-vendor buys"
+                    tone="neutral"
+                    icon={ShoppingCart}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'DIRECT_PURCHASE' ? '' : 'DIRECT_PURCHASE')}
+                    isActive={method === 'DIRECT_PURCHASE'}
+                />
+                <Metric
+                    label="RFQs"
+                    value={methodCounts.rfq}
+                    hint="Request for Quotes"
+                    tone="warning"
+                    icon={FileText}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'RFQ' ? '' : 'RFQ')}
+                    isActive={method === 'RFQ'}
+                />
+                <Metric
+                    label="Tenders"
+                    value={methodCounts.tender}
+                    hint="Competitive bids"
+                    tone="positive"
+                    icon={Gavel}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'TENDER' ? '' : 'TENDER')}
+                    isActive={method === 'TENDER'}
+                />
+                <Metric
+                    label="Reverse Auctions"
+                    value={methodCounts.auction}
+                    hint="Dynamic pricing"
+                    tone="neutral"
+                    icon={TrendingDown}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'REVERSE_AUCTION' ? '' : 'REVERSE_AUCTION')}
+                    isActive={method === 'REVERSE_AUCTION'}
+                />
+                <Metric
+                    label="Rate Contracts"
+                    value={methodCounts.rateContract}
+                    hint="Term agreements"
+                    tone="warning"
+                    icon={ClipboardList}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'RATE_CONTRACT' ? '' : 'RATE_CONTRACT')}
+                    isActive={method === 'RATE_CONTRACT'}
+                />
             </div>
 
             {procurementSummaries.length > 0 && (
@@ -261,11 +339,33 @@ export default function RequirementsPage() {
                             { value: 'CONVERTED_TO_TENDER', label: 'Converted to Tender' },
                             { value: 'CLOSED', label: 'Closed' }
                         ]
+                    },
+                    {
+                        kind: 'select',
+                        value: method,
+                        onChange: setMethodAndReset,
+                        placeholder: 'All methods',
+                        options: [
+                            { value: 'DIRECT_PURCHASE', label: 'Direct Purchase' },
+                            { value: 'RFQ', label: 'RFQ' },
+                            { value: 'TENDER', label: 'Tender' },
+                            { value: 'REVERSE_AUCTION', label: 'Reverse Auction' },
+                            { value: 'RATE_CONTRACT', label: 'Rate Contract' }
+                        ]
+                    },
+                    {
+                        kind: 'select',
+                        value: categoryId,
+                        onChange: setCategoryIdAndReset,
+                        placeholder: 'All categories',
+                        options: categories.map(cat => ({ value: String(cat.id), label: cat.name }))
                     }
                 ]}
                 onReset={() => {
                     setQ('');
                     setStatus('');
+                    setMethod('');
+                    setCategoryId('');
                     setPage(1);
                 }}
                 actions={<ViewModeToggle value={viewMode} onChange={setViewMode} />}
@@ -1464,7 +1564,9 @@ function Metric({
     hint,
     tone,
     icon: Icon,
-    loading
+    loading,
+    onClick,
+    isActive
 }: {
     label: string;
     value: number;
@@ -1472,6 +1574,8 @@ function Metric({
     tone: 'positive' | 'negative' | 'warning' | 'neutral';
     icon: any;
     loading?: boolean;
+    onClick?: () => void;
+    isActive?: boolean;
 }) {
     const toneStyle = {
         positive: 'bg-emerald-600',
@@ -1480,10 +1584,20 @@ function Metric({
         neutral: 'bg-[#12335f]'
     } as const;
     return (
-        <Card>
+        <Card 
+            className={cn(
+                "transition duration-200 border-slate-200 select-none", 
+                onClick && "cursor-pointer hover:shadow-md hover:border-[#12335f]/40 hover:-translate-y-0.5 transform active:scale-95",
+                isActive && "ring-2 ring-[#12335f] border-transparent bg-[#12335f]/5"
+            )}
+            onClick={onClick}
+        >
             <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <div className="flex items-center gap-1.5">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                        {isActive && <Badge className="bg-[#12335f] text-white px-1 py-0 text-[8px] rounded uppercase font-black tracking-wider">Filtered</Badge>}
+                    </div>
                     <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-wrap-anywhere">{hint}</p>
                 </div>

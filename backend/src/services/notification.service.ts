@@ -3,6 +3,7 @@ import { publishNotificationEvent } from './realtime.service.js';
 import { transporter } from './mail.service.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { smsService, type SmsPurpose } from './sms.service.js';
 
 const db = prisma as any;
 
@@ -17,6 +18,12 @@ interface NotifyOpts {
 interface EmailOpts {
   subject: string;
   html: string;
+}
+
+interface SmsOpts {
+  message: string;
+  templateId?: string;
+  purpose?: SmsPurpose;
 }
 
 const escapeHtml = (value: unknown) =>
@@ -64,6 +71,23 @@ export const notificationService = {
     return null;
   },
 
+  async notifyUser(userId: number, opts: NotifyOpts, channels?: Array<'in_app' | 'email' | 'sms'>) {
+    const selected = channels?.length ? channels : ['in_app', 'email', 'sms'];
+    if (selected.includes('in_app')) await this.notifyNow(userId, opts);
+    if (selected.includes('email')) {
+      await this.sendEmail(userId, {
+        subject: `${opts.title} - MSME Procurement Portal`,
+        html: buildNotificationEmailHtml(opts)
+      });
+    }
+    if (selected.includes('sms')) {
+      await this.sendSmsNotificationForUser(userId, {
+        message: `${opts.title}: ${opts.message}`,
+        purpose: opts.type?.includes('tender') || opts.type?.includes('procurement') ? 'tender_alert' : 'notification'
+      });
+    }
+  },
+
   async notifyNow(userId: number, opts: NotifyOpts) {
     try {
       const notification = await db.notification.create({
@@ -92,10 +116,52 @@ export const notificationService = {
         select: { id: true }
       });
       await Promise.allSettled(
-        admins.map((admin: { id: number }) => this.notify(admin.id, opts))
+        admins.map((admin: { id: number }) => this.notifyUser(admin.id, opts, ['in_app', 'sms']))
       );
     } catch (error) {
       logger.warn({ error, type: opts.type }, 'Failed to notify admins');
+    }
+  },
+
+  async sendSmsNotification(phone: string, message: string, templateId?: string, purpose: SmsPurpose = 'notification') {
+    return smsService.sendNotificationSms(phone, message, templateId, purpose);
+  },
+
+  async sendSmsNotificationForUser(userId: number, opts: SmsOpts) {
+    try {
+      const pref = await db.notificationPreference.findUnique({ where: { userId } });
+      if (pref && !pref.smsNotifications) return null;
+
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { mobile: true, mobileVerified: true }
+      });
+      if (!user?.mobile || !user.mobileVerified) return null;
+
+      const result = await this.sendSmsNotification(user.mobile, opts.message, opts.templateId, opts.purpose || 'notification');
+      await db.notificationLog.create({
+        data: {
+          userId,
+          channel: 'SMS',
+          recipient: smsService.normalizeMobile(user.mobile) || user.mobile,
+          status: result.success ? 'SENT' : 'FAILED',
+          sentAt: result.success ? new Date() : null,
+          providerResponse: { provider: 'msg91', reason: result.reason, skipped: result.skipped }
+        }
+      }).catch(() => null);
+      return result;
+    } catch (error) {
+      logger.warn({ error, userId }, 'Failed to send SMS notification');
+      await db.notificationLog.create({
+        data: {
+          userId,
+          channel: 'SMS',
+          recipient: 'unknown',
+          status: 'FAILED',
+          providerResponse: { error: String(error) }
+        }
+      }).catch(() => null);
+      return null;
     }
   },
 
@@ -174,6 +240,10 @@ export const notificationService = {
       await this.sendEmail(userId, {
         subject: opts.emailSubject || `${opts.title} - MSME Procurement Portal`,
         html: opts.emailHtml || buildNotificationEmailHtml(opts)
+      });
+      await this.sendSmsNotificationForUser(userId, {
+        message: `${opts.title}: ${opts.message}`,
+        purpose: opts.type?.includes('tender') || opts.type?.includes('procurement') ? 'tender_alert' : 'notification'
       });
     })().catch(err => {
       logger.warn({ err, userId }, 'Background notification failed');

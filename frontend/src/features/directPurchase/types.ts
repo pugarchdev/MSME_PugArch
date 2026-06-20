@@ -34,7 +34,20 @@ export interface DirectPurchaseDto {
     updatedAt?: string;
     buyer?: DirectPurchasePartyDto;
     seller?: DirectPurchasePartyDto;
-    requirement?: { id: number; requirementNumber?: string; title?: string };
+    requirement?: {
+        id: number;
+        requirementNumber?: string;
+        title?: string;
+        description?: string | null;
+        items?: Array<{
+            id: number;
+            itemName: string;
+            description?: string | null;
+            quantity: number | string;
+            unitOfMeasure: string;
+            estimatedUnitPrice?: number | string | null;
+        }>;
+    };
 }
 
 export interface NewDirectPurchasePayload {

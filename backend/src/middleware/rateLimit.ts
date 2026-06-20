@@ -32,9 +32,14 @@ const defaultKeyGenerator = (req: Request) => {
 
 const emailAwareKey = (scope: string) => (req: Request) => {
   const email = normalizeSpaces(req.body?.email).toLowerCase();
+  const mobile = normalizeSpaces(req.body?.mobile || req.body?.identifier).replace(/\D/g, '');
   if (scope === 'login' && email) return redisKeys.rateLoginUser(email);
   if (scope === 'login') return redisKeys.rateLogin(clientIp(req));
-  const identity = email ? `email:${sha256(email)}` : `ip:${clientIp(req)}`;
+  const identity = email
+    ? `email:${sha256(email)}`
+    : mobile
+      ? `mobile:${sha256(mobile)}:ip:${clientIp(req)}`
+      : `ip:${clientIp(req)}`;
   return `${scope}:${identity}`;
 };
 

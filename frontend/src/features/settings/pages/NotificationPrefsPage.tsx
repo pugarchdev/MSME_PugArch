@@ -37,7 +37,7 @@ const THEME = {
 } as const;
 
 type ThemeColor = keyof typeof THEME;
-type PreferenceKey = keyof Omit<NotificationPreferenceDto, 'id' | 'userId'>;
+type PreferenceKey = keyof Omit<NotificationPreferenceDto, 'id' | 'userId' | 'mobile' | 'mobileVerified'>;
 
 const deliveryMethods: PreferenceConfig[] = [
     {
@@ -116,6 +116,7 @@ export default function NotificationPrefsPage() {
     const activeTotal = activeDeliveryCount + activeCategoryCount;
 
     const set = (key: PreferenceKey, value: boolean) => {
+        if (key === 'smsNotifications' && value && !current?.mobileVerified) return;
         setDraft(prev => ({ ...prev, [key]: value }));
     };
 
@@ -193,6 +194,7 @@ export default function NotificationPrefsPage() {
                         items={deliveryMethods}
                         current={current}
                         onChange={set}
+                        smsLocked={!current.mobileVerified}
                     />
 
                     <SettingsPanel
@@ -282,6 +284,7 @@ function SettingsPanel({
     items,
     current,
     onChange,
+    smsLocked = false,
 }: {
     eyebrow: string;
     title: string;
@@ -289,6 +292,7 @@ function SettingsPanel({
     items: PreferenceConfig[];
     current: NotificationPreferenceDto;
     onChange: (key: PreferenceKey, value: boolean) => void;
+    smsLocked?: boolean;
 }) {
     return (
         <Card className="border-slate-200 bg-white shadow-sm">
@@ -309,6 +313,7 @@ function SettingsPanel({
                             key={item.key}
                             item={item}
                             value={!!current[item.key]}
+                            locked={smsLocked && item.key === 'smsNotifications'}
                             onChange={(value) => onChange(item.key, value)}
                         />
                     ))}
@@ -318,7 +323,7 @@ function SettingsPanel({
     );
 }
 
-function PreferenceRow({ item, value, onChange }: { item: PreferenceConfig; value: boolean; onChange: (v: boolean) => void }) {
+function PreferenceRow({ item, value, locked, onChange }: { item: PreferenceConfig; value: boolean; locked?: boolean; onChange: (v: boolean) => void }) {
     const Icon = item.icon;
     const theme = THEME[item.color];
 
@@ -336,27 +341,31 @@ function PreferenceRow({ item, value, onChange }: { item: PreferenceConfig; valu
                         </span>
                     </div>
                     <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{item.description}</p>
+                    {locked && (
+                        <p className="mt-1 text-xs font-black text-amber-700">Verify your mobile number to enable SMS notifications.</p>
+                    )}
                 </div>
             </div>
             <div className="flex items-center justify-between gap-3 lg:justify-end">
                 <span className={`text-[10px] font-black uppercase tracking-wider ${value ? 'text-emerald-700' : 'text-slate-400'}`}>
                     {value ? 'Enabled' : 'Disabled'}
                 </span>
-                <Switch value={value} onChange={onChange} theme={theme} label={item.title} />
+                <Switch value={value} onChange={onChange} theme={theme} label={item.title} disabled={locked} />
             </div>
         </div>
     );
 }
 
-function Switch({ value, onChange, theme, label }: { value: boolean; onChange: (v: boolean) => void; theme: typeof THEME[ThemeColor]; label: string }) {
+function Switch({ value, onChange, theme, label, disabled }: { value: boolean; onChange: (v: boolean) => void; theme: typeof THEME[ThemeColor]; label: string; disabled?: boolean }) {
     return (
         <button
             type="button"
+            disabled={disabled}
             onClick={() => onChange(!value)}
             role="switch"
             aria-checked={value}
             aria-label={label}
-            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme.ring} ${value ? theme.switch : 'bg-slate-300 hover:bg-slate-400'}`}
+            className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme.ring} ${disabled ? 'cursor-not-allowed bg-slate-200 opacity-60' : value ? `${theme.switch} cursor-pointer` : 'cursor-pointer bg-slate-300 hover:bg-slate-400'}`}
         >
             <span className={`pointer-events-none inline-block h-6 w-6 translate-y-0.5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
         </button>

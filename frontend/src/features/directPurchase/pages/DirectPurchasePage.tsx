@@ -25,6 +25,7 @@ import {
     useRejectDirectPurchase
 } from '../hooks';
 import type { DirectPurchasePartyDto, DirectPurchaseStatus } from '../types';
+import { useCreateRequirement } from '../../requirements/hooks';
 
 const STATUS_TONE: Record<string, string> = {
     DRAFT: 'border-slate-200 bg-slate-50 text-slate-700',
@@ -289,6 +290,23 @@ export default function DirectPurchasePage() {
     );
 }
 
+const parseProcurementIntakeSummary = (description?: string | null) => {
+    const text = String(description || '');
+    const marker = 'Procurement Intake Summary';
+    const index = text.indexOf(marker);
+    if (index < 0) return null;
+    const lines = text.slice(index + marker.length).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const details = lines
+        .filter(line => line.includes(':') && !line.startsWith('-'))
+        .map(line => {
+            const separator = line.indexOf(':');
+            return { label: line.slice(0, separator).trim(), value: line.slice(separator + 1).trim() };
+        });
+    const documentsIndex = lines.findIndex(line => line === 'Attached Documents');
+    const documents = documentsIndex >= 0 ? lines.slice(documentsIndex + 1).filter(line => line.startsWith('- ')) : [];
+    return { details, documents };
+};
+
 /* ---------- Detail ---------- */
 
 function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void }) {
@@ -302,6 +320,11 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
     const { user } = useAuth();
     const isBuyer = user?.role === 'buyer';
     const isSeller = user?.role === 'seller';
+
+    const intakeSummary = parseProcurementIntakeSummary(dp?.requirement?.description);
+    const descriptionText = dp?.requirement?.description 
+        ? dp.requirement.description.split('Procurement Intake Summary')[0].trim() 
+        : '';
 
     const change = (status: DirectPurchaseStatus, label: string) =>
         runWithToast(() => updateMut.mutateAsync({ id, data: { status } }), {
@@ -459,13 +482,98 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
                     </div>
 
                     {dp.requirement && (
-                        <Field label="Linked Requirement">
-                            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs">
-                                <p className="font-black text-indigo-700 text-wrap-anywhere">
-                                    {dp.requirement.requirementNumber} · {dp.requirement.title}
-                                </p>
+                        <div className="space-y-4 rounded-xl border border-indigo-100 bg-indigo-50/20 p-4">
+                            <h3 className="text-xs font-black uppercase tracking-wider text-indigo-900">Procurement Requirement Details</h3>
+                            
+                            <div className="grid gap-3 md:grid-cols-2">
+                                <Field label="Requirement Title & ID">
+                                    <p className="text-xs font-bold text-slate-900 text-wrap-anywhere">
+                                        <span className="font-mono text-[10px] font-black text-[#12335f] bg-[#12335f]/10 px-1.5 py-0.5 rounded mr-1">
+                                            {dp.requirement.requirementNumber}
+                                        </span>
+                                        {dp.requirement.title}
+                                    </p>
+                                </Field>
+                                
+                                {intakeSummary?.details && intakeSummary.details.map(item => (
+                                    <Field key={item.label} label={item.label}>
+                                        <p className="text-xs font-bold text-slate-800">{item.value}</p>
+                                    </Field>
+                                ))}
                             </div>
-                        </Field>
+
+                            {descriptionText && (
+                                <Field label="Scope of Work / Justification">
+                                    <p className="text-xs text-slate-700 whitespace-pre-wrap font-semibold leading-relaxed bg-white border border-slate-100 rounded-lg p-3">
+                                        {descriptionText}
+                                    </p>
+                                </Field>
+                            )}
+
+                            <Field label="Line Items">
+                                {dp.requirement.items?.length ? (
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Product / Service</th>
+                                                    <th className="px-3 py-2 text-left">Specifications</th>
+                                                    <th className="px-3 py-2 text-right w-16">Qty</th>
+                                                    <th className="px-3 py-2 text-left w-16">Unit</th>
+                                                    <th className="px-3 py-2 text-right w-24">Unit Price</th>
+                                                    <th className="px-3 py-2 text-right w-28">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {dp.requirement.items.map(item => {
+                                                    const price = Number(item.estimatedUnitPrice || 0);
+                                                    const qty = Number(item.quantity || 0);
+                                                    const lineTotal = price * qty;
+                                                    return (
+                                                        <tr key={item.id} className="hover:bg-slate-50/50">
+                                                            <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                {item.itemName}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-semibold text-slate-500 text-wrap-anywhere">
+                                                                {item.description || '-'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">
+                                                                {qty}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-semibold text-slate-600">
+                                                                {item.unitOfMeasure}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">
+                                                                {formatCurrency(price)}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-black text-slate-950">
+                                                                {formatCurrency(lineTotal)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs font-semibold text-slate-500 bg-white p-3 rounded-lg border border-slate-100">
+                                        No line items recorded.
+                                    </p>
+                                )}
+                            </Field>
+
+                            {intakeSummary?.documents && intakeSummary.documents.length > 0 && (
+                                <Field label="Attached Documents">
+                                    <div className="flex flex-wrap gap-2">
+                                        {intakeSummary.documents.map(document => (
+                                            <span key={document} className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-[#12335f]">
+                                                {document.replace(/^- /, '')}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </Field>
+                            )}
+                        </div>
                     )}
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 text-[10px] font-bold uppercase text-slate-400 border-t border-slate-100 pt-3">
@@ -696,6 +804,7 @@ function DirectPurchaseCreator({ onClose, prefill }: { onClose: () => void; pref
         { id: '3', name: 'File Folder', spec: 'Plastic A4 size', qty: 50, unit: 'Pcs', price: 25, tax: 18 }
     ]);
     const createMut = useCreateDirectPurchase();
+    const createReqMut = useCreateRequirement();
     const subTotal = items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0), 0);
     const taxTotal = items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0) * (Number(item.tax || 0) / 100), 0);
     const grandTotal = totalAmount ? Number(totalAmount) : subTotal + taxTotal;
@@ -719,20 +828,52 @@ function DirectPurchaseCreator({ onClose, prefill }: { onClose: () => void; pref
             toast.error('Budget is insufficient for this direct purchase.');
             return;
         }
-        await runWithToast(
-            () =>
-                createMut.mutateAsync({
-                    sellerId: Number(sellerId),
-                    requirementId: requirementId ? Number(requirementId) : undefined,
-                    totalAmount: grandTotal
-                }),
-            {
-                loading: 'Creating...',
-                success: 'Direct purchase created',
-                error: err => (err instanceof Error ? err.message : 'Create failed')
+
+        try {
+            let reqId = requirementId ? Number(requirementId) : undefined;
+            if (!reqId) {
+                const reqResult = await createReqMut.mutateAsync({
+                    title: purchaseTitle || 'Direct Purchase Requirement',
+                    description: [
+                        'Direct Purchase created from request form.',
+                        '',
+                        'Procurement Intake Summary',
+                        'Route: Direct Purchase',
+                        `Department: ${department || '-'}`,
+                        `Cost Center: ${costCenter || '-'}`,
+                        `Budget Allocated: ${formatCurrency(budgetAllocated)}`,
+                        `Budget Consumed: ${formatCurrency(budgetConsumed)}`,
+                    ].join('\n'),
+                    procurementMethod: 'DIRECT_PURCHASE',
+                    estimatedValue: grandTotal,
+                    items: items.map((it: any) => ({
+                        itemName: it.name,
+                        description: it.spec || undefined,
+                        quantity: Number(it.qty || 1),
+                        unitOfMeasure: it.unit || 'Nos',
+                        estimatedUnitPrice: Number(it.price || 0)
+                    }))
+                });
+                reqId = reqResult.id;
             }
-        );
-        onClose();
+
+            await runWithToast(
+                () =>
+                    createMut.mutateAsync({
+                        sellerId: Number(sellerId),
+                        requirementId: reqId,
+                        totalAmount: grandTotal
+                    }),
+                {
+                    loading: 'Creating direct purchase...',
+                    success: 'Direct purchase created successfully',
+                    error: err => (err instanceof Error ? err.message : 'Create failed')
+                }
+            );
+            onClose();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create procurement requirement');
+        }
     };
 
     const valid = sellerId && Number(sellerId) > 0;

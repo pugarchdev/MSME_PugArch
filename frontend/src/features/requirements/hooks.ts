@@ -11,7 +11,7 @@ import type { NewRequirementPayload } from './types';
 
 const KEY = ['requirements'] as const;
 
-export const useRequirements = (params: { q?: string; status?: string; page?: number; pageSize?: number } = {}) =>
+export const useRequirements = (params: { q?: string; status?: string; procurementMethod?: string; categoryId?: number; page?: number; pageSize?: number } = {}) =>
     useQuery({
         queryKey: [...KEY, 'list', params] as const,
         queryFn: () => fetchRequirements(params)

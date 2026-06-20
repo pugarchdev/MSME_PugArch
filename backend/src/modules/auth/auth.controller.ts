@@ -7,15 +7,20 @@ import { auditLog } from '../audit/audit.service.js';
 import { recordLoginEvent } from './login-event.service.js';
 import {
   assertEmailOtpVerified,
+  assertMobileOtpVerified,
   consumeEmailOtp,
+  consumeMobileOtp,
   consumeOtp,
   generateOtp,
   storeEmailOtp,
+  storeMobileOtp,
   storeOtp,
   verifyEmailOtp,
+  verifyMobileOtp,
   verifyOtp
 } from '../../services/otp.service.js';
 import { sendOtpEmail } from '../../services/mail.service.js';
+import { smsService, toLocalIndianMobile } from '../../services/sms.service.js';
 import { hashPassword, validatePasswordStrength, verifyPassword } from '../../services/password.service.js';
 import { issueAuthResponse, signAccessToken, verifyRefreshToken } from '../../services/token.service.js';
 import { handleSecureRouteError, handleFinancialRouteError, toSafeUser } from '../../utils/routeHelpers.js';
@@ -56,6 +61,57 @@ const firstValue = (...values: unknown[]) => {
 const roleHome = (role: 'buyer' | 'seller') => role === 'buyer' ? '/buyer/marketplace' : '/seller/marketplace';
 
 const onboardingPath = (role: 'buyer' | 'seller') => role === 'buyer' ? '/buyer/onboarding' : '/seller/onboarding';
+
+type OtpChannel = 'email' | 'sms';
+
+const normalizeChannel = (value: unknown): OtpChannel => value === 'sms' ? 'sms' : 'email';
+
+const normalizeOtpIdentity = (identifier: unknown, channel: OtpChannel) => {
+  if (channel === 'sms') return toLocalIndianMobile(identifier);
+  const email = String(identifier || '').trim().toLowerCase();
+  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+};
+
+const identityFromBody = (body: any, channel: OtpChannel) =>
+  normalizeOtpIdentity(channel === 'sms' ? (body.identifier || body.mobile) : (body.identifier || body.email), channel);
+
+const channelFromBody = (body: any): OtpChannel => {
+  if (body.channel === 'sms' || body.channel === 'email') return body.channel;
+  const identifier = String(body.identifier || '').trim();
+  if (body.mobile) return 'sms';
+  if (body.email || identifier.includes('@')) return 'email';
+  return identifier ? 'sms' : 'email';
+};
+
+const userLookupForIdentity = (identifier: string, channel: OtpChannel) =>
+  channel === 'sms'
+    ? { mobile: identifier }
+    : { email: identifier };
+
+const purposeForRegistrationChannel = (channel: OtpChannel) =>
+  channel === 'sms' ? 'registration_mobile' as const : 'registration_email' as const;
+
+const smsPurposeForOtp = (purpose: string) => {
+  if (purpose === 'forgot_password') return 'forgot_password' as const;
+  if (purpose === 'two_factor_login') return 'login_otp' as const;
+  if (purpose === 'registration_mobile' || purpose === 'registration_email') return 'registration_otp' as const;
+  if (purpose.includes('onboarding') || purpose.includes('profile') || purpose.includes('ownership')) return 'onboarding_alert' as const;
+  return 'common_otp' as const;
+};
+
+const sendOtpByChannel = async (
+  channel: OtpChannel,
+  identity: string,
+  otp: string,
+  subject: string,
+  purpose: string
+) => {
+  if (channel === 'sms') {
+    return smsService.sendOtpSms(identity, otp, smsPurposeForOtp(purpose));
+  }
+  const deliveryConfigured = await sendOtpEmail(identity, otp, subject);
+  return { success: Boolean(deliveryConfigured), skipped: !deliveryConfigured, reason: deliveryConfigured ? undefined : 'SMTP not configured' };
+};
 
 const getPrimarySellerOffice = (sellerProfile: any) =>
   Array.isArray(sellerProfile?.offices) ? sellerProfile.offices[0] : null;
@@ -189,6 +245,83 @@ export const authController = {
     }
   },
 
+  sendMobileOtp: async (req: Request, res: Response) => {
+    try {
+      const mobile = toLocalIndianMobile(req.body.mobile);
+      if (!mobile) return res.status(400).json({ message: 'Valid Indian mobile number is required' });
+
+      const existingUser = await prisma.user.findFirst({ where: { mobile } });
+      if (existingUser) {
+        await auditLog({
+          action: 'auth.otp.rejected_existing_mobile',
+          entityType: 'auth',
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: { mobileHash: sha256(mobile) }
+        });
+        return res.status(400).json({ message: 'Mobile number already exists. Please login directly.' });
+      }
+
+      const otp = generateOtp();
+      const otpState = await storeMobileOtp(mobile, otp);
+      const sms = await smsService.sendOtpSms(mobile, otp, 'registration_otp');
+      await auditLog({
+        action: 'auth.mobile_otp.sent',
+        entityType: 'auth',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { mobileHash: sha256(mobile), purpose: 'registration_mobile', smsSent: sms.success, smsSkipped: sms.skipped, smsReason: sms.reason }
+      });
+      res.json({ success: true, sendsRemaining: otpState.sendsRemaining, smsEnabled: smsService.isEnabled() });
+    } catch (err: any) {
+      handleSecureRouteError(res, err, 'Unable to send OTP right now. Please try again.');
+    }
+  },
+
+  verifyMobileOtp: async (req: Request, res: Response) => {
+    try {
+      const mobile = toLocalIndianMobile(req.body.mobile);
+      const otp = String(req.body.otp || '').trim();
+      if (!mobile) return res.status(400).json({ message: 'Valid Indian mobile number is required' });
+
+      const result = await verifyMobileOtp(mobile, otp);
+      if (!result.ok) {
+        await auditLog({
+          action: 'auth.mobile_otp.failed',
+          entityType: 'auth',
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: { mobileHash: sha256(mobile), reason: result.reason }
+        });
+        return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired. Please request a new code.' : 'Invalid OTP' });
+      }
+      await auditLog({
+        action: 'auth.mobile_otp.verified',
+        entityType: 'auth',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { mobileHash: sha256(mobile) }
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  sendOtp: async (req: Request, res: Response) => {
+    const channel = normalizeChannel(req.body.channel || (req.body.mobile ? 'sms' : 'email'));
+    if (channel === 'sms' && !req.body.mobile) req.body.mobile = req.body.identifier;
+    if (channel === 'email' && !req.body.email) req.body.email = req.body.identifier;
+    return channel === 'sms' ? authController.sendMobileOtp(req, res) : authController.sendEmailOtp(req, res);
+  },
+
+  verifyOtp: async (req: Request, res: Response) => {
+    const channel = normalizeChannel(req.body.channel || (req.body.mobile ? 'sms' : 'email'));
+    if (channel === 'sms' && !req.body.mobile) req.body.mobile = req.body.identifier;
+    if (channel === 'email' && !req.body.email) req.body.email = req.body.identifier;
+    return channel === 'sms' ? authController.verifyMobileOtp(req, res) : authController.verifyEmailOtp(req, res);
+  },
+
   mobileExists: async (req: Request, res: Response) => {
     try {
       const mobile = String(req.query.mobile || '').trim();
@@ -256,6 +389,7 @@ export const authController = {
           mobile,
           dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
           emailVerified: true,
+          mobileVerified: mobile ? Boolean((await assertMobileOtpVerified(String(mobile).trim())).ok) : false,
           lastPasswordChangeAt: new Date(),
           registrationStatus: RegistrationStatus.completed,
           accountStatus: 'ACTIVE',
@@ -265,6 +399,7 @@ export const authController = {
 
 
       await consumeEmailOtp(email);
+      if (mobile) await consumeMobileOtp(String(mobile).trim()).catch(() => undefined);
 
       try {
         await notificationService.notifyAdmins({
@@ -406,8 +541,12 @@ export const authController = {
 
       if (user.twoFactorEnabled) {
         const otp = generateOtp();
-        await storeOtp('two_factor_login', email, otp, { userId: user.id });
-        const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Two-factor login code');
+        const configuredChannel = normalizeChannel((user as any).twoFactorChannel || (user as any).preferredOtpChannel);
+        const canUseSms = configuredChannel === 'sms' && user.mobileVerified && user.mobile && smsService.isEnabled();
+        const channel: OtpChannel = canUseSms ? 'sms' : 'email';
+        const otpIdentity = channel === 'sms' ? String(user.mobile) : email;
+        await storeOtp('two_factor_login', otpIdentity, otp, { userId: user.id, channel }, channel);
+        const delivery = await sendOtpByChannel(channel, otpIdentity, otp, '[SECURE AUTH] Two-factor login code', 'two_factor_login');
         await auditLog({
           actorUserId: user.id,
           actorRole: user.role,
@@ -416,10 +555,10 @@ export const authController = {
           entityId: user.id,
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
-          metadata: { deliveryConfigured }
+          metadata: { channel, deliveryConfigured: delivery.success, smsSkipped: delivery.skipped, smsReason: delivery.reason }
         });
         await recordLoginEvent({ req, userId: user.id, success: false, reason: 'two_factor_required' });
-        return res.json({ requiresTwoFactor: true, email, message: 'Two-factor verification required' });
+        return res.json({ requiresTwoFactor: true, email, channel, message: 'Two-factor verification required' });
       }
 
       const updatedUser = await prisma.user.update({
@@ -446,11 +585,14 @@ export const authController = {
   verify2fa: async (req: Request, res: Response) => {
     try {
       const email = String(req.body.email || '').trim().toLowerCase();
+      const requestedChannel = normalizeChannel(req.body.channel);
       const otp = String(req.body.otp || '').trim();
-      const result = await verifyOtp('two_factor_login', email, otp);
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) return res.status(400).json({ message: 'Invalid verification request' });
+      const channel: OtpChannel = requestedChannel === 'sms' && user.mobileVerified && user.mobile ? 'sms' : 'email';
+      const otpIdentity = channel === 'sms' ? String(user.mobile) : email;
+      const result = await verifyOtp('two_factor_login', otpIdentity, otp);
 
       if (!result.ok) {
         await recordLoginEvent({ req, userId: user.id, success: false, reason: `two_factor_${result.reason}` });
@@ -467,7 +609,7 @@ export const authController = {
         return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
       }
 
-      await consumeOtp('two_factor_login', email);
+      await consumeOtp('two_factor_login', otpIdentity);
       const updatedUser = await prisma.user.update({
         where: { id: user.id },
         data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
@@ -481,7 +623,7 @@ export const authController = {
         entityId: user.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
-        metadata: { purpose: 'two_factor_login' }
+        metadata: { purpose: 'two_factor_login', channel }
       });
       await recordLoginEvent({ req, userId: user.id, success: true, reason: 'two_factor_login' });
       res.json({ ...tokens, user: toSafeUser(updatedUser) });
@@ -533,13 +675,15 @@ export const authController = {
 
   forgotPassword: async (req: Request, res: Response) => {
     try {
-      const email = String(req.body.email || '').trim().toLowerCase();
-      const user = await prisma.user.findUnique({ where: { email } });
+      const channel = channelFromBody(req.body);
+      const identifier = identityFromBody(req.body, channel);
+      if (!identifier) return res.status(400).json({ message: channel === 'sms' ? 'Valid Indian mobile number is required' : 'Valid email is required' });
+      const user = await prisma.user.findFirst({ where: userLookupForIdentity(identifier, channel) });
 
       if (user) {
         const otp = generateOtp();
-        await storeOtp('forgot_password', email, otp, { userId: user.id });
-        const deliveryConfigured = await sendOtpEmail(email, otp, '[SECURE AUTH] Password reset code');
+        await storeOtp('forgot_password', identifier, otp, { userId: user.id, channel }, channel);
+        const delivery = await sendOtpByChannel(channel, identifier, otp, '[SECURE AUTH] Password reset code', 'forgot_password');
         await auditLog({
           actorUserId: user.id,
           actorRole: user.role,
@@ -548,7 +692,7 @@ export const authController = {
           entityId: user.id,
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
-          metadata: { deliveryConfigured }
+          metadata: { channel, deliveryConfigured: delivery.success, smsSkipped: delivery.skipped, smsReason: delivery.reason }
         });
       } else {
         await auditLog({
@@ -556,7 +700,7 @@ export const authController = {
           entityType: 'auth',
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
-          metadata: { emailHash: sha256(email) }
+          metadata: { channel, identifierHash: sha256(identifier) }
         });
       }
 
@@ -566,20 +710,17 @@ export const authController = {
     }
   },
 
-  resetPassword: async (req: Request, res: Response) => {
+  verifyForgotPasswordOtp: async (req: Request, res: Response) => {
     try {
-      const email = String(req.body.email || '').trim().toLowerCase();
+      const channel = channelFromBody(req.body);
+      const identifier = identityFromBody(req.body, channel);
       const otp = String(req.body.otp || '').trim();
-      const newPassword = String(req.body.newPassword || '');
-      const passwordValidation = validatePasswordStrength(newPassword);
-      if (!passwordValidation.ok) {
-        return res.status(400).json({ message: 'Password does not meet security requirements', errors: passwordValidation.errors });
-      }
+      if (!identifier) return res.status(400).json({ message: 'Invalid verification request' });
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return res.status(400).json({ message: 'Invalid reset request' });
+      const user = await prisma.user.findFirst({ where: userLookupForIdentity(identifier, channel) });
+      if (!user) return res.json({ success: true, message: 'If the details are registered, the OTP has been checked.' });
 
-      const result = await verifyOtp('forgot_password', email, otp);
+      const result = await verifyOtp('forgot_password', identifier, otp);
       if (!result.ok) {
         await auditLog({
           actorUserId: user.id,
@@ -589,7 +730,43 @@ export const authController = {
           entityId: user.id,
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
-          metadata: { purpose: 'forgot_password', reason: result.reason }
+          metadata: { purpose: 'forgot_password', channel, reason: result.reason }
+        });
+        return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
+      }
+
+      res.json({ success: true, otpToken: sha256(`${user.id}:${identifier}:${Date.now()}`).slice(0, 32) });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  resetPassword: async (req: Request, res: Response) => {
+    try {
+      const channel = channelFromBody(req.body);
+      const identifier = identityFromBody(req.body, channel);
+      const otp = String(req.body.otp || '').trim();
+      const newPassword = String(req.body.newPassword || '');
+      if (!identifier) return res.status(400).json({ message: 'Invalid reset request' });
+      const passwordValidation = validatePasswordStrength(newPassword);
+      if (!passwordValidation.ok) {
+        return res.status(400).json({ message: 'Password does not meet security requirements', errors: passwordValidation.errors });
+      }
+
+      const user = await prisma.user.findFirst({ where: userLookupForIdentity(identifier, channel) });
+      if (!user) return res.status(400).json({ message: 'Invalid reset request' });
+
+      const result = await verifyOtp('forgot_password', identifier, otp);
+      if (!result.ok) {
+        await auditLog({
+          actorUserId: user.id,
+          actorRole: user.role,
+          action: 'auth.otp.failed',
+          entityType: 'user',
+          entityId: user.id,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: { purpose: 'forgot_password', channel, reason: result.reason }
         });
         return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
       }
@@ -605,7 +782,7 @@ export const authController = {
           lastPasswordChangeAt: new Date()
         }
       });
-      await consumeOtp('forgot_password', email);
+      await consumeOtp('forgot_password', identifier);
       await auditLog({
         actorUserId: user.id,
         actorRole: user.role,
@@ -629,16 +806,22 @@ export const authController = {
       const otp = String(req.body.otp || '').trim();
       if (!otp) {
         const code = generateOtp();
-        await storeOtp('two_factor_login', user.email, code, { userId: user.id, action: 'enable_2fa' });
-        await sendOtpEmail(user.email, code, '[SECURE AUTH] Enable 2FA code');
-        return res.json({ success: true, pendingVerification: true });
+        const requestedChannel = normalizeChannel(req.body.channel || (user as any).twoFactorChannel || (user as any).preferredOtpChannel);
+        const channel: OtpChannel = requestedChannel === 'sms' && user.mobileVerified && user.mobile && smsService.isEnabled() ? 'sms' : 'email';
+        const otpIdentity = channel === 'sms' ? String(user.mobile) : user.email;
+        await storeOtp('two_factor_login', otpIdentity, code, { userId: user.id, action: 'enable_2fa', channel }, channel);
+        await sendOtpByChannel(channel, otpIdentity, code, '[SECURE AUTH] Enable 2FA code', 'two_factor_login');
+        return res.json({ success: true, pendingVerification: true, channel });
       }
 
-      const result = await verifyOtp('two_factor_login', user.email, otp);
+      const requestedChannel = normalizeChannel(req.body.channel);
+      const channel: OtpChannel = requestedChannel === 'sms' && user.mobileVerified && user.mobile ? 'sms' : 'email';
+      const otpIdentity = channel === 'sms' ? String(user.mobile) : user.email;
+      const result = await verifyOtp('two_factor_login', otpIdentity, otp);
       if (!result.ok) return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
 
-      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true } });
-      await consumeOtp('two_factor_login', user.email);
+      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorChannel: channel } as any });
+      await consumeOtp('two_factor_login', otpIdentity);
       await auditLog({
         actorUserId: user.id,
         actorRole: user.role,

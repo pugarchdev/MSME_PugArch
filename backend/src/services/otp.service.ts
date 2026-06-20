@@ -12,7 +12,11 @@ export type OtpPurpose =
   | 'two_factor_login'
   | 'ownership_submission'
   | 'buyer_profile_update'
-  | 'seller_profile_update';
+  | 'seller_profile_update'
+  | 'onboarding_verification'
+  | 'tender_alert';
+
+export type OtpChannel = 'email' | 'sms';
 
 const OTP_TTL_SECONDS = 5 * 60;
 const MAX_OTP_ATTEMPTS = 5;
@@ -144,7 +148,8 @@ export const storeOtp = async (
   purpose: OtpPurpose,
   identity: string,
   otp: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  channel: OtpChannel = 'email'
 ) => {
   const normalizedIdentity = normalizeIdentity(identity);
   const now = new Date();
@@ -211,6 +216,7 @@ export const storeOtp = async (
       identifier: normalizedIdentity,
       identifierHash: sha256(normalizedIdentity),
       purpose,
+      channel,
       otpHash,
       otpHashes: state.otpHashes,
       metadata,
@@ -391,4 +397,8 @@ export const storeEmailOtp = (email: string, otp: string) => storeOtp('registrat
 export const verifyEmailOtp = (email: string, otp: string) => verifyOtp('registration_email', email, otp);
 export const assertEmailOtpVerified = (email: string) => assertOtpVerified('registration_email', email);
 export const consumeEmailOtp = (email: string) => consumeOtp('registration_email', email);
+export const storeMobileOtp = (mobile: string, otp: string) => storeOtp('registration_mobile', mobile, otp, undefined, 'sms');
+export const verifyMobileOtp = (mobile: string, otp: string) => verifyOtp('registration_mobile', mobile, otp);
+export const assertMobileOtpVerified = (mobile: string) => assertOtpVerified('registration_mobile', mobile);
+export const consumeMobileOtp = (mobile: string) => consumeOtp('registration_mobile', mobile);
 export const generateOtpReference = () => sha256(`${Date.now()}:${Math.random()}`).slice(0, 16);

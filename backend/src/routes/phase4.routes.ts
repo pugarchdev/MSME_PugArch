@@ -52,6 +52,7 @@ const paginationQuery = z.object({
   q: z.string().trim().max(120).optional(),
   role: z.enum(['buyer', 'seller']).optional(),
   status: z.string().trim().max(80).optional(),
+  procurementMethod: z.string().trim().max(80).optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(500).optional(),
@@ -2669,6 +2670,8 @@ router.get('/buyer/requirements', authenticate, authorize('buyer'), asyncRoute(a
   const query = parse(paginationQuery, req.query);
   const where: any = { buyerId: userId(req) };
   if (query.status) where.status = query.status;
+  if (query.procurementMethod) where.procurementMethod = query.procurementMethod;
+  if (query.categoryId) where.categoryId = query.categoryId;
   if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
   const window = listWindow(query);
   const [requirements, total] = await Promise.all([
@@ -5644,11 +5647,13 @@ router.put('/admin/organizations/:id/features', authenticate, authorizeAdmin, as
 // ═══════════════════════════════════════════
 
 router.get('/notifications/preferences', authenticate, asyncRoute(async (req, res) => {
-  let pref = await db.notificationPreference.findUnique({ where: { userId: userId(req) } });
+  const currentUserId = userId(req);
+  let pref = await db.notificationPreference.findUnique({ where: { userId: currentUserId } });
   if (!pref) {
-    pref = await db.notificationPreference.create({ data: { userId: userId(req) } });
+    pref = await db.notificationPreference.create({ data: { userId: currentUserId } });
   }
-  ok(res, pref);
+  const user = await db.user.findUnique({ where: { id: currentUserId }, select: { mobile: true, mobileVerified: true } });
+  ok(res, { ...pref, mobile: user?.mobile || null, mobileVerified: Boolean(user?.mobileVerified) });
 }));
 
 router.put('/notifications/preferences', authenticate, asyncRoute(async (req, res) => {
@@ -5659,12 +5664,25 @@ router.put('/notifications/preferences', authenticate, asyncRoute(async (req, re
     procurementAlerts: z.boolean().optional(),
     complianceAlerts: z.boolean().optional()
   }).partial(), req.body);
+  const currentUserId = userId(req);
+  if (body.smsNotifications === true) {
+    const user = await db.user.findUnique({ where: { id: currentUserId }, select: { mobile: true, mobileVerified: true } });
+    if (!user?.mobile || !user.mobileVerified) {
+      throw new ApiError(400, 'Verify your mobile number to enable SMS notifications.', 'MOBILE_NOT_VERIFIED');
+    }
+  }
 
   const pref = await db.notificationPreference.upsert({
-    where: { userId: userId(req) },
+    where: { userId: currentUserId },
     update: body,
-    create: { userId: userId(req), ...body }
+    create: { userId: currentUserId, ...body }
   });
+  if (typeof body.smsNotifications === 'boolean') {
+    await db.user.update({
+      where: { id: currentUserId },
+      data: { smsNotificationsEnabled: body.smsNotifications }
+    }).catch(() => null);
+  }
   ok(res, pref);
 }));
 
@@ -5726,15 +5744,22 @@ router.post('/notifications/read-all', authenticate, asyncRoute(async (req, res)
 router.post('/seller/settings/change-password/send-otp', authenticate, asyncRoute(async (req, res) => {
   const { generateOtp, storeOtp } = await import('../services/otp.service.js');
   const { sendOtpEmail } = await import('../services/mail.service.js');
+  const { smsService } = await import('../services/sms.service.js');
 
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
 
   const otp = generateOtp();
-  await storeOtp('forgot_password', user.email, otp, { userId: user.id });
-  await sendOtpEmail(user.email, otp, '[SECURE AUTH] Password change authorization code');
+  const channel = req.body?.channel === 'sms' && user.mobileVerified && user.mobile && smsService.isEnabled() ? 'sms' : 'email';
+  const identity = channel === 'sms' ? user.mobile : user.email;
+  await storeOtp('forgot_password', identity, otp, { userId: user.id, channel }, channel);
+  if (channel === 'sms') {
+    await smsService.sendOtpSms(identity, otp, 'forgot_password');
+  } else {
+    await sendOtpEmail(user.email, otp, '[SECURE AUTH] Password change authorization code');
+  }
 
-  ok(res, { success: true });
+  ok(res, { success: true, channel });
 }));
 
 router.post('/seller/settings/change-password', authenticate, asyncRoute(async (req, res) => {
@@ -5747,7 +5772,9 @@ router.post('/seller/settings/change-password', authenticate, asyncRoute(async (
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
 
-  const result = await verifyOtp('forgot_password', user.email, otp);
+  const channel = req.body?.channel === 'sms' && user.mobileVerified && user.mobile ? 'sms' : 'email';
+  const identity = channel === 'sms' ? user.mobile : user.email;
+  const result = await verifyOtp('forgot_password', identity, otp);
   if (!result.ok) throw new ApiError(400, 'Invalid or expired OTP');
 
   const passwordValidation = validatePasswordStrength(newPassword);
@@ -5766,7 +5793,7 @@ router.post('/seller/settings/change-password', authenticate, asyncRoute(async (
     }
   });
 
-  await consumeOtp('forgot_password', user.email);
+  await consumeOtp('forgot_password', identity);
   ok(res, { success: true, message: 'Password updated successfully' });
 }));
 
@@ -5799,16 +5826,23 @@ router.post('/seller/settings/change-email', authenticate, asyncRoute(async (req
 router.post('/seller/settings/profile/send-otp', authenticate, asyncRoute(async (req, res) => {
   const { generateOtp, storeOtp } = await import('../services/otp.service.js');
   const { sendOtpEmail } = await import('../services/mail.service.js');
+  const { smsService } = await import('../services/sms.service.js');
 
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
   if (!user.email) throw new ApiError(400, 'Login email is not available for OTP delivery.');
 
   const otp = generateOtp();
-  await storeOtp('seller_profile_update', user.email, otp, { userId: user.id });
-  await sendOtpEmail(user.email, otp, '[SECURE AUTH] Profile update verification code');
+  const channel = req.body?.channel === 'sms' && user.mobileVerified && user.mobile && smsService.isEnabled() ? 'sms' : 'email';
+  const identity = channel === 'sms' ? user.mobile : user.email;
+  await storeOtp('seller_profile_update', identity, otp, { userId: user.id, channel }, channel);
+  if (channel === 'sms') {
+    await smsService.sendOtpSms(identity, otp, 'onboarding_alert');
+  } else {
+    await sendOtpEmail(user.email, otp, '[SECURE AUTH] Profile update verification code');
+  }
 
-  ok(res, { success: true });
+  ok(res, { success: true, channel });
 }));
 
 router.post('/seller/settings/profile', authenticate, asyncRoute(async (req, res) => {
@@ -5822,7 +5856,9 @@ router.post('/seller/settings/profile', authenticate, asyncRoute(async (req, res
   const user = await db.user.findUnique({ where: { id: userId(req) } });
   if (!user) throw new ApiError(404, 'User not found');
 
-  const verifyResult = await verifyOtp('seller_profile_update', user.email, otp);
+  const channel = req.body?.channel === 'sms' && user.mobileVerified && user.mobile ? 'sms' : 'email';
+  const identity = channel === 'sms' ? user.mobile : user.email;
+  const verifyResult = await verifyOtp('seller_profile_update', identity, otp);
   if (!verifyResult.ok) {
     throw new ApiError(400, 'Invalid or expired OTP');
   }
@@ -5831,11 +5867,12 @@ router.post('/seller/settings/profile', authenticate, asyncRoute(async (req, res
     where: { id: user.id },
     data: {
       name: `${firstName.trim()} ${lastName.trim()}`,
-      mobile: mobile.trim()
+      mobile: mobile.trim(),
+      mobileVerified: mobile.trim() === user.mobile ? user.mobileVerified : false
     }
   });
 
-  await consumeOtp('seller_profile_update', user.email);
+  await consumeOtp('seller_profile_update', identity);
   ok(res, { success: true });
 }));
 

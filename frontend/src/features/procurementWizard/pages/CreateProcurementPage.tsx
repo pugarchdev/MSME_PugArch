@@ -245,6 +245,86 @@ const PROCUREMENT_CATEGORY_OPTIONS = [
   'Manpower Supply',
 ];
 
+const PROCUREMENT_SUBCATEGORY_OPTIONS = [
+  'Raw materials',
+  'Finished goods',
+  'Consumables',
+  'Spares and components',
+  'Capital equipment',
+  'AMC / maintenance',
+  'Installation and commissioning',
+  'Civil execution',
+  'Electrical works',
+  'IT implementation',
+  'Logistics support',
+  'Professional services',
+  'Statutory compliance',
+];
+
+const DEPARTMENT_OPTIONS = [
+  'Administration',
+  'Procurement',
+  'Operations',
+  'Production',
+  'Maintenance',
+  'Engineering',
+  'Projects',
+  'Finance',
+  'IT',
+  'HR',
+  'Quality',
+  'Safety',
+  'Warehouse',
+  'Sales',
+  'Legal',
+];
+
+const FUNDING_SOURCE_OPTIONS = [
+  'Operating budget',
+  'Project budget',
+  'Capex budget',
+  'Opex budget',
+  'Department budget',
+  'Scheme / grant',
+  'CSR budget',
+  'Emergency approval',
+  'Buyer funded',
+];
+
+const COST_CENTER_OPTIONS = [
+  'Administration',
+  'Factory / plant',
+  'Project site',
+  'Warehouse',
+  'Head office',
+  'Regional office',
+  'Maintenance',
+  'IT services',
+  'Quality control',
+  'Safety and compliance',
+];
+
+const MINIMUM_TURNOVER_OPTIONS = [
+  'Not required',
+  'Rs 1 lakh and above',
+  'Rs 5 lakh and above',
+  'Rs 10 lakh and above',
+  'Rs 25 lakh and above',
+  'Rs 50 lakh and above',
+  'Rs 1 crore and above',
+  'Rs 5 crore and above',
+];
+
+const EXPERIENCE_REQUIRED_OPTIONS = [
+  'Not required',
+  '1 year',
+  '2 years',
+  '3 years',
+  '5 years',
+  '7 years',
+  '10 years',
+];
+
 const REQUIREMENT_TYPE_OPTIONS = ['Goods', 'Services', 'Works', 'Consultancy'];
 const PRIORITY_OPTIONS = ['Normal', 'Urgent', 'Emergency'];
 const TENDER_TYPE_OPTIONS = ['Open Tender', 'Limited Tender', 'Single Tender', 'Global Tender', 'Expression of Interest', 'Request for Quotation'];
@@ -260,6 +340,8 @@ const DOCUMENT_REQUIREMENT_OPTIONS: DocumentRow['requirement'][] = ['Mandatory',
 const BRAND_POLICY_OPTIONS = ['Equivalent or better allowed', 'OEM only', 'No brand restriction', 'Specific make with justification'];
 const APPROVAL_STATUS_OPTIONS = ['Draft', 'Pending department approval', 'Pending finance approval', 'Approved', 'Returned for correction'];
 const APPROVAL_WORKFLOW_OPTIONS = ['Department Approval', 'Finance + Procurement', 'Competent Authority'];
+const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR'];
+const OTHER_OPTION = 'Other';
 
 const methodConfigs: MethodConfig[] = [
   {
@@ -320,7 +402,7 @@ const stepLibrary: Record<StepKind, StepConfig> = {
   vendors: { id: 'vendors', label: 'Suppliers', description: 'Vendor reach, preferences and eligibility filters', icon: Users },
   schedule: { id: 'schedule', label: 'Schedule', description: 'Publishing, submission, opening and delivery dates', icon: CalendarClock },
   rules: { id: 'rules', label: 'Rules', description: 'Bid mode, EMD, evaluation and auction settings', icon: ShieldCheck },
-  documents: { id: 'documents', label: 'Documents', description: 'Mandatory documents and compliance files', icon: Upload },
+  documents: { id: 'documents', label: 'Documents', description: 'Supporting documents and compliance files', icon: Upload },
   approval: { id: 'approval', label: 'Approval', description: 'Review chain and publishing controls', icon: BadgeCheck },
   review: { id: 'review', label: 'Review', description: 'Readiness checks before moving ahead', icon: CheckCircle2 },
 };
@@ -334,12 +416,12 @@ const stepsByType: Record<ProcurementType, StepKind[]> = {
 };
 
 const defaultDocuments = (type: ProcurementType = 'rfq'): DocumentRow[] => [
-  { id: makeId(), name: type === 'tender' ? 'Tender Specification File' : 'Requirement note / indent approval', requirement: 'Mandatory', fileName: '', version: 1 },
-  { id: makeId(), name: 'BOQ / Price Schedule', requirement: 'Mandatory', fileName: '', version: 1 },
-  { id: makeId(), name: 'Terms & Conditions', requirement: 'Mandatory', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Annexures / Drawings' : 'Technical specification', requirement: type === 'tender' ? 'Optional' : 'Mandatory', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Technical Documents' : 'Commercial terms and delivery conditions', requirement: type === 'tender' ? 'Optional' : 'Mandatory', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Compliance Documents' : 'Budget approval / fund availability', requirement: type === 'tender' ? 'Optional' : 'Mandatory', fileName: '', version: 1 },
+  { id: makeId(), name: type === 'tender' ? 'Tender Specification File' : 'Requirement note / indent approval', requirement: type === 'tender' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: 'BOQ / Price Schedule', requirement: type === 'tender' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: 'Terms & Conditions', requirement: 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: type === 'tender' ? 'Annexures / Drawings' : 'Technical specification', requirement: 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: type === 'tender' ? 'Technical Documents' : 'Commercial terms and delivery conditions', requirement: 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: type === 'tender' ? 'Compliance Documents' : 'Budget approval / fund availability', requirement: 'Optional', fileName: '', version: 1 },
   { id: makeId(), name: 'Other Attachments', requirement: 'Optional', fileName: '', version: 1 },
 ];
 
@@ -766,7 +848,6 @@ export default function CreateProcurementPage() {
     setDraft({ ...defaultDraft(type), updatedAt: new Date().toISOString() });
     setPreview(false);
     setActiveStep(0);
-    toast.info(`${methodLabel(type)} draft started`);
   };
 
   const goToDetails = () => {
@@ -829,6 +910,12 @@ export default function CreateProcurementPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
+      {/* Tri-color Accent Strip */}
+      <div className="h-1.5 w-full bg-gradient-to-r from-[#ff9933] via-white to-[#128807]" />
+
+      {/* Official Government Branding Banner */}
+     
+
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1720px] flex-col gap-4 px-4 py-4 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1009,7 +1096,7 @@ export default function CreateProcurementPage() {
 
         <aside className="space-y-4">
           <SummaryCard draft={draft} readiness={readiness} method={method} />
-          <Panel title="Gating Rules" icon={<ShieldCheck className="h-4 w-4" />}>
+        <Panel title="Before Publishing" icon={<ShieldCheck className="h-4 w-4" />}>
             <Checklist rows={method.gates} />
           </Panel>
           <Panel title="Readiness" icon={<CheckCircle2 className="h-4 w-4" />}>
@@ -1048,18 +1135,31 @@ function MethodCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        'min-h-[122px] rounded-lg border bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md',
-        selected ? 'border-[#12335f] ring-2 ring-[#12335f]/10' : 'border-slate-200'
+        'min-h-[136px] rounded-xl border bg-gradient-to-br from-white to-slate-50/30 p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between border-slate-200',
+        selected 
+          ? 'border-[#12335f] bg-[#12335f]/5 shadow-md ring-1 ring-[#12335f] border-l-4 border-l-[#ff9933]' 
+          : recommended 
+            ? 'border-slate-200 border-l-4 border-l-emerald-500 hover:border-slate-300' 
+            : 'border-slate-200 border-l-4 border-l-slate-300 hover:border-slate-300'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className={cn('flex h-10 w-10 items-center justify-center rounded-lg border', config.accent)}>
+      <div className="w-full flex items-start justify-between gap-3">
+        <span className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm', 
+          selected ? 'bg-[#12335f] text-white border-transparent' : config.accent
+        )}>
           <Icon className="h-5 w-5" />
         </span>
-        {recommended && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">Recommended</span>}
+        {recommended && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 shadow-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> RECOMMENDED
+          </span>
+        )}
       </div>
-      <p className="mt-3 text-sm font-black text-slate-950">{config.title}</p>
-      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{config.subtitle}</p>
+      <div>
+        <p className="mt-3 text-sm font-black text-slate-950">{config.title}</p>
+        <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500">{config.subtitle}</p>
+      </div>
     </button>
   );
 }
@@ -1099,9 +1199,7 @@ function BasicsStep({ draft, updateDraft }: StepProps) {
           <input value={draft.basics.title} onChange={event => updateBasics('title', event.target.value)} className={inputClass} placeholder="Office equipment, AMC renewal, raw material supply..." />
         </Field>
         <Field label="Requirement type" required>
-          <select value={draft.basics.requirementType} onChange={event => updateBasics('requirementType', event.target.value)} className={inputClass}>
-            {REQUIREMENT_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <SelectWithOther value={draft.basics.requirementType} options={REQUIREMENT_TYPE_OPTIONS} onChange={value => updateBasics('requirementType', value)} otherPlaceholder="Enter requirement type" />
         </Field>
         <Field label="Priority">
           <select value={draft.basics.priority} onChange={event => updateBasics('priority', event.target.value)} className={inputClass}>
@@ -1109,48 +1207,39 @@ function BasicsStep({ draft, updateDraft }: StepProps) {
           </select>
         </Field>
         <Field label="Category" required>
-          <select value={draft.basics.category} onChange={event => updateBasics('category', event.target.value)} className={inputClass}>
-            <option value="">Select category</option>
-            {PROCUREMENT_CATEGORY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <SelectWithOther value={draft.basics.category} options={PROCUREMENT_CATEGORY_OPTIONS} onChange={value => updateBasics('category', value)} placeholder="Select category" otherPlaceholder="Enter category" />
         </Field>
         <Field label="Sub category">
-          <input value={draft.basics.subCategory} onChange={event => updateBasics('subCategory', event.target.value)} className={inputClass} placeholder="Stationery, laptops, logistics..." />
+          <SelectWithOther value={draft.basics.subCategory} options={PROCUREMENT_SUBCATEGORY_OPTIONS} onChange={value => updateBasics('subCategory', value)} placeholder="Select sub category" otherPlaceholder="Enter sub category" />
         </Field>
-        <Field label="Department" required>
-          <input value={draft.basics.department} onChange={event => updateBasics('department', event.target.value)} className={inputClass} placeholder="Administration" />
+        <Field label="Department">
+          <SelectWithOther value={draft.basics.department} options={DEPARTMENT_OPTIONS} onChange={value => updateBasics('department', value)} placeholder="Select department" otherPlaceholder="Enter department" />
         </Field>
-        <Field label="Estimated value" required>
+        <Field label="Estimated value">
           <input type="number" min={0} value={draft.basics.estimatedValue || ''} onChange={event => updateBasics('estimatedValue', Number(event.target.value || 0))} className={inputClass} placeholder="0" />
         </Field>
         <Field label="Funding source">
-          <input value={draft.basics.fundingSource} onChange={event => updateBasics('fundingSource', event.target.value)} className={inputClass} placeholder="Budget / project / scheme" />
+          <SelectWithOther value={draft.basics.fundingSource} options={FUNDING_SOURCE_OPTIONS} onChange={value => updateBasics('fundingSource', value)} placeholder="Select funding source" otherPlaceholder="Enter funding source" />
         </Field>
         <Field label="Cost center">
-          <input value={draft.basics.costCenter} onChange={event => updateBasics('costCenter', event.target.value)} className={inputClass} placeholder="ADM-001" />
+          <SelectWithOther value={draft.basics.costCenter} options={COST_CENTER_OPTIONS} onChange={value => updateBasics('costCenter', value)} placeholder="Select cost center" otherPlaceholder="Enter cost center" />
         </Field>
-        <Field label="Justification / scope" required className="lg:col-span-4">
+        <Field label="Justification / scope" className="lg:col-span-4">
           <textarea value={draft.basics.justification} onChange={event => updateBasics('justification', event.target.value)} rows={5} maxLength={1000} className={textareaClass} placeholder="Why this procurement is required, expected outcome, constraints and delivery need." />
         </Field>
         {draft.type === 'tender' && (
           <>
-            <Field label="Tender number" required>
+            <Field label="Tender number">
               <input value={draft.tender.tenderNumber} onChange={event => updateTender('tenderNumber', event.target.value)} className={inputClass} />
             </Field>
             <Field label="Tender type" required>
-              <select value={draft.tender.tenderType} onChange={event => updateTender('tenderType', event.target.value)} className={inputClass}>
-                {TENDER_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.tenderType} options={TENDER_TYPE_OPTIONS} onChange={value => updateTender('tenderType', value)} otherPlaceholder="Enter tender type" />
             </Field>
             <Field label="Tender mode">
-              <select value={draft.tender.tenderMode} onChange={event => updateTender('tenderMode', event.target.value)} className={inputClass}>
-                {TENDER_MODE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.tenderMode} options={TENDER_MODE_OPTIONS} onChange={value => updateTender('tenderMode', value)} otherPlaceholder="Enter tender mode" />
             </Field>
             <Field label="Tender visibility">
-              <select value={draft.tender.visibility} onChange={event => updateTender('visibility', event.target.value)} className={inputClass}>
-                {TENDER_VISIBILITY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.visibility} options={TENDER_VISIBILITY_OPTIONS} onChange={value => updateTender('visibility', value)} otherPlaceholder="Enter tender visibility" />
             </Field>
             <Field label="Short description" required className="lg:col-span-4">
               <textarea value={draft.tender.shortDescription} onChange={event => updateTender('shortDescription', event.target.value)} rows={3} className={textareaClass} placeholder="Concise business need and procurement outcome." />
@@ -1231,16 +1320,12 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
                 </td>
                 <td className="px-3 py-2"><input type="number" min={0} value={item.quantity || ''} onChange={event => updateItem(item.id, { quantity: Number(event.target.value || 0) })} className={tableInputClass} /></td>
                 <td className="px-3 py-2">
-                  <select value={item.unit} onChange={event => updateItem(item.id, { unit: event.target.value })} className={tableInputClass}>
-                    {QUANTITY_UNITS.map(unit => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
-                  </select>
+                  <SelectWithOther value={item.unit} options={QUANTITY_UNITS} onChange={value => updateItem(item.id, { unit: value })} placeholder="Select unit" otherPlaceholder="Enter unit" className={tableInputClass} />
                 </td>
                 {draft.type === 'tender' && <td className="px-3 py-2"><input type="date" value={item.deliveryDate} onChange={event => updateItem(item.id, { deliveryDate: event.target.value })} className={tableInputClass} /></td>}
                 {draft.type === 'tender' && (
                   <td className="px-3 py-2">
-                    <select value={item.brandPolicy} onChange={event => updateItem(item.id, { brandPolicy: event.target.value })} className={tableInputClass}>
-                      {BRAND_POLICY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-                    </select>
+                    <SelectWithOther value={item.brandPolicy} options={BRAND_POLICY_OPTIONS} onChange={value => updateItem(item.id, { brandPolicy: value })} placeholder="Select brand policy" otherPlaceholder="Enter brand policy" className={tableInputClass} />
                   </td>
                 )}
                 <td className="px-3 py-2"><input type="number" min={0} value={item.unitPrice || ''} onChange={event => updateItem(item.id, { unitPrice: Number(event.target.value || 0) })} className={tableInputClass} /></td>
@@ -1432,7 +1517,7 @@ function VendorsStep({ draft, updateDraft }: StepProps) {
           <input type="number" min={0} max={50} value={draft.vendors.inviteCount || ''} onChange={event => updateVendors('inviteCount', Number(event.target.value || 0))} className={inputClass} placeholder="0" />
         </Field>
         <Field label="Minimum turnover">
-          <input value={draft.vendors.minimumTurnover} onChange={event => updateVendors('minimumTurnover', event.target.value)} className={inputClass} placeholder="e.g. Rs 10,00,000" />
+          <SelectWithOther value={draft.vendors.minimumTurnover} options={MINIMUM_TURNOVER_OPTIONS} onChange={value => updateVendors('minimumTurnover', value)} placeholder="Select turnover requirement" otherPlaceholder="Enter turnover requirement" />
         </Field>
         {showSingleVendor && (
           <>
@@ -1462,7 +1547,7 @@ function VendorsStep({ draft, updateDraft }: StepProps) {
           </>
         )}
         <Field label="Experience required">
-          <input value={draft.vendors.experienceYears} onChange={event => updateVendors('experienceYears', event.target.value)} className={inputClass} placeholder="Years" />
+          <SelectWithOther value={draft.vendors.experienceYears} options={EXPERIENCE_REQUIRED_OPTIONS} onChange={value => updateVendors('experienceYears', value)} placeholder="Select experience" otherPlaceholder="Enter experience requirement" />
         </Field>
         <Toggle label="MSME preference" checked={draft.vendors.msmePreference} onChange={value => updateVendors('msmePreference', value)} />
         <Toggle label="Make in India preference" checked={draft.vendors.makeInIndiaPreference} onChange={value => updateVendors('makeInIndiaPreference', value)} />
@@ -1499,7 +1584,7 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
         <Field label="Publish date">
           <input type="date" value={draft.schedule.publishDate} onChange={event => updateSchedule('publishDate', event.target.value)} className={inputClass} />
         </Field>
-        <Field label="Submission end date" required>
+        <Field label="Submission end date">
           <input type="date" value={draft.schedule.submissionDate} onChange={event => updateSchedule('submissionDate', event.target.value)} className={inputClass} />
         </Field>
         <Field label="Opening date">
@@ -1508,7 +1593,7 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
         <Field label="Quote validity days">
           <input type="number" min={1} value={draft.schedule.validityDays || ''} onChange={event => updateSchedule('validityDays', Number(event.target.value || 0))} className={inputClass} />
         </Field>
-        <Field label="Required delivery date" required>
+        <Field label="Required delivery date">
           <input type="date" value={draft.schedule.deliveryDate} onChange={event => updateSchedule('deliveryDate', event.target.value)} className={inputClass} />
         </Field>
         <Toggle label="Pre-bid meeting" checked={draft.schedule.preBidMeeting} onChange={value => updateSchedule('preBidMeeting', value)} />
@@ -1537,14 +1622,11 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
             <Field label="Award date">
               <input type="date" value={draft.tender.awardDate} onChange={event => updateTender('awardDate', event.target.value)} className={inputClass} />
             </Field>
-            <Field label="Delivery location" required className="lg:col-span-2">
+            <Field label="Delivery location" className="lg:col-span-2">
               <input value={draft.tender.deliveryLocation} onChange={event => updateTender('deliveryLocation', event.target.value)} className={inputClass} placeholder="Full delivery or execution address" />
             </Field>
-            <Field label="Delivery type" required>
-              <select value={draft.tender.deliveryType} onChange={event => updateTender('deliveryType', event.target.value)} className={inputClass}>
-                <option value="">Select delivery type</option>
-                {DELIVERY_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+            <Field label="Delivery type">
+              <SelectWithOther value={draft.tender.deliveryType} options={DELIVERY_TYPES} onChange={value => updateTender('deliveryType', value)} placeholder="Select delivery type" otherPlaceholder="Enter delivery type" />
             </Field>
             <Field label="Delivery timeline">
               <input value={draft.tender.deliveryTimeline} onChange={event => updateTender('deliveryTimeline', event.target.value)} className={inputClass} placeholder="Within 30 days from PO" />
@@ -1574,14 +1656,10 @@ function RulesStep({ draft, updateDraft }: StepProps) {
     <Panel title={draft.type === 'auction' ? 'Auction Rules' : 'Bid & Evaluation Rules'} icon={<ShieldCheck className="h-4 w-4" />}>
       <div className="grid gap-4 lg:grid-cols-3">
         <Field label="Bid type" required>
-          <select value={draft.rules.bidType} onChange={event => updateRules('bidType', event.target.value)} className={inputClass}>
-            {BID_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <SelectWithOther value={draft.rules.bidType} options={BID_TYPE_OPTIONS} onChange={value => updateRules('bidType', value)} otherPlaceholder="Enter bid type" />
         </Field>
         <Field label="Evaluation method" required>
-          <select value={draft.rules.evaluation} onChange={event => updateRules('evaluation', event.target.value)} className={inputClass}>
-            {EVALUATION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <SelectWithOther value={draft.rules.evaluation} options={EVALUATION_OPTIONS} onChange={value => updateRules('evaluation', value)} otherPlaceholder="Enter evaluation method" />
         </Field>
         <Field label="EMD amount">
           <input type="number" min={0} value={draft.rules.emdAmount || ''} onChange={event => updateRules('emdAmount', Number(event.target.value || 0))} className={inputClass} />
@@ -1607,37 +1685,26 @@ function RulesStep({ draft, updateDraft }: StepProps) {
         {draft.type === 'tender' && (
           <>
             <Field label="Currency">
-              <select value={draft.tender.currency} onChange={event => updateTender('currency', event.target.value)} className={inputClass}>
-                {['INR', 'USD', 'EUR'].map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.currency} options={CURRENCY_OPTIONS} onChange={value => updateTender('currency', value)} otherPlaceholder="Enter currency" />
             </Field>
             <Field label="Price type">
-              <select value={draft.tender.priceType} onChange={event => updateTender('priceType', event.target.value)} className={inputClass}>
-                {PRICE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.priceType} options={PRICE_TYPE_OPTIONS} onChange={value => updateTender('priceType', value)} otherPlaceholder="Enter price type" />
             </Field>
             <Field label="Tax type">
-              <select value={draft.tender.taxType} onChange={event => updateTender('taxType', event.target.value)} className={inputClass}>
-                {TAX_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.taxType} options={TAX_TYPE_OPTIONS} onChange={value => updateTender('taxType', value)} otherPlaceholder="Enter tax type" />
             </Field>
             <Toggle label="GST included" checked={draft.tender.gstIncluded} onChange={value => updateTender('gstIncluded', value)} />
             <Field label="GST rate">
               <input type="number" value={draft.tender.gstRate} onChange={event => updateTender('gstRate', event.target.value)} className={inputClass} />
             </Field>
-            <Field label="Payment terms" required>
-              <select value={draft.tender.paymentTerms} onChange={event => updateTender('paymentTerms', event.target.value)} className={inputClass}>
-                <option value="">Select payment terms</option>
-                {PAYMENT_TERMS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+            <Field label="Payment terms">
+              <SelectWithOther value={draft.tender.paymentTerms} options={PAYMENT_TERMS} onChange={value => updateTender('paymentTerms', value)} placeholder="Select payment terms" otherPlaceholder="Enter payment terms" />
             </Field>
             <Field label="Performance security amount">
               <input type="number" value={draft.tender.performanceSecurityAmount} onChange={event => updateTender('performanceSecurityAmount', event.target.value)} disabled={!draft.rules.performanceSecurity} className={inputClass} />
             </Field>
             <Field label="Tender evaluation method">
-              <select value={draft.tender.evaluationMethod} onChange={event => updateTender('evaluationMethod', event.target.value)} className={inputClass}>
-                {TENDER_EVALUATION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.evaluationMethod} options={TENDER_EVALUATION_OPTIONS} onChange={value => updateTender('evaluationMethod', value)} otherPlaceholder="Enter tender evaluation method" />
             </Field>
             <Field label="Technical weightage">
               <input type="number" value={draft.tender.technicalWeightage} onChange={event => updateTender('technicalWeightage', event.target.value)} className={inputClass} />
@@ -1769,9 +1836,7 @@ function ApprovalStep({ draft, updateDraft }: StepProps) {
     <Panel title="Approval Workflow" icon={<BadgeCheck className="h-4 w-4" />}>
       <div className="grid gap-4 lg:grid-cols-3">
         <Field label="Workflow" required>
-          <select value={draft.approval.workflow} onChange={event => updateApproval('workflow', event.target.value)} className={inputClass}>
-            {APPROVAL_WORKFLOW_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <SelectWithOther value={draft.approval.workflow} options={APPROVAL_WORKFLOW_OPTIONS} onChange={value => updateApproval('workflow', value)} otherPlaceholder="Enter approval workflow" />
         </Field>
         <Field label="Approver">
           <input value={draft.approval.approver} onChange={event => updateApproval('approver', event.target.value)} className={inputClass} placeholder="Name / role" />
@@ -1781,13 +1846,13 @@ function ApprovalStep({ draft, updateDraft }: StepProps) {
         </Field>
         {draft.type === 'tender' && (
           <>
-            <Field label="Contact name" required>
+            <Field label="Contact name">
               <input value={draft.tender.contactName} onChange={event => updateTender('contactName', event.target.value)} className={inputClass} />
             </Field>
-            <Field label="Contact email" required>
+            <Field label="Contact email">
               <input value={draft.tender.contactEmail} onChange={event => updateTender('contactEmail', event.target.value)} className={inputClass} />
             </Field>
-            <Field label="Contact mobile" required>
+            <Field label="Contact mobile">
               <input value={draft.tender.contactMobile} onChange={event => updateTender('contactMobile', event.target.value)} className={inputClass} />
             </Field>
             <Field label="Phone / landline">
@@ -1801,9 +1866,7 @@ function ApprovalStep({ draft, updateDraft }: StepProps) {
             </Field>
             <Toggle label="Approval required" checked={draft.tender.approvalRequired} onChange={value => updateTender('approvalRequired', value)} />
             <Field label="Approval status">
-              <select value={draft.tender.approvalStatus} onChange={event => updateTender('approvalStatus', event.target.value)} className={inputClass}>
-                {APPROVAL_STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <SelectWithOther value={draft.tender.approvalStatus} options={APPROVAL_STATUS_OPTIONS} onChange={value => updateTender('approvalStatus', value)} otherPlaceholder="Enter approval status" />
             </Field>
             <Field label="Approver name">
               <input value={draft.tender.approverName} onChange={event => updateTender('approverName', event.target.value)} disabled={!draft.tender.approvalRequired} className={inputClass} />
@@ -1827,7 +1890,7 @@ function ReviewStep({ draft, readiness }: { draft: Draft; readiness: Array<{ lab
     : draft.schedule.submissionDate || 'Not set';
 
   return (
-    <Panel title="Review & Publish Readiness" icon={<CheckCircle2 className="h-4 w-4" />}>
+    <Panel title="Review & Handoff Readiness" icon={<CheckCircle2 className="h-4 w-4" />}>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-3">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -1864,30 +1927,33 @@ function ReviewStep({ draft, readiness }: { draft: Draft; readiness: Array<{ lab
 function GuidanceBand({ draft, method }: { draft: Draft; method: MethodConfig }) {
   const value = draft.basics.estimatedValue || grandTotal(draft.items);
   return (
-    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="rounded-xl border border-amber-200 bg-amber-50/20 p-4 border-l-4 border-l-[#ff9933]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between font-sans">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#12335f]">
+          <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-amber-200 shadow-sm text-[#ff9933] shrink-0">
             <Info className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-sm font-black text-slate-950">{method.title} setup</p>
-            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-slate-600">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-black text-slate-900">{method.title} Setup Protocol</p>
+              <span className="text-[9px] font-black bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded uppercase">GFR 2017 Regulatory Guide</span>
+            </div>
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-600">
               {draft.type === 'direct'
-                ? 'Use this path for fast, low-value buying where vendor, item and budget checks are enough before approval.'
+                ? 'Under Rule 154 of GFR 2017, Direct Purchase is admissible for goods/services up to Rs. 25,000 without tenders. Ensure bank details and items are verified.'
                 : draft.type === 'auction'
-                  ? 'Use this path when technical qualification is complete and competition should move to price discovery.'
+                  ? 'Reverse Auction is triggered when technical evaluations are finalized. The lowest bidding seller (L1) is determined dynamically via active price decrements.'
                   : draft.type === 'tender'
-                    ? 'Use this path for formal public bidding with document checklist, committee review and audit trail.'
+                    ? 'Rule 161 of GFR 2017 requires Open Tender Inquiry for values above Rs. 25 Lakhs. System will generate a public bid listing with audit logs.'
                     : draft.type === 'comparison'
-                      ? 'Use this path when comparable marketplace options need a defensible L1 selection record.'
-                      : 'Use this path to collect quotations against a defined requirement, schedule and eligibility set.'}
+                      ? 'L1 Comparison is used for procurement up to Rs. 2.5 Lakhs by comparing at least three distinct sellers to establish a competitive price record.'
+                      : 'Request for Quotation (RFQ) is deployed to solicit sealed bids from verified micro and small enterprise suppliers in the local registry.'}
             </p>
           </div>
         </div>
-        <div className="rounded-lg border border-blue-100 bg-white px-4 py-2 text-right">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current value</p>
-          <p className="text-lg font-black text-[#12335f]">{money(value)}</p>
+        <div className="rounded-xl border border-amber-200 bg-white px-4 py-2 text-right shrink-0 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Sanction Value</p>
+          <p className="text-lg font-mono font-black text-[#12335f]">{money(value)}</p>
         </div>
       </div>
     </div>
@@ -1924,9 +1990,10 @@ function getReadiness(draft: Draft) {
   const value = draft.basics.estimatedValue || grandTotal(draft.items);
   const hasItems = draft.items.some(item => item.name.trim() && item.quantity > 0);
   const requiredDocs = draft.documents.filter(document => document.requirement === 'Mandatory');
+  const hasContact = Boolean(draft.tender.contactName || draft.tender.contactEmail || draft.tender.contactMobile);
   const baseChecks = [
     { label: 'Requirement title', ok: draft.basics.title.trim().length >= 3 },
-    { label: 'Budget value', ok: value > 0 },
+    { label: 'Budget estimate', ok: value > 0 },
     { label: 'Line item details', ok: hasItems },
     { label: 'Supplier path', ok: Boolean(draft.vendors.selection) },
   ];
@@ -1937,21 +2004,21 @@ function getReadiness(draft: Draft) {
     return [
       ...baseChecks,
       { label: 'Tender scope', ok: draft.tender.shortDescription.trim().length >= 10 && draft.tender.scopeOfWork.trim().length >= 10 },
-      { label: 'Bid timeline', ok: Boolean(draft.tender.bidStartDate && draft.tender.bidClosingDate && draft.tender.bidClosingTime) },
-      { label: 'Delivery terms', ok: Boolean(draft.tender.deliveryLocation && draft.tender.deliveryType && draft.tender.deliveryTimeline) },
-      { label: 'Commercial terms', ok: Boolean(draft.tender.paymentTerms && draft.tender.priceType && draft.tender.taxType) },
+      { label: 'Bid closing', ok: Boolean(draft.tender.bidClosingDate && draft.tender.bidClosingTime) },
+      { label: 'Delivery details', ok: Boolean(draft.tender.deliveryLocation || draft.tender.deliveryTimeline || draft.schedule.deliveryDate) },
+      { label: 'Commercial basis', ok: Boolean(draft.tender.priceType && draft.tender.taxType) },
       { label: 'Evaluation weights', ok: Number.isFinite(technicalWeightage) && Number.isFinite(priceWeightage) && technicalWeightage + priceWeightage === 100 },
-      { label: 'Buyer contact', ok: Boolean(draft.tender.contactName && draft.tender.contactEmail && draft.tender.contactMobile) },
+      { label: 'Buyer contact', ok: hasContact },
       { label: 'Approval workflow', ok: !draft.tender.approvalRequired || Boolean(draft.tender.approverName || draft.tender.approvalChain) },
-      { label: 'Mandatory documents', ok: requiredDocs.length > 0 && requiredDocs.every(document => document.fileName) },
+      { label: 'Primary documents', ok: requiredDocs.length === 0 || requiredDocs.some(document => document.fileName) },
     ];
   }
 
   return [
     ...baseChecks,
-    { label: 'Schedule dates', ok: Boolean(draft.schedule.submissionDate && draft.schedule.deliveryDate) },
+    { label: 'Schedule date', ok: Boolean(draft.schedule.submissionDate || draft.schedule.deliveryDate) },
     { label: 'Approval workflow', ok: Boolean(draft.approval.workflow) },
-    { label: 'Mandatory documents', ok: draft.type === 'direct' || requiredDocs.every(document => document.fileName) },
+    { label: 'Supporting documents', ok: requiredDocs.length === 0 || requiredDocs.some(document => document.fileName) },
   ];
 }
 
@@ -1960,17 +2027,67 @@ type StepProps = {
   updateDraft: (updater: (current: Draft) => Draft) => void;
 };
 
+type SelectWithOtherOption = string | { value: string; label: string };
+
+const getOptionValue = (option: SelectWithOtherOption) => typeof option === 'string' ? option : option.value;
+const getOptionLabel = (option: SelectWithOtherOption) => typeof option === 'string' ? option : option.label;
+
+function SelectWithOther({
+  value,
+  options,
+  onChange,
+  placeholder = 'Select option',
+  otherPlaceholder = 'Enter other value',
+  className = inputClass,
+}: {
+  value: string;
+  options: readonly SelectWithOtherOption[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+  otherPlaceholder?: string;
+  className?: string;
+}) {
+  const optionValues = options.map(getOptionValue);
+  const isOtherSelected = Boolean(value) && !optionValues.includes(value);
+  const selectValue = isOtherSelected ? OTHER_OPTION : value;
+
+  return (
+    <div className="space-y-2">
+      <select
+        value={selectValue}
+        onChange={event => onChange(event.target.value === OTHER_OPTION ? OTHER_OPTION : event.target.value)}
+        className={className}
+      >
+        {placeholder && <option value="">{placeholder}</option>}
+        {options.map(option => {
+          const optionValue = getOptionValue(option);
+          return <option key={optionValue} value={optionValue}>{getOptionLabel(option)}</option>;
+        })}
+        <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
+      </select>
+      {selectValue === OTHER_OPTION && (
+        <input
+          value={value === OTHER_OPTION ? '' : value}
+          onChange={event => onChange(event.target.value)}
+          className={className}
+          placeholder={otherPlaceholder}
+        />
+      )}
+    </div>
+  );
+}
+
 function Panel({ title, icon, action, children }: { title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#12335f]/8 text-[#12335f]">{icon}</span>
-          <h2 className="text-sm font-black text-slate-950">{title}</h2>
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-t-2 border-t-[#12335f]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-150 bg-slate-50/70 px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-[#12335f]">{icon}</span>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">{title}</h2>
         </div>
         {action}
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </section>
   );
 }

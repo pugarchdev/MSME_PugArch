@@ -55,11 +55,13 @@ export function MarketplaceFooter() {
                     <div>
                         <h3 className="text-sm font-bold mb-3">Policies</h3>
                         <ul className="space-y-2">
-                            <li><Link href="#terms" className="text-xs text-white/60 hover:text-white transition">Terms & Conditions</Link></li>
-                            <li><Link href="#privacy" className="text-xs text-white/60 hover:text-white transition">Privacy Policy</Link></li>
-                            <li><Link href="#accessibility" className="text-xs text-white/60 hover:text-white transition">Accessibility Statement</Link></li>
-                            <li><Link href="#disclaimer" className="text-xs text-white/60 hover:text-white transition">Disclaimer</Link></li>
-                            <li><Link href="#sitemap" className="text-xs text-white/60 hover:text-white transition">Sitemap</Link></li>
+                            <li><Link href="/terms-of-use" className="text-xs text-white/60 hover:text-white transition">Terms & Conditions</Link></li>
+                            <li><Link href="/website-policies" className="text-xs text-white/60 hover:text-white transition">Website Policies</Link></li>
+                            <li><Link href="/copyright" className="text-xs text-white/60 hover:text-white transition">Copyright</Link></li>
+                            <li><Link href="/hyperlinking-policy" className="text-xs text-white/60 hover:text-white transition">Hyperlinking Policy</Link></li>
+                            <li><Link href="/disclaimer" className="text-xs text-white/60 hover:text-white transition">Disclaimer</Link></li>
+                            <li><Link href="/caution-notice" className="text-xs text-white/60 hover:text-white transition">Caution Notice</Link></li>
+                            <li><Link href="/sitemap" className="text-xs text-white/60 hover:text-white transition">Sitemap</Link></li>
                         </ul>
                     </div>
 
@@ -68,9 +70,9 @@ export function MarketplaceFooter() {
                         <h3 className="text-sm font-bold mb-3">Helpdesk & Support</h3>
                         <ul className="space-y-2">
                             <li><Link href="/help" className="text-xs text-white/60 hover:text-white transition">Help Center</Link></li>
-                            <li><Link href="#faq" className="text-xs text-white/60 hover:text-white transition">FAQs</Link></li>
-                            <li><Link href="#grievance" className="text-xs text-white/60 hover:text-white transition">Grievance Redressal</Link></li>
-                            <li><Link href="#feedback" className="text-xs text-white/60 hover:text-white transition">Feedback</Link></li>
+                            <li><Link href="/faqs" className="text-xs text-white/60 hover:text-white transition">FAQs</Link></li>
+                            <li><Link href="/contact-us" className="text-xs text-white/60 hover:text-white transition">Contact Us</Link></li>
+                            <li><Link href="/feedback" className="text-xs text-white/60 hover:text-white transition">Feedback</Link></li>
                             <li><Link href="/user-guide" className="text-xs text-white/60 hover:text-white transition">User Guide</Link></li>
                         </ul>
                         <div className="mt-4 p-3 rounded-lg bg-white/5 border border-white/10">

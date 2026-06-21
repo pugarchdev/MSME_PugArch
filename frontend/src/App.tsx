@@ -105,6 +105,7 @@ const ReverseAuctionLivePage = lazy(() => import('./features/reverseAuctions/pag
 const AuctionResultPage = lazy(() => import('./features/reverseAuctions/pages/AuctionResultPage'));
 const MarketplaceComparePage = lazy(() => import('./features/marketplace/pages/MarketplaceComparePage'));
 const SavedSuppliersPage = lazy(() => import('./features/marketplace/pages/SavedSuppliersPage'));
+const PublicInfoPage = lazy(() => import('./features/marketplace/pages/PublicInfoPage'));
 const AdminBannerManagementPage = lazy(() => import('./features/banners/pages/AdminBannerManagementPage'));
 const MonthlyRankingsAdminPage = lazy(() => import('./features/banners/pages/MonthlyRankingsAdminPage'));
 const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/pages/OrganizationBannerEligibilityPage'));
@@ -202,6 +203,26 @@ const roleOk = (role?: string, allowed?: string[]) => {
   return Boolean(role && allowed.includes(role));
 };
 
+const publicInfoRoutes = [
+  '/contact-us',
+  '/feedback',
+  '/sitemap',
+  '/faqs',
+  '/faq',
+  '/terms-of-use',
+  '/terms-and-conditions',
+  '/website-policies',
+  '/privacy-policy',
+  '/copyright',
+  '/copyrights',
+  '/copyright-policy',
+  '/hyperlinks',
+  '/hyperlinking-policy',
+  '/disclaimer',
+  '/caution-notice',
+  '/caution-notices',
+];
+
 /**
  * Imperative redirect component. Guards against firing when we're already on
  * the target path (which can happen in dev under React Strict Mode when
@@ -260,7 +281,7 @@ export default function App() {
   }, [mounted, loading, user]);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide'].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -337,6 +358,7 @@ export default function App() {
     if (pathname === '/invite/signup') return <InviteSignupPage />;
     if (pathname === '/help') return <HelpPage />;
     if (pathname === '/user-guide') return <PortalDocumentation />;
+    if (publicInfoRoutes.includes(pathname)) return <PublicInfoPage />;
     // Public marketplace routes (accessible without login)
     if (pathname === '/marketplace/products') return <MarketplaceProductList />;
     if (pathname === '/marketplace/services') return <MarketplaceProductList />;
@@ -535,7 +557,7 @@ export default function App() {
     /^\/marketplace\/products\/\d+$/.test(pathname) ||
     /^\/marketplace\/services\/\d+$/.test(pathname);
   const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/\d+$/.test(pathname);
-  const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute;
+  const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute && !publicInfoRoutes.includes(pathname);
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 
   return (

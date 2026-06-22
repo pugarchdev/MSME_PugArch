@@ -14,8 +14,11 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { procurementWizardApi, fetchProcurementDrafts, deleteProcurementDraft } from '../api';
+import { bidWizardApi } from '../../bidCreationWizardV2/api';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
+
+
 
 /* ─── Method Config Map ─── */
 const METHOD_CONFIGS_MAP: Record<string, { title: string; accent: string }> = {
@@ -205,10 +208,14 @@ export default function ProcurementDraftsPage() {
     toast.success('Local procurement draft discarded');
   };
 
-  const discardServer = async (id: number) => {
+  const discardServer = async (d: DisplayDraft) => {
     if (!window.confirm('Are you sure you want to delete this procurement draft from the server? This action cannot be undone.')) return;
     try {
-      await deleteProcurementDraft(id);
+      if (d.raw?.payload?.isV2) {
+        await bidWizardApi.deleteDraft(d.id!);
+      } else {
+        await deleteProcurementDraft(d.id!);
+      }
       toast.success('Procurement draft deleted successfully');
       setSelectedDraftId(undefined);
       loadAllDrafts();
@@ -219,6 +226,7 @@ export default function ProcurementDraftsPage() {
 
   const handleContinue = (d: DisplayDraft) => {
     if (d.isLocal) router.push('/buyer/create-procurement');
+    else if (d.raw?.payload?.isV2) router.push(`/buyer/create-bid?draft=${d.id}`);
     else router.push(`/buyer/create-procurement?id=${d.id}`);
   };
 
@@ -335,7 +343,7 @@ export default function ProcurementDraftsPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={(e) => { e.stopPropagation(); d.isLocal ? discardLocal() : discardServer(d.id!); }}
+                                onClick={(e) => { e.stopPropagation(); d.isLocal ? discardLocal() : discardServer(d); }}
                                 className="h-7 rounded border-red-200 px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"
                               >
                                 <Trash2 className="mr-1 h-3 w-3" /> Delete
@@ -435,7 +443,7 @@ export default function ProcurementDraftsPage() {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => selectedDraft.isLocal ? discardLocal() : discardServer(selectedDraft.id!)}
+                          onClick={() => selectedDraft.isLocal ? discardLocal() : discardServer(selectedDraft)}
                           className="h-10 rounded-md border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="mr-2 h-4 w-4" /> Discard

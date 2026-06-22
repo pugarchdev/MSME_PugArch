@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { DEFAULT_CHECKOUT_FORM } from '../constants';
 import type { CartEvaluation, CheckoutFormData } from '../types';
+import { fetchDeliveryAddresses } from '../../directPurchase/api';
 
 export function useProcurementCheckout() {
   const { user } = useAuth();
@@ -47,6 +48,48 @@ export function useProcurementCheckout() {
       },
     }));
   }, [user, formData.buyerDetails.organizationName]);
+
+  useEffect(() => {
+    if (!user || formData.deliveryDetails.deliveryAddress) return;
+
+    const loadDefaultAddress = async () => {
+      let defaultAddress: any = null;
+      try {
+        const addresses = await fetchDeliveryAddresses();
+        defaultAddress = addresses.find((addr: any) => addr.isDefault);
+      } catch (err) {
+        console.error('Failed to fetch delivery addresses', err);
+      }
+
+      if (defaultAddress) {
+        const addressLines = [
+          defaultAddress.addressLine1,
+          defaultAddress.addressLine2,
+          defaultAddress.landmark
+        ].filter(Boolean).join(', ');
+
+        setFormData(prev => ({
+          ...prev,
+          consigneeDetails: {
+            ...prev.consigneeDetails,
+            consigneeName: defaultAddress.contactPersonName || prev.consigneeDetails.consigneeName || user.name || '',
+            consigneeMobile: defaultAddress.mobileNumber || prev.consigneeDetails.consigneeMobile || user.mobile || '',
+            consigneeEmail: defaultAddress.email || prev.consigneeDetails.consigneeEmail || user.email || '',
+          },
+          deliveryDetails: {
+            ...prev.deliveryDetails,
+            deliveryAddress: addressLines,
+            city: defaultAddress.city || '',
+            district: defaultAddress.district || '',
+            state: defaultAddress.state || '',
+            pinCode: defaultAddress.pincode || '',
+          }
+        }));
+      }
+    };
+
+    loadDefaultAddress();
+  }, [user, formData.deliveryDetails.deliveryAddress]);
 
   const refreshEvaluation = useCallback(async (selectedMethod?: string) => {
     if (!cart?.id) return null;

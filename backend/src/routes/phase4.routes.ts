@@ -2938,16 +2938,126 @@ router.post('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(
 
 router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  const where: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED'] } };
-  if (query.procurementMethod) where.procurementMethod = procurementMethodCodeFor(query.procurementMethod);
-  if (query.categoryId) where.categoryId = query.categoryId;
-  if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
-  const window = listWindow(query);
-  const [drafts, total] = await Promise.all([
-    db.requirement.findMany({ where, include: procurementDraftInclude, orderBy: { updatedAt: 'desc' }, ...window }),
-    db.requirement.count({ where })
-  ]);
-  ok(res, paged(drafts.map(serializeProcurementDraft), total, query, 'drafts'));
+  
+  // We load V1 drafts from requirement table
+  const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED'] } };
+  if (query.procurementMethod) reqWhere.procurementMethod = procurementMethodCodeFor(query.procurementMethod);
+  if (query.categoryId) reqWhere.categoryId = query.categoryId;
+  if (query.q) reqWhere.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
+
+  const v1Drafts = await db.requirement.findMany({
+    where: reqWhere,
+    include: procurementDraftInclude,
+    orderBy: { updatedAt: 'desc' }
+  });
+
+  // Load V2 drafts from bidWizardDraft table
+  const v2Drafts = await db.bidWizardDraft.findMany({
+    where: {
+      buyerId: userId(req),
+      draftStatus: 'DRAFT'
+    },
+    orderBy: { updatedAt: 'desc' }
+  });
+
+  // Map/serialize V2 drafts to match DisplayDraft shape on the frontend
+  const serializedV2 = v2Drafts.map((d: any) => {
+    const formData = d.formData || {};
+    const step1 = formData.step1 || {};
+    const step2 = formData.step2 || {};
+    const step3 = formData.step3 || {};
+    const step4 = formData.step4 || {};
+    const step5 = formData.step5 || {};
+    
+    const title = step3.title || 'Untitled V2 Draft';
+    const methodSlug = d.bidType.toLowerCase().replace(/_/g, '-');
+    
+    const productOrService = step4.productName || step4.serviceCategory || '';
+    const categoryName = step4.productCategory || step4.serviceCategory || '';
+    const quantity = step4.quantity || '';
+    const unit = step4.unitOfMeasurement || '';
+    const deliveryLocation = step5.singleConsignee?.location || step2.officeAddress || '';
+
+    return {
+      id: d.id,
+      buyerId: d.buyerId,
+      status: 'DRAFT',
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      title,
+      methodSlug,
+      estimatedValue: Number(step3.estimatedValue || 0),
+      category: {
+        name: categoryName
+      },
+      items: [
+        {
+          itemName: productOrService,
+          quantity: quantity,
+          unitOfMeasure: unit,
+          description: step4.productDescription || step4.scopeOfWork || ''
+        }
+      ],
+      payload: {
+        isV2: true,
+        basics: {
+          title,
+          estimatedValue: Number(step3.estimatedValue || 0)
+        },
+        tender: {
+          deliveryLocation
+        }
+      }
+    };
+  });
+
+  // Merge lists
+  let allMerged = [...v1Drafts.map(serializeProcurementDraft), ...serializedV2];
+
+  // Apply filters on the merged list if needed
+  if (query.procurementMethod) {
+    const filterMethod = procurementMethodCodeFor(query.procurementMethod);
+    allMerged = allMerged.filter(d => {
+      // Check if it's V2 or V1
+      if (d.payload?.isV2) {
+        const type = String(d.items[0]?.itemName ? 'PRODUCT_BID' : 'SERVICE_BID'); // fallback detection or matchesProcurementMethodFilter logic
+        const normalizedType = d.methodSlug.toUpperCase().replace(/-/g, '_');
+        if (filterMethod === 'REVERSE_AUCTION') return normalizedType === 'REVERSE_AUCTION' || normalizedType === 'BID_WITH_RA';
+        if (filterMethod === 'DIRECT_PURCHASE') return false;
+        if (filterMethod === 'RFQ') return false;
+        if (filterMethod === 'TENDER') {
+          return ['PRODUCT_BID', 'SERVICE_BID', 'CUSTOM_BID', 'BOQ_BID', 'PAC_BID'].includes(normalizedType);
+        }
+        return true;
+      }
+      return true; // V1 is already filtered in database query reqWhere
+    });
+  }
+
+  if (query.q) {
+    const q = String(query.q).toLowerCase();
+    allMerged = allMerged.filter(d => {
+      if (d.payload?.isV2) {
+        return (
+          String(d.title || '').toLowerCase().includes(q) ||
+          String(d.items?.[0]?.itemName || '').toLowerCase().includes(q)
+        );
+      }
+      return true; // V1 is already filtered in database query reqWhere
+    });
+  }
+
+  // Sort by updatedAt desc
+  allMerged.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  // Paginate in memory
+  const total = allMerged.length;
+  const page = Number(query.page || 1);
+  const limit = Number(query.pageSize || 20);
+  const offset = (page - 1) * limit;
+  const paginated = allMerged.slice(offset, offset + limit);
+
+  ok(res, paged(paginated, total, query as any, 'drafts'));
 }, 'Unable to load procurement drafts'));
 
 router.get('/procurement/drafts/:id', authenticate, authorize('buyer', 'admin', 'master_admin'), asyncRoute(async (req, res) => {

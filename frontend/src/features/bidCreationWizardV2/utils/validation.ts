@@ -1,6 +1,16 @@
 import type { BidType, PacketType, WizardFormData } from '../types/steps';
 
-const required = (value: any) => value !== undefined && value !== null && String(value).trim() !== '';
+const required = (value: any) => {
+  if (value && typeof value === 'object') {
+    const dropdownVal = value.dropdownValue;
+    const otherVal = value.otherValue;
+    if (dropdownVal === 'Other') {
+      return otherVal !== undefined && otherVal !== null && String(otherVal).trim() !== '';
+    }
+    return dropdownVal !== undefined && dropdownVal !== null && String(dropdownVal).trim() !== '';
+  }
+  return value !== undefined && value !== null && String(value).trim() !== '';
+};
 
 const error = (message: string) => [message];
 

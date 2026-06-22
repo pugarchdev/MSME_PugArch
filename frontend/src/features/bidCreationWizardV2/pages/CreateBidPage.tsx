@@ -16,6 +16,7 @@ import Step9 from '../components/steps/Step9_PreviewPublish';
 import { useBidWizard } from '../hooks/useBidWizard';
 import type { StepComponentProps } from '../types/steps';
 import { STEP_TITLES } from '../utils/constants';
+import { fetchDeliveryAddresses } from '../../directPurchase/api';
 
 const steps = [Step1, Step2, Step3, Step4, Step5, Step6, Step7, Step8, Step9];
 
@@ -33,19 +34,58 @@ export default function CreateBidPage() {
 
   React.useEffect(() => {
     if (!user || wizard.formData.step2.buyerName) return;
-    const profile = (user as any).buyerProfile || {};
-    const organization = (user as any).organization || {};
-    wizard.updateStepData(2, {
-      organizationName: profile.organizationName || organization.organizationName || organization.name || (user as any).company?.name || '',
-      ministry: profile.ministry || profile.department || '',
-      buyerName: user.name || profile.representativeName || '',
-      designation: profile.designation || '',
-      email: user.email || profile.email || '',
-      mobile: user.mobile || profile.mobile || '',
-      officeAddress: profile.registeredAddress || profile.corporateAddress || '',
-      state: profile.state || 'Maharashtra',
-      district: profile.district || '',
-    });
+
+    const loadDefaultDetails = async () => {
+      let defaultAddress: any = null;
+      try {
+        const addresses = await fetchDeliveryAddresses();
+        defaultAddress = addresses.find((addr: any) => addr.isDefault);
+      } catch (err) {
+        console.error('Failed to fetch delivery addresses', err);
+      }
+
+      const profile = (user as any).buyerProfile || {};
+      const organization = (user as any).organization || {};
+
+      let officeAddress = profile.registeredAddress || profile.corporateAddress || '';
+      let state = profile.state || 'Maharashtra';
+      let district = profile.district || '';
+      let taluka = '';
+      let villageOrCity = '';
+
+      if (defaultAddress) {
+        const parts = [
+          defaultAddress.addressLine1,
+          defaultAddress.addressLine2,
+          defaultAddress.landmark,
+          defaultAddress.city,
+          defaultAddress.district,
+          defaultAddress.state,
+          defaultAddress.pincode
+        ].filter(Boolean);
+        officeAddress = parts.join(', ');
+        
+        state = defaultAddress.state || state;
+        district = defaultAddress.district || district;
+        villageOrCity = defaultAddress.city || '';
+      }
+
+      wizard.updateStepData(2, {
+        organizationName: profile.organizationName || organization.organizationName || organization.name || (user as any).company?.name || '',
+        ministry: profile.ministry || profile.department || '',
+        buyerName: user.name || profile.representativeName || '',
+        designation: profile.designation || '',
+        email: user.email || profile.email || '',
+        mobile: user.mobile || profile.mobile || '',
+        officeAddress,
+        state,
+        district,
+        taluka,
+        villageOrCity,
+      });
+    };
+
+    loadDefaultDetails();
   }, [user, wizard.formData.step2.buyerName, wizard.updateStepData]);
 
   const StepComponent = steps[wizard.currentStep - 1];

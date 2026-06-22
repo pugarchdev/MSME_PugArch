@@ -208,9 +208,10 @@ export const updateDraft = async (
 };
 
 export const validateStep = (step: number, formData: Record<string, any>, bidType?: BidType, packetType?: PacketType): StepValidationResult => {
-  const payload = formData[`step${step}`] || formData;
-  const inferredBidType = bidType || formData?.step1?.bidType || payload?.bidType;
-  const inferredPacketType = packetType || formData?.step1?.packetType || payload?.packetType;
+  const resolvedFormData = resolveOtherValues(formData) as Record<string, any>;
+  const payload = resolvedFormData[`step${step}`] || resolvedFormData;
+  const inferredBidType = bidType || resolvedFormData?.step1?.bidType || payload?.bidType;
+  const inferredPacketType = packetType || resolvedFormData?.step1?.packetType || payload?.packetType;
   return validateWizardStep(step, payload, inferredBidType, inferredPacketType);
 };
 

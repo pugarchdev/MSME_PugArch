@@ -1,75 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
-import { bidWizardApi } from '../api';
-import { MAHARASHTRA_DISTRICTS } from '../utils/constants';
+import { useMemo } from 'react';
+import { indiaStatesDistricts, indiaStates } from '../../../data/indiaStatesDistricts';
 
-export const useMasterData = (district?: string, state?: string) => {
-  const [districtOptions, setDistrictOptions] = useState<string[]>(() => [...MAHARASHTRA_DISTRICTS]);
-  const [talukaOptions, setTalukaOptions] = useState<string[]>([]);
-  const [villageOptions, setVillageOptions] = useState<string[]>(['City / Ward', 'Village', 'Industrial Area', 'Other']);
+/** Resolve a SearchableSelect value (string or {dropdownValue, otherValue} object) to a plain string */
+const resolveValue = (input: any): string => {
+  if (input && typeof input === 'object') {
+    return input.dropdownValue === 'Other' ? (input.otherValue || '') : (input.dropdownValue || '');
+  }
+  return input || '';
+};
 
-  useEffect(() => {
-    if (state && state !== 'Maharashtra') {
-      setDistrictOptions([]);
-      return;
-    }
-    let cancelled = false;
-    bidWizardApi.searchMasterData('districts')
-      .then(rows => {
-        if (!cancelled && rows.length) setDistrictOptions(rows.map(row => row.value));
-      })
-      .catch(() => {
-        if (!cancelled) setDistrictOptions([...MAHARASHTRA_DISTRICTS]);
-      });
-    return () => {
-      cancelled = true;
-    };
+export const useMasterData = (districtInput?: any, stateInput?: any) => {
+  const state = useMemo(() => resolveValue(stateInput), [stateInput]);
+  const district = useMemo(() => resolveValue(districtInput), [districtInput]);
+
+  const states = useMemo(() => [...indiaStates], []);
+
+  const districts = useMemo(() => {
+    if (!state) return [];
+    // Try exact match first, then case-insensitive
+    const direct = indiaStatesDistricts[state];
+    if (direct) return [...direct];
+    const upperState = state.toUpperCase();
+    const match = Object.entries(indiaStatesDistricts).find(([key]) => key.toUpperCase() === upperState);
+    return match ? [...match[1]] : [];
   }, [state]);
 
-  useEffect(() => {
-    if (state && state !== 'Maharashtra') {
-      setTalukaOptions([]);
-      return;
-    }
-    if (!district) {
-      setTalukaOptions([]);
-      return;
-    }
-    let cancelled = false;
-    bidWizardApi.searchMasterData('talukas', '', district)
-      .then(rows => {
-        if (!cancelled) setTalukaOptions(rows.map(row => row.value));
-      })
-      .catch(() => {
-        if (!cancelled) setTalukaOptions(['Central', 'North', 'South', 'East', 'West', 'Other']);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [district, state]);
+  // Talukas and villages — generic options since we don't have taluka-level data per district
+  const talukas = useMemo(() => {
+    if (!district) return [];
+    return ['Central', 'North', 'South', 'East', 'West', 'Urban', 'Rural'];
+  }, [district]);
 
-  useEffect(() => {
-    if (state && state !== 'Maharashtra') {
-      setVillageOptions(['City / Ward', 'Village', 'Industrial Area', 'Other']);
-      return;
-    }
-    let cancelled = false;
-    bidWizardApi.searchMasterData('villages', '', district)
-      .then(rows => {
-        if (!cancelled && rows.length) setVillageOptions(rows.map(row => row.value));
-      })
-      .catch(() => {
-        if (!cancelled) setVillageOptions(['City / Ward', 'Village', 'Industrial Area', 'Other']);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [district, state]);
-
-  const talukas = useMemo(() => talukaOptions, [talukaOptions]);
+  const villages = useMemo(() => {
+    return ['City / Ward', 'Village', 'Industrial Area', 'Project Site'];
+  }, []);
 
   return {
-    districts: districtOptions,
+    states,
+    districts,
     talukas,
-    villages: villageOptions,
+    villages,
   };
 };

@@ -32,7 +32,25 @@ export default function SearchableSelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const normalizedValue = typeof value === 'object' && value?.dropdownValue ? value.dropdownValue : String(value || '');
+  const { normalizedValue, otherValue } = useMemo(() => {
+    let nv = '';
+    let ov = '';
+    if (value && typeof value === 'object') {
+      nv = value.dropdownValue || '';
+      ov = value.otherValue || '';
+    } else if (typeof value === 'string' && value !== '') {
+      const exists = options.some(opt => getValue(opt) === value) || (allowNA && value === 'N/A') || (allowOther && value === 'Other');
+      if (exists) {
+        nv = value;
+      } else if (allowOther) {
+        nv = 'Other';
+        ov = value;
+      } else {
+        nv = value;
+      }
+    }
+    return { normalizedValue: nv, otherValue: ov };
+  }, [value, options, allowNA, allowOther]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -74,7 +92,7 @@ export default function SearchableSelect({
   // Find the selected option label to display on the button
   const selectedOption = options.find(opt => getValue(opt) === normalizedValue);
   const displayLabel = normalizedValue === 'Other'
-    ? `Other: ${typeof value === 'object' ? value.otherValue || '(Please specify)' : ''}`
+    ? `Other: ${otherValue || '(Please specify)'}`
     : normalizedValue === 'N/A'
     ? 'N/A'
     : selectedOption
@@ -165,8 +183,8 @@ export default function SearchableSelect({
 
       {normalizedValue === 'Other' && (
         <OtherTextInput
-          value={typeof value === 'object' ? value.otherValue || '' : ''}
-          onChange={otherValue => onChange({ dropdownValue: 'Other', otherValue })}
+          value={otherValue}
+          onChange={newOtherValue => onChange({ dropdownValue: 'Other', otherValue: newOtherValue })}
         />
       )}
     </div>

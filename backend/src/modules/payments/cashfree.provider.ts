@@ -11,6 +11,18 @@ const parsePayload = (rawBody: Buffer) => {
   }
 };
 
+const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
+
+const verifyTimestamp = (headers: Record<string, string | string[] | undefined>): boolean => {
+  const timestampHeader = String(headers['x-webhook-timestamp'] || headers['x-cf-timestamp'] || '');
+  if (!timestampHeader) return false;
+  const timestamp = Number(timestampHeader);
+  if (Number.isNaN(timestamp)) return false;
+  const now = Date.now();
+  const diff = Math.abs(now - timestamp);
+  return diff <= WEBHOOK_TIMESTAMP_TOLERANCE_MS;
+};
+
 export const cashfreeProvider: PaymentProvider = {
   gateway: 'cashfree',
 
@@ -32,7 +44,9 @@ export const cashfreeProvider: PaymentProvider = {
     const signature = String(headers['x-webhook-signature'] || headers['x-cf-signature'] || '');
     const secret = env.CASHFREE_WEBHOOK_SECRET || '';
     const expected = secret ? crypto.createHmac('sha256', secret).update(rawBody).digest('base64') : '';
-    const verified = Boolean(secret && signature && signature === expected);
+    const signatureValid = Boolean(secret && signature && signature === expected);
+    const timestampValid = verifyTimestamp(headers);
+    const verified = signatureValid && timestampValid;
     const data = payload?.data || payload;
     const order = data?.order || data;
     const payment = data?.payment || {};
@@ -46,7 +60,7 @@ export const cashfreeProvider: PaymentProvider = {
       referenceId: String(order.order_note || order.referenceId || ''),
       gatewayOrderId: String(order.order_id || ''),
       gatewayPaymentId: String(payment.cf_payment_id || payment.payment_id || ''),
-      failureReason: verified ? undefined : 'Invalid Cashfree webhook signature',
+      failureReason: verified ? undefined : (!signatureValid ? 'Invalid Cashfree webhook signature' : 'Webhook timestamp outside acceptable window'),
       metadata: { providerStatus: statusText }
     };
   }

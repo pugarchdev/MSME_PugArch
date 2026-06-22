@@ -8,7 +8,7 @@ import { marketplaceApi, type MarketplaceService } from '../api';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
 import { MarketplaceFooter } from '../components/MarketplaceFooter';
 import { toast } from 'sonner';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
@@ -85,37 +85,35 @@ export default function MarketplaceServiceDetail() {
     const service = detailData?.service;
     const related = detailData?.relatedServices || [];
 
-    const { items: cartItems, add: addGuestItem, update: updateGuestItemQty } = useGuestCart();
+    const { add: addCartItem, update: updateCartQty, getQuantity } = useMarketplaceCart();
     const [imageFailed, setImageFailed] = useState(false);
 
     useEffect(() => {
         setImageFailed(false);
     }, [serviceId]);
 
-    const cartItem = cartItems.find((item: any) => item.id === serviceId && item.type === 'service');
-    const cartQuantity = cartItem ? Number(cartItem.quantity) : 0;
+    const cartQuantity = getQuantity(serviceId, 'service');
 
     const handleAddToCart = () => {
         if (cartQuantity === 0 && service) {
-            addGuestItem({
-                id: service.id,
-                name: service.name,
-                price: service.basePrice ? Number(service.basePrice) : undefined,
-                unit: pricingLabels[service.pricingModel] || 'engagement',
-                imageUrl: resolveMarketplaceImage(service, 'service'),
-                category: service.category?.name,
-                type: 'service',
-            });
-            toast.success(`${service.name} added to requirement cart`);
+            addCartItem(
+                {
+                    id: service.id,
+                    name: service.name,
+                    price: service.basePrice ? Number(service.basePrice) : undefined,
+                    unit: pricingLabels[service.pricingModel] || 'engagement',
+                    imageUrl: resolveMarketplaceImage(service, 'service'),
+                    category: service.category?.name,
+                    type: 'service',
+                },
+                { source: 'service-detail' }
+            );
         }
     };
 
     const handleQuantityChange = (delta: number) => {
         const newQuantity = Math.max(0, cartQuantity + delta);
-        updateGuestItemQty(serviceId, 'service', newQuantity);
-        if (newQuantity === 0 && service) {
-            toast.info(`${service.name} removed from cart`);
-        }
+        updateCartQty(serviceId, 'service', newQuantity);
     };
 
     const handleRequestQuote = () => {
@@ -136,6 +134,7 @@ export default function MarketplaceServiceDetail() {
             return;
         }
         const params = new URLSearchParams({
+            intent: 'quote',
             sellerId: String(sellerUserId),
             subject: `Quote request: ${service.name}`,
             message: `Hello, I would like to request a quotation for ${service.name}.\n\nCategory: ${service.category?.name || 'Not specified'}\nService area: ${service.serviceArea || 'Please confirm'}\nPlease share scope, delivery timeline, payment terms, and applicable taxes.`

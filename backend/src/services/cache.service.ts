@@ -95,10 +95,13 @@ export const invalidateByPattern = async (pattern: string) => {
     return 0;
   }
 
+  const globToRegex = (glob: string) =>
+    '^' + glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
+
   let deleted = 0;
   for (const key of Array.from(memoryCache.keys())) {
-    const wildcard = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')}$`);
-    if (wildcard.test(key)) {
+    const regex = new RegExp(globToRegex(pattern));
+    if (regex.test(key)) {
       memoryCache.delete(key);
       deleted += 1;
     }

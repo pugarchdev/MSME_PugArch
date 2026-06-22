@@ -219,7 +219,7 @@ const requirementIncludes = {
 };
 
 const getPublicRequirementWhere = () => ({
-    status: { in: ['PUBLISHED', 'OPEN', 'PENDING_APPROVAL'] },
+    status: { in: ['PUBLISHED', 'OPEN'] },
     lastDate: { gte: new Date() }
 });
 
@@ -296,7 +296,7 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
 };
 
 const getPublicLegacyRequirementWhere = () => ({
-    status: { in: ['SUBMITTED', 'APPROVED', 'SOURCING'] },
+    status: { in: ['APPROVED', 'SOURCING'] },
     AND: [{ OR: [{ requiredBy: null }, { requiredBy: { gte: new Date() } }] }]
 });
 
@@ -333,8 +333,8 @@ const loadLatestProcurementBids = async (take = 6) => {
     const [procurementBids, tenderBidActivities] = await Promise.all([
         db.procurementBid?.findMany?.({
             where: {
-                approvalStatus: { in: ['APPROVED', 'PENDING', 'SUBMITTED', 'PENDING_APPROVAL'] },
-                status: { in: ['PENDING_ADMIN_APPROVAL', 'OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'] }
+                approvalStatus: 'APPROVED',
+                status: { in: ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'] }
             },
             orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
             take,

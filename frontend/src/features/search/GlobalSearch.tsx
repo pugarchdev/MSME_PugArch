@@ -23,7 +23,7 @@ interface Result {
 const QUICK_PAGES = (role: string): Result[] => {
     const all: Array<Result & { roles?: string[] }> = [
         { id: 'p:dashboard', label: 'Dashboard', icon: ArrowRight, href: '/dashboard' },
-        { id: 'p:create-procurement', label: 'Create Procurement', secondary: 'Start RFQ, large procurement, auction, direct buy, or open requirement', icon: FileText, href: '/buyer/procurement/create', roles: ['buyer'] },
+        { id: 'p:create-procurement', label: 'Create Procurement', secondary: 'Start RFQ, large procurement, auction, direct buy, or open requirement', icon: FileText, href: '/buyer/create-procurement', roles: ['buyer'] },
         { id: 'p:seller-opportunities', label: 'New Opportunities', secondary: 'Request quotations, large procurements, requirements, and auctions', icon: FileText, href: '/seller/opportunities', roles: ['seller'] },
         { id: 'p:cart', label: 'My Cart', icon: ShoppingCart, href: '/cart', roles: ['buyer', 'seller'] },
         { id: 'p:approvals', label: 'Approvals', icon: ArrowRight, href: '/buyer/procurement/approvals', roles: ['buyer'] },

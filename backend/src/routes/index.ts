@@ -21,10 +21,15 @@ import aadhaarKycRoutes from '../modules/kyc/aadhaar-kyc.routes.js';
 import { aiRoutes } from './ai.routes.js';
 import factoringRoutes from './factoring.routes.js';
 import prisma from '../config/prisma.js';
+import addressRoutes from './address.routes.js';
+import directPurchaseRoutes from './direct-purchase.routes.js';
 
-const router = Router();
+const API_VERSION = 'v1';
 
-router.get('/health', async (_req, res) => {
+const createVersionedRouter = () => {
+  const router = Router();
+
+  router.get('/health', async (_req, res) => {
   const checks = {
     api: 'ok',
     database: 'unknown',
@@ -35,15 +40,14 @@ router.get('/health', async (_req, res) => {
     await prisma.$queryRaw`SELECT 1`;
     checks.database = 'ok';
 
-    const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_name IN ('User', 'Tender', 'PaymentTransaction', 'EscrowAccount', '_prisma_migrations')
-    `;
-    const existing = new Set(rows.map(row => row.table_name));
-    for (const table of ['User', 'Tender', 'PaymentTransaction', 'EscrowAccount', '_prisma_migrations']) {
-      checks.coreTables[table] = existing.has(table);
+    const coreModels = ['User', 'Tender', 'PaymentTransaction', 'EscrowAccount'];
+    for (const model of coreModels) {
+      try {
+        await (prisma as any)[model.toLowerCase()].count({ take: 1 });
+        checks.coreTables[model] = true;
+      } catch {
+        checks.coreTables[model] = false;
+      }
     }
 
     return res.json({ success: true, checks });
@@ -82,5 +86,16 @@ router.use('/', reverseAuctionRoutes);
 router.use('/', aadhaarKycRoutes);
 router.use('/', factoringRoutes);
 router.use('/ai', aiRoutes);
+router.use('/', addressRoutes);
+router.use('/', directPurchaseRoutes);
 
-export default router;
+  return router;
+};
+
+const versionedRouter = Router();
+versionedRouter.use(`/${API_VERSION}`, createVersionedRouter());
+
+// Also mount without version for backwards compatibility (deprecated)
+versionedRouter.use('/', createVersionedRouter());
+
+export default versionedRouter;

@@ -20,6 +20,8 @@ import { configureCloudinary } from './src/config/cloudinary.js';
 import { upload } from './src/config/storage.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
 import { checkOwnership } from './src/middleware/ownership.js';
+import { safeAsync } from './src/utils/safeAsync.js';
+import { TimeConstants } from './src/constants/time.js';
 import {
   authLoginRateLimit,
   catalogueSearchRateLimit,
@@ -77,7 +79,7 @@ if (configureCloudinary()) {
 
 logger.info({ apiSetuConfigured: Boolean(env.APISETU_API_KEY) }, 'Backend environment loaded');
 
-const BACKGROUND_FAILURE_LOG_INTERVAL_MS = 5 * 60 * 1000;
+const BACKGROUND_FAILURE_LOG_INTERVAL_MS = TimeConstants.BACKGROUND_FAILURE_LOG_INTERVAL_MS;
 
 const compactBackgroundErrorMessage = (message: string) => {
   if (message.includes("Can't reach database server")) {
@@ -294,40 +296,47 @@ const sanitizePortalText = (value: unknown, maxLength = 2000) =>
     .replace(/[<>]/g, '')
     .slice(0, maxLength);
 
-const NOTIFICATION_READ_RETENTION_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_READ_RETENTION_MS = TimeConstants.NOTIFICATION_READ_RETENTION_MS;
 
 const archiveExpiredReadNotifications = async (targetUserId: number) => {
   const cutoff = new Date(Date.now() - NOTIFICATION_READ_RETENTION_MS);
-  await prisma.notification.updateMany({
-    where: {
-      userId: targetUserId,
-      isRead: true,
-      isArchived: false,
-      logs: {
-        some: {
-          action: 'notification.read',
-          createdAt: { lte: cutoff }
+  try {
+    await prisma.notification.updateMany({
+      where: {
+        userId: targetUserId,
+        isRead: true,
+        isArchived: false,
+        logs: {
+          some: {
+            action: 'notification.read',
+            createdAt: { lte: cutoff }
+          }
         }
-      }
-    },
-    data: { isArchived: true }
-  }).catch(() => undefined);
+      },
+      data: { isArchived: true }
+    });
+  } catch (error) {
+    logger.warn({ err: error }, 'Failed to archive expired notifications');
+  }
 };
 
 const recordNotificationRead = async (targetUserId: number, notificationIds: number[]) => {
   const ids = Array.from(new Set(notificationIds.filter(id => Number.isInteger(id) && id > 0)));
   if (ids.length === 0) return;
-  await prisma.notificationLog.createMany({
-    data: ids.map(notificationId => ({
-      notificationId,
-      userId: targetUserId,
-      action: 'notification.read',
-      channel: 'SYSTEM',
-      recipient: String(targetUserId),
-      status: 'READ',
-      sentAt: new Date()
-    }))
-  }).catch(() => undefined);
+  await safeAsync(
+    prisma.notificationLog.createMany({
+      data: ids.map(notificationId => ({
+        notificationId,
+        userId: targetUserId,
+        action: 'notification.read',
+        channel: 'SYSTEM',
+        recipient: String(targetUserId),
+        status: 'READ',
+        sentAt: new Date()
+      }))
+    }),
+    { context: 'recordNotificationRead' }
+  );
 };
 
 const createNotificationSafe = async (payload: {
@@ -891,12 +900,18 @@ const attachBidFileAssets = async (bids: any[]) => {
     return asset ? { ...bid, fileAssetId: asset.id } : bid;
   });
 
-  await Promise.all(matched
+  const updates = matched
     .filter(bid => bid.fileAssetId && missing.some(item => item.id === bid.id))
-    .map(bid => prisma.fileAsset.updateMany({
+    .map(bid => ({
       where: { id: bid.fileAssetId, ownerId: bid.sellerId, status: 'active' },
       data: { entityType: 'bid', entityId: bid.id }
-    })));
+    }));
+
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map(u => prisma.fileAsset.updateMany(u))
+    );
+  }
 
   return matched;
 };
@@ -973,7 +988,7 @@ const flagSuspiciousBidPatterns = async (payload: {
         where: {
           sellerId: payload.sellerId,
           status: 'withdrawn',
-          withdrawnAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          withdrawnAt: { gte: new Date(Date.now() - TimeConstants.MS_PER_30_DAYS) }
         }
       });
       if (withdrawals >= 3) {
@@ -1304,7 +1319,7 @@ app.get("/api/test", (req, res) => res.json({ message: "API working" }));
 app.get('/api/tenders', authenticate, authorize('buyer', 'admin'), async (req: AuthRequest, res) => {
   try {
     const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
-    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const take = Math.min(100, Math.max(1, req.query.take ? parseInt(req.query.take as string, 10) : 10));
     const search = req.query.search ? String(req.query.search).trim() : '';
     const statusTab = req.query.status ? String(req.query.status).trim() : 'published';
     const category = req.query.category ? String(req.query.category).trim() : 'All';
@@ -1763,10 +1778,13 @@ app.delete('/api/bids/:id', authenticate, authorize('seller'), async (req: AuthR
 
     await prisma.$transaction(async (tx) => {
       await tx.bid.delete({ where: { id: bidId } });
-      await tx.tender.update({
-        where: { id: existingBid.tenderId },
-        data: { bidsCount: { decrement: existingBid.tender.bidsCount > 0 ? 1 : 0 } }
-      }).catch(() => undefined);
+      await safeAsync(
+        tx.tender.update({
+          where: { id: existingBid.tenderId },
+          data: { bidsCount: { decrement: existingBid.tender.bidsCount > 0 ? 1 : 0 } }
+        }),
+        { context: 'bid.delete.tender.bidsCount.decrement' }
+      );
     });
 
     await auditLog({
@@ -1908,8 +1926,8 @@ app.post('/api/tenders', authenticate, authorize('buyer'), async (req: AuthReque
     }
 
     const payload = parseSchema(tenderCreateSchema, req.body);
-    const closesAt = payload.closesAt || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
-    if (closesAt <= new Date(Date.now() + 60 * 60 * 1000)) {
+    const closesAt = payload.closesAt || new Date(Date.now() + TimeConstants.DEFAULT_TENDER_CLOSE_DAYS * TimeConstants.MS_PER_DAY);
+    if (closesAt <= new Date(Date.now() + TimeConstants.MS_PER_HOUR)) {
       return res.status(400).json({ message: 'Tender deadline must be at least one hour in the future' });
     }
 
@@ -3617,7 +3635,7 @@ app.get('/api/purchase-orders', authenticate, authorize('buyer', 'seller', 'admi
     const role = String(req.user?.role);
 
     const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
-    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const take = Math.min(100, Math.max(1, req.query.take ? parseInt(req.query.take as string, 10) : 10));
     const search = req.query.search ? String(req.query.search).trim() : '';
     const statusTab = req.query.status ? String(req.query.status).trim() : 'All';
     const sortBy = req.query.sortBy ? String(req.query.sortBy) : 'createdAt';
@@ -3802,7 +3820,7 @@ app.get('/api/invoices', authenticate, authorize('buyer', 'seller', 'admin'), as
     const role = String(req.user?.role);
 
     const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
-    const take = req.query.take ? parseInt(req.query.take as string, 10) : 10;
+    const take = Math.min(100, Math.max(1, req.query.take ? parseInt(req.query.take as string, 10) : 10));
     const search = req.query.search ? String(req.query.search).trim() : '';
     const statusFilter = req.query.status ? String(req.query.status).trim() : '';
     const acceptedPo = req.query.acceptedPo === 'true';
@@ -4798,24 +4816,6 @@ app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin
       });
     }
 
-    await notifyConversationParticipants({
-      actor,
-      buyer,
-      seller,
-      conversationId: conversation.id,
-      subject: conversation.subject,
-      title: message ? 'New procurement question' : 'New procurement conversation'
-    });
-    await auditLog({
-      actorUserId: Number(actor.id),
-      actorRole: actor.role,
-      action: message ? 'message.sent' : 'conversation.created',
-      entityType: 'conversation',
-      entityId: conversation.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: { tenderId: payload.tenderId, buyerId, sellerId }
-    });
     const enrichedConversation = await prisma.conversation.findUnique({
       where: { id: conversation.id },
       include: {
@@ -4826,6 +4826,30 @@ app.post('/api/conversations', authenticate, authorize('buyer', 'seller', 'admin
       }
     });
     res.status(201).json(maskSensitive({ conversation: enrichedConversation || conversation, message }));
+    const actorUserId = Number(actor.id);
+    const actorRole = actor.role;
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'];
+    void Promise.allSettled([
+      notifyConversationParticipants({
+        actor,
+        buyer,
+        seller,
+        conversationId: conversation.id,
+        subject: conversation.subject,
+        title: message ? 'New procurement question' : 'New procurement conversation'
+      }),
+      auditLog({
+        actorUserId,
+        actorRole,
+        action: message ? 'message.sent' : 'conversation.created',
+        entityType: 'conversation',
+        entityId: conversation.id,
+        ipAddress,
+        userAgent,
+        metadata: { tenderId: payload.tenderId, buyerId, sellerId }
+      })
+    ]).catch(logMessageSideEffectFailure);
   } catch (err: any) {
     handleSecureRouteError(res, err, 'Unable to create conversation');
   }
@@ -5017,10 +5041,13 @@ app.post('/api/disputes', authenticate, authorize('buyer', 'seller', 'admin'), a
         include: { evidence: true }
       });
       if (parties.escrowAccountId) {
-        await tx.escrowAccount.update({
-          where: { id: parties.escrowAccountId },
-          data: { status: 'frozen', frozenAt: new Date(), version: { increment: 1 } }
-        }).catch(() => undefined);
+        await safeAsync(
+          tx.escrowAccount.update({
+            where: { id: parties.escrowAccountId },
+            data: { status: 'frozen', frozenAt: new Date(), version: { increment: 1 } }
+          }),
+          { context: 'dispute.create.escrow.freeze' }
+        );
       } else if (parties.purchaseOrderId) {
         await tx.escrowAccount.updateMany({
           where: { purchaseOrderId: parties.purchaseOrderId, status: { in: ['held', 'funded'] } },

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useRouter } from 'next/navigation';
 import { api } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -33,6 +34,7 @@ import { MSME_TYPES } from '../constants/dropdowns';
 
 const SIDEBAR_NAV = [
   { id: 'address', label: 'Organisation Address', icon: MapPin },
+  { id: 'delivery_addresses', label: 'Delivery Addresses', icon: MapPin, path: '/buyer/address-book' },
   // { id: 'hierarchy', label: 'Organisation Hierarchy', icon: Users },
   // { id: 'team', label: 'Secondary Users / Roles', icon: Shield },
   // { id: 'bank', label: 'Bank Account Detail', icon: Building2 },
@@ -45,6 +47,7 @@ const SIDEBAR_NAV = [
 
 export default function BuyerProfile() {
   const { user, refreshUser } = useAuth();
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState('address');
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -514,6 +517,10 @@ export default function BuyerProfile() {
             <button
               key={item.id}
               onClick={() => {
+                if ('path' in item && item.path) {
+                  router.push(item.path);
+                  return;
+                }
                 setActiveSection(item.id);
                 setIsSidebarOpen(false);
                 setPersonalOtp('');

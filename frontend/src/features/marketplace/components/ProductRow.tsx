@@ -15,7 +15,7 @@ import {
     BadgeCheck, Package, MapPin, Plus, Minus, Eye
 } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { MarketplaceProduct } from '../api';
@@ -104,7 +104,7 @@ function ProductCard({ product }: { product: MarketplaceProduct }) {
     const { user } = useAuth();
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { items: cartItems, add: addGuestItem, update: updateGuestItemQty } = useGuestCart();
+    const { add: addCartItem, update: updateCartQty, getQuantity } = useMarketplaceCart();
     const [hovered, setHovered] = useState(false);
 
     const imageUrl = resolveMarketplaceImage(product, 'product');
@@ -112,35 +112,33 @@ function ProductCard({ product }: { product: MarketplaceProduct }) {
     const location = product.organization?.city || product.organization?.district;
     const detailHref = `/marketplace/products/${product.id}`;
 
-    const cartItem = cartItems.find(i => i.id === product.id && i.type === 'product');
-    const count = cartItem ? cartItem.quantity : 0;
+    const count = getQuantity(product.id, 'product');
 
     /* Cart helpers */
     const addToCart = (e: React.MouseEvent) => {
         e.stopPropagation();
-        addGuestItem({
-            id: product.id,
-            name: product.name,
-            price: product.price ? Number(product.price) : undefined,
-            unit: product.unitOfMeasure,
-            imageUrl: imageUrl,
-            category: product.category?.name,
-            type: 'product',
-        });
-        toast.success(`${product.name} added to cart`);
+        addCartItem(
+            {
+                id: product.id,
+                name: product.name,
+                price: product.price ? Number(product.price) : undefined,
+                unit: product.unitOfMeasure,
+                imageUrl: imageUrl,
+                category: product.category?.name,
+                type: 'product',
+            },
+            { source: 'product-row' }
+        );
     };
 
     const increment = (e: React.MouseEvent) => {
         e.stopPropagation();
-        updateGuestItemQty(product.id, 'product', count + 1);
+        updateCartQty(product.id, 'product', count + 1);
     };
 
     const decrement = (e: React.MouseEvent) => {
         e.stopPropagation();
-        updateGuestItemQty(product.id, 'product', count - 1);
-        if (count - 1 === 0) {
-            toast.info(`${product.name} removed from cart`);
-        }
+        updateCartQty(product.id, 'product', count - 1);
     };
 
     const goToDetail = () => {

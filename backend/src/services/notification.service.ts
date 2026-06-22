@@ -1,6 +1,6 @@
 import prisma from '../config/prisma.js';
 import { publishNotificationEvent } from './realtime.service.js';
-import { transporter } from './mail.service.js';
+import { getTransporter } from './mail.service.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { smsService, type SmsPurpose } from './sms.service.js';
@@ -198,7 +198,7 @@ export const notificationService = {
         </div>
       `;
 
-      const info = await transporter.sendMail({
+      const info = await getTransporter().sendMail({
         from: `"MSME Procurement Portal" <${env.SMTP_USER}>`,
         to: user.email,
         subject: opts.subject,

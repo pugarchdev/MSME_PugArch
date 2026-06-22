@@ -14,8 +14,9 @@ export const compressImage = (
       return resolve(file);
     }
 
-    // Skip compression if file is already very small (< 250KB)
-    if (file.size < 250 * 1024) {
+    // Skip compression for already-manageable images. Canvas conversion is
+    // expensive on the main thread and can feel slower than uploading the file.
+    if (file.size < 1024 * 1024) {
       return resolve(file);
     }
 

@@ -34,6 +34,20 @@ export interface DirectPurchaseDto {
     updatedAt?: string;
     buyer?: DirectPurchasePartyDto;
     seller?: DirectPurchasePartyDto;
+    // Checkout fields filled during procurement creation
+    consigneeName?: string | null;
+    mobileNumber?: string | null;
+    email?: string | null;
+    deliveryAddressText?: string | null;
+    department?: string | null;
+    budgetHead?: string | null;
+    costCenter?: string | null;
+    justification?: string | null;
+    remarks?: string | null;
+    deliveryInstructions?: string | null;
+    requiredDeliveryDate?: string | null;
+    approvalStatus?: string | null;
+    workflowStatus?: string | null;
     requirement?: {
         id: number;
         requirementNumber?: string;

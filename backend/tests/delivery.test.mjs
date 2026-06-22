@@ -191,13 +191,18 @@ test('auto-seed is gated by a feature flag in production', () => {
     );
 });
 
-test('distributed lock fallback is strict in production', () => {
-    // The redisLock helper must NOT silently fall back to in-memory locks in
-    // production, otherwise multi-instance deployments could double-write.
+test('distributed lock requires Redis and fails fast if unavailable', () => {
+    // The redisLock helper must NOT fall back to in-memory locks in any
+    // environment, otherwise multi-instance deployments could double-write.
     assert.match(
         lockHelper,
-        /NODE_ENV\s*===\s*'production'[\s\S]+?LOCK_BACKEND_UNAVAILABLE/,
-        'lock helper must surface LOCK_BACKEND_UNAVAILABLE in production'
+        /if \(!redis \|\| !isRedisReady\(\)\)/,
+        'lock helper must check Redis availability first'
+    );
+    assert.match(
+        lockHelper,
+        /LOCK_BACKEND_UNAVAILABLE/,
+        'lock helper must surface LOCK_BACKEND_UNAVAILABLE when Redis unavailable'
     );
 });
 

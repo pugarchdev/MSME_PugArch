@@ -30,12 +30,17 @@ const auditWrite = async (actor: Actor, action: string, entityType: string, enti
     metadata: maskSensitive(details)
   });
 
+const TENDER_ACCEPT_BID_STATUSES = new Set(['financial_evaluation', 'awarded']);
+
 export const acceptBidAndGeneratePurchaseOrder = async (bidId: number, actor: Actor) => {
   const result = await prisma.$transaction(async (tx) => {
     const bid = await tx.bid.findUnique({ where: { id: bidId }, include: { tender: true } });
     if (!bid) throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
     if (actor.role !== 'admin' && bid.tender.buyerId !== actor.id) {
       throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
+    }
+    if (!TENDER_ACCEPT_BID_STATUSES.has(bid.tender.status)) {
+      throw new ApiError(409, 'Tender must be in financial evaluation or awarded stage to accept bid', 'TENDER_INVALID_STATUS');
     }
 
     const existingPo = await tx.purchaseOrder.findUnique({ where: { bidId } });
@@ -101,11 +106,16 @@ export const acceptBidAndGeneratePurchaseOrder = async (bidId: number, actor: Ac
   return result;
 };
 
+const PO_ACCEPT_STATUSES = new Set(['generated']);
+
 export const acceptPurchaseOrderAndCreateDelivery = async (purchaseOrderId: number, actor: Actor) => {
   const result = await prisma.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findUnique({ where: { id: purchaseOrderId } });
     if (!po) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
     if (actor.role !== 'admin' && po.sellerId !== actor.id) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
+    if (!PO_ACCEPT_STATUSES.has(po.status)) {
+      throw new ApiError(409, 'Purchase order must be in generated status to accept', 'PO_INVALID_STATUS');
+    }
 
     const updatedPo = await tx.purchaseOrder.update({
       where: { id: po.id, version: po.version },
@@ -129,11 +139,16 @@ export const acceptPurchaseOrderAndCreateDelivery = async (purchaseOrderId: numb
   return result;
 };
 
+const PO_INSPECTION_STATUSES = new Set(['accepted']);
+
 export const acceptInspectionAndEnableInvoice = async (purchaseOrderId: number, actor: Actor, remarks?: string) => {
   const result = await prisma.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findUnique({ where: { id: purchaseOrderId } });
     if (!po) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
     if (actor.role !== 'admin' && po.buyerId !== actor.id) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
+    if (!PO_INSPECTION_STATUSES.has(po.status)) {
+      throw new ApiError(409, 'Purchase order must be accepted before inspection', 'PO_INVALID_STATUS');
+    }
 
     const inspectionRecord = await tx.inspectionRecord.upsert({
       where: { purchaseOrderId: po.id },
@@ -194,11 +209,16 @@ export const submitInvoiceForPurchaseOrder = async (purchaseOrderId: number, act
   return result;
 };
 
+const INVOICE_APPROVE_STATUSES = new Set(['submitted']);
+
 export const approveInvoiceAndCreatePayment = async (invoiceId: number, actor: Actor) => {
   const result = await prisma.$transaction(async (tx) => {
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId }, include: { purchaseOrder: true } });
     if (!invoice) throw new ApiError(404, 'Invoice not found', 'INVOICE_NOT_FOUND');
     if (actor.role !== 'admin' && invoice.buyerId !== actor.id) throw new ApiError(404, 'Invoice not found', 'INVOICE_NOT_FOUND');
+    if (!INVOICE_APPROVE_STATUSES.has(invoice.status)) {
+      throw new ApiError(409, 'Invoice must be submitted before approval', 'INVOICE_INVALID_STATUS');
+    }
 
     const existingPayment = await tx.paymentTransaction.findFirst({ where: { invoiceId: invoice.id } });
     if (existingPayment) return { invoice, payment: existingPayment, reused: true };
@@ -238,6 +258,8 @@ export const approveInvoiceAndCreatePayment = async (invoiceId: number, actor: A
 
   return result;
 };
+
+const PAYMENT_SUCCESS_STATUSES = new Set(['initiated', 'gateway_order_created']);
 
 export const markPaymentSuccess = async (paymentId: number, actor: Actor, providerPaymentId?: string) => {
   const result = await prisma.$transaction(async (tx) => {

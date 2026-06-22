@@ -75,6 +75,7 @@ export const masterAdminApi = {
   suspendUser: (id: number, reason: string) => post(`/api/master-admin/users/${id}/suspend`, { reason }),
   reactivateUser: (id: number, reason: string) => post(`/api/master-admin/users/${id}/reactivate`, { reason }),
   archiveUser: (id: number, reason: string) => post(`/api/master-admin/users/${id}/archive`, { reason }),
+  deleteUser: (id: number, reason: string) => request<any>(`/api/master-admin/users/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
   resetUserPassword: (id: number, reason: string) => post(`/api/master-admin/users/${id}/reset-password`, { reason }),
   sendUserInvite: (id: number, reason: string) => post(`/api/master-admin/users/${id}/invite`, { reason }),
   changeUserRole: (id: number, role: string, reason: string) => post(`/api/master-admin/users/${id}/change-role`, { role, reason }),

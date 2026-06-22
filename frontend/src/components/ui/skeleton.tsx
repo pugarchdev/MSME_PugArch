@@ -120,3 +120,91 @@ export function PageSectionSkeleton() {
         </div>
     );
 }
+
+export function RequirementCardSkeleton() {
+    return (
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+            </div>
+            <Skeleton className="mt-2 h-5 w-3/4" />
+            <div className="mt-4 space-y-2">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+            </div>
+            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <Skeleton className="h-8 w-20 rounded-md" />
+                <Skeleton className="h-8 w-20 rounded-md" />
+            </div>
+        </article>
+    );
+}
+
+export function RequirementTableRowSkeleton() {
+    return (
+        <tr className="border-b border-slate-100">
+            <td className="px-4 py-3"><Skeleton className="h-3 w-8" /></td>
+            <td className="px-4 py-3">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="mt-1 h-3 w-16" />
+            </td>
+            <td className="px-4 py-3">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="mt-1 h-3 w-24" />
+            </td>
+            <td className="px-4 py-3"><Skeleton className="h-6 w-24 rounded-md" /></td>
+            <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-md" /></td>
+            <td className="px-4 py-3 text-right"><Skeleton className="ml-auto h-4 w-24" /></td>
+            <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+            <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+            <td className="px-4 py-3 text-right">
+                <div className="flex justify-end gap-2">
+                    <Skeleton className="h-8 w-16 rounded-md" />
+                    <Skeleton className="h-8 w-16 rounded-md" />
+                </div>
+            </td>
+        </tr>
+    );
+}
+
+export function RequirementsGridSkeleton({ count = 6 }: { count?: number }) {
+    return (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: count }).map((_, idx) => (
+                <RequirementCardSkeleton key={idx} />
+            ))}
+        </div>
+    );
+}
+
+export function RequirementsTableSkeleton({ rows = 10 }: { rows?: number }) {
+    return (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[920px] text-sm">
+                    <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <tr>
+                            <th className="px-4 py-2.5 text-left w-12">#</th>
+                            <th className="px-4 py-2.5 text-left w-40">Requirement ID</th>
+                            <th className="px-4 py-2.5 text-left">Title</th>
+                            <th className="px-4 py-2.5 text-left w-32">Method</th>
+                            <th className="px-4 py-2.5 text-left w-32">Status</th>
+                            <th className="px-4 py-2.5 text-right w-32">Estimated Value</th>
+                            <th className="px-4 py-2.5 text-left w-44">Required By</th>
+                            <th className="px-4 py-2.5 text-left w-44">Updated</th>
+                            <th className="px-4 py-2.5 text-right w-44">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {Array.from({ length: rows }).map((_, idx) => (
+                            <RequirementTableRowSkeleton key={idx} />
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}

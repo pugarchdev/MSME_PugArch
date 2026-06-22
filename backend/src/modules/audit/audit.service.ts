@@ -10,6 +10,7 @@ type AuditPayload = {
   entityId?: string | number;
   ipAddress?: string;
   userAgent?: string;
+  requestId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -19,6 +20,7 @@ const persistAuditLog = async (payload: AuditPayload) => {
     actorRole: payload.actorRole,
     ipAddress: payload.ipAddress,
     userAgent: payload.userAgent,
+    requestId: payload.requestId,
     ...(payload.metadata || {})
   });
 
@@ -45,5 +47,16 @@ const persistAuditLog = async (payload: AuditPayload) => {
 export const auditLog = async (payload: AuditPayload) => {
   void persistAuditLog(payload).catch(error => {
     console.error('[Audit] Background audit failed', error instanceof Error ? error.message : error);
+  });
+};
+
+export const auditLogWithRequest = (req: { id?: string; user?: { id?: number; role?: string }; ip?: string; headers?: { 'user-agent'?: string } }, payload: Omit<AuditPayload, 'actorUserId' | 'actorRole' | 'ipAddress' | 'userAgent' | 'requestId'>) => {
+  return auditLog({
+    ...payload,
+    actorUserId: req.user?.id,
+    actorRole: req.user?.role,
+    ipAddress: req.ip,
+    userAgent: req.headers?.['user-agent'],
+    requestId: req.id
   });
 };

@@ -1,21 +1,23 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 
-// Nodemailer Transporter
-export const transporter = nodemailer.createTransport({
+const createTransporter = () => nodemailer.createTransport({
   host: env.SMTP_HOST,
   port: env.SMTP_PORT,
-  secure: false,
+  secure: env.SMTP_PORT === 465,
   auth: {
     user: env.SMTP_USER,
     pass: env.SMTP_PASS,
   },
-  tls: {
-    rejectUnauthorized: false
-  },
-  connectionTimeout: 10000, // 10 seconds
+  connectionTimeout: 10000,
   greetingTimeout: 10000,
 });
+
+let transporter: ReturnType<typeof createTransporter> | null = null;
+export const getTransporter = () => {
+  if (!transporter) transporter = createTransporter();
+  return transporter;
+};
 
 export const sendOtpEmail = async (email: string, otp: string, subject = '[SECURE AUTH] Verification Code'): Promise<boolean> => {
   if (!env.SMTP_USER || !env.SMTP_PASS) {
@@ -24,7 +26,7 @@ export const sendOtpEmail = async (email: string, otp: string, subject = '[SECUR
   }
 
   try {
-    await transporter.sendMail({
+    await getTransporter().sendMail({
       from: `"Government Procurement Support" <${env.SMTP_USER}>`,
       to: email,
       subject,

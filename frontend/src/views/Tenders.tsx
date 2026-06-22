@@ -234,6 +234,7 @@ type TenderDraft = {
   approvalChain: string;
   approvalStatus: string;
   documentUrl: string;
+  requirementId?: number | null;
 };
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -333,7 +334,8 @@ const createTenderDraft = (): TenderDraft => ({
   approverRemarks: '',
   approvalChain: 'Department Head > Finance > Procurement Head',
   approvalStatus: 'Draft',
-  documentUrl: ''
+  documentUrl: '',
+  requirementId: null
 });
 
 type TenderDraftErrors = Partial<Record<keyof TenderDraft | 'items' | 'timeline' | 'documents' | 'contact', string>>;
@@ -806,7 +808,8 @@ export default function Tenders() {
         quantityUnit: newTender.items[0]?.unit || undefined,
         paymentTerms: newTender.paymentTerms || undefined,
         deliveryType: newTender.deliveryType || undefined,
-        status: 'draft'
+        status: 'draft',
+        requirementId: newTender.requirementId ? Number(newTender.requirementId) : undefined
       }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
@@ -1020,7 +1023,7 @@ export default function Tenders() {
             </p>
           </div>
           <Button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => router.push('/buyer/create-procurement/tender')}
             className="h-10 shrink-0 rounded-md bg-[#12335f] px-5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-all hover:bg-[#0b2445]"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />

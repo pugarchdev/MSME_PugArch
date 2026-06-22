@@ -6,14 +6,15 @@
  * Access: ORG_ADMIN, PROCUREMENT_OFFICER, FINANCE_OFFICER
  */
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Clock, History, Inbox, MessageCircle, RefreshCw, Shield, ShieldCheck, UserCheck, X, XCircle } from 'lucide-react';
+import { Building, CalendarClock, CheckCircle2, ChevronDown, Clock, FileText, History, Inbox, MapPin, MessageCircle, Package, Phone, Mail, RefreshCw, Shield, ShieldCheck, Truck, UserCheck, X, XCircle } from 'lucide-react';
+import { cn } from '../../../lib/utils';
 import { Loader2 } from '@/components/ui/loader';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { useOrgRole } from '../../../hooks/useOrgRole';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
-import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
+import { formatCurrency, formatDate, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import { ApprovalTrail } from '../components/ApprovalTrail';
 import {
@@ -56,12 +57,17 @@ export default function ApprovalQueuePage() {
     const clarifyMut = useClarifyApproval();
 
     const [tab, setTab] = useState<'pending' | 'history'>('pending');
+    const [stageFilter, setStageFilter] = useState<'ALL' | ApprovalStage>('ALL');
     const [actionTarget, setActionTarget] = useState<{ type: 'reject' | 'clarify'; approval: ApprovalDto } | null>(null);
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [processedIds, setProcessedIds] = useState<Set<number>>(() => new Set());
+    const [detailTarget, setDetailTarget] = useState<ApprovalDto | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 
     const pendingItems = (pending.data || []).filter(p => !processedIds.has(p.id));
+    const filteredPendingItems = stageFilter === 'ALL'
+        ? pendingItems
+        : pendingItems.filter(p => p.stage === stageFilter);
     const historyItems = history.data || [];
 
     const counts = useMemo(() => {
@@ -175,15 +181,45 @@ export default function ApprovalQueuePage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                <MetricCard label="Total Pending" value={counts.pending} icon={Inbox} />
-                <MetricCard label="Department Head" value={counts.byStage.DEPARTMENT_HEAD} icon={Clock} />
-                <MetricCard label="Finance Dept" value={counts.byStage.FINANCE_DEPT} icon={Clock} />
-                <MetricCard label="Procurement Head" value={counts.byStage.PROCUREMENT_HEAD} icon={Clock} />
-                <MetricCard label="History" value={counts.history} icon={History} />
+                <MetricCard 
+                    label="Total Pending" 
+                    value={counts.pending} 
+                    icon={Inbox} 
+                    onClick={() => { setTab('pending'); setStageFilter('ALL'); }}
+                    active={tab === 'pending' && stageFilter === 'ALL'}
+                />
+                <MetricCard 
+                    label="Department Head" 
+                    value={counts.byStage.DEPARTMENT_HEAD} 
+                    icon={Clock} 
+                    onClick={() => { setTab('pending'); setStageFilter('DEPARTMENT_HEAD'); }}
+                    active={tab === 'pending' && stageFilter === 'DEPARTMENT_HEAD'}
+                />
+                <MetricCard 
+                    label="Finance Dept" 
+                    value={counts.byStage.FINANCE_DEPT} 
+                    icon={Clock} 
+                    onClick={() => { setTab('pending'); setStageFilter('FINANCE_DEPT'); }}
+                    active={tab === 'pending' && stageFilter === 'FINANCE_DEPT'}
+                />
+                <MetricCard 
+                    label="Procurement Head" 
+                    value={counts.byStage.PROCUREMENT_HEAD} 
+                    icon={Clock} 
+                    onClick={() => { setTab('pending'); setStageFilter('PROCUREMENT_HEAD'); }}
+                    active={tab === 'pending' && stageFilter === 'PROCUREMENT_HEAD'}
+                />
+                <MetricCard 
+                    label="History" 
+                    value={counts.history} 
+                    icon={History} 
+                    onClick={() => { setTab('history'); }}
+                    active={tab === 'history'}
+                />
             </div>
 
             <div className="flex items-center gap-1 border-b border-slate-200">
-                <TabButton active={tab === 'pending'} onClick={() => setTab('pending')} count={pendingItems.length}>
+                <TabButton active={tab === 'pending'} onClick={() => { setTab('pending'); setStageFilter('ALL'); }} count={pendingItems.length}>
                     <Inbox className="mr-1.5 h-3.5 w-3.5" /> Pending
                 </TabButton>
                 <TabButton active={tab === 'history'} onClick={() => setTab('history')} count={historyItems.length}>
@@ -235,7 +271,7 @@ export default function ApprovalQueuePage() {
                         </div>
                     )}
                     <PendingList
-                        items={pendingItems}
+                        items={filteredPendingItems}
                         isLoading={pending.isLoading}
                         error={pending.error}
                         expandedId={expandedId}
@@ -253,10 +289,13 @@ export default function ApprovalQueuePage() {
                                 return next;
                             });
                         }}
+                        isFiltered={stageFilter !== 'ALL'}
+                        onClearFilter={() => setStageFilter('ALL')}
+                        onShowDetail={setDetailTarget}
                     />
                 </>
             ) : (
-                <HistoryList items={historyItems} isLoading={history.isLoading} error={history.error} />
+                <HistoryList items={historyItems} isLoading={history.isLoading} error={history.error} onShowDetail={setDetailTarget} />
             )}
 
             {actionTarget && (
@@ -328,6 +367,14 @@ export default function ApprovalQueuePage() {
                     pending={rejectMut.isPending || clarifyMut.isPending}
                 />
             )}
+
+            {detailTarget && detailTarget.entitySummary && (
+                <ProcurementDetailModal
+                    approval={detailTarget}
+                    summary={detailTarget.entitySummary}
+                    onClose={() => setDetailTarget(null)}
+                />
+            )}
         </div>
     );
 }
@@ -368,19 +415,33 @@ function AccessState({ icon: Icon, title, description }: { icon: any; title: str
     );
 }
 
-function MetricCard({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
+function MetricCard({ label, value, icon: Icon, onClick, active }: { label: string; value: string | number; icon: any; onClick?: () => void; active?: boolean }) {
+    const Component = onClick ? 'button' : 'div';
     return (
-        <Card>
-            <CardContent className="flex items-center justify-between p-4">
+        <Component 
+            type={onClick ? 'button' : undefined}
+            onClick={onClick}
+            className={cn(
+                "text-left w-full rounded-xl border bg-white shadow-sm transition-all duration-200 select-none",
+                onClick ? "cursor-pointer hover:shadow-md hover:translate-y-[-1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#12335f]" : "",
+                active 
+                    ? "border-[#12335f] bg-[#12335f]/5 ring-2 ring-[#12335f]/15" 
+                    : "border-slate-200/80 hover:border-slate-300"
+            )}
+        >
+            <div className="flex items-center justify-between p-4">
                 <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
                     <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">
+                <div className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
+                    active ? "bg-[#12335f] text-white" : "bg-slate-100 text-[#12335f]"
+                )}>
                     <Icon className="h-5 w-5" />
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </Component>
     );
 }
 
@@ -397,7 +458,7 @@ function TabButton({ active, onClick, count, children }: { active: boolean; onCl
     );
 }
 
-function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove, onReject, onClarify, approving, selectedIds, onToggleSelect }: {
+function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove, onReject, onClarify, approving, selectedIds, onToggleSelect, isFiltered, onClearFilter, onShowDetail }: {
     items: ApprovalDto[];
     isLoading: boolean;
     error: any;
@@ -409,13 +470,20 @@ function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove,
     approving: boolean;
     selectedIds?: Set<number>;
     onToggleSelect?: (id: number) => void;
+    isFiltered?: boolean;
+    onClearFilter?: () => void;
+    onShowDetail?: (a: ApprovalDto) => void;
 }) {
     if (isLoading) return <LoadingState label="Loading pending approvals..." />;
     if (error) return <InlineError message={(error as Error).message} />;
     if (items.length === 0) {
         return (
             <Card><CardContent className="py-12">
-                <EmptyState title="Inbox empty" description="No current-stage items need your organisation role right now. Later-stage approvals appear only after earlier stages are approved." />
+                <EmptyState 
+                    title={isFiltered ? "No matching approvals" : "Inbox empty"} 
+                    description={isFiltered ? "No pending items match the selected stage filter." : "No current-stage items need your organisation role right now. Later-stage approvals appear only after earlier stages are approved."} 
+                    action={isFiltered && onClearFilter ? { label: "Clear filter", onClick: onClearFilter } : undefined}
+                />
             </CardContent></Card>
         );
     }
@@ -443,7 +511,7 @@ function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove,
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {summary && (
-                                            <EntityIdLink label={summary.label} id={summary.id} size="sm" onClick={() => onExpand(isExpanded ? null : approval.id)} />
+                                            <EntityIdLink label={summary.label} id={summary.id} size="sm" onClick={() => onShowDetail?.(approval)} />
                                         )}
                                         <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase text-slate-700">
                                             {ENTITY_LABEL[approval.entityType]}
@@ -512,7 +580,7 @@ function PendingList({ items, isLoading, error, expandedId, onExpand, onApprove,
     );
 }
 
-function HistoryList({ items, isLoading, error }: { items: ApprovalDto[]; isLoading: boolean; error: any }) {
+function HistoryList({ items, isLoading, error, onShowDetail }: { items: ApprovalDto[]; isLoading: boolean; error: any; onShowDetail?: (a: ApprovalDto) => void }) {
     if (isLoading) return <LoadingState label="Loading approval history..." />;
     if (error) return <InlineError message={(error as Error).message} />;
     if (items.length === 0) {
@@ -543,7 +611,7 @@ function HistoryList({ items, isLoading, error }: { items: ApprovalDto[]; isLoad
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
                                             {a.entitySummary && (
-                                                <EntityIdLink label={a.entitySummary.label} id={a.entitySummary.id} size="sm" onClick={() => { }} />
+                                                <EntityIdLink label={a.entitySummary.label} id={a.entitySummary.id} size="sm" onClick={() => onShowDetail?.(a)} />
                                             )}
                                             <span className="text-[10px] font-black uppercase text-slate-500">
                                                 {ENTITY_LABEL[a.entityType]}
@@ -633,6 +701,607 @@ function ActionModal({ type, approval, onClose, onReject, onClarify, pending }: 
                             {isReject ? 'Confirm Rejection' : 'Send Clarification'}
                         </Button>
                     </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ---------- Procurement Detail Modal ---------- */
+
+const STATUS_TONE: Record<string, string> = {
+    DRAFT: 'border-slate-200 bg-slate-50 text-slate-700',
+    SUBMITTED: 'border-sky-200 bg-sky-50 text-sky-700',
+    REQUESTED: 'border-sky-200 bg-sky-50 text-sky-700',
+    UNDER_REVIEW: 'border-amber-200 bg-amber-50 text-amber-700',
+    PENDING_APPROVAL: 'border-amber-200 bg-amber-50 text-amber-700',
+    APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    REJECTED: 'border-red-200 bg-red-50 text-red-700',
+    ORDERED: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+    CLOSED: 'border-slate-200 bg-slate-100 text-slate-500',
+    CANCELLED: 'border-slate-200 bg-slate-100 text-slate-500',
+    CONVERTED_TO_TENDER: 'border-indigo-200 bg-indigo-50 text-indigo-700'
+};
+
+function DetailField({ label, icon: Icon, children }: { label: string; icon?: any; children: React.ReactNode }) {
+    return (
+        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+            <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                {Icon && <Icon className="h-3 w-3" />}
+                {label}
+            </p>
+            <div className="mt-1">{children}</div>
+        </div>
+    );
+}
+
+function ProcurementDetailModal({ approval, summary, onClose }: {
+    approval: ApprovalDto;
+    summary: NonNullable<ApprovalDto['entitySummary']>;
+    onClose: () => void;
+}) {
+    const s = summary;
+    const isDP = approval.entityType === 'direct_purchase';
+    const payload = s.payload as Record<string, any> | null | undefined;
+    const basics = payload?.basics;
+    const vendors = payload?.vendors;
+    const schedule = payload?.schedule;
+    const rules = payload?.rules;
+    const tender = payload?.tender;
+    const approvalConf = payload?.approval;
+    const payloadItems = payload?.items as Array<Record<string, any>> | undefined;
+    const payloadConsignees = payload?.consigneeDetails as Array<Record<string, any>> | undefined;
+    const payloadDocuments = payload?.documents as Array<Record<string, any>> | undefined;
+
+    const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1.5 mb-3">
+            {children}
+        </h3>
+    );
+
+    const InfoCell = ({ label, value }: { label: string; value?: string | number | null | boolean }) => {
+        if (value === undefined || value === null || value === '') return null;
+        const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+        return (
+            <div className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+                <p className="mt-0.5 text-xs font-black text-slate-800 text-wrap-anywhere">{display}</p>
+            </div>
+        );
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-[#12335f] to-[#1a4a8a] px-5 py-4 text-white shrink-0">
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-black uppercase tracking-widest truncate">
+                                {ENTITY_LABEL[approval.entityType]} Details
+                            </h3>
+                            <span className={cn(
+                                'rounded-md border px-2 py-0.5 text-[9px] font-black uppercase',
+                                STATUS_TONE[s.status] || STATUS_TONE.DRAFT
+                            )}>
+                                {s.status.replace(/_/g, ' ')}
+                            </span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-white/70">{s.label} · Stage {approval.sequence}: {STAGE_LABEL[approval.stage]}</p>
+                    </div>
+                    <button onClick={onClose} className="shrink-0 rounded-md p-1 text-white/80 hover:bg-white/10 transition-colors">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="overflow-y-auto flex-1 p-5 space-y-5">
+                    {/* Title & Value */}
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="min-w-0">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Title / Subject</p>
+                                <p className="mt-0.5 text-sm font-black text-slate-950 text-wrap-anywhere">{s.title}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Total Value</p>
+                                <p className="mt-0.5 text-lg font-black text-[#12335f]">{formatCurrency(s.value)}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] font-bold text-slate-400">
+                            <span>Created: {formatDateTime(s.createdAt)}</span>
+                            <span>·</span>
+                            <span>{formatRelative(s.createdAt)}</span>
+                        </div>
+                    </div>
+
+                    {/* ============ PAYLOAD-BASED SECTIONS ============ */}
+                    {payload ? (
+                        <>
+                            {/* Section 1: Basic Details */}
+                            {basics && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📋 Basic Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Category" value={basics.category} />
+                                        <InfoCell label="Sub-Category" value={basics.subCategory} />
+                                        <InfoCell label="Department" value={basics.department} />
+                                        <InfoCell label="Priority" value={basics.priority} />
+                                        <InfoCell label="Requirement Type" value={basics.requirementType} />
+                                        <InfoCell label="Estimated Value" value={formatCurrency(basics.estimatedValue)} />
+                                        <InfoCell label="Funding Source" value={basics.fundingSource} />
+                                        <InfoCell label="Cost Center" value={basics.costCenter} />
+                                    </div>
+                                    {basics.justification && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Justification</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{basics.justification}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 2: Supplier Selection */}
+                            {vendors && (vendors.selection || vendors.msmePreference || vendors.minimumTurnover || vendors.experienceYears) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🏢 Supplier Selection</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Selection Type" value={vendors.selection} />
+                                        <InfoCell label="Invite Count" value={vendors.inviteCount > 0 ? vendors.inviteCount : undefined} />
+                                        <InfoCell label="MSME Preference" value={vendors.msmePreference} />
+                                        <InfoCell label="Make in India Preference" value={vendors.makeInIndiaPreference} />
+                                        <InfoCell label="Local Vendor Preference" value={vendors.localVendorPreference} />
+                                        <InfoCell label="Minimum Turnover" value={vendors.minimumTurnover} />
+                                        <InfoCell label="Experience Years" value={vendors.experienceYears} />
+                                        {vendors.selectedSellerName && <InfoCell label="Selected Seller" value={`${vendors.selectedSellerName}${vendors.selectedSellerCode ? ` (${vendors.selectedSellerCode})` : ''}`} />}
+                                    </div>
+                                    {vendors.complianceNotes && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Compliance Notes</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{vendors.complianceNotes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 3: Schedule / Timeline */}
+                            {schedule && (schedule.publishDate || schedule.submissionDate || schedule.deliveryDate) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📅 Schedule / Timeline</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Publish Date" value={schedule.publishDate ? formatDate(schedule.publishDate) : undefined} />
+                                        <InfoCell label="Submission Date" value={schedule.submissionDate ? formatDate(schedule.submissionDate) : undefined} />
+                                        <InfoCell label="Opening Date" value={schedule.openingDate ? formatDate(schedule.openingDate) : undefined} />
+                                        <InfoCell label="Delivery Date" value={schedule.deliveryDate ? formatDate(schedule.deliveryDate) : undefined} />
+                                        <InfoCell label="Validity (Days)" value={schedule.validityDays > 0 ? schedule.validityDays : undefined} />
+                                        <InfoCell label="Pre-Bid Meeting" value={schedule.preBidMeeting} />
+                                        {schedule.preBidMeeting && schedule.preBidDate && (
+                                            <InfoCell label="Pre-Bid Date" value={formatDate(schedule.preBidDate)} />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 4: Rules & Evaluation */}
+                            {rules && (rules.bidType || rules.evaluation || rules.emdRequired || rules.performanceSecurity || rules.reverseAuctionIntent) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>⚖️ Rules & Evaluation</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Bid Type" value={rules.bidType} />
+                                        <InfoCell label="Evaluation Method" value={rules.evaluation} />
+                                        <InfoCell label="EMD Required" value={rules.emdRequired} />
+                                        {rules.emdRequired && <InfoCell label="EMD Amount" value={formatCurrency(rules.emdAmount)} />}
+                                        <InfoCell label="Performance Security" value={rules.performanceSecurity} />
+                                        <InfoCell label="Reverse Auction Intent" value={rules.reverseAuctionIntent} />
+                                        {rules.reverseAuctionIntent && (
+                                            <>
+                                                <InfoCell label="Start Price" value={formatCurrency(rules.startPrice)} />
+                                                <InfoCell label="Reserve Price" value={formatCurrency(rules.reservePrice)} />
+                                                <InfoCell label="Min Decrement" value={formatCurrency(rules.minimumDecrement)} />
+                                                <InfoCell label="Auto Extension" value={rules.autoExtension} />
+                                                <InfoCell label="Hide Vendor Identity" value={rules.hideVendorIdentity} />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 5: Tender Details (if applicable) */}
+                            {tender && (tender.tenderNumber || tender.deliveryLocation || tender.scopeOfWork || tender.paymentTerms || tender.contactName) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📝 Tender Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Tender Number" value={tender.tenderNumber} />
+                                        <InfoCell label="Tender Type" value={tender.tenderType} />
+                                        <InfoCell label="Tender Mode" value={tender.tenderMode} />
+                                        <InfoCell label="Visibility" value={tender.visibility} />
+                                        <InfoCell label="Delivery Location" value={tender.deliveryLocation} />
+                                        <InfoCell label="Delivery Type" value={tender.deliveryType} />
+                                        <InfoCell label="Delivery Timeline" value={tender.deliveryTimeline} />
+                                        <InfoCell label="Installation Required" value={tender.installationRequired} />
+                                        <InfoCell label="Training Required" value={tender.trainingRequired} />
+                                        <InfoCell label="Currency" value={tender.currency} />
+                                        <InfoCell label="Price Type" value={tender.priceType} />
+                                        <InfoCell label="Tax Type" value={tender.taxType} />
+                                        <InfoCell label="GST Included" value={tender.gstIncluded} />
+                                        <InfoCell label="GST Rate" value={tender.gstRate} />
+                                        <InfoCell label="Payment Terms" value={tender.paymentTerms} />
+                                    </div>
+                                    {tender.shortDescription && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Short Description</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.shortDescription}</p>
+                                        </div>
+                                    )}
+                                    {tender.scopeOfWork && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Scope of Work</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.scopeOfWork}</p>
+                                        </div>
+                                    )}
+                                    {tender.specialInstructions && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Special Instructions</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.specialInstructions}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Evaluation Scoring */}
+                                    {(tender.technicalWeightage || tender.priceWeightage || tender.evaluationMethod) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Evaluation Scoring</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Evaluation Method" value={tender.evaluationMethod} />
+                                                <InfoCell label="Technical Weightage" value={tender.technicalWeightage} />
+                                                <InfoCell label="Price Weightage" value={tender.priceWeightage} />
+                                                <InfoCell label="Experience Score" value={tender.experienceScore} />
+                                                <InfoCell label="Certification Score" value={tender.certificationScore} />
+                                                <InfoCell label="Compliance Score" value={tender.complianceScore} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Dates */}
+                                    {(tender.bidStartDate || tender.bidClosingDate || tender.awardDate) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Tender Timeline</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Bid Start Date" value={tender.bidStartDate ? formatDate(tender.bidStartDate) : undefined} />
+                                                <InfoCell label="Bid Closing Date" value={tender.bidClosingDate ? formatDate(tender.bidClosingDate) : undefined} />
+                                                <InfoCell label="Bid Closing Time" value={tender.bidClosingTime} />
+                                                <InfoCell label="Technical Evaluation Date" value={tender.technicalEvaluationDate ? formatDate(tender.technicalEvaluationDate) : undefined} />
+                                                <InfoCell label="Financial Evaluation Date" value={tender.financialEvaluationDate ? formatDate(tender.financialEvaluationDate) : undefined} />
+                                                <InfoCell label="Award Date" value={tender.awardDate ? formatDate(tender.awardDate) : undefined} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Preferences */}
+                                    {(tender.startupPreference || tender.shgPreference || tender.womenOwnedPreference || tender.gstMandatory || tender.panMandatory || tender.requiredCertifications) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Eligibility & Preferences</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Startup Preference" value={tender.startupPreference} />
+                                                <InfoCell label="SHG Preference" value={tender.shgPreference} />
+                                                <InfoCell label="Women-Owned Preference" value={tender.womenOwnedPreference} />
+                                                <InfoCell label="GST Mandatory" value={tender.gstMandatory} />
+                                                <InfoCell label="PAN Mandatory" value={tender.panMandatory} />
+                                                <InfoCell label="Required Certifications" value={tender.requiredCertifications} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Contact Info */}
+                                    {(tender.contactName || tender.contactEmail) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Contact Information</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Contact Name" value={tender.contactName} />
+                                                <InfoCell label="Contact Email" value={tender.contactEmail} />
+                                                <InfoCell label="Contact Mobile" value={tender.contactMobile} />
+                                                <InfoCell label="Contact Phone" value={tender.contactPhone} />
+                                                <InfoCell label="Department Contact" value={tender.departmentContact} />
+                                                <InfoCell label="Escalation Contact" value={tender.escalationContact} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 6: Approval Configuration */}
+                            {approvalConf && (approvalConf.workflow || approvalConf.approver || approvalConf.notes) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>✅ Approval Configuration</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Workflow" value={approvalConf.workflow} />
+                                        <InfoCell label="Approver" value={approvalConf.approver} />
+                                    </div>
+                                    {approvalConf.notes && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Approval Notes</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{approvalConf.notes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 7: Items from payload */}
+                            {payloadItems && payloadItems.length > 0 && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📦 Line Items ({payloadItems.length})</SectionTitle>
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Item</th>
+                                                    <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                    <th className="px-3 py-2 text-left w-20">Unit</th>
+                                                    <th className="px-3 py-2 text-right w-28">Unit Price</th>
+                                                    <th className="px-3 py-2 text-right w-20">GST%</th>
+                                                    <th className="px-3 py-2 text-right w-28">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {payloadItems.map((item, idx) => {
+                                                    const qty = Number(item.quantity || 0);
+                                                    const price = Number(item.unitPrice || 0);
+                                                    const gst = Number(item.gst || 0);
+                                                    const lineTotal = qty * price * (1 + gst / 100);
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-slate-50/60">
+                                                            <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                {item.name || 'Unnamed'}
+                                                                {(item.specification || item.technicalSpecification) && (
+                                                                    <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">
+                                                                        {item.specification || item.technicalSpecification}
+                                                                    </p>
+                                                                )}
+                                                                {item.brandPolicy && (
+                                                                    <p className="mt-0.5 text-[9px] font-bold text-indigo-500">Brand: {item.brandPolicy}</p>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
+                                                            <td className="px-3 py-2 font-bold text-slate-700">{item.unit}</td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(price)}</td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-700">{gst > 0 ? `${gst}%` : '-'}</td>
+                                                            <td className="px-3 py-2 text-right font-black text-slate-900">{formatCurrency(lineTotal)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                                                <tr>
+                                                    <td colSpan={5} className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Grand Total</td>
+                                                    <td className="px-3 py-2 text-right text-sm font-black text-[#12335f]">{formatCurrency(s.value)}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 8: Consignee Allocation */}
+                            {payloadConsignees && payloadConsignees.length > 0 && payloadConsignees.some(c => c.name || c.location) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🚚 Consignee Allocation</SectionTitle>
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Consignee</th>
+                                                    <th className="px-3 py-2 text-left">Location</th>
+                                                    <th className="px-3 py-2 text-left">Contact</th>
+                                                    <th className="px-3 py-2 text-right">Quantity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {payloadConsignees.map((c, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/60">
+                                                        <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">{c.name || '-'}</td>
+                                                        <td className="px-3 py-2 font-bold text-slate-700 text-wrap-anywhere">{c.location || '-'}</td>
+                                                        <td className="px-3 py-2 font-bold text-slate-700 text-wrap-anywhere">{c.contact || '-'}</td>
+                                                        <td className="px-3 py-2 text-right font-black text-slate-900">{c.quantity || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 9: Documents */}
+                            {payloadDocuments && payloadDocuments.length > 0 && payloadDocuments.some(d => d.name || d.fileName) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📄 Attached Documents</SectionTitle>
+                                    <div className="space-y-2">
+                                        {payloadDocuments.map((doc, idx) => (
+                                            <div key={idx} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                                <FileText className="h-4 w-4 shrink-0 mt-0.5 text-[#12335f]" />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-black text-slate-900 text-wrap-anywhere">{doc.name || 'Untitled Document'}</p>
+                                                    {doc.fileName && <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">File: {doc.fileName}</p>}
+                                                    <div className="flex flex-wrap gap-2 mt-1 text-[9px] font-bold text-slate-400">
+                                                        {doc.requirement && <span>Requirement: {doc.requirement}</span>}
+                                                        {doc.version && <span>v{doc.version}</span>}
+                                                        {doc.size && <span>{(Number(doc.size) / 1024).toFixed(1)} KB</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        /* ============ FALLBACK: NO PAYLOAD ============ */
+                        <>
+                            {/* Procurement Details Grid */}
+                            {isDP && (s.department || s.budgetHead || s.costCenter || s.requiredDeliveryDate) && (
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] flex items-center gap-1.5">
+                                        <Building className="h-3.5 w-3.5" /> Procurement Details
+                                    </h4>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        {s.department && (
+                                            <DetailField label="Department" icon={Building}>
+                                                <p className="text-xs font-black text-slate-800">{s.department}</p>
+                                            </DetailField>
+                                        )}
+                                        {s.budgetHead && (
+                                            <DetailField label="Budget Head" icon={FileText}>
+                                                <p className="text-xs font-black text-slate-800">{s.budgetHead}</p>
+                                            </DetailField>
+                                        )}
+                                        {s.costCenter && (
+                                            <DetailField label="Cost Center" icon={Package}>
+                                                <p className="text-xs font-black text-slate-800">{s.costCenter}</p>
+                                            </DetailField>
+                                        )}
+                                        {s.requiredDeliveryDate && (
+                                            <DetailField label="Required Delivery Date" icon={CalendarClock}>
+                                                <p className="text-xs font-black text-slate-800">{formatDate(s.requiredDeliveryDate)}</p>
+                                            </DetailField>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Seller Information */}
+                            {isDP && s.seller && (
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] flex items-center gap-1.5">
+                                        <UserCheck className="h-3.5 w-3.5" /> Seller Information
+                                    </h4>
+                                    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                        <p className="text-xs font-black text-slate-900">{s.seller.name}</p>
+                                        {s.seller.email && (
+                                            <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                                                <Mail className="h-3 w-3" /> {s.seller.email}
+                                            </p>
+                                        )}
+                                        {s.seller.mobile && (
+                                            <p className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                                                <Phone className="h-3 w-3" /> {s.seller.mobile}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Justification */}
+                            {isDP && s.justification && (
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Justification</h4>
+                                    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{s.justification}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Delivery Address */}
+                            {isDP && s.deliveryAddressText && (
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] flex items-center gap-1.5">
+                                        <MapPin className="h-3.5 w-3.5" /> Delivery Address
+                                    </h4>
+                                    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{s.deliveryAddressText}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Delivery Instructions */}
+                            {isDP && s.deliveryInstructions && (
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] flex items-center gap-1.5">
+                                        <Truck className="h-3.5 w-3.5" /> Delivery Instructions
+                                    </h4>
+                                    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{s.deliveryInstructions}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Remarks */}
+                            {isDP && s.remarks && (
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Remarks</h4>
+                                    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{s.remarks}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Line Items */}
+                            {s.requirement?.items && s.requirement.items.length > 0 && (
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] flex items-center gap-1.5">
+                                        <Package className="h-3.5 w-3.5" /> Line Items ({s.requirement.items.length})
+                                    </h4>
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Item</th>
+                                                    <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                    <th className="px-3 py-2 text-left w-20">UoM</th>
+                                                    <th className="px-3 py-2 text-right w-28">Unit Price</th>
+                                                    <th className="px-3 py-2 text-right w-28">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {s.requirement.items.map(item => {
+                                                    const qty = Number(item.quantity || 0);
+                                                    const unitPrice = Number(item.estimatedUnitPrice || 0);
+                                                    const lineTotal = qty * unitPrice;
+                                                    return (
+                                                        <tr key={item.id} className="hover:bg-slate-50/60">
+                                                            <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                {item.itemName}
+                                                                {item.description && (
+                                                                    <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{item.description}</p>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
+                                                            <td className="px-3 py-2 font-bold text-slate-700">{item.unitOfMeasure}</td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(unitPrice)}</td>
+                                                            <td className="px-3 py-2 text-right font-black text-slate-900">{formatCurrency(lineTotal)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                                                <tr>
+                                                    <td colSpan={4} className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Grand Total</td>
+                                                    <td className="px-3 py-2 text-right text-sm font-black text-[#12335f]">{formatCurrency(s.value)}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Generic fallback for other non-DP entities */}
+                            {!isDP && !s.requirement?.items && (
+                                <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3.5 text-xs">
+                                    <p className="font-bold text-slate-700">
+                                        This is a <span className="font-black text-[#12335f]">{ENTITY_LABEL[approval.entityType]}</span> entity.
+                                        Value: <span className="font-black">{formatCurrency(s.value)}</span>
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        View the full entity details in the {ENTITY_LABEL[approval.entityType].toLowerCase()} management page.
+                                    </p>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="shrink-0 border-t border-slate-200 bg-slate-50/60 px-5 py-3 flex justify-end">
+                    <Button variant="outline" onClick={onClose} className="h-9 rounded-lg text-xs font-black uppercase">
+                        <X className="mr-1.5 h-3 w-3" /> Close
+                    </Button>
                 </div>
             </div>
         </div>

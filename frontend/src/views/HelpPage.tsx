@@ -46,7 +46,7 @@ export default function HelpPage() {
                 </section>
 
                 <section className="mt-5 grid gap-4 lg:grid-cols-3">
-                    <QuickCard icon={ClipboardList} title="Buyer Procedure" href="/buyer/procurement/create" text="Create procurement with category, quantity, unit, budget, delivery, payment terms, and specifications." />
+                    <QuickCard icon={ClipboardList} title="Buyer Procedure" href="/buyer/create-procurement" text="Create procurement with category, quantity, unit, budget, delivery, payment terms, and specifications." />
                     <QuickCard icon={MessageSquare} title="Messages" href="/buyer/messages" text="Use secure platform messaging for quote requests, supplier clarification, and audit records." />
                     <QuickCard icon={BookOpen} title="User Guide" href="/user-guide" text="Open the detailed portal manual for role-specific screens and process notes." />
                 </section>

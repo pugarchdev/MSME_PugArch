@@ -227,6 +227,20 @@ export const decideApproval = async (params: {
                 } catch (err) {
                     console.error('Failed to automatically convert cart to PO:', err);
                 }
+            } else if (approval.entityType === 'direct_purchase') {
+                try {
+                    await prisma.directPurchase.update({
+                        where: { id: approval.entityId },
+                        data: {
+                            status: 'APPROVED',
+                            workflowStatus: 'READY_TO_SEND_TO_SELLER',
+                            approvalStatus: 'APPROVED',
+                            approvedAt: new Date()
+                        }
+                    });
+                } catch (err) {
+                    console.error('Failed to update direct purchase on approval completion:', err);
+                }
             }
         }
     } else if (params.decision === 'REJECTED') {
@@ -236,6 +250,21 @@ export const decideApproval = async (params: {
             params.remarks || 'Rejected by approver',
             approval.stage
         );
+
+        if (approval.entityType === 'direct_purchase') {
+            try {
+                await prisma.directPurchase.update({
+                    where: { id: approval.entityId },
+                    data: {
+                        status: 'REJECTED',
+                        workflowStatus: 'REJECTED',
+                        approvalStatus: 'REJECTED'
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to update direct purchase on rejection:', err);
+            }
+        }
     } else if (params.decision === 'SENT_FOR_CLARIFICATION') {
         await notifyClarification(
             approval.entityType as ApprovalEntityType,
@@ -243,6 +272,20 @@ export const decideApproval = async (params: {
             params.clarificationNote || 'Clarification requested',
             approval.stage
         );
+
+        if (approval.entityType === 'direct_purchase') {
+            try {
+                await prisma.directPurchase.update({
+                    where: { id: approval.entityId },
+                    data: {
+                        workflowStatus: 'CHANGES_REQUESTED',
+                        approvalStatus: 'CHANGES_REQUESTED'
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to update direct purchase on clarification request:', err);
+            }
+        }
     }
 
     return updated;

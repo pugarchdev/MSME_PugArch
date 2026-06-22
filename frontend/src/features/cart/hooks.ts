@@ -68,8 +68,50 @@ export const usePendingTechReview = () =>
 export const useAddToCart = () => {
     const qc = useQueryClient();
     return useMutation({
-        mutationFn: addItemToCart,
-        onSuccess: () => { void invalidate(qc); }
+        mutationFn: (variables: { productId?: number; serviceId?: number; quantity: number; itemName?: string; unitPrice?: number; unitOfMeasure?: string }) =>
+            addItemToCart({ productId: variables.productId, serviceId: variables.serviceId, quantity: variables.quantity }),
+        onMutate: async (newItem) => {
+            await qc.cancelQueries({ queryKey: KEY });
+            const previousActiveCart = qc.getQueryData<CartDto>([...KEY, 'active']);
+
+            if (previousActiveCart) {
+                const tempId = -Date.now();
+                const optimisticItem: CartItemDto = {
+                    id: tempId,
+                    cartId: previousActiveCart.id,
+                    productId: newItem.productId || null,
+                    serviceId: newItem.serviceId || null,
+                    sellerId: 0,
+                    itemName: newItem.itemName || 'Adding item...',
+                    quantity: newItem.quantity,
+                    unitOfMeasure: newItem.unitOfMeasure || 'units',
+                    unitPrice: newItem.unitPrice || 0,
+                    currency: 'INR',
+                    technicalApproved: null,
+                    createdAt: new Date().toISOString()
+                };
+
+                qc.setQueryData<CartDto>([...KEY, 'active'], {
+                    ...previousActiveCart,
+                    items: [...previousActiveCart.items, optimisticItem]
+                });
+            }
+
+            return { previousActiveCart };
+        },
+        onError: (err, variables, context) => {
+            if (context?.previousActiveCart) {
+                qc.setQueryData([...KEY, 'active'], context.previousActiveCart);
+            }
+        },
+        onSuccess: (data) => {
+            if (data) {
+                qc.setQueryData([...KEY, 'active'], data);
+            }
+        },
+        onSettled: () => {
+            void invalidate(qc);
+        }
     });
 };
 
@@ -77,7 +119,48 @@ export const useUpdateCartItem = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: ({ id, quantity }: { id: number; quantity: number }) => updateCartItem(id, quantity),
-        onSuccess: () => { void invalidate(qc); }
+        onMutate: async ({ id, quantity }) => {
+            await qc.cancelQueries({ queryKey: KEY });
+            const previousActiveCart = qc.getQueryData<CartDto>([...KEY, 'active']);
+            const detailQueries = qc.getQueryCache().findAll({ queryKey: [...KEY, 'detail'] });
+            const previousDetails = detailQueries.map(query => ({
+                queryKey: query.queryKey,
+                data: query.state.data as CartDto | undefined
+            }));
+
+            if (previousActiveCart) {
+                qc.setQueryData<CartDto>([...KEY, 'active'], {
+                    ...previousActiveCart,
+                    items: previousActiveCart.items.map(item => item.id === id ? { ...item, quantity } : item)
+                });
+            }
+
+            previousDetails.forEach(({ queryKey, data }) => {
+                if (data) {
+                    qc.setQueryData<CartDto>(queryKey, {
+                        ...data,
+                        items: data.items.map(item => item.id === id ? { ...item, quantity } : item)
+                    });
+                }
+            });
+
+            return { previousActiveCart, previousDetails };
+        },
+        onError: (err, variables, context) => {
+            if (context?.previousActiveCart) {
+                qc.setQueryData([...KEY, 'active'], context.previousActiveCart);
+            }
+            if (context?.previousDetails) {
+                context.previousDetails.forEach(({ queryKey, data }) => {
+                    if (data) {
+                        qc.setQueryData(queryKey, data);
+                    }
+                });
+            }
+        },
+        onSettled: () => {
+            void invalidate(qc);
+        }
     });
 };
 
@@ -85,7 +168,49 @@ export const useRemoveCartItem = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (id: number) => removeCartItem(id),
-        onSuccess: () => { void invalidate(qc); }
+        onMutate: async (id: number) => {
+            await qc.cancelQueries({ queryKey: KEY });
+
+            const previousActiveCart = qc.getQueryData<CartDto>([...KEY, 'active']);
+            const detailQueries = qc.getQueryCache().findAll({ queryKey: [...KEY, 'detail'] });
+            const previousDetails = detailQueries.map(query => ({
+                queryKey: query.queryKey,
+                data: query.state.data as CartDto | undefined
+            }));
+
+            if (previousActiveCart) {
+                qc.setQueryData<CartDto>([...KEY, 'active'], {
+                    ...previousActiveCart,
+                    items: previousActiveCart.items.filter(item => item.id !== id)
+                });
+            }
+
+            previousDetails.forEach(({ queryKey, data }) => {
+                if (data) {
+                    qc.setQueryData<CartDto>(queryKey, {
+                        ...data,
+                        items: data.items.filter(item => item.id !== id)
+                    });
+                }
+            });
+
+            return { previousActiveCart, previousDetails };
+        },
+        onError: (err, id, context) => {
+            if (context?.previousActiveCart) {
+                qc.setQueryData([...KEY, 'active'], context.previousActiveCart);
+            }
+            if (context?.previousDetails) {
+                context.previousDetails.forEach(({ queryKey, data }) => {
+                    if (data) {
+                        qc.setQueryData(queryKey, data);
+                    }
+                });
+            }
+        },
+        onSettled: () => {
+            void invalidate(qc);
+        }
     });
 };
 

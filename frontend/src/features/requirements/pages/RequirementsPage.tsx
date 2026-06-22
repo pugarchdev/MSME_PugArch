@@ -20,7 +20,7 @@ import { PageToolbar } from '../../shared/PageToolbar';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
-import { ListSkeleton } from '../../../components/ui/skeleton';
+import { RequirementsGridSkeleton, RequirementsTableSkeleton, FormSectionSkeleton } from '../../../components/ui/skeleton';
 import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
@@ -28,6 +28,7 @@ import { cn } from '../../../lib/utils';
 import {
     useCreateRequirement,
     useDeleteRequirement,
+    usePrefetchRequirement,
     useRequirement,
     useRequirements,
     useSubmitRequirement,
@@ -138,6 +139,9 @@ export default function RequirementsPage() {
     const [viewMode, setViewMode] = useResponsiveViewMode('phase7:requirements:view-mode');
     const [sortKey, setSortKey] = useState<RequirementSortKey>('updatedAt');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+    
+    // Prefetch hook for instant modal opens
+    const prefetchRequirement = usePrefetchRequirement();
 
     const list = useRequirements({
         q: q || undefined,
@@ -379,7 +383,11 @@ export default function RequirementsPage() {
             )}
 
             {list.isLoading && !list.data ? (
-                <ListSkeleton rows={4} />
+                viewMode === 'grid' ? (
+                    <RequirementsGridSkeleton count={pageSize} />
+                ) : (
+                    <RequirementsTableSkeleton rows={pageSize} />
+                )
             ) : records.length === 0 ? (
                 <EmptyState title="No requirements yet" description="Create your first requirement to start a procurement." />
             ) : viewMode === 'grid' ? (
@@ -476,6 +484,7 @@ export default function RequirementsPage() {
                                                 <button
                                                     type="button"
                                                     className="text-[11px] font-black uppercase tracking-wide text-[#12335f] hover:underline text-wrap-anywhere"
+                                                    onMouseEnter={() => prefetchRequirement(req.id)}
                                                     onClick={e => {
                                                         e.stopPropagation();
                                                         setOpenId(req.id);
@@ -1197,7 +1206,17 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
     const detail = useRequirement(id);
     const submitMut = useSubmitRequirement();
     const requirement = detail.data;
-    const intakeSummary = parseProcurementIntakeSummary(requirement?.description);
+    const payload = requirement?.payload as Record<string, any> | null | undefined;
+    const basics = payload?.basics;
+    const vendors = payload?.vendors;
+    const schedule = payload?.schedule;
+    const rules = payload?.rules;
+    const tender = payload?.tender;
+    const approval = payload?.approval;
+    const payloadItems = payload?.items as Array<Record<string, any>> | undefined;
+    const payloadConsignees = payload?.consigneeDetails as Array<Record<string, any>> | undefined;
+    const payloadDocuments = payload?.documents as Array<Record<string, any>> | undefined;
+    const dp = requirement?.directPurchases?.[0];
 
     const submit = () => {
         if (!requirement) return;
@@ -1208,14 +1227,34 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
         }).then(() => detail.refetch());
     };
 
+    const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1.5 mb-3">
+            {children}
+        </h3>
+    );
+
+    const InfoCell = ({ label, value }: { label: string; value?: string | number | null | boolean }) => {
+        if (value === undefined || value === null || value === '') return null;
+        const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+        return (
+            <div className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+                <p className="mt-0.5 text-xs font-black text-slate-800 text-wrap-anywhere">{display}</p>
+            </div>
+        );
+    };
+
     return (
         <Modal title={requirement ? `Requirement · ${requirement.requirementNumber}` : 'Requirement'} onClose={onClose} wide>
             {detail.isLoading && !requirement ? (
-                <ListSkeleton rows={3} />
+                <div className="flex justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#12335f]" />
+                </div>
             ) : !requirement ? (
                 <EmptyState title="Requirement not found" />
             ) : (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                    {/* Header: ID + Status */}
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <Field label="Internal ID">
                             <code className="block rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">#{requirement.id}</code>
@@ -1236,41 +1275,387 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                         <p className="text-base font-black text-slate-950 text-wrap-anywhere">{requirement.title}</p>
                     </Field>
 
-                    {requirement.description && (
-                        <Field label="Description">
-                            <p className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs font-semibold text-slate-700 text-wrap-anywhere">
-                                {requirement.description}
-                            </p>
-                        </Field>
+                    {/* ============ PAYLOAD-BASED SECTIONS ============ */}
+                    {payload ? (
+                        <>
+                            {/* Section 1: Basic Details */}
+                            {basics && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📋 Basic Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Category" value={basics.category} />
+                                        <InfoCell label="Sub-Category" value={basics.subCategory} />
+                                        <InfoCell label="Department" value={basics.department} />
+                                        <InfoCell label="Priority" value={basics.priority} />
+                                        <InfoCell label="Requirement Type" value={basics.requirementType} />
+                                        <InfoCell label="Estimated Value" value={formatCurrency(basics.estimatedValue)} />
+                                        <InfoCell label="Funding Source" value={basics.fundingSource} />
+                                        <InfoCell label="Cost Center" value={basics.costCenter} />
+                                    </div>
+                                    {basics.justification && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Justification</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{basics.justification}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 2: Supplier Selection */}
+                            {vendors && (vendors.selection || vendors.msmePreference || vendors.minimumTurnover || vendors.experienceYears) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🏢 Supplier Selection</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Selection Type" value={vendors.selection} />
+                                        <InfoCell label="Invite Count" value={vendors.inviteCount > 0 ? vendors.inviteCount : undefined} />
+                                        <InfoCell label="MSME Preference" value={vendors.msmePreference} />
+                                        <InfoCell label="Make in India Preference" value={vendors.makeInIndiaPreference} />
+                                        <InfoCell label="Local Vendor Preference" value={vendors.localVendorPreference} />
+                                        <InfoCell label="Minimum Turnover" value={vendors.minimumTurnover} />
+                                        <InfoCell label="Experience Years" value={vendors.experienceYears} />
+                                        {vendors.selectedSellerName && <InfoCell label="Selected Seller" value={`${vendors.selectedSellerName}${vendors.selectedSellerCode ? ` (${vendors.selectedSellerCode})` : ''}`} />}
+                                    </div>
+                                    {vendors.complianceNotes && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Compliance Notes</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{vendors.complianceNotes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 3: Schedule / Timeline */}
+                            {schedule && (schedule.publishDate || schedule.submissionDate || schedule.deliveryDate) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📅 Schedule / Timeline</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Publish Date" value={schedule.publishDate ? formatDate(schedule.publishDate) : undefined} />
+                                        <InfoCell label="Submission Date" value={schedule.submissionDate ? formatDate(schedule.submissionDate) : undefined} />
+                                        <InfoCell label="Opening Date" value={schedule.openingDate ? formatDate(schedule.openingDate) : undefined} />
+                                        <InfoCell label="Delivery Date" value={schedule.deliveryDate ? formatDate(schedule.deliveryDate) : undefined} />
+                                        <InfoCell label="Validity (Days)" value={schedule.validityDays > 0 ? schedule.validityDays : undefined} />
+                                        <InfoCell label="Pre-Bid Meeting" value={schedule.preBidMeeting} />
+                                        {schedule.preBidMeeting && schedule.preBidDate && (
+                                            <InfoCell label="Pre-Bid Date" value={formatDate(schedule.preBidDate)} />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 4: Rules & Evaluation */}
+                            {rules && (rules.bidType || rules.evaluation || rules.emdRequired || rules.performanceSecurity || rules.reverseAuctionIntent) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>⚖️ Rules & Evaluation</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Bid Type" value={rules.bidType} />
+                                        <InfoCell label="Evaluation Method" value={rules.evaluation} />
+                                        <InfoCell label="EMD Required" value={rules.emdRequired} />
+                                        {rules.emdRequired && <InfoCell label="EMD Amount" value={formatCurrency(rules.emdAmount)} />}
+                                        <InfoCell label="Performance Security" value={rules.performanceSecurity} />
+                                        <InfoCell label="Reverse Auction Intent" value={rules.reverseAuctionIntent} />
+                                        {rules.reverseAuctionIntent && (
+                                            <>
+                                                <InfoCell label="Start Price" value={formatCurrency(rules.startPrice)} />
+                                                <InfoCell label="Reserve Price" value={formatCurrency(rules.reservePrice)} />
+                                                <InfoCell label="Min Decrement" value={formatCurrency(rules.minimumDecrement)} />
+                                                <InfoCell label="Auto Extension" value={rules.autoExtension} />
+                                                <InfoCell label="Hide Vendor Identity" value={rules.hideVendorIdentity} />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 5: Tender Details (if applicable) */}
+                            {tender && (tender.tenderNumber || tender.deliveryLocation || tender.scopeOfWork || tender.paymentTerms || tender.contactName) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📝 Tender Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Tender Number" value={tender.tenderNumber} />
+                                        <InfoCell label="Tender Type" value={tender.tenderType} />
+                                        <InfoCell label="Tender Mode" value={tender.tenderMode} />
+                                        <InfoCell label="Visibility" value={tender.visibility} />
+                                        <InfoCell label="Delivery Location" value={tender.deliveryLocation} />
+                                        <InfoCell label="Delivery Type" value={tender.deliveryType} />
+                                        <InfoCell label="Delivery Timeline" value={tender.deliveryTimeline} />
+                                        <InfoCell label="Installation Required" value={tender.installationRequired} />
+                                        <InfoCell label="Training Required" value={tender.trainingRequired} />
+                                        <InfoCell label="Currency" value={tender.currency} />
+                                        <InfoCell label="Price Type" value={tender.priceType} />
+                                        <InfoCell label="Tax Type" value={tender.taxType} />
+                                        <InfoCell label="GST Included" value={tender.gstIncluded} />
+                                        <InfoCell label="GST Rate" value={tender.gstRate} />
+                                        <InfoCell label="Payment Terms" value={tender.paymentTerms} />
+                                    </div>
+                                    {tender.shortDescription && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Short Description</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.shortDescription}</p>
+                                        </div>
+                                    )}
+                                    {tender.scopeOfWork && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Scope of Work</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.scopeOfWork}</p>
+                                        </div>
+                                    )}
+                                    {tender.specialInstructions && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Special Instructions</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{tender.specialInstructions}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Evaluation Scoring */}
+                                    {(tender.technicalWeightage || tender.priceWeightage || tender.evaluationMethod) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Evaluation Scoring</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Evaluation Method" value={tender.evaluationMethod} />
+                                                <InfoCell label="Technical Weightage" value={tender.technicalWeightage} />
+                                                <InfoCell label="Price Weightage" value={tender.priceWeightage} />
+                                                <InfoCell label="Experience Score" value={tender.experienceScore} />
+                                                <InfoCell label="Certification Score" value={tender.certificationScore} />
+                                                <InfoCell label="Compliance Score" value={tender.complianceScore} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Dates */}
+                                    {(tender.bidStartDate || tender.bidClosingDate || tender.awardDate) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Tender Timeline</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Bid Start Date" value={tender.bidStartDate ? formatDate(tender.bidStartDate) : undefined} />
+                                                <InfoCell label="Bid Closing Date" value={tender.bidClosingDate ? formatDate(tender.bidClosingDate) : undefined} />
+                                                <InfoCell label="Bid Closing Time" value={tender.bidClosingTime} />
+                                                <InfoCell label="Technical Evaluation Date" value={tender.technicalEvaluationDate ? formatDate(tender.technicalEvaluationDate) : undefined} />
+                                                <InfoCell label="Financial Evaluation Date" value={tender.financialEvaluationDate ? formatDate(tender.financialEvaluationDate) : undefined} />
+                                                <InfoCell label="Award Date" value={tender.awardDate ? formatDate(tender.awardDate) : undefined} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Tender Preferences */}
+                                    {(tender.startupPreference || tender.shgPreference || tender.womenOwnedPreference || tender.gstMandatory || tender.panMandatory || tender.requiredCertifications) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Eligibility & Preferences</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Startup Preference" value={tender.startupPreference} />
+                                                <InfoCell label="SHG Preference" value={tender.shgPreference} />
+                                                <InfoCell label="Women-Owned Preference" value={tender.womenOwnedPreference} />
+                                                <InfoCell label="GST Mandatory" value={tender.gstMandatory} />
+                                                <InfoCell label="PAN Mandatory" value={tender.panMandatory} />
+                                                <InfoCell label="Required Certifications" value={tender.requiredCertifications} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Contact Info */}
+                                    {(tender.contactName || tender.contactEmail) && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Contact Information</p>
+                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                <InfoCell label="Contact Name" value={tender.contactName} />
+                                                <InfoCell label="Contact Email" value={tender.contactEmail} />
+                                                <InfoCell label="Contact Mobile" value={tender.contactMobile} />
+                                                <InfoCell label="Contact Phone" value={tender.contactPhone} />
+                                                <InfoCell label="Department Contact" value={tender.departmentContact} />
+                                                <InfoCell label="Escalation Contact" value={tender.escalationContact} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 6: Approval */}
+                            {approval && (approval.workflow || approval.approver || approval.notes) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>✅ Approval Configuration</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Workflow" value={approval.workflow} />
+                                        <InfoCell label="Approver" value={approval.approver} />
+                                    </div>
+                                    {approval.notes && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Approval Notes</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{approval.notes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Section 7: Items from payload */}
+                            {payloadItems && payloadItems.length > 0 && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📦 Line Items ({payloadItems.length})</SectionTitle>
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Item</th>
+                                                    <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                    <th className="px-3 py-2 text-left w-20">Unit</th>
+                                                    <th className="px-3 py-2 text-right w-28">Unit Price</th>
+                                                    <th className="px-3 py-2 text-right w-20">GST%</th>
+                                                    <th className="px-3 py-2 text-right w-28">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {payloadItems.map((item, idx) => {
+                                                    const qty = Number(item.quantity || 0);
+                                                    const price = Number(item.unitPrice || 0);
+                                                    const gst = Number(item.gst || 0);
+                                                    const lineTotal = qty * price * (1 + gst / 100);
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-slate-50/60">
+                                                            <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                {item.name || 'Unnamed'}
+                                                                {(item.specification || item.technicalSpecification) && (
+                                                                    <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">
+                                                                        {item.specification || item.technicalSpecification}
+                                                                    </p>
+                                                                )}
+                                                                {item.brandPolicy && (
+                                                                    <p className="mt-0.5 text-[9px] font-bold text-indigo-500">Brand: {item.brandPolicy}</p>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
+                                                            <td className="px-3 py-2 font-bold text-slate-700">{item.unit}</td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(price)}</td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-700">{gst > 0 ? `${gst}%` : '-'}</td>
+                                                            <td className="px-3 py-2 text-right font-black text-slate-900">{formatCurrency(lineTotal)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                                                <tr>
+                                                    <td colSpan={5} className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Grand Total</td>
+                                                    <td className="px-3 py-2 text-right text-sm font-black text-[#12335f]">{formatCurrency(requirement.estimatedValue)}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 8: Consignee Allocation */}
+                            {payloadConsignees && payloadConsignees.length > 0 && payloadConsignees.some(c => c.name || c.location) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🚚 Consignee Allocation</SectionTitle>
+                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Consignee</th>
+                                                    <th className="px-3 py-2 text-left">Location</th>
+                                                    <th className="px-3 py-2 text-left">Contact</th>
+                                                    <th className="px-3 py-2 text-right">Quantity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {payloadConsignees.map((c, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/60">
+                                                        <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">{c.name || '-'}</td>
+                                                        <td className="px-3 py-2 font-bold text-slate-700 text-wrap-anywhere">{c.location || '-'}</td>
+                                                        <td className="px-3 py-2 font-bold text-slate-700 text-wrap-anywhere">{c.contact || '-'}</td>
+                                                        <td className="px-3 py-2 text-right font-black text-slate-900">{c.quantity || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section 9: Documents */}
+                            {payloadDocuments && payloadDocuments.length > 0 && payloadDocuments.some(d => d.name || d.fileName) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>📄 Attached Documents</SectionTitle>
+                                    <div className="space-y-2">
+                                        {payloadDocuments.map((doc, idx) => (
+                                            <div key={idx} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                                <FileText className="h-4 w-4 shrink-0 mt-0.5 text-[#12335f]" />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-black text-slate-900 text-wrap-anywhere">{doc.name || 'Untitled Document'}</p>
+                                                    {doc.fileName && <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">File: {doc.fileName}</p>}
+                                                    <div className="flex flex-wrap gap-2 mt-1 text-[9px] font-bold text-slate-400">
+                                                        {doc.requirement && <span>Requirement: {doc.requirement}</span>}
+                                                        {doc.version && <span>v{doc.version}</span>}
+                                                        {doc.size && <span>{(Number(doc.size) / 1024).toFixed(1)} KB</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        /* ============ FALLBACK: No payload — use parsed description + DB items ============ */
+                        <>
+                            {requirement.description && (
+                                <Field label="Description">
+                                    <p className="rounded-lg border border-slate-100 bg-slate-50/75 p-3 text-xs font-semibold text-slate-700 text-wrap-anywhere whitespace-pre-wrap">
+                                        {requirement.description}
+                                    </p>
+                                </Field>
+                            )}
+                        </>
                     )}
 
-                    {intakeSummary && (
-                        <Field label="Procurement Intake Details">
-                            <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                                <div className="grid gap-2 md:grid-cols-2">
-                                    {intakeSummary.details.slice(0, 10).map(item => (
-                                        <div key={`${item.label}-${item.value}`} className="rounded-md border border-blue-100 bg-white px-3 py-2">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{item.label}</p>
-                                            <p className="mt-1 text-xs font-black text-slate-900">{item.value || '-'}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                                {intakeSummary.documents.length > 0 && (
-                                    <div className="mt-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attached Documents</p>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {intakeSummary.documents.map(document => (
-                                                <span key={document} className="rounded-md border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-black text-[#12335f]">
-                                                    {document.replace(/^- /, '')}
-                                                </span>
-                                            ))}
-                                        </div>
+                    {/* Direct Purchase Checkout Details (always shown if DP present) */}
+                    {dp && (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4 shadow-sm">
+                            <div className="flex items-center justify-between border-b border-slate-150 pb-2">
+                                <h3 className="text-xs font-black text-[#12335f] uppercase tracking-wider">Direct Purchase Checkout Details</h3>
+                                <span className="text-[10px] font-black text-[#c86413] bg-[#c86413]/5 border border-[#c86413]/10 px-2 py-0.5 rounded">PO Ref: {dp.purchaseNumber}</span>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                {dp.department && <InfoCell label="Department" value={dp.department} />}
+                                {dp.budgetHead && <InfoCell label="Budget Head" value={dp.budgetHead} />}
+                                {dp.costCenter && <InfoCell label="Cost Center" value={dp.costCenter} />}
+                                {dp.requiredDeliveryDate && <InfoCell label="Required Delivery Date" value={formatDate(dp.requiredDeliveryDate)} />}
+                                {dp.seller && (
+                                    <div className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
+                                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Seller</p>
+                                        <p className="mt-0.5 text-xs font-black text-slate-800">
+                                            {dp.seller.name}
+                                            {dp.seller.email && <span className="block text-[9px] text-slate-400 font-bold lowercase">{dp.seller.email}</span>}
+                                            {dp.seller.mobile && <span className="block text-[9px] text-slate-400 font-bold">{dp.seller.mobile}</span>}
+                                        </p>
                                     </div>
                                 )}
                             </div>
-                        </Field>
+                            {dp.justification && (
+                                <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Justification</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{dp.justification}</p>
+                                </div>
+                            )}
+                            {dp.deliveryAddressText && (
+                                <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Delivery Address</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-750 whitespace-pre-wrap leading-relaxed">{dp.deliveryAddressText}</p>
+                                </div>
+                            )}
+                            {dp.deliveryInstructions && (
+                                <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Delivery Instructions</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{dp.deliveryInstructions}</p>
+                                </div>
+                            )}
+                            {dp.remarks && (
+                                <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Remarks</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap">{dp.remarks}</p>
+                                </div>
+                            )}
+                        </div>
                     )}
 
+                    {/* Procurement Method + Value + Date (always shown) */}
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                         <Field label="Procurement Method">
                             <p className="text-sm font-bold text-slate-900">
@@ -1285,43 +1670,40 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                         </Field>
                     </div>
 
-                    <Field label="Line Items">
-                        {requirement.items?.length ? (
-                            <div className="overflow-hidden rounded-lg border border-slate-200">
-                                <table className="w-full text-xs">
-                                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left">Item</th>
-                                            <th className="px-3 py-2 text-left w-20">Qty</th>
-                                            <th className="px-3 py-2 text-left w-20">UoM</th>
-                                            <th className="px-3 py-2 text-right w-32">Unit Price</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {requirement.items.map(item => (
-                                            <tr key={item.id}>
-                                                <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
-                                                    {item.itemName}
-                                                    {item.description && (
-                                                        <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">
-                                                            {item.description}
-                                                        </p>
-                                                    )}
-                                                </td>
-                                                <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
-                                                <td className="px-3 py-2 font-bold text-slate-700">{item.unitOfMeasure}</td>
-                                                <td className="px-3 py-2 text-right font-bold text-slate-900">
-                                                    {formatCurrency(item.estimatedUnitPrice)}
-                                                </td>
+                    {/* Fallback DB line items (when no payload) */}
+                    {!payload && (
+                        <Field label="Line Items">
+                            {requirement.items?.length ? (
+                                <div className="overflow-hidden rounded-lg border border-slate-200">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left">Item</th>
+                                                <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                <th className="px-3 py-2 text-left w-20">UoM</th>
+                                                <th className="px-3 py-2 text-right w-32">Unit Price</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <p className="text-xs font-semibold text-slate-500">No line items recorded.</p>
-                        )}
-                    </Field>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {requirement.items.map(item => (
+                                                <tr key={item.id}>
+                                                    <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                        {item.itemName}
+                                                        {item.description && <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">{item.description}</p>}
+                                                    </td>
+                                                    <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
+                                                    <td className="px-3 py-2 font-bold text-slate-700">{item.unitOfMeasure}</td>
+                                                    <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(item.estimatedUnitPrice)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="text-xs font-semibold text-slate-500">No line items recorded.</p>
+                            )}
+                        </Field>
+                    )}
 
                     {requirement.tenders && requirement.tenders.length > 0 && (
                         <Field label="Spawned Tenders">

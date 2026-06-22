@@ -668,7 +668,7 @@ router.get('/master-admin/users', ...masterOnly, wrap(async (req, res) => {
   const where: any = {
     ...(companyId ? { companyId } : {}),
     ...(role ? { role } : {}),
-    ...(status ? { accountStatus: status as any } : {}),
+    accountStatus: status ? (status as any) : { not: 'DELETED' },
     ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { userId: { contains: q, mode: 'insensitive' } }] } : {})
   };
   const orderBy = sortableOrder(req.query as Record<string, unknown>, {
@@ -2452,7 +2452,10 @@ router.get('/master-admin/reports/export', ...masterOnly, wrap(async (req, res) 
     }) as any;
   } else if (module === 'users') {
     rows = await prisma.user.findMany({
-      where: whereWithDate({ ...(companyId ? { companyId } : {}), ...(status ? { accountStatus: status as any } : {}) }),
+      where: whereWithDate({
+        ...(companyId ? { companyId } : {}),
+        accountStatus: status ? (status as any) : { not: 'DELETED' }
+      }),
       take,
       orderBy: { updatedAt: 'desc' },
       select: { id: true, userId: true, name: true, email: true, mobile: true, role: true, onboardingStatus: true, accountStatus: true, emailVerified: true, mobileVerified: true, lastLoginAt: true, createdAt: true, updatedAt: true, company: { select: { name: true, portalDisplayName: true } }, organization: { select: { organizationName: true } } }
@@ -2712,7 +2715,10 @@ router.get('/master-admin/search', ...masterOnly, wrap(async (req, res) => {
   }).then(rows => rows.map((row: any) => searchItem('company', row, row.portalDisplayName || row.name, [row.district, row.state].filter(Boolean).join(', '), `/master-admin/companies`, row.isActive ? 'ACTIVE' : 'INACTIVE'))));
 
   if (include('users')) searches.push(safeFindMany(prisma.user, {
-    where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { mobile: { contains: q, mode: 'insensitive' } }, { userId: { contains: q, mode: 'insensitive' } }] },
+    where: {
+      accountStatus: { not: 'DELETED' },
+      OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { mobile: { contains: q, mode: 'insensitive' } }, { userId: { contains: q, mode: 'insensitive' } }]
+    },
     take,
     orderBy: { updatedAt: 'desc' },
     select: { id: true, name: true, email: true, role: true, accountStatus: true, updatedAt: true, company: { select: { name: true, portalDisplayName: true } }, organization: { select: { organizationName: true } } }

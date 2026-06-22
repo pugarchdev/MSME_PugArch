@@ -10,7 +10,7 @@ import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../hooks/useAuth';
 import { cn } from '../../../lib/utils';
 import { marketplaceApi, type MarketplaceProduct, type MarketplaceService } from '../api';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { CompareToggleButton } from './CompareToggleButton';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
 
@@ -70,7 +70,7 @@ export function MarketplaceItemCard({
     const { user } = useAuth();
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { items: cartItems, add, update } = useGuestCart();
+    const { add, update, getQuantity } = useMarketplaceCart();
     const [imageFailed, setImageFailed] = React.useState(false);
     const resolvedImageUrl = resolveMarketplaceImage(item, type);
     const imageUrl = imageFailed ? '' : resolvedImageUrl;
@@ -82,8 +82,7 @@ export function MarketplaceItemCard({
     const location = organization?.city || organization?.district || (item as any).district || (item as any).location;
     const price = getCurrentPrice(item, type);
     const discount = getDiscount(item);
-    const cartItem = cartItems.find((cart) => cart.id === item.id && cart.type === type);
-    const quantity = cartItem?.quantity || 0;
+    const quantity = getQuantity(item.id, type);
 
     React.useEffect(() => {
         setImageFailed(false);
@@ -111,23 +110,18 @@ export function MarketplaceItemCard({
     const addToCart = (event: React.MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        add({
-            id: item.id,
-            name: item.name,
-            price: price || undefined,
-            unit: type === 'service' ? (item as MarketplaceService).pricingModel : (item as MarketplaceProduct).unitOfMeasure,
-            imageUrl,
-            category: category?.name,
-            type,
-        });
-        marketplaceApi.trackInteraction({
-            itemId: item.id,
-            itemType: type === 'service' ? 'SERVICE' : 'PRODUCT',
-            categoryId: category?.id,
-            action: 'ADD_TO_CART',
-            metadata: { source: 'marketplace-card' },
-        }).catch(() => undefined);
-        toast.success(`${item.name} added to cart`);
+        add(
+            {
+                id: item.id,
+                name: item.name,
+                price: price || undefined,
+                unit: type === 'service' ? (item as MarketplaceService).pricingModel : (item as MarketplaceProduct).unitOfMeasure,
+                imageUrl,
+                category: category?.name,
+                type,
+            },
+            { source: 'marketplace-card' }
+        );
     };
 
     const changeQuantity = (event: React.MouseEvent, nextQuantity: number) => {
@@ -163,6 +157,7 @@ export function MarketplaceItemCard({
             return;
         }
         const params = new URLSearchParams({
+            intent: 'quote',
             sellerId: String(sellerUserId),
             subject: `Quote request: ${item.name}`,
             message: `Hello, I would like to request a quotation for ${item.name}.\n\nCategory: ${category?.name || 'Not specified'}\nPlease share best price, availability, delivery timeline, payment terms, and applicable taxes.`

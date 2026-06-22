@@ -57,15 +57,23 @@ const assertTenderCanBeAwarded = (status: unknown) => {
 export const tenderWorkflow = {
   async createTender(actor: WorkflowActor, input: Record<string, unknown>) {
     if (actor.role !== 'buyer' && actor.role !== 'admin') throw new ApiError(403, 'Buyer access required', 'BUYER_REQUIRED');
+    const requirementId = input.requirementId ? Number(input.requirementId) : null;
     const tender = await db.tender.create({
       data: {
         ...input,
+        requirementId,
         buyerId: actor.id,
         tenderId: numberSeries('TND'),
         status: 'draft',
         statusEnum: tenderStatusEnumFor('draft')
       }
     });
+    if (requirementId) {
+      await db.requirement.update({
+        where: { id: requirementId },
+        data: { status: 'SOURCING' }
+      });
+    }
     await auditWorkflow(actor, 'workflow.tender.created', 'tender', tender.id);
     return tender;
   },

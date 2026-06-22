@@ -32,6 +32,7 @@ import {
   Store,
   ToggleLeft,
   ToggleRight,
+  Trash2,
   Truck,
   UserPlus,
   Users,
@@ -1294,6 +1295,7 @@ export default function MasterAdminPage() {
           suspend: () => masterAdminApi.suspendUser(id, reason),
           reactivate: () => masterAdminApi.reactivateUser(id, reason),
           archive: () => masterAdminApi.archiveUser(id, reason),
+          delete: () => masterAdminApi.deleteUser(id, reason),
           invite: () => masterAdminApi.sendUserInvite(id, reason),
           resetPassword: () => masterAdminApi.resetUserPassword(id, reason)
         };
@@ -1576,7 +1578,6 @@ export default function MasterAdminPage() {
                   ['organizationName', 'Organization'],
                   ['organizationType', 'Type'],
                   ['verificationStatus', 'Verification'],
-                  ['aadhaarKyc.status', 'Aadhaar'],
                   ['state', 'State'],
                   ['updatedAt', 'Updated']
                 ]}
@@ -1698,7 +1699,6 @@ export default function MasterAdminPage() {
                 ['role', 'Role'],
                 ['accountStatus', 'Account'],
                 ['onboardingStatus', 'Verification'],
-                ['aadhaarKyc.status', 'Aadhaar'],
                 ['createdAt', 'Created']
               ]}
               sort={sorts.users}
@@ -1712,7 +1712,7 @@ export default function MasterAdminPage() {
                   active={row.accountStatus === 'ACTIVE'}
                   onEdit={() => setEditor({ type: 'user', mode: 'edit', record: row })}
                   onActivate={() => openAction({ entity: 'user', action: row.accountStatus === 'ACTIVE' ? 'inactivate' : 'reactivate', id: row.id, label: row.email || 'user' })}
-                  onSuspend={() => openAction({ entity: 'user', action: 'suspend', id: row.id, label: row.email || 'user' })}
+                  onDelete={() => openAction({ entity: 'user', action: 'delete', id: row.id, label: row.email || 'user', danger: true })}
                   onArchive={() => openAction({ entity: 'user', action: 'archive', id: row.id, label: row.email || 'user', danger: true })}
                   onInvite={() => openAction({ entity: 'user', action: 'invite', id: row.id, label: row.email || 'user' })}
                   onResetPassword={() => openAction({ entity: 'user', action: 'resetPassword', id: row.id, label: row.email || 'user', danger: true })}
@@ -2864,13 +2864,15 @@ const EntityActions = memo(function EntityActions({
   onEdit,
   onActivate,
   onSuspend,
+  onDelete,
   onArchive
 }: {
   label: string;
   active: boolean;
   onEdit: () => void;
   onActivate: () => void;
-  onSuspend: () => void;
+  onSuspend?: () => void;
+  onDelete?: () => void;
   onArchive: () => void;
 }) {
   return (
@@ -2883,10 +2885,17 @@ const EntityActions = memo(function EntityActions({
         <Power className="mr-1 h-3 w-3" />
         {active ? 'Deactivate' : 'Restore'}
       </Button>
-      <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-amber-700" onClick={onSuspend} title={`Suspend ${label}`}>
-        <Archive className="mr-1 h-3 w-3" />
-        Suspend
-      </Button>
+      {onDelete ? (
+        <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-red-700" onClick={onDelete} title={`Delete ${label}`}>
+          <Trash2 className="mr-1 h-3 w-3" />
+          Delete
+        </Button>
+      ) : onSuspend ? (
+        <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-amber-700" onClick={onSuspend} title={`Suspend ${label}`}>
+          <Archive className="mr-1 h-3 w-3" />
+          Suspend
+        </Button>
+      ) : null}
       <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-slate-700" onClick={onArchive} title={`Archive ${label}`}>
         <Archive className="mr-1 h-3 w-3" />
         Archive

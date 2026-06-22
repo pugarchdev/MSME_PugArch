@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import { clearGuestCart } from '../features/marketplace/hooks/useGuestCart';
 
 interface User {
   id: string;
@@ -227,6 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (res.ok) {
           localStorage.removeItem('jsg_guest_cart_token');
           localStorage.removeItem('jsg_guest_cart');
+          clearGuestCart();
           api.invalidate('/api/cart');
         }
       }).catch(() => undefined);

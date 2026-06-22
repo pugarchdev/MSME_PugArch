@@ -44,7 +44,8 @@ import {
   Gavel,
   UsersRound,
   MessageSquare,
-  Mail
+  Mail,
+  MapPin
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -71,6 +72,7 @@ interface SidebarProps {
 const preloadRegistry: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('../../views/Dashboard'),
   '/master-admin': () => import('../../features/masterAdmin/pages/MasterAdminPage'),
+  '/buyer/create-procurement': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/drafts': () => import('../../features/procurementWizard/pages/ProcurementDraftsPage'),
   '/buyer/procurements': () => import('../../features/requirements/pages/RequirementsPage'),
@@ -103,6 +105,7 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/seller/messages': () => import('../../features/messages/pages/MessagesPage'),
   '/buyer/requirements': () => import('../../features/requirements/pages/RequirementsPage'),
   '/buyer/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
+  '/buyer/address-book': () => import('../../features/directPurchase/pages/AddressBookPage'),
   '/buyer/rfq': () => import('../../features/rfq/pages/RfqPage'),
   '/reports': () => import('../../features/reports/pages/RoleReportsPage'),
   '/seller/rfq': () => import('../../features/rfq/pages/RfqPage'),
@@ -390,7 +393,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Bank Details', path: '/shg/bank-details', icon: Landmark, roles: ['shg'] },
     { label: 'Documents', path: '/shg/documents', icon: FileText, roles: ['shg'] },
     { label: 'Products', path: '/shg/products', icon: ShoppingCart, roles: ['shg'] },
-    { label: 'Orders', path: '/shg/orders', icon: ClipboardList, roles: ['shg'] },
+    { label: 'SHG Orders', path: '/shg/orders', icon: ClipboardList, roles: ['shg'] },
     { label: 'Meetings', path: '/shg/meetings', icon: ClipboardCheck, roles: ['shg'] },
     { label: 'Support', path: '/shg/support', icon: Bell, roles: ['shg'] },
     { label: 'Master Console', path: '/master-admin', icon: ShieldCheck, roles: ['master_admin'], permission: 'company.manage' },
@@ -435,7 +438,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
-      { label: 'Create Procurement', path: '/buyer/procurement/create', icon: ClipboardCheck, roles: ['buyer'] },
+      { label: 'Create Procurement', path: '/buyer/create-procurement', icon: ClipboardCheck, roles: ['buyer'] },
       { label: 'Procurement Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
       { label: 'My Procurements', path: '/buyer/procurements', icon: ClipboardList, roles: ['buyer'] },
       { label: 'Direct Purchases', path: '/buyer/direct-purchase', icon: ShoppingCart, roles: ['buyer'] },
@@ -489,6 +492,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'Administration', icon: Settings, roles: ['buyer', 'seller'], children: [
       { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+      { label: 'Delivery Addresses', path: '/buyer/address-book', icon: MapPin, roles: ['buyer'] },
       { label: 'Settings', path: user?.role === 'seller' ? '/seller/settings' : '/buyer/profile', icon: Settings, roles: ['buyer', 'seller'] },
       { label: 'Help', path: '/help', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
     ] },
@@ -496,7 +500,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Disputes', path: '/seller/disputes', icon: AlertTriangle, roles: ['seller'] },
     { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Disputes', path: '/admin/disputes', icon: AlertTriangle, roles: ['admin'] },
-    { label: isShgAccount ? 'SHG Hub' : 'Seller Hub', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: isShgAccount ? UsersRound : Store, roles: ['seller'] },
+    ...(!isShgAccount ? [{ label: 'Seller Hub', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: Store, roles: ['seller'] }] : []),
     { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
     { label: 'User Guide', path: '/user-guide', icon: BookOpen, roles: ['admin'] },
   ], [isShgAccount, user]);

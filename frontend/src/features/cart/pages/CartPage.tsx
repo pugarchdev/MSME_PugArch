@@ -88,12 +88,14 @@ export default function CartPage() {
     const allTechApproved = cart?.items.every(i => i.technicalApproved === true) ?? false;
     const isSubmittable = canTransact && cart?.status === 'ACTIVE' && cart.items.length > 0;
 
-    const handleRemove = async (item: CartItemDto) => {
-        if (!window.confirm(`Remove "${item.itemName}" from the cart?`)) return;
-        await runWithToast(() => removeMut.mutateAsync(item.id), {
-            loading: 'Removing...',
-            success: 'Item removed',
-            error: 'Failed to remove'
+    const handleRemove = (item: CartItemDto) => {
+        removeMut.mutate(item.id, {
+            onSuccess: () => {
+                toast.success('Item removed');
+            },
+            onError: (err: any) => {
+                toast.error(err?.message || 'Failed to remove');
+            }
         });
     };
 
@@ -373,7 +375,6 @@ export default function CartPage() {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemove(item)}
-                                                            disabled={removeMut.isPending}
                                                             className="flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-40"
                                                             title="Remove from cart"
                                                         >
@@ -402,13 +403,17 @@ export default function CartPage() {
                                 Created by {cart.createdBy?.name} · {formatDateTime(cart.createdAt)}
                             </p>
                             {isSubmittable && (
-                                <Button
-                                    onClick={() => setShowSubmitModal(true)}
-                                    disabled={submitMut.isPending}
-                                    className="bg-[#12335f] text-white hover:bg-[#0e2a4f]"
-                                >
-                                    <Send className="mr-2 h-4 w-4" /> Submit for Approval
-                                </Button>
+                                <div className="flex flex-col items-end space-y-1">
+                                    <Button
+                                        onClick={() => router.push('/buyer/direct-purchase/checkout')}
+                                        className="bg-[#12335f] text-white hover:bg-[#0e2a4f] font-bold"
+                                    >
+                                        Checkout
+                                    </Button>
+                                    <span className="text-[10px] font-semibold text-slate-500">
+                                        Proceed to Direct Purchase review and approval.
+                                    </span>
+                                </div>
                             )}
                         </div>
                     )}
@@ -464,11 +469,14 @@ export default function CartPage() {
                 <SubmitModal
                     onClose={() => setShowSubmitModal(false)}
                     onSubmit={async (notes) => {
-                        await runWithToast(() => submitMut.mutateAsync(notes), {
+                        const submittedCart = await runWithToast(() => submitMut.mutateAsync(notes), {
                             loading: 'Submitting...',
                             success: 'Cart submitted for Finance approval',
                             error: 'Failed to submit'
                         });
+                        if (submittedCart?.id) {
+                            router.push(`/cart?id=${submittedCart.id}`);
+                        }
                         setShowSubmitModal(false);
                     }}
                     pending={submitMut.isPending}

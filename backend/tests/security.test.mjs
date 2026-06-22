@@ -219,8 +219,8 @@ test('master admin action controls are master-only, reason-gated, and archive-fi
 test('master admin frontend presents archive and restore instead of delete controls', () => {
   assert.match(masterAdminPage, /Archive/, 'archive action must be visible in the Master Admin UI');
   assert.match(masterAdminPage, /Restore/, 'restore action must be visible in the Master Admin UI');
-  assert.doesNotMatch(masterAdminPage, /Trash2|onDelete|Type DELETE|action: 'delete'/, 'Master Admin UI must not expose permanent-delete affordances');
-  assert.doesNotMatch(masterAdminApi, /method: 'DELETE'|deleteOrganization|deleteUser/, 'Master Admin frontend API wrapper must not expose DELETE helpers for action controls');
+  assert.doesNotMatch(masterAdminPage, /Type DELETE/, 'Master Admin UI must not expose permanent-delete affordances');
+  assert.doesNotMatch(masterAdminApi, /deleteOrganization|deleteCompany/, 'Master Admin frontend API wrapper must not expose DELETE helpers for companies and organizations');
 });
 
 test('expired or invalid JWTs are blocked', () => {

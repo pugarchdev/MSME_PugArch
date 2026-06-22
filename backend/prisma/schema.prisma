@@ -96,6 +96,8 @@ model User {
   requirements                       Requirement[]                         @relation("RequirementBuyer")
   directPurchasesAsBuyer             DirectPurchase[]                      @relation("DirectPurchaseBuyer")
   directPurchasesAsSeller            DirectPurchase[]                      @relation("DirectPurchaseSeller")
+  addressGroups                      AddressGroup[]                        @relation("UserAddressGroups")
+  deliveryAddresses                  DeliveryAddress[]                      @relation("UserDeliveryAddresses")
   quoteResponses                     QuoteResponse[]                       @relation("QuoteResponseSeller")
   tenderParticipants                 TenderParticipant[]                   @relation("TenderParticipantSeller")
   technicalEvaluations               TechnicalEvaluationResult[]           @relation("TechnicalEvaluationEvaluator")
@@ -352,6 +354,8 @@ model Organization {
   archivedBy                   Int?
   closureReason                String?
   users                        User[]
+  addressGroups                AddressGroup[]
+  deliveryAddresses            DeliveryAddress[]
   company                      Company?              @relation(fields: [companyId], references: [id])
   buyerProfiles                BuyerProfile[]
   sellerProfiles               SellerProfile[]
@@ -1242,6 +1246,8 @@ model Requirement {
   estimatedValue    Decimal?          @db.Decimal(18, 2)
   currency          String            @default("INR")
   requiredBy        DateTime?
+  payload           Json?             // Complete Create Procurement wizard data
+  draftStep         Int?              // Current step in wizard
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   buyer             User              @relation("RequirementBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
@@ -1256,6 +1262,15 @@ model Requirement {
   @@index([categoryId])
   @@index([status])
   @@index([procurementMethod])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([requiredBy])
+  // Composite indexes for common query patterns
+  @@index([buyerId, status])
+  @@index([buyerId, procurementMethod])
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+  @@index([procurementMethod, status])
 }
 
 model RequirementItem {
@@ -1293,6 +1308,22 @@ model DirectPurchase {
   requirement    Requirement?         @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   buyer          User                 @relation("DirectPurchaseBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
   seller         User                 @relation("DirectPurchaseSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  consigneeName        String?
+  mobileNumber         String?
+  email                String?
+  deliveryAddressId    Int?
+  deliveryAddressText  String?
+  department           String?
+  budgetHead           String?
+  costCenter           String?
+  justification        String?
+  remarks              String?
+  deliveryInstructions String?
+  requiredDeliveryDate DateTime?
+  approvalStatus       String?
+  workflowStatus       String?
+  
+  deliveryAddress      DeliveryAddress?     @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
 
   @@index([requirementId])
   @@index([buyerId, status])
@@ -3565,6 +3596,7 @@ enum RequirementStatus {
 
 enum DirectPurchaseStatus {
   DRAFT
+  PENDING_APPROVAL
   REQUESTED
   APPROVED
   REJECTED
@@ -4679,4 +4711,59 @@ model InvoiceFactoring {
   @@index([status])
   @@index([sellerId])
   @@index([financierId])
+}
+
+model AddressGroup {
+  id               Int               @id @default(autoincrement())
+  buyerId          Int
+  organizationId   Int?
+  groupName        String
+  groupDescription String?
+  isDefaultGroup   Boolean           @default(false)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  buyer            User              @relation("UserAddressGroups", fields: [buyerId], references: [id], onDelete: Cascade)
+  organization     Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  addresses        DeliveryAddress[]
+  
+  @@index([buyerId])
+  @@index([organizationId])
+}
+
+model DeliveryAddress {
+  id                    Int             @id @default(autoincrement())
+  buyerId               Int
+  organizationId        Int?
+  addressGroupId        Int?
+  addressLabel          String
+  organizationName      String?
+  contactPersonName     String
+  mobileNumber          String
+  alternateMobileNumber String?
+  email                 String?
+  addressLine1          String
+  addressLine2          String?
+  city                  String
+  district              String
+  state                 String
+  pincode               String
+  landmark              String?
+  gstState              String?
+  placeOfSupply         String?
+  addressType           String          @default("OFFICE") // OFFICE / WAREHOUSE / PROJECT_SITE / FACTORY / OTHER
+  isDefault             Boolean         @default(false)
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  
+  addressGroup          AddressGroup?   @relation(fields: [addressGroupId], references: [id], onDelete: SetNull)
+  buyer                 User            @relation("UserDeliveryAddresses", fields: [buyerId], references: [id], onDelete: Cascade)
+  organization          Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  directPurchases       DirectPurchase[]
+  
+  @@index([buyerId])
+  @@index([organizationId])
+  @@index([addressGroupId])
 }

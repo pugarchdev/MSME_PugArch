@@ -1,4 +1,4 @@
-import { transporter } from './services/mail.service.js';
+import { getTransporter } from './services/mail.service.js';
 import { env } from './config/env.js';
 
 async function testMail() {
@@ -9,7 +9,7 @@ async function testMail() {
   console.log('Pass:', env.SMTP_PASS ? '********' : 'missing');
 
   try {
-    const info = await transporter.sendMail({
+    const info = await getTransporter().sendMail({
       from: `"MSME Procurement Test" <${env.SMTP_USER}>`,
       to: env.SMTP_USER, // send to self
       subject: 'Test Email from JsgSmile Portal',

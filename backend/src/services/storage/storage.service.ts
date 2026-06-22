@@ -271,7 +271,7 @@ export const uploadFile = async (
     }
   });
 
-  await auditLog({
+  void auditLog({
     actorUserId: context.ownerId,
     actorRole: context.ownerRole,
     action: 'file.uploaded',
@@ -287,7 +287,7 @@ export const uploadFile = async (
       size: asset.size,
       checksum: asset.checksum
     }
-  });
+  }).catch(err => console.warn('[Audit] file.uploaded failed:', err?.message || err));
 
   return asset;
 };

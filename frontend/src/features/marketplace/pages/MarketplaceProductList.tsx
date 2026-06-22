@@ -18,7 +18,7 @@ import { CompareToggleButton } from '../components/CompareToggleButton';
 import { CompareTray } from '../components/CompareTray';
 import { CategoryCatalogueStrip } from '../components/CategoryCatalogueStrip';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { cn } from '../../../lib/utils';
 
 type MarketplaceSortKey = 'name' | 'seller' | 'category' | 'price' | 'status';
@@ -34,7 +34,7 @@ export default function MarketplaceProductList() {
     const router = useRouter();
     const isServices = pathname.includes('/services') || searchParams?.get('type') === 'services';
     const queryClient = useQueryClient();
-    const { items: cartItems, add: addGuestCartItem, update: updateGuestCartItem, count: cartCount } = useGuestCart();
+    const { items: cartItems, add: addCartItem, update: updateCartItemQty, count: cartCount, getQuantity } = useMarketplaceCart();
 
     const [query, setQuery] = useState(searchParams?.get('q') || '');
     const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
@@ -189,71 +189,6 @@ export default function MarketplaceProductList() {
         }
     };
 
-    const cartMutation = useMutation({
-        mutationFn: async ({ id, isService }: { id: number; isService: boolean }) => {
-            return marketplaceApi.addGuestCartItem(isService ? { serviceId: id, quantity: 1 } : { productId: id, quantity: 1 });
-        },
-        onMutate: async ({ id, isService }) => {
-            await queryClient.cancelQueries({ queryKey: ['guestCart'] });
-            const previousCart = queryClient.getQueryData(['guestCart']);
-            const currentCart = previousCart as any || { items: [] };
-            
-            const existingIndex = currentCart.items?.findIndex((item: any) => 
-                isService ? item.serviceId === id : item.productId === id
-            );
-
-            let newItems = [...(currentCart.items || [])];
-            if (existingIndex >= 0) {
-                newItems[existingIndex] = {
-                    ...newItems[existingIndex],
-                    quantity: (newItems[existingIndex].quantity || 0) + 1
-                };
-            } else {
-                newItems.push({
-                    id: Date.now(),
-                    productId: isService ? undefined : id,
-                    serviceId: isService ? id : undefined,
-                    quantity: 1,
-                    itemType: isService ? 'SERVICE' : 'PRODUCT'
-                });
-            }
-
-            queryClient.setQueryData(['guestCart'], {
-                ...currentCart,
-                items: newItems
-            });
-
-            return { previousCart };
-        },
-        onSuccess: (data) => {
-            if (data?.cart) {
-                queryClient.setQueryData(['guestCart'], data.cart);
-            }
-            queryClient.invalidateQueries({ queryKey: ['guestCart'] });
-        },
-        onError: (error: any, variables, context: any) => {
-            if (context?.previousCart) {
-                queryClient.setQueryData(['guestCart'], context.previousCart);
-            }
-            toast.info(error?.message || 'Item saved locally. Cart sync will retry when the server is available.');
-        }
-    });
-
-    const cartQuantityMutation = useMutation({
-        mutationFn: async ({ id, isService, quantity }: { id: number; isService: boolean; quantity: number }) => {
-            return marketplaceApi.updateGuestCartItem(isService ? { serviceId: id, quantity } : { productId: id, quantity });
-        },
-        onSuccess: (data) => {
-            if (data?.cart) {
-                queryClient.setQueryData(['guestCart'], data.cart);
-            }
-            queryClient.invalidateQueries({ queryKey: ['guestCart'] });
-        },
-        onError: (error: any) => {
-            toast.info(error?.message || 'Cart quantity saved locally. Cart sync will retry when the server is available.');
-        }
-    });
-
     const handleAddToCart = (item: any, options: { showToast?: boolean } = {}) => {
         if (!item || item.id < 0) {
             toast.info(`Open a live ${isServices ? 'service' : 'product'} listing to add it to cart.`);
@@ -262,41 +197,27 @@ export default function MarketplaceProductList() {
 
         const itemType = isServices ? 'service' : 'product';
         const itemPrice = Number(isServices ? item.basePrice || 0 : item.price || 0);
-        addGuestCartItem({
-            id: item.id,
-            name: item.name,
-            price: Number.isFinite(itemPrice) && itemPrice > 0 ? itemPrice : undefined,
-            unit: isServices ? item.pricingModel : item.unitOfMeasure,
-            imageUrl: resolveMarketplaceImage(item, itemType),
-            category: item.category?.name,
-            type: itemType
-        });
-
-        cartMutation.mutate({ id: item.id, isService: isServices });
-        if (options.showToast !== false) {
-            toast.success(`${item.name} added to cart`);
-        }
-        marketplaceApi.trackInteraction({
-            itemId: item.id,
-            itemType: isServices ? 'SERVICE' : 'PRODUCT',
-            action: 'ADD_TO_CART',
-            metadata: { source: isServices ? 'services-list' : 'products-list' },
-        }).catch(() => undefined);
+        addCartItem(
+            {
+                id: item.id,
+                name: item.name,
+                price: Number.isFinite(itemPrice) && itemPrice > 0 ? itemPrice : undefined,
+                unit: isServices ? item.pricingModel : item.unitOfMeasure,
+                imageUrl: resolveMarketplaceImage(item, itemType),
+                category: item.category?.name,
+                type: itemType
+            },
+            { source: isServices ? 'services-list' : 'products-list', showToast: options.showToast }
+        );
     };
 
     const getCartQuantity = (itemId: number) => {
-        const itemType = isServices ? 'service' : 'product';
-        return cartItems.find(item => item.id === itemId && item.type === itemType)?.quantity || 0;
+        return getQuantity(itemId, isServices ? 'service' : 'product');
     };
 
     const handleCartQuantityChange = (item: any, nextQuantity: number) => {
         const itemType = isServices ? 'service' : 'product';
-        const quantity = Math.max(0, nextQuantity);
-        updateGuestCartItem(item.id, itemType, quantity);
-        cartQuantityMutation.mutate({ id: item.id, isService: isServices, quantity });
-        if (quantity === 0) {
-            toast.info(`${item.name} removed from cart`);
-        }
+        updateCartItemQty(item.id, itemType, nextQuantity);
     };
 
     const handleRequestQuote = (item: any) => {
@@ -331,6 +252,7 @@ export default function MarketplaceProductList() {
             return;
         }
         const params = new URLSearchParams({
+            intent: 'quote',
             sellerId: String(sellerUserId),
             subject: `Quote request: ${item.name}`,
             message: `Hello, I would like to request a quotation for ${item.name}.\n\nCategory: ${item.category?.name || 'Not specified'}\nPlease share best price, availability, delivery timeline, payment terms, and applicable taxes.`
@@ -398,8 +320,9 @@ export default function MarketplaceProductList() {
                             Services Directory
                         </button>
 
-                        {!isSellerDashboardMarketplace && (
-                            <div className="ml-auto pb-2">
+                        <div className="ml-auto pb-2 flex items-center gap-2">
+                            <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
+                            {!isSellerDashboardMarketplace && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -419,8 +342,8 @@ export default function MarketplaceProductList() {
                                         </span>
                                     )}
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
 
                     <div className="-mx-4 mb-5 sm:mx-0">
@@ -527,7 +450,6 @@ export default function MarketplaceProductList() {
                             <option value="verified">Verified Sellers First</option>
                             <option value="name">Name A-Z</option>
                         </select>
-                        <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     </div>
 
                     {/* Results Count */}

@@ -14,6 +14,18 @@ const safeJson = (rawBody: Buffer) => {
 const hmac = (rawBody: Buffer, secret: string) =>
   crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
+const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
+
+const verifyTimestamp = (headers: Record<string, string | string[] | undefined>): boolean => {
+  const timestampHeader = String(headers['x-razorpay-timestamp'] || headers['x-razorpay-request-timestamp'] || '');
+  if (!timestampHeader) return false;
+  const timestamp = Number(timestampHeader);
+  if (Number.isNaN(timestamp)) return false;
+  const now = Date.now();
+  const diff = Math.abs(now - timestamp);
+  return diff <= WEBHOOK_TIMESTAMP_TOLERANCE_MS;
+};
+
 export const razorpayProvider: PaymentProvider = {
   gateway: 'razorpay',
 
@@ -36,7 +48,9 @@ export const razorpayProvider: PaymentProvider = {
     const eventType = String(payload.event || 'unknown');
     const signature = String(headers['x-razorpay-signature'] || '');
     const secret = env.RAZORPAY_WEBHOOK_SECRET || '';
-    const verified = Boolean(secret && signature && signature === hmac(rawBody, secret));
+    const signatureValid = Boolean(secret && signature && signature === hmac(rawBody, secret));
+    const timestampValid = verifyTimestamp(headers);
+    const verified = signatureValid && timestampValid;
     const payment = payload?.payload?.payment?.entity || {};
     const order = payload?.payload?.order?.entity || {};
     const statusText = String(payment.status || order.status || '').toLowerCase();
@@ -49,7 +63,7 @@ export const razorpayProvider: PaymentProvider = {
       referenceId: String(payment.notes?.referenceId || order.notes?.referenceId || ''),
       gatewayOrderId: String(payment.order_id || order.id || ''),
       gatewayPaymentId: String(payment.id || ''),
-      failureReason: verified ? undefined : 'Invalid Razorpay webhook signature',
+      failureReason: verified ? undefined : (!signatureValid ? 'Invalid Razorpay webhook signature' : 'Webhook timestamp outside acceptable window'),
       metadata: { providerStatus: statusText }
     };
   }

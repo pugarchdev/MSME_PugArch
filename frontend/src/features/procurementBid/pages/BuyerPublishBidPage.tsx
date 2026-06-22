@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   BadgeIndianRupee,
@@ -143,6 +143,30 @@ const procurementTypes = [
   { key: 'Reverse Auction', icon: Gavel, title: 'Reverse Auction', description: 'Future optional flow after bid publication.', future: true },
 ];
 
+const methodToPublishType: Record<string, string> = {
+  tender: 'Tender',
+  rfq: 'RFQ',
+  boq: 'BOQ Bid',
+  'custom-product': 'Product Bid',
+  'custom-service': 'Service Bid',
+  pac: 'Tender',
+  'rate-contract': 'Rate Contract',
+  emergency: 'Tender',
+  'reverse-auction': 'Reverse Auction',
+};
+
+const methodToBidType: Record<string, string> = {
+  'custom-service': 'Service',
+  'rate-contract': 'Rate Contract',
+  boq: 'Works',
+};
+
+const methodToTitle = (method: string) => method
+  .split('-')
+  .filter(Boolean)
+  .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(' ');
+
 const documentOptions = [
   'GST Certificate', 'PAN Card', 'Udyam Certificate', 'Company Registration', 'Turnover Certificate', 'CA Certificate',
   'Experience Certificate', 'Past Work Order', 'Completion Certificate', 'Product Catalogue', 'Technical Compliance Sheet',
@@ -179,12 +203,22 @@ const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.max(1, Math.r
 export default function BuyerPublishBidPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedMethod = String(searchParams?.get('method') || '').toLowerCase();
   const [form, setForm] = useState<FormState>(() => ({
     ...initialForm,
     buyerOrganizationName: user?.organization?.organizationName || user?.buyerProfile?.organizationName || user?.name || '',
     contactPersonName: user?.name || '',
     contactEmail: user?.email || '',
     contactMobile: user?.mobile || '',
+    procurementType: methodToPublishType[selectedMethod] || initialForm.procurementType,
+    bidType: methodToBidType[selectedMethod] || initialForm.bidType,
+    title: selectedMethod ? `${methodToTitle(selectedMethod)} procurement` : initialForm.title,
+    generalTerms: selectedMethod === 'pac'
+      ? 'PAC route selected from Create Procurement. Attach PAC certificate and single-source justification before publishing.'
+      : selectedMethod === 'emergency'
+        ? 'Emergency procurement route selected from Create Procurement. Record approval authority and audit justification before publishing.'
+        : initialForm.generalTerms,
   }));
   const [eligibility, setEligibility] = useState<Record<string, boolean>>({
     gstRequired: true,
@@ -384,6 +418,24 @@ export default function BuyerPublishBidPage() {
           subtitle="Create a buyer bid draft, attach tender documents, and submit it for admin approval."
           action={draftBid ? <StatusBadge label={draftBid.approvalStatus || draftBid.status || 'Draft'} /> : undefined}
         />
+
+        <div className="mt-5 flex flex-col gap-3 border border-blue-100 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-blue-700">Create Procurement is the main entry point</p>
+            <p className="mt-1 text-sm font-bold">
+              {selectedMethod
+                ? `${methodToTitle(selectedMethod)} was selected in Create Procurement. This page is the linked bid workbench for final tender/RFQ publication.`
+                : 'For new procurements, start from Create Procurement so the correct method, validation, draft, and approval flow are selected first.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/buyer/create-procurement')}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black uppercase text-white"
+          >
+            Open Create Procurement
+          </button>
+        </div>
 
         {guard && (
           <div className={`mt-5 flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between ${guard.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>

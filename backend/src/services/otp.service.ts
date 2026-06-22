@@ -22,6 +22,7 @@ const OTP_TTL_SECONDS = 5 * 60;
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_SEND_WINDOW_SECONDS = 15 * 60;
 const MAX_OTP_SENDS = 5;
+const MEMORY_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 type OtpState = {
   id?: number;
@@ -37,6 +38,24 @@ type OtpState = {
 // In-Memory fallback store when Redis is not ready/configured (e.g. preview environments)
 const localOtpStore = new Map<string, OtpState>();
 const localSendCounts = new Map<string, { count: number; expiresAt: number }>();
+
+const cleanupMemoryStores = () => {
+  const now = Date.now();
+  for (const [key, state] of localOtpStore.entries()) {
+    if (new Date(state.expiresAt).getTime() < now) {
+      localOtpStore.delete(key);
+    }
+  }
+  for (const [key, record] of localSendCounts.entries()) {
+    if (record.expiresAt <= now) {
+      localSendCounts.delete(key);
+    }
+  }
+};
+
+if (typeof setInterval === 'function') {
+  setInterval(cleanupMemoryStores, MEMORY_CLEANUP_INTERVAL_MS).unref?.();
+}
 
 const normalizeIdentity = (identity: string) => identity.trim().toLowerCase();
 const keyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otp(purpose, identity);

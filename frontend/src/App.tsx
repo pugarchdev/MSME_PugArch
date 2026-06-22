@@ -60,6 +60,8 @@ const FraudAlertsPage = lazy(() => import('./features/fraudAlerts/pages/FraudAle
 const RequirementsPage = lazy(() => import('./features/requirements/pages/RequirementsPage'));
 const RfqPage = lazy(() => import('./features/rfq/pages/RfqPage'));
 const DirectPurchasePage = lazy(() => import('./features/directPurchase/pages/DirectPurchasePage'));
+const DirectPurchaseCheckoutPage = lazy(() => import('./features/directPurchase/pages/DirectPurchaseCheckoutPage'));
+const AddressBookPage = lazy(() => import('./features/directPurchase/pages/AddressBookPage'));
 const RbacPanel = lazy(() => import('./views/RbacPanel'));
 const OrganizationManagement = lazy(() => import('./views/OrganizationManagement'));
 const NotificationCenter = lazy(() => import('./views/NotificationCenter'));
@@ -427,7 +429,7 @@ export default function App() {
     if (/^\/seller\/tenders\/[^/]+\/bid$/.test(pathname) && roleOk(user.role, ['seller'])) return <CreateQuotation />;
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
-    if (pathname === '/buyer/procurement/create' && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
+    if ((pathname === '/buyer/create-procurement' || pathname === '/buyer/procurement/create' || /^\/buyer\/create-procurement\/[^/]+$/.test(pathname)) && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
     if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
     if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <Quotations />;
@@ -436,6 +438,8 @@ export default function App() {
     if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage />;
+    if (pathname === '/buyer/address-book' && roleOk(user.role, ['buyer'])) return <AddressBookPage />;
+    if ((pathname === '/buyer/direct-purchase/checkout' || pathname === '/buyer/create-procurement/direct-purchase/checkout') && roleOk(user.role, ['buyer'])) return <DirectPurchaseCheckoutPage />;
     if (pathname === '/buyer/rfq' && roleOk(user.role, ['buyer'])) return <RfqPage />;
     if (pathname === '/seller/rfq' && roleOk(user.role, ['seller'])) return <RfqPage />;
     if (pathname === '/seller/direct-purchase' && roleOk(user.role, ['seller'])) return <DirectPurchasePage />;

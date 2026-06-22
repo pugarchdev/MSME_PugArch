@@ -26,16 +26,30 @@ import {
   Users,
   Loader2,
   X,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
-import { PROCUREMENT_DRAFTS_ROUTE } from '../api';
+import { PROCUREMENT_DRAFTS_ROUTE, fetchProcurementDrafts, fetchProcurementDraft, saveProcurementDraft, submitProcurementDraft, uploadProcurementDocument } from '../api';
 import { DELIVERY_TYPES, PAYMENT_TERMS, QUANTITY_UNITS } from '../../../constants/dropdowns';
 import { marketplaceApi, type MarketplaceSeller } from '../../marketplace/api';
 
-type ProcurementType = 'direct' | 'comparison' | 'rfq' | 'tender' | 'auction';
+type ProcurementType =
+  | 'direct-purchase'
+  | 'l1-comparison'
+  | 'rfq'
+  | 'tender'
+  | 'reverse-auction'
+  | 'boq'
+  | 'custom-product'
+  | 'custom-service'
+  | 'pac'
+  | 'rate-contract'
+  | 'emergency'
+  | 'repeat-order';
 type StepKind = 'basics' | 'items' | 'vendors' | 'schedule' | 'rules' | 'documents' | 'approval' | 'review';
 
 type ItemRow = {
@@ -52,12 +66,28 @@ type ItemRow = {
   specificationFileName: string;
 };
 
+type ConsigneeRow = {
+  id: string;
+  name: string;
+  location: string;
+  contact: string;
+  quantity: number;
+};
+
 type DocumentRow = {
   id: string;
   name: string;
   requirement: 'Mandatory' | 'Optional' | 'Not Required';
   fileName: string;
   version: number;
+  fileAssetId?: number | null;
+  documentUrl?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  uploadProgress?: number;
+  uploadError?: string;
 };
 
 type PaymentMilestone = {
@@ -68,6 +98,7 @@ type PaymentMilestone = {
 };
 
 type Draft = {
+  id?: number;
   type: ProcurementType;
   basics: {
     title: string;
@@ -117,6 +148,7 @@ type Draft = {
     hideVendorIdentity: boolean;
   };
   items: ItemRow[];
+  consigneeDetails: ConsigneeRow[];
   documents: DocumentRow[];
   approval: {
     workflow: 'Department Approval' | 'Finance + Procurement' | 'Competent Authority';
@@ -181,11 +213,14 @@ type Draft = {
 
 type MethodConfig = {
   id: ProcurementType;
+  slug: ProcurementType;
   title: string;
   subtitle: string;
   icon: typeof ShoppingCart;
   accent: string;
   route?: string;
+  badge: string;
+  valueHint: string;
   fit: string[];
   gates: string[];
 };
@@ -195,6 +230,14 @@ type StepConfig = {
   label: string;
   description: string;
   icon: typeof ClipboardCheck;
+};
+
+type AdvisorState = {
+  estimatedValue: string;
+  catalogAvailable: boolean;
+  technicalEvaluation: boolean;
+  proprietary: boolean;
+  boqRequired: boolean;
 };
 
 const DRAFT_KEY = 'msme:guided-procurement-create:v1';
@@ -343,56 +386,182 @@ const APPROVAL_WORKFLOW_OPTIONS = ['Department Approval', 'Finance + Procurement
 const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR'];
 const OTHER_OPTION = 'Other';
 
+const isTenderMethod = (type: ProcurementType) =>
+  ['tender', 'boq', 'custom-product', 'custom-service', 'pac', 'rate-contract', 'emergency'].includes(type);
+
+const isDirectMethod = (type: ProcurementType) =>
+  ['direct-purchase', 'pac', 'repeat-order'].includes(type);
+
+const isAuctionMethod = (type: ProcurementType) => type === 'reverse-auction';
+
+const isComparisonMethod = (type: ProcurementType) => type === 'l1-comparison';
+
+const normalizeProcurementType = (type?: string): ProcurementType => {
+  const legacy: Record<string, ProcurementType> = {
+    direct: 'direct-purchase',
+    comparison: 'l1-comparison',
+    auction: 'reverse-auction',
+  };
+  const normalized = legacy[type || ''] || type;
+  return methodConfigs.some(method => method.id === normalized) ? normalized as ProcurementType : 'rfq';
+};
+
 const methodConfigs: MethodConfig[] = [
   {
-    id: 'direct',
+    id: 'direct-purchase',
+    slug: 'direct-purchase',
     title: 'Direct Purchase',
-    subtitle: 'Known item, low value, quick approval',
+    subtitle: 'Known item, catalogue or identified seller, short approval path',
     icon: ShoppingCart,
     accent: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     route: '/buyer/direct-purchase',
+    badge: 'Common',
+    valueHint: 'Best for low-value or approved direct buys',
     fit: ['Low value or PAC purchase', 'Known seller or catalogue item', 'Budget check before approval'],
     gates: ['Vendor and bank verification', 'Budget availability', 'Short approval workflow'],
   },
   {
-    id: 'comparison',
+    id: 'l1-comparison',
+    slug: 'l1-comparison',
     title: 'L1 Comparison',
     subtitle: 'Compare sellers before order',
     icon: BarChart3,
     accent: 'border-cyan-200 bg-cyan-50 text-cyan-800',
     route: '/buyer/marketplace',
+    badge: 'Recommended',
+    valueHint: 'Use where comparable offers exist',
     fit: ['Comparable catalogue items', 'Need price reasonableness record', 'Shortlisting 3 or more sellers'],
     gates: ['Equivalent specifications', 'Tax and freight comparison', 'Approval of selected L1'],
   },
   {
     id: 'rfq',
+    slug: 'rfq',
     title: 'RFQ / eRFQ',
     subtitle: 'Request quotations with controlled vendor invite',
     icon: FileText,
     accent: 'border-blue-200 bg-blue-50 text-blue-800',
     route: '/buyer/rfq',
+    badge: 'Common',
+    valueHint: 'Useful for custom specs and supplier quotes',
     fit: ['Custom specification', 'Need quote validity', 'Open or invited supplier set'],
     gates: ['Clear BOQ/specification', 'Submission schedule', 'Commercial and eligibility terms'],
   },
   {
     id: 'tender',
-    title: 'Tender / e-Bid',
+    slug: 'tender',
+    title: 'Tender / Open Bid',
     subtitle: 'Published bidding with committee evaluation',
     icon: ClipboardCheck,
     accent: 'border-amber-200 bg-amber-50 text-amber-900',
-    route: '/buyer/tenders',
+    route: '/buyer/publish-bid?method=tender',
+    badge: 'Compliance Required',
+    valueHint: 'Formal bids and higher-value procurement',
     fit: ['Higher value procurement', 'Two-bid or formal compliance checks', 'Public audit trail needed'],
     gates: ['NIT and document checklist', 'Bid opening committee', 'Technical and financial evaluation'],
   },
   {
-    id: 'auction',
+    id: 'reverse-auction',
+    slug: 'reverse-auction',
     title: 'Reverse Auction',
     subtitle: 'Price discovery after qualified competition',
     icon: Gavel,
     accent: 'border-violet-200 bg-violet-50 text-violet-800',
     route: '/reverse-auctions/create',
+    badge: 'Advanced',
+    valueHint: 'Use after technical qualification',
     fit: ['Comparable items and qualified bidders', 'Need transparent price reduction', 'RA intent declared upfront'],
     gates: ['Start and reserve price', 'Minimum decrement', 'Auto-extension and rank visibility rules'],
+  },
+  {
+    id: 'boq',
+    slug: 'boq',
+    title: 'BOQ Based Bid',
+    subtitle: 'Line item bidding with BOQ schedule and validation',
+    icon: Package,
+    accent: 'border-slate-200 bg-slate-50 text-slate-800',
+    route: '/buyer/publish-bid?method=boq',
+    badge: 'Advanced',
+    valueHint: 'Works, AMC, item-wise rates',
+    fit: ['Multiple line items', 'Need rate and tax comparison', 'BOQ template or line table available'],
+    gates: ['BOQ upload or completed line items', 'Quantity and unit validation', 'Commercial schedule review'],
+  },
+  {
+    id: 'custom-product',
+    slug: 'custom-product',
+    title: 'Custom Product Bid',
+    subtitle: 'Non-catalogue product with custom technical specifications',
+    icon: ClipboardCheck,
+    accent: 'border-indigo-200 bg-indigo-50 text-indigo-800',
+    route: '/buyer/publish-bid?method=custom-product',
+    badge: 'Approval Required',
+    valueHint: 'Use when catalogue item is unavailable',
+    fit: ['Catalogue item unavailable', 'Golden parameters or drawings required', 'Admin approval may be needed'],
+    gates: ['Unavailability reason', 'Technical specification', 'Drawing/specification attachment'],
+  },
+  {
+    id: 'custom-service',
+    slug: 'custom-service',
+    title: 'Custom Service Bid',
+    subtitle: 'Scope, SLA, manpower, milestones and service terms',
+    icon: Users,
+    accent: 'border-sky-200 bg-sky-50 text-sky-800',
+    route: '/buyer/publish-bid?method=custom-service',
+    badge: 'Service',
+    valueHint: 'For work orders and service contracts',
+    fit: ['Scope of work based procurement', 'SLA or manpower requirement', 'Milestone payment schedule'],
+    gates: ['Scope of work', 'SLA and duration', 'Payment milestone review'],
+  },
+  {
+    id: 'pac',
+    slug: 'pac',
+    title: 'PAC / Proprietary Bid',
+    subtitle: 'Single OEM or proprietary article certificate route',
+    icon: ShieldCheck,
+    accent: 'border-rose-200 bg-rose-50 text-rose-800',
+    route: '/buyer/publish-bid?method=pac',
+    badge: 'Compliance Required',
+    valueHint: 'Single-source justification required',
+    fit: ['OEM/proprietary item', 'No equivalent substitute', 'Competent authority approval required'],
+    gates: ['PAC certificate', 'Manufacturer details', 'Single-source justification'],
+  },
+  {
+    id: 'rate-contract',
+    slug: 'rate-contract',
+    title: 'Rate Contract',
+    subtitle: 'Reusable rate schedule for recurring procurement',
+    icon: CalendarClock,
+    accent: 'border-teal-200 bg-teal-50 text-teal-800',
+    route: '/buyer/publish-bid?method=rate-contract',
+    badge: 'Advanced',
+    valueHint: 'For repeated demand over a validity period',
+    fit: ['Recurring items/services', 'Rate validity needed', 'Quantity slabs or renewal terms'],
+    gates: ['Contract duration', 'Rate validity', 'Renewal and slab terms'],
+  },
+  {
+    id: 'emergency',
+    slug: 'emergency',
+    title: 'Emergency Procurement',
+    subtitle: 'Urgent procurement with audit justification',
+    icon: AlertTriangle,
+    accent: 'border-orange-200 bg-orange-50 text-orange-800',
+    route: '/buyer/publish-bid?method=emergency',
+    badge: 'Urgent',
+    valueHint: 'Use only with emergency justification',
+    fit: ['Operational emergency', 'Shortened timeline', 'Approval authority identified'],
+    gates: ['Emergency justification', 'Approval authority', 'Audit note mandatory'],
+  },
+  {
+    id: 'repeat-order',
+    slug: 'repeat-order',
+    title: 'Repeat Order / Reorder',
+    subtitle: 'Repeat a previous order with same item or seller',
+    icon: RotateCcw,
+    accent: 'border-lime-200 bg-lime-50 text-lime-800',
+    route: '/buyer/direct-purchase?method=repeat-order',
+    badge: 'Common',
+    valueHint: 'Use with prior order reference',
+    fit: ['Same item or service', 'Known previous seller', 'Repeat quantity within policy'],
+    gates: ['Previous order reference', 'Price comparison', 'Reorder reason'],
   },
 ];
 
@@ -408,20 +577,27 @@ const stepLibrary: Record<StepKind, StepConfig> = {
 };
 
 const stepsByType: Record<ProcurementType, StepKind[]> = {
-  direct: ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
-  comparison: ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
+  'direct-purchase': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
+  'l1-comparison': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
   rfq: ['basics', 'items', 'vendors', 'schedule', 'rules', 'documents', 'approval', 'review'],
   tender: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  auction: ['basics', 'items', 'vendors', 'rules', 'schedule', 'documents', 'approval', 'review'],
+  'reverse-auction': ['basics', 'items', 'vendors', 'rules', 'schedule', 'documents', 'approval', 'review'],
+  boq: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
+  'custom-product': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
+  'custom-service': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
+  pac: ['basics', 'items', 'vendors', 'schedule', 'rules', 'documents', 'approval', 'review'],
+  'rate-contract': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
+  emergency: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
+  'repeat-order': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
 };
 
 const defaultDocuments = (type: ProcurementType = 'rfq'): DocumentRow[] => [
-  { id: makeId(), name: type === 'tender' ? 'Tender Specification File' : 'Requirement note / indent approval', requirement: type === 'tender' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: 'BOQ / Price Schedule', requirement: type === 'tender' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: isTenderMethod(type) ? 'Tender Specification File' : 'Requirement note / indent approval', requirement: isTenderMethod(type) ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: type === 'pac' ? 'PAC Certificate' : 'BOQ / Price Schedule', requirement: isTenderMethod(type) || type === 'boq' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
   { id: makeId(), name: 'Terms & Conditions', requirement: 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Annexures / Drawings' : 'Technical specification', requirement: 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Technical Documents' : 'Commercial terms and delivery conditions', requirement: 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'tender' ? 'Compliance Documents' : 'Budget approval / fund availability', requirement: 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: isTenderMethod(type) ? 'Annexures / Drawings' : 'Technical specification', requirement: ['custom-product', 'custom-service'].includes(type) ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: isTenderMethod(type) ? 'Technical Documents' : 'Commercial terms and delivery conditions', requirement: type === 'emergency' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
+  { id: makeId(), name: isTenderMethod(type) ? 'Compliance Documents' : 'Budget approval / fund availability', requirement: type === 'pac' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
   { id: makeId(), name: 'Other Attachments', requirement: 'Optional', fileName: '', version: 1 },
 ];
 
@@ -490,18 +666,18 @@ const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
   type,
   basics: {
     title: '',
-    category: type === 'tender' ? '' : type === 'direct' ? 'Office Supplies' : 'Goods',
+    category: isTenderMethod(type) ? '' : isDirectMethod(type) ? 'Office Supplies' : 'Goods',
     subCategory: '',
     department: '',
-    priority: 'Normal',
-    requirementType: 'Goods',
+    priority: type === 'emergency' ? 'Emergency' : 'Normal',
+    requirementType: type === 'custom-service' ? 'Services' : 'Goods',
     estimatedValue: 0,
     fundingSource: '',
     costCenter: '',
     justification: '',
   },
   vendors: {
-    selection: type === 'direct' ? 'Single / PAC Vendor' : 'Open',
+    selection: isDirectMethod(type) ? 'Single / PAC Vendor' : 'Open',
     inviteCount: 0,
     msmePreference: true,
     makeInIndiaPreference: true,
@@ -523,12 +699,12 @@ const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
     preBidDate: '',
   },
   rules: {
-    bidType: type === 'direct' || type === 'comparison' ? 'Price Bid Only' : 'Two Bid',
+    bidType: isDirectMethod(type) || isComparisonMethod(type) ? 'Price Bid Only' : 'Two Bid',
     evaluation: 'L1 Lowest Price',
     emdRequired: false,
     emdAmount: 0,
     performanceSecurity: false,
-    reverseAuctionIntent: type === 'auction',
+    reverseAuctionIntent: isAuctionMethod(type),
     startPrice: 0,
     reservePrice: 0,
     minimumDecrement: 5000,
@@ -550,6 +726,15 @@ const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
       specificationFileName: '',
     },
   ],
+  consigneeDetails: [
+    {
+      id: makeId(),
+      name: '',
+      location: '',
+      contact: '',
+      quantity: 1,
+    },
+  ],
   documents: defaultDocuments(type),
   approval: {
     workflow: 'Finance + Procurement',
@@ -568,11 +753,24 @@ const grandTotal = (items: ItemRow[]) => items.reduce((sum, item) => sum + itemT
 
 const recommendProcurementType = (draft: Draft): ProcurementType => {
   const value = draft.basics.estimatedValue || grandTotal(draft.items);
-  if (draft.type === 'auction' && draft.rules.reverseAuctionIntent) return 'auction';
+  if (draft.basics.priority === 'Emergency') return 'emergency';
+  if (draft.type === 'pac' || draft.vendors.selection === 'Single / PAC Vendor') return 'pac';
+  if (isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent) return 'reverse-auction';
   if (value > 1000000) return 'tender';
   if (value > 50000 && draft.vendors.selection === 'Open') return 'rfq';
-  if (value > 50000) return 'comparison';
-  return 'direct';
+  if (value > 50000) return 'l1-comparison';
+  return 'direct-purchase';
+};
+
+const recommendFromAdvisor = (advisor: AdvisorState): ProcurementType => {
+  const value = Number(advisor.estimatedValue || 0);
+  if (advisor.proprietary) return 'pac';
+  if (advisor.boqRequired) return 'boq';
+  if (advisor.catalogAvailable && value > 0 && value <= 25000 && !advisor.technicalEvaluation) return 'direct-purchase';
+  if (advisor.catalogAvailable && !advisor.technicalEvaluation) return 'l1-comparison';
+  if (advisor.technicalEvaluation || value > 1000000) return 'tender';
+  if (value > 50000) return 'rfq';
+  return 'direct-purchase';
 };
 
 const methodLabel = (type: ProcurementType) => methodConfigs.find(method => method.id === type)?.title || type;
@@ -597,11 +795,11 @@ const buildProcurementSummary = (draft: Draft) => {
     justification: draft.basics.justification,
     supplierSelection: draft.vendors.selection,
     publishDate: draft.schedule.publishDate,
-    submissionDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    submissionDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
     deliveryDate: draft.schedule.deliveryDate,
     bidType: draft.rules.bidType,
-    evaluation: draft.type === 'tender' ? draft.tender.evaluationMethod : draft.rules.evaluation,
-    approvalWorkflow: draft.type === 'tender' ? draft.tender.approvalChain : draft.approval.workflow,
+    evaluation: isTenderMethod(draft.type) ? draft.tender.evaluationMethod : draft.rules.evaluation,
+    approvalWorkflow: isTenderMethod(draft.type) ? draft.tender.approvalChain : draft.approval.workflow,
     items: draft.items.map(item => ({
       name: item.name,
       specification: item.specification || item.technicalSpecification,
@@ -611,11 +809,22 @@ const buildProcurementSummary = (draft: Draft) => {
       gst: item.gst,
       total: itemTotal(item),
     })),
+    consigneeDetails: draft.consigneeDetails.map(consignee => ({
+      name: consignee.name,
+      location: consignee.location,
+      contact: consignee.contact,
+      quantity: consignee.quantity,
+    })),
     documents: documents.map(document => ({
       name: document.name,
       requirement: document.requirement,
       fileName: document.fileName,
       version: document.version,
+      fileAssetId: document.fileAssetId || null,
+      documentUrl: document.documentUrl || '',
+      mimeType: document.mimeType || '',
+      size: document.size || 0,
+      uploadedAt: document.uploadedAt || '',
     })),
   };
 };
@@ -628,6 +837,9 @@ const formatProcurementSummaryText = (draft: Draft) => {
   const items = summary.items.length
     ? summary.items.map(item => `- ${item.name || 'Unnamed item'}: ${item.quantity} ${item.unit}, ${item.specification || 'No specification'}, unit ${money(item.unitPrice || 0)}`).join('\n')
     : '- No line items';
+  const consignees = summary.consigneeDetails.length
+    ? summary.consigneeDetails.map(consignee => `- ${consignee.name || 'Consignee'}: ${consignee.quantity}, ${consignee.location || 'Location not set'}`).join('\n')
+    : '- No consignee allocation';
 
   return [
     draft.basics.justification || draft.tender.scopeOfWork || draft.tender.shortDescription || 'Procurement requirement captured from Create Procurement.',
@@ -646,6 +858,9 @@ const formatProcurementSummaryText = (draft: Draft) => {
     '',
     'Line Items',
     items,
+    '',
+    'Consignee Allocation',
+    consignees,
     '',
     'Attached Documents',
     docs,
@@ -666,20 +881,21 @@ const writeProcurementSummary = (draft: Draft) => {
 const buildRequirementHandoffDraft = (draft: Draft) => ({
   draft: {
     requirementTitle: draft.basics.title,
-    requirementType: draft.type === 'direct'
+    requirementType: isDirectMethod(draft.type)
       ? 'Direct Purchase'
-      : draft.type === 'auction'
+      : isAuctionMethod(draft.type)
         ? 'Reverse Auction'
         : draft.type === 'rfq'
           ? 'RFQ'
-          : 'Tender',
+          : methodLabel(draft.type),
     procurementCategory: draft.basics.requirementType,
     description: formatProcurementSummaryText(draft),
     department: draft.basics.department,
     priority: draft.basics.priority === 'Normal' ? 'Medium' : draft.basics.priority,
-    closingDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
-    bidEndDate: draft.type === 'tender' ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    closingDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
+    bidEndDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
     deliveryAddress: draft.tender.deliveryLocation,
+    consigneeDetails: draft.consigneeDetails,
     deliveryPeriod: draft.tender.deliveryTimeline,
     deliveryType: draft.tender.deliveryType,
     paymentTerms: draft.tender.paymentTerms || '100% After Delivery',
@@ -706,10 +922,18 @@ const buildRequirementHandoffDraft = (draft: Draft) => ({
     budget: item.unitPrice,
     equivalentBrandAllowed: item.brandPolicy !== 'OEM only',
   })),
+  consigneeDetails: draft.consigneeDetails,
   docs: draft.documents.map(document => ({
     category: document.name,
     requirement: document.requirement,
-    files: document.fileName ? [{ name: document.fileName, size: 0, uploadedAt: new Date().toISOString(), version: document.version }] : [],
+    files: document.fileName ? [{
+      name: document.fileName,
+      size: document.size || 0,
+      uploadedAt: document.uploadedAt || new Date().toISOString(),
+      version: document.version,
+      fileAssetId: document.fileAssetId || null,
+      url: document.documentUrl || '',
+    }] : [],
   })),
 });
 
@@ -719,6 +943,8 @@ const buildRfqHandoffDraft = (draft: Draft) => ({
   estimatedValue: String(draft.basics.estimatedValue || grandTotal(draft.items) || ''),
   deadlineDate: draft.schedule.submissionDate,
   documentName: attachedDocuments(draft)[0]?.fileName || '',
+  fileAssetId: attachedDocuments(draft)[0]?.fileAssetId || null,
+  documentUrl: attachedDocuments(draft)[0]?.documentUrl || '',
 });
 
 const buildTenderHandoffDraft = (draft: Draft) => ({
@@ -745,6 +971,7 @@ const buildTenderHandoffDraft = (draft: Draft) => ({
     specificationFileName: item.specificationFileName,
   })),
   deliveryLocation: draft.tender.deliveryLocation,
+  consigneeDetails: draft.consigneeDetails,
   deliveryType: draft.tender.deliveryType,
   deliveryTimeline: draft.tender.deliveryTimeline,
   installationRequired: draft.tender.installationRequired,
@@ -775,6 +1002,11 @@ const buildTenderHandoffDraft = (draft: Draft) => ({
     requirement: document.requirement,
     fileName: document.fileName,
     version: document.version,
+    fileAssetId: document.fileAssetId || null,
+    documentUrl: document.documentUrl || '',
+    mimeType: document.mimeType || '',
+    size: document.size || 0,
+    uploadedAt: document.uploadedAt || '',
   })),
   msmePreference: draft.vendors.msmePreference,
   startupPreference: draft.tender.startupPreference,
@@ -806,31 +1038,133 @@ const buildTenderHandoffDraft = (draft: Draft) => ({
   documentUrl: draft.tender.documentUrl,
 });
 
+const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => ({
+  id: draft.id,
+  methodSlug: draft.type,
+  procurementMethod: draft.type,
+  title: draft.basics.title || `${methodLabel(draft.type)} draft`,
+  description: formatProcurementSummaryText(draft),
+  estimatedValue: draft.basics.estimatedValue || grandTotal(draft.items),
+  requiredBy: isTenderMethod(draft.type)
+    ? draft.tender.bidClosingDate || draft.schedule.submissionDate || draft.schedule.deliveryDate || undefined
+    : draft.schedule.submissionDate || draft.schedule.deliveryDate || undefined,
+  draftStep,
+  workflowStatus: 'DRAFT',
+  approvalStatus: draft.tender.approvalStatus || draft.approval.workflow || 'DRAFT',
+  payload: draft,
+  items: draft.items
+    .filter(item => item.name.trim())
+    .map(item => ({
+      itemName: item.name,
+      description: item.specification || item.technicalSpecification,
+      quantity: item.quantity,
+      unitOfMeasure: item.unit,
+      estimatedUnitPrice: item.unitPrice,
+      specifications: {
+        brandPolicy: item.brandPolicy,
+        technicalSpecification: item.technicalSpecification,
+        specificationFileName: item.specificationFileName,
+        deliveryDate: item.deliveryDate,
+        gst: item.gst,
+      }
+    }))
+});
+
 export default function CreateProcurementPage() {
   const router = useRouter();
-  const [draft, setDraft] = useState<Draft>(() => defaultDraft());
-  const [methodSelected, setMethodSelected] = useState(false);
+  const pathname = usePathname() || '';
+  const searchParams = useSearchParams();
+  const draftIdParam = searchParams?.get('id') || searchParams?.get('draftId');
+
+  const routeMethod = useMemo(() => {
+    const match = pathname.match(/^\/buyer\/create-procurement\/([^/?#]+)$/);
+    return match ? normalizeProcurementType(match[1]) : null;
+  }, [pathname]);
+  const [draft, setDraft] = useState<Draft>(() => defaultDraft(routeMethod || 'rfq'));
+  const [methodSelected, setMethodSelected] = useState(Boolean(routeMethod));
   const [activeStep, setActiveStep] = useState(0);
   const [preview, setPreview] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [submittingDraft, setSubmittingDraft] = useState(false);
+  const [advisor, setAdvisor] = useState<AdvisorState>({
+    estimatedValue: '',
+    catalogAvailable: true,
+    technicalEvaluation: false,
+    proprietary: false,
+    boqRequired: false,
+  });
+  const [savedDraftMeta, setSavedDraftMeta] = useState<Draft | null>(null);
+  const [serverDraftMeta, setServerDraftMeta] = useState<any | null>(null);
+
+  // Load a specific draft from query parameter if provided
+  useEffect(() => {
+    if (!draftIdParam) return;
+    const draftId = parseInt(draftIdParam, 10);
+    if (isNaN(draftId)) return;
+
+    fetchProcurementDraft(draftId)
+      .then((data) => {
+        const source = data?.payload;
+        if (!source) return;
+        const type = normalizeProcurementType(source.type || data.methodSlug);
+        const restored = {
+          ...defaultDraft(type),
+          ...source,
+          id: data.id,
+          type,
+          tender: { ...defaultTenderDetails(), ...source.tender }
+        };
+        setDraft(restored);
+        setSavedDraftMeta(restored);
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(restored));
+        setMethodSelected(true);
+        setPreview(false);
+        setActiveStep(data.draftStep || restored.draftStep || 0);
+      })
+      .catch((err) => {
+        toast.error('Failed to load draft from server: ' + err.message);
+      });
+  }, [draftIdParam]);
 
   useEffect(() => {
+    if (routeMethod) {
+      setDraft(defaultDraft(routeMethod));
+      setMethodSelected(true);
+      setPreview(false);
+      setActiveStep(0);
+      return;
+    }
+    if (draftIdParam) return;
     try {
       const saved = localStorage.getItem(DRAFT_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as Partial<Draft>;
-        const type = parsed.type && stepsByType[parsed.type] ? parsed.type : 'rfq';
-        setDraft({ ...defaultDraft(type), ...parsed, tender: { ...defaultTenderDetails(), ...parsed.tender } });
+        const type = normalizeProcurementType(parsed.type);
+        const restored = { ...defaultDraft(type), ...parsed, type, tender: { ...defaultTenderDetails(), ...parsed.tender } };
+        setDraft(restored);
+        setSavedDraftMeta(restored);
       }
     } catch {
       localStorage.removeItem(DRAFT_KEY);
     }
-  }, []);
+  }, [routeMethod, draftIdParam]);
+
+  useEffect(() => {
+    if (routeMethod || draftIdParam) return;
+    fetchProcurementDrafts()
+      .then((result) => {
+        const drafts = result?.drafts || result?.records || result?.data?.drafts || [];
+        setServerDraftMeta(Array.isArray(drafts) ? drafts[0] || null : null);
+      })
+      .catch(() => undefined);
+  }, [routeMethod, draftIdParam]);
 
   const activeSteps = stepsByType[draft.type];
   const currentStep = activeSteps[Math.min(activeStep, activeSteps.length - 1)];
   const method = methodConfigs.find(config => config.id === draft.type) || methodConfigs[2];
   const MethodIcon = method.icon;
   const recommendedType = useMemo(() => recommendProcurementType(draft), [draft]);
+  const advisorRecommendation = useMemo(() => recommendFromAdvisor(advisor), [advisor]);
   const readiness = useMemo(() => getReadiness(draft), [draft]);
 
   useEffect(() => {
@@ -851,13 +1185,14 @@ export default function CreateProcurementPage() {
   };
 
   const goToDetails = () => {
-    setMethodSelected(true);
+    router.push(`/buyer/create-procurement/${draft.type}`);
     setPreview(false);
     setActiveStep(0);
   };
 
   const goBack = () => {
     if (methodSelected) {
+      router.push('/buyer/create-procurement');
       setMethodSelected(false);
       setPreview(false);
       setActiveStep(0);
@@ -866,46 +1201,158 @@ export default function CreateProcurementPage() {
     router.back();
   };
 
-  const saveDraft = () => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
-    toast.success('Procurement draft saved');
+  const saveDraft = async (opts: { silent?: boolean; draftOverride?: Draft } = {}) => {
+    const saved = { ...(opts.draftOverride || draft), updatedAt: new Date().toISOString() };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
+    setSavedDraftMeta(saved);
+    setSavingDraft(true);
+    try {
+      const backendDraft = await saveProcurementDraft(buildProcurementApiPayload(saved, activeStep));
+      const merged = { ...saved, id: Number(backendDraft?.id || backendDraft?.data?.id || saved.id || 0) || saved.id };
+      setDraft(merged);
+      setSavedDraftMeta(merged);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(merged));
+      if (!opts.silent) toast.success('Procurement draft saved');
+      return merged;
+    } catch (err) {
+      if (!opts.silent) toast.error(err instanceof Error ? err.message : 'Draft saved locally, but backend save failed');
+      return saved;
+    } finally {
+      setSavingDraft(false);
+    }
   };
 
-  const continueToModule = () => {
-    saveDraft();
-    writeProcurementSummary(draft);
-    localStorage.setItem(REQUIREMENT_HANDOFF_KEY, JSON.stringify(buildRequirementHandoffDraft(draft)));
-    if (draft.type === 'rfq') {
-      localStorage.setItem(RFQ_HANDOFF_KEY, JSON.stringify(buildRfqHandoffDraft(draft)));
-    }
-    if (draft.type === 'tender') {
-      localStorage.setItem(TENDER_HANDOFF_KEY, JSON.stringify(buildTenderHandoffDraft(draft)));
-    }
-    if (draft.type === 'direct') {
-      localStorage.setItem('msme:direct-purchase-create-prefill:v1', JSON.stringify({
-        sellerId: draft.vendors.selectedSellerId,
-        vendorName: draft.vendors.selectedSellerName,
-        vendorCode: draft.vendors.selectedSellerCode,
-        purchaseTitle: draft.basics.title,
-        department: draft.basics.department,
-        costCenter: draft.basics.costCenter,
-        totalAmount: grandTotal(draft.items),
-        items: draft.items.map(item => ({
-          id: item.id,
-          name: item.name,
-          spec: item.specification,
-          qty: item.quantity,
-          unit: item.unit,
-          price: item.unitPrice,
-          tax: item.gst
-        }))
-      }));
-    }
-    if (method.route) {
-      router.push(method.route);
+  const advanceStep = async () => {
+    await saveDraft({ silent: true });
+    setActiveStep(step => Math.min(activeSteps.length - 1, step + 1));
+  };
+
+  const uploadDocumentForDraft = async (documentId: string, file: File) => {
+    const target = draft.documents.find(document => document.id === documentId);
+    if (!target) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Document upload limit is 10 MB');
       return;
     }
-    toast.success('Tender workbench draft is ready for approval');
+
+    const optimisticDraft: Draft = {
+      ...draft,
+      documents: draft.documents.map(document => document.id === documentId
+        ? {
+          ...document,
+          fileName: file.name,
+          version: document.fileName ? (document.version || 1) + 1 : 1,
+          uploadStatus: 'uploading',
+          uploadProgress: 1,
+          uploadError: '',
+        }
+        : document),
+      tender: isTenderMethod(draft.type) && target.name === 'Tender Specification File'
+        ? { ...draft.tender, documentUrl: file.name }
+        : draft.tender,
+    };
+    updateDraft(() => optimisticDraft);
+
+    try {
+      const saved = await saveDraft({ silent: true, draftOverride: optimisticDraft });
+      if (!saved.id) {
+        throw new Error('Unable to create procurement draft before upload');
+      }
+      const asset = await uploadProcurementDocument(saved.id, file, percent => {
+        updateDraft(current => ({
+          ...current,
+          documents: current.documents.map(document => document.id === documentId
+            ? { ...document, uploadStatus: 'uploading', uploadProgress: Math.max(1, percent) }
+            : document),
+        }));
+      });
+      const documentUrl = asset.url || asset.documentUrl || `/api/files/${asset.id}/view`;
+      const uploadedDraft: Draft = {
+        ...saved,
+        documents: saved.documents.map(document => document.id === documentId
+          ? {
+            ...document,
+            fileName: asset.originalName || file.name,
+            fileAssetId: asset.id,
+            documentUrl,
+            mimeType: asset.mimeType || file.type,
+            size: asset.size || file.size,
+            uploadedAt: new Date().toISOString(),
+            uploadStatus: 'uploaded',
+            uploadProgress: 100,
+            uploadError: '',
+          }
+          : document),
+        tender: isTenderMethod(saved.type) && target.name === 'Tender Specification File'
+          ? { ...saved.tender, documentUrl }
+          : saved.tender,
+      };
+      updateDraft(() => uploadedDraft);
+      toast.success('Document uploaded');
+      await saveDraft({ silent: true, draftOverride: uploadedDraft });
+    } catch (err) {
+      updateDraft(current => ({
+        ...current,
+        documents: current.documents.map(document => document.id === documentId
+          ? { ...document, uploadStatus: 'failed', uploadProgress: 0, uploadError: err instanceof Error ? err.message : 'Upload failed' }
+          : document),
+      }));
+      toast.error(err instanceof Error ? err.message : 'Document upload failed');
+    }
+  };
+
+  const continueToModule = async () => {
+    const missing = readiness.filter(item => !item.ok);
+    if (missing.length > 0) {
+      toast.error(`Complete required fields first: ${missing.map(item => item.label).join(', ')}`);
+      return;
+    }
+    setSubmittingDraft(true);
+    try {
+      const saved = await saveDraft({ silent: true });
+      const submitPayload = buildProcurementApiPayload(saved, activeStep);
+      const submitted = await submitProcurementDraft(submitPayload);
+      writeProcurementSummary(saved);
+      localStorage.setItem(REQUIREMENT_HANDOFF_KEY, JSON.stringify(buildRequirementHandoffDraft(saved)));
+      if (saved.type === 'rfq') {
+        localStorage.setItem(RFQ_HANDOFF_KEY, JSON.stringify(buildRfqHandoffDraft(saved)));
+      }
+      if (isTenderMethod(saved.type)) {
+        localStorage.setItem(TENDER_HANDOFF_KEY, JSON.stringify(buildTenderHandoffDraft(saved)));
+      }
+      if (isDirectMethod(saved.type)) {
+        localStorage.setItem('msme:direct-purchase-create-prefill:v1', JSON.stringify({
+          sellerId: saved.vendors.selectedSellerId,
+          vendorName: saved.vendors.selectedSellerName,
+          vendorCode: saved.vendors.selectedSellerCode,
+          purchaseTitle: saved.basics.title,
+          department: saved.basics.department,
+          costCenter: saved.basics.costCenter,
+          totalAmount: grandTotal(saved.items),
+          items: saved.items.map(item => ({
+            id: item.id,
+            name: item.name,
+            spec: item.specification,
+            qty: item.quantity,
+            unit: item.unit,
+            price: item.unitPrice,
+            tax: item.gst
+          }))
+        }));
+      }
+      const referenceNumber = submitted?.referenceNumber || submitted?.procurement?.requirementNumber || submitted?.data?.referenceNumber;
+      toast.success(referenceNumber ? `Procurement submitted: ${referenceNumber}` : 'Procurement submitted');
+      if (method.route) {
+        router.push(method.route);
+        return;
+      }
+      toast.success('Tender workbench draft is ready for approval');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Unable to submit procurement');
+    } finally {
+      setSubmittingDraft(false);
+    }
   };
 
   return (
@@ -951,12 +1398,12 @@ export default function CreateProcurementPage() {
                   <Info className="mr-2 h-4 w-4" /> {preview ? 'Edit' : 'Preview'}
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={saveDraft} className="h-10">
-                <Save className="mr-2 h-4 w-4" /> Save Draft
+              <Button type="button" variant="outline" onClick={() => void saveDraft()} disabled={savingDraft || submittingDraft} className="h-10">
+                {savingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Draft
               </Button>
-              <Button type="button" onClick={methodSelected ? continueToModule : goToDetails} className="h-10 bg-[#12335f] text-white">
-                {methodSelected ? <Send className="mr-2 h-4 w-4" /> : <ArrowRight className="mr-2 h-4 w-4" />}
-                {methodSelected ? 'Continue' : 'Next'}
+              <Button type="button" onClick={methodSelected ? () => void continueToModule() : goToDetails} disabled={savingDraft || submittingDraft} className="h-10 bg-[#12335f] text-white">
+                {submittingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : methodSelected ? <Send className="mr-2 h-4 w-4" /> : <ArrowRight className="mr-2 h-4 w-4" />}
+                {methodSelected ? submittingDraft ? 'Submitting...' : 'Submit & Continue' : 'Next'}
               </Button>
             </div>
           </div>
@@ -970,6 +1417,7 @@ export default function CreateProcurementPage() {
                   selected={draft.type === config.id}
                   recommended={recommendedType === config.id}
                   onSelect={() => changeType(config.id)}
+                  onStart={() => router.push(`/buyer/create-procurement/${config.slug}`)}
                 />
               ))}
             </div>
@@ -998,6 +1446,7 @@ export default function CreateProcurementPage() {
                   </div>
                 </div>
               </Panel>
+              <MethodHelpSection />
               <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
                 <Button type="button" variant="outline" onClick={() => router.back()}>
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
@@ -1012,11 +1461,30 @@ export default function CreateProcurementPage() {
             </section>
             <aside className="space-y-4">
               <SummaryCard draft={draft} readiness={readiness} method={method} />
-              <Panel title="Readiness starts after setup" icon={<CheckCircle2 className="h-4 w-4" />}>
-                <p className="text-sm font-semibold leading-6 text-slate-600">
-                  The detailed checklist appears on the next page after the route is selected.
-                </p>
-              </Panel>
+              <ProcurementAdvisor
+                advisor={advisor}
+                recommendation={advisorRecommendation}
+                onChange={setAdvisor}
+                onApply={(type) => changeType(type)}
+                onStart={(type) => router.push(`/buyer/create-procurement/${type}`)}
+              />
+              <DraftPanel
+                draft={savedDraftMeta}
+                serverDraft={serverDraftMeta}
+                onContinue={() => {
+                  const source = savedDraftMeta || serverDraftMeta?.payload;
+                  if (!source) return;
+                  const type = normalizeProcurementType(source.type || serverDraftMeta?.methodSlug);
+                  const restored = { ...defaultDraft(type), ...source, id: source.id || serverDraftMeta?.id, type, tender: { ...defaultTenderDetails(), ...source.tender } };
+                  setDraft(restored);
+                  setSavedDraftMeta(restored);
+                  localStorage.setItem(DRAFT_KEY, JSON.stringify(restored));
+                  setMethodSelected(true);
+                  setPreview(false);
+                  setActiveStep(0);
+                }}
+                onOpenDrafts={() => router.push(PROCUREMENT_DRAFTS_ROUTE)}
+              />
             </aside>
           </div>
         </div>
@@ -1068,7 +1536,7 @@ export default function CreateProcurementPage() {
           {preview ? (
             <ReviewStep draft={draft} readiness={readiness} />
           ) : (
-            <StepBody step={currentStep} draft={draft} updateDraft={updateDraft} />
+            <StepBody step={currentStep} draft={draft} updateDraft={updateDraft} onDocumentUpload={uploadDocumentForDraft} />
           )}
 
           <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1083,12 +1551,12 @@ export default function CreateProcurementPage() {
               Step {Math.min(activeStep + 1, activeSteps.length)} of {activeSteps.length}
             </div>
             {activeStep < activeSteps.length - 1 ? (
-              <Button type="button" onClick={() => setActiveStep(step => Math.min(activeSteps.length - 1, step + 1))} className="bg-[#12335f] text-white">
-                Next <ArrowRight className="ml-2 h-4 w-4" />
+              <Button type="button" onClick={() => void advanceStep()} disabled={savingDraft || submittingDraft} className="bg-[#12335f] text-white">
+                {savingDraft ? 'Saving...' : 'Next'} {savingDraft ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
             ) : (
-              <Button type="button" onClick={continueToModule} className="bg-[#12335f] text-white">
-                Continue <Send className="ml-2 h-4 w-4" />
+              <Button type="button" onClick={() => void continueToModule()} disabled={savingDraft || submittingDraft} className="bg-[#12335f] text-white">
+                {submittingDraft ? 'Submitting...' : 'Submit & Continue'} {submittingDraft ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Send className="ml-2 h-4 w-4" />}
               </Button>
             )}
           </div>
@@ -1118,53 +1586,221 @@ export default function CreateProcurementPage() {
   );
 }
 
+function ProcurementAdvisor({
+  advisor,
+  recommendation,
+  onChange,
+  onApply,
+  onStart,
+}: {
+  advisor: AdvisorState;
+  recommendation: ProcurementType;
+  onChange: (advisor: AdvisorState) => void;
+  onApply: (type: ProcurementType) => void;
+  onStart: (type: ProcurementType) => void;
+}) {
+  const method = methodConfigs.find(config => config.id === recommendation) || methodConfigs[2];
+  const update = (patch: Partial<AdvisorState>) => onChange({ ...advisor, ...patch });
+
+  return (
+    <Panel title="Not sure what to choose?" icon={<Info className="h-4 w-4" />}>
+      <div className="space-y-3">
+        <div>
+          <label className="text-[10px] font-black uppercase tracking-wide text-slate-500">Estimated procurement value</label>
+          <input
+            type="number"
+            min={0}
+            value={advisor.estimatedValue}
+            onChange={event => update({ estimatedValue: event.target.value })}
+            className={inputClass}
+            placeholder="Enter estimated value"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Toggle label="Item available in catalogue" checked={advisor.catalogAvailable} onChange={value => update({ catalogAvailable: value })} />
+          <Toggle label="Technical evaluation required" checked={advisor.technicalEvaluation} onChange={value => update({ technicalEvaluation: value })} />
+          <Toggle label="Proprietary / single OEM" checked={advisor.proprietary} onChange={value => update({ proprietary: value })} />
+          <Toggle label="BOQ or line-item schedule required" checked={advisor.boqRequired} onChange={value => update({ boqRequired: value })} />
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Recommended Method</p>
+          <p className="mt-1 text-sm font-black text-blue-950">{method.title}</p>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-blue-900">{method.subtitle}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={() => onApply(recommendation)} className="h-9 text-xs font-black uppercase">
+            Apply
+          </Button>
+          <Button type="button" onClick={() => onStart(recommendation)} className="h-9 bg-[#12335f] text-xs font-black uppercase text-white">
+            Start <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function MethodHelpSection() {
+  const rows = [
+    {
+      name: 'Direct Purchase',
+      use: 'Low-value or approved single-seller purchase where catalogue or vendor selection is clear.',
+      caution: 'Keep vendor, budget, and delivery proof ready before submission.',
+    },
+    {
+      name: 'RFQ',
+      use: 'Need quotations from invited or open sellers before deciding commercial terms.',
+      caution: 'Use when specs are clear but final seller price discovery is still required.',
+    },
+    {
+      name: 'Tender / Open Bid',
+      use: 'Formal public procurement with eligibility, bid dates, EMD/ePBG, and technical evaluation.',
+      caution: 'Requires complete timeline, documents, and evaluation settings.',
+    },
+    {
+      name: 'BOQ Based Bid',
+      use: 'Works, AMC, fabrication, or item-wise schedule where rates are evaluated line by line.',
+      caution: 'Upload BOQ or complete the line-item schedule before submission.',
+    },
+    {
+      name: 'PAC Bid',
+      use: 'Proprietary or single-OEM procurement where competition is not feasible.',
+      caution: 'PAC certificate and justification are mandatory.',
+    },
+    {
+      name: 'Reverse Auction',
+      use: 'Post-qualification price discovery where eligible sellers compete through decrements.',
+      caution: 'Set start price, decrement, and auction rules clearly.',
+    },
+  ];
+
+  return (
+    <Panel title="Method help" icon={<Info className="h-4 w-4" />}>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {rows.map(row => (
+          <div key={row.name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-black text-slate-950">{row.name}</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{row.use}</p>
+            <p className="mt-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-bold leading-4 text-slate-500">{row.caution}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function DraftPanel({
+  draft,
+  serverDraft,
+  onContinue,
+  onOpenDrafts,
+}: {
+  draft: Draft | null;
+  serverDraft?: any | null;
+  onContinue: () => void;
+  onOpenDrafts: () => void;
+}) {
+  const title = draft?.basics.title || serverDraft?.title || '';
+  const method = draft?.type || normalizeProcurementType(serverDraft?.methodSlug || serverDraft?.procurementMethod);
+  const updatedAt = draft?.updatedAt || serverDraft?.updatedAt;
+  const hasDraft = Boolean(draft || serverDraft);
+
+  return (
+    <Panel title="Recently saved drafts" icon={<History className="h-4 w-4" />}>
+      {hasDraft ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{methodLabel(method)}</p>
+            <p className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{title || 'Untitled procurement draft'}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {updatedAt ? `Saved ${new Date(updatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Saved in this browser'}
+            </p>
+          </div>
+          <Button type="button" onClick={onContinue} className="h-9 w-full bg-[#12335f] text-xs font-black uppercase text-white">
+            Continue Draft <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+          <p className="text-sm font-black text-slate-800">No saved draft in this browser</p>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Choose a procurement method and save the wizard to resume it here.</p>
+        </div>
+      )}
+      <Button type="button" variant="outline" onClick={onOpenDrafts} className="mt-3 h-9 w-full text-xs font-black uppercase">
+        Open Draft Register
+      </Button>
+    </Panel>
+  );
+}
+
 function MethodCard({
   config,
   selected,
   recommended,
   onSelect,
+  onStart,
 }: {
   config: MethodConfig;
   selected: boolean;
   recommended: boolean;
   onSelect: () => void;
+  onStart: () => void;
 }) {
   const Icon = config.icon;
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <article
       className={cn(
         'min-h-[136px] rounded-xl border bg-gradient-to-br from-white to-slate-50/30 p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between border-slate-200',
         selected 
           ? 'border-[#12335f] bg-[#12335f]/5 shadow-md ring-1 ring-[#12335f] border-l-4 border-l-[#ff9933]' 
           : recommended 
             ? 'border-slate-200 border-l-4 border-l-emerald-500 hover:border-slate-300' 
-            : 'border-slate-200 border-l-4 border-l-slate-300 hover:border-slate-300'
+          : 'border-slate-200 border-l-4 border-l-slate-300 hover:border-slate-300'
       )}
     >
-      <div className="w-full flex items-start justify-between gap-3">
-        <span className={cn(
-          'flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm', 
-          selected ? 'bg-[#12335f] text-white border-transparent' : config.accent
-        )}>
-          <Icon className="h-5 w-5" />
-        </span>
-        {recommended && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 shadow-sm">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> RECOMMENDED
+      <button type="button" onClick={onSelect} className="w-full text-left">
+        <div className="w-full flex items-start justify-between gap-3">
+          <span className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm', 
+            selected ? 'bg-[#12335f] text-white border-transparent' : config.accent
+          )}>
+            <Icon className="h-5 w-5" />
           </span>
-        )}
-      </div>
+          <span className="flex flex-col items-end gap-1">
+            {recommended && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> RECOMMENDED
+              </span>
+            )}
+            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+              {config.badge}
+            </span>
+          </span>
+        </div>
+      </button>
       <div>
         <p className="mt-3 text-sm font-black text-slate-950">{config.title}</p>
         <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500">{config.subtitle}</p>
+        <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{config.valueHint}</p>
       </div>
-    </button>
+      <Button type="button" variant={selected ? 'primary' : 'outline'} size="sm" onClick={onStart} className={cn('mt-3 h-8 justify-center text-[10px] font-black uppercase', selected && 'bg-[#12335f] text-white')}>
+        Start <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+      </Button>
+    </article>
   );
 }
 
-function StepBody({ step, draft, updateDraft }: { step: StepKind; draft: Draft; updateDraft: (updater: (current: Draft) => Draft) => void }) {
+function StepBody({
+  step,
+  draft,
+  updateDraft,
+  onDocumentUpload,
+}: {
+  step: StepKind;
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+  onDocumentUpload: (documentId: string, file: File) => Promise<void>;
+}) {
   switch (step) {
     case 'basics':
       return <BasicsStep draft={draft} updateDraft={updateDraft} />;
@@ -1177,7 +1813,7 @@ function StepBody({ step, draft, updateDraft }: { step: StepKind; draft: Draft; 
     case 'rules':
       return <RulesStep draft={draft} updateDraft={updateDraft} />;
     case 'documents':
-      return <DocumentsStep draft={draft} updateDraft={updateDraft} />;
+      return <DocumentsStep draft={draft} updateDraft={updateDraft} onDocumentUpload={onDocumentUpload} />;
     case 'approval':
       return <ApprovalStep draft={draft} updateDraft={updateDraft} />;
     case 'review':
@@ -1227,7 +1863,7 @@ function BasicsStep({ draft, updateDraft }: StepProps) {
         <Field label="Justification / scope" className="lg:col-span-4">
           <textarea value={draft.basics.justification} onChange={event => updateBasics('justification', event.target.value)} rows={5} maxLength={1000} className={textareaClass} placeholder="Why this procurement is required, expected outcome, constraints and delivery need." />
         </Field>
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <>
             <Field label="Tender number">
               <input value={draft.tender.tenderNumber} onChange={event => updateTender('tenderNumber', event.target.value)} className={inputClass} />
@@ -1299,11 +1935,11 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
               <th className="px-3 py-2">Specification</th>
               <th className="px-3 py-2">Qty</th>
               <th className="px-3 py-2">Unit</th>
-              {draft.type === 'tender' && <th className="px-3 py-2">Delivery date</th>}
-              {draft.type === 'tender' && <th className="px-3 py-2">Brand policy</th>}
+              {isTenderMethod(draft.type) && <th className="px-3 py-2">Delivery date</th>}
+              {isTenderMethod(draft.type) && <th className="px-3 py-2">Brand policy</th>}
               <th className="px-3 py-2">Unit price</th>
               <th className="px-3 py-2">GST %</th>
-              {draft.type === 'tender' && <th className="px-3 py-2">Spec file</th>}
+              {isTenderMethod(draft.type) && <th className="px-3 py-2">Spec file</th>}
               <th className="px-3 py-2 text-right">Total</th>
               <th className="px-3 py-2 text-right">Action</th>
             </tr>
@@ -1314,7 +1950,7 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
                 <td className="px-3 py-2"><input value={item.name} onChange={event => updateItem(item.id, { name: event.target.value })} className={tableInputClass} placeholder="Item name" /></td>
                 <td className="px-3 py-2">
                   <input value={item.specification} onChange={event => updateItem(item.id, { specification: event.target.value })} className={tableInputClass} placeholder="Key specs" />
-                  {draft.type === 'tender' && (
+                  {isTenderMethod(draft.type) && (
                     <input value={item.technicalSpecification} onChange={event => updateItem(item.id, { technicalSpecification: event.target.value })} className={cn(tableInputClass, 'mt-2')} placeholder="Technical compliance notes" />
                   )}
                 </td>
@@ -1322,15 +1958,15 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
                 <td className="px-3 py-2">
                   <SelectWithOther value={item.unit} options={QUANTITY_UNITS} onChange={value => updateItem(item.id, { unit: value })} placeholder="Select unit" otherPlaceholder="Enter unit" className={tableInputClass} />
                 </td>
-                {draft.type === 'tender' && <td className="px-3 py-2"><input type="date" value={item.deliveryDate} onChange={event => updateItem(item.id, { deliveryDate: event.target.value })} className={tableInputClass} /></td>}
-                {draft.type === 'tender' && (
+                {isTenderMethod(draft.type) && <td className="px-3 py-2"><input type="date" value={item.deliveryDate} onChange={event => updateItem(item.id, { deliveryDate: event.target.value })} className={tableInputClass} /></td>}
+                {isTenderMethod(draft.type) && (
                   <td className="px-3 py-2">
                     <SelectWithOther value={item.brandPolicy} options={BRAND_POLICY_OPTIONS} onChange={value => updateItem(item.id, { brandPolicy: value })} placeholder="Select brand policy" otherPlaceholder="Enter brand policy" className={tableInputClass} />
                   </td>
                 )}
                 <td className="px-3 py-2"><input type="number" min={0} value={item.unitPrice || ''} onChange={event => updateItem(item.id, { unitPrice: Number(event.target.value || 0) })} className={tableInputClass} /></td>
                 <td className="px-3 py-2"><input type="number" min={0} value={item.gst || ''} onChange={event => updateItem(item.id, { gst: Number(event.target.value || 0) })} className={tableInputClass} /></td>
-                {draft.type === 'tender' && (
+                {isTenderMethod(draft.type) && (
                   <td className="px-3 py-2">
                     <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 font-bold text-slate-600">
                       <Paperclip className="h-4 w-4" /> {item.specificationFileName || 'Attach'}
@@ -1503,7 +2139,7 @@ function VendorsStep({ draft, updateDraft }: StepProps) {
   const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
     updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
 
-  const showSingleVendor = draft.type === 'direct' || draft.vendors.selection === 'Single / PAC Vendor';
+  const showSingleVendor = isDirectMethod(draft.type) || draft.vendors.selection === 'Single / PAC Vendor';
 
   return (
     <Panel title="Supplier Reach & Eligibility" icon={<Users className="h-4 w-4" />}>
@@ -1552,7 +2188,7 @@ function VendorsStep({ draft, updateDraft }: StepProps) {
         <Toggle label="MSME preference" checked={draft.vendors.msmePreference} onChange={value => updateVendors('msmePreference', value)} />
         <Toggle label="Make in India preference" checked={draft.vendors.makeInIndiaPreference} onChange={value => updateVendors('makeInIndiaPreference', value)} />
         <Toggle label="Local vendor preference" checked={draft.vendors.localVendorPreference} onChange={value => updateVendors('localVendorPreference', value)} />
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <>
             <Toggle label="Startup preference" checked={draft.tender.startupPreference} onChange={value => updateTender('startupPreference', value)} />
             <Toggle label="SHG preference" checked={draft.tender.shgPreference} onChange={value => updateTender('shgPreference', value)} />
@@ -1577,9 +2213,30 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
     updateDraft(current => ({ ...current, schedule: { ...current.schedule, [key]: value } }));
   const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
     updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
+  const updateConsignee = (id: string, patch: Partial<ConsigneeRow>) =>
+    updateDraft(current => ({
+      ...current,
+      consigneeDetails: current.consigneeDetails.map(consignee => consignee.id === id ? { ...consignee, ...patch } : consignee),
+    }));
+  const addConsignee = () =>
+    updateDraft(current => ({
+      ...current,
+      consigneeDetails: [...current.consigneeDetails, { id: makeId(), name: '', location: '', contact: '', quantity: 0 }],
+    }));
+  const removeConsignee = (id: string) =>
+    updateDraft(current => ({
+      ...current,
+      consigneeDetails: current.consigneeDetails.length === 1 ? current.consigneeDetails : current.consigneeDetails.filter(consignee => consignee.id !== id),
+    }));
+  const totalItemQuantity = draft.items.reduce((total, item) => total + Number(item.quantity || 0), 0);
+  const totalConsigneeQuantity = draft.consigneeDetails.reduce((total, consignee) => total + Number(consignee.quantity || 0), 0);
 
   return (
-    <Panel title="Schedule & Delivery" icon={<CalendarClock className="h-4 w-4" />}>
+    <Panel
+      title="Schedule & Delivery"
+      icon={<CalendarClock className="h-4 w-4" />}
+      action={<Button type="button" variant="outline" size="sm" onClick={addConsignee}>Add consignee</Button>}
+    >
       <div className="grid gap-4 lg:grid-cols-4">
         <Field label="Publish date">
           <input type="date" value={draft.schedule.publishDate} onChange={event => updateSchedule('publishDate', event.target.value)} className={inputClass} />
@@ -1602,7 +2259,7 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
             <input type="date" value={draft.schedule.preBidDate} onChange={event => updateSchedule('preBidDate', event.target.value)} className={inputClass} />
           </Field>
         )}
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <>
             <Field label="Bid start date">
               <input type="date" value={draft.tender.bidStartDate} onChange={event => updateTender('bidStartDate', event.target.value)} className={inputClass} />
@@ -1639,6 +2296,35 @@ function ScheduleStep({ draft, updateDraft }: StepProps) {
           </>
         )}
       </div>
+      <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200">
+        <table className="min-w-[760px] w-full text-left text-xs">
+          <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+            <tr>
+              {['Consignee / office', 'Delivery location', 'Contact', 'Quantity', 'Action'].map(head => <th key={head} className="px-3 py-2">{head}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {draft.consigneeDetails.map(consignee => (
+              <tr key={consignee.id} className="align-top">
+                <td className="px-3 py-2"><input value={consignee.name} onChange={event => updateConsignee(consignee.id, { name: event.target.value })} className={tableInputClass} placeholder="Stores / department / site" /></td>
+                <td className="px-3 py-2"><input value={consignee.location} onChange={event => updateConsignee(consignee.id, { location: event.target.value })} className={tableInputClass} placeholder="Delivery address" /></td>
+                <td className="px-3 py-2"><input value={consignee.contact} onChange={event => updateConsignee(consignee.id, { contact: event.target.value })} className={tableInputClass} placeholder="Name / phone" /></td>
+                <td className="px-3 py-2"><input type="number" min={0} value={consignee.quantity || ''} onChange={event => updateConsignee(consignee.id, { quantity: Number(event.target.value || 0) })} className={tableInputClass} /></td>
+                <td className="px-3 py-2">
+                  <button type="button" onClick={() => removeConsignee(consignee.id)} className="rounded-md p-2 text-rose-600 hover:bg-rose-50" aria-label="Remove consignee">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <Metric label="Procurement quantity" value={String(totalItemQuantity)} />
+        <Metric label="Consignee quantity" value={String(totalConsigneeQuantity)} />
+        <Metric label="Quantity check" value={totalItemQuantity === totalConsigneeQuantity ? 'Matched' : 'Mismatch'} />
+      </div>
     </Panel>
   );
 }
@@ -1653,7 +2339,7 @@ function RulesStep({ draft, updateDraft }: StepProps) {
   };
 
   return (
-    <Panel title={draft.type === 'auction' ? 'Auction Rules' : 'Bid & Evaluation Rules'} icon={<ShieldCheck className="h-4 w-4" />}>
+    <Panel title={isAuctionMethod(draft.type) ? 'Auction Rules' : 'Bid & Evaluation Rules'} icon={<ShieldCheck className="h-4 w-4" />}>
       <div className="grid gap-4 lg:grid-cols-3">
         <Field label="Bid type" required>
           <SelectWithOther value={draft.rules.bidType} options={BID_TYPE_OPTIONS} onChange={value => updateRules('bidType', value)} otherPlaceholder="Enter bid type" />
@@ -1667,7 +2353,7 @@ function RulesStep({ draft, updateDraft }: StepProps) {
         <Toggle label="EMD required" checked={draft.rules.emdRequired} onChange={value => updateRules('emdRequired', value)} />
         <Toggle label="Performance security" checked={draft.rules.performanceSecurity} onChange={value => updateRules('performanceSecurity', value)} />
         <Toggle label="Reverse auction intent" checked={draft.rules.reverseAuctionIntent} onChange={value => updateRules('reverseAuctionIntent', value)} />
-        {(draft.type === 'auction' || draft.rules.reverseAuctionIntent) && (
+        {(isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent) && (
           <>
             <Field label="Start / ceiling price">
               <input type="number" min={0} value={draft.rules.startPrice || ''} onChange={event => updateRules('startPrice', Number(event.target.value || 0))} className={inputClass} />
@@ -1682,7 +2368,7 @@ function RulesStep({ draft, updateDraft }: StepProps) {
             <Toggle label="Hide vendor identity" checked={draft.rules.hideVendorIdentity} onChange={value => updateRules('hideVendorIdentity', value)} />
           </>
         )}
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <>
             <Field label="Currency">
               <SelectWithOther value={draft.tender.currency} options={CURRENCY_OPTIONS} onChange={value => updateTender('currency', value)} otherPlaceholder="Enter currency" />
@@ -1745,22 +2431,16 @@ function RulesStep({ draft, updateDraft }: StepProps) {
   );
 }
 
-function DocumentsStep({ draft, updateDraft }: StepProps) {
+function DocumentsStep({ draft, updateDraft, onDocumentUpload }: StepProps) {
   const updateDocument = (id: string, patch: Partial<DocumentRow>) => updateDraft(current => ({
     ...current,
     documents: current.documents.map(document => document.id === id ? { ...document, ...patch } : document),
   }));
-  const updateTender = (key: keyof Draft['tender'], value: string) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
 
   const handleFile = (documentId: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const target = draft.documents.find(document => document.id === documentId);
-      updateDocument(documentId, { fileName: file.name, version: target?.fileName ? (target.version || 1) + 1 : 1 });
-      if (draft.type === 'tender' && target?.name === 'Tender Specification File') {
-        updateTender('documentUrl', file.name);
-      }
+      void onDocumentUpload?.(documentId, file);
     }
     event.target.value = '';
   };
@@ -1768,7 +2448,7 @@ function DocumentsStep({ draft, updateDraft }: StepProps) {
   return (
     <Panel title="Documents & Compliance" icon={<Upload className="h-4 w-4" />}>
       <div className="space-y-4">
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -1809,7 +2489,25 @@ function DocumentsStep({ draft, updateDraft }: StepProps) {
                     </select>
                   </td>
                   <td className="px-3 py-3 font-black text-slate-700">v{document.version}</td>
-                  <td className="px-3 py-3 text-slate-600">{document.fileName || 'No file attached'}</td>
+                  <td className="px-3 py-3 text-slate-600">
+                    <div className="max-w-[260px] space-y-1">
+                      <p className="truncate font-bold text-slate-700">{document.fileName || 'No file attached'}</p>
+                      {document.uploadStatus === 'uploading' && (
+                        <div className="space-y-1">
+                          <div className="h-1.5 rounded-full bg-slate-100">
+                            <div className="h-1.5 rounded-full bg-[#12335f]" style={{ width: `${Math.max(1, Math.min(100, document.uploadProgress || 1))}%` }} />
+                          </div>
+                          <p className="text-[10px] font-black uppercase text-slate-500">Uploading {document.uploadProgress || 1}%</p>
+                        </div>
+                      )}
+                      {document.uploadStatus === 'uploaded' && (
+                        <p className="text-[10px] font-black uppercase text-emerald-700">Uploaded asset #{document.fileAssetId}</p>
+                      )}
+                      {document.uploadStatus === 'failed' && (
+                        <p className="text-[10px] font-bold text-rose-600">{document.uploadError || 'Upload failed'}</p>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-3 py-3">
                     <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-black text-slate-700">
                       <Paperclip className="h-4 w-4" /> Select
@@ -1844,7 +2542,7 @@ function ApprovalStep({ draft, updateDraft }: StepProps) {
         <Field label="Approval note" className="lg:col-span-3">
           <textarea value={draft.approval.notes} onChange={event => updateApproval('notes', event.target.value)} rows={4} className={textareaClass} placeholder="Approval context, special conditions, exceptions and publication notes." />
         </Field>
-        {draft.type === 'tender' && (
+        {isTenderMethod(draft.type) && (
           <>
             <Field label="Contact name">
               <input value={draft.tender.contactName} onChange={event => updateTender('contactName', event.target.value)} className={inputClass} />
@@ -1885,7 +2583,7 @@ function ApprovalStep({ draft, updateDraft }: StepProps) {
 }
 
 function ReviewStep({ draft, readiness }: { draft: Draft; readiness: Array<{ label: string; ok: boolean }> }) {
-  const submissionLabel = draft.type === 'tender'
+  const submissionLabel = isTenderMethod(draft.type)
     ? `${draft.tender.bidClosingDate || 'Date not set'} ${draft.tender.bidClosingTime || ''}`.trim()
     : draft.schedule.submissionDate || 'Not set';
 
@@ -1901,9 +2599,9 @@ function ReviewStep({ draft, readiness }: { draft: Draft; readiness: Array<{ lab
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Estimated value" value={money(draft.basics.estimatedValue || grandTotal(draft.items))} />
             <Metric label="Line items" value={String(draft.items.length)} />
-            <Metric label={draft.type === 'tender' ? 'Bid closing' : 'Submission'} value={submissionLabel} />
+            <Metric label={isTenderMethod(draft.type) ? 'Bid closing' : 'Submission'} value={submissionLabel} />
           </div>
-          {draft.type === 'tender' && (
+          {isTenderMethod(draft.type) && (
             <div className="grid gap-3 sm:grid-cols-3">
               <Metric label="Tender type" value={draft.tender.tenderType || 'Not set'} />
               <Metric label="Tender mode" value={draft.tender.tenderMode || 'Not set'} />
@@ -1939,13 +2637,13 @@ function GuidanceBand({ draft, method }: { draft: Draft; method: MethodConfig })
               <span className="text-[9px] font-black bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded uppercase">GFR 2017 Regulatory Guide</span>
             </div>
             <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-600">
-              {draft.type === 'direct'
+              {isDirectMethod(draft.type)
                 ? 'Under Rule 154 of GFR 2017, Direct Purchase is admissible for goods/services up to Rs. 25,000 without tenders. Ensure bank details and items are verified.'
-                : draft.type === 'auction'
+                : isAuctionMethod(draft.type)
                   ? 'Reverse Auction is triggered when technical evaluations are finalized. The lowest bidding seller (L1) is determined dynamically via active price decrements.'
-                  : draft.type === 'tender'
-                    ? 'Rule 161 of GFR 2017 requires Open Tender Inquiry for values above Rs. 25 Lakhs. System will generate a public bid listing with audit logs.'
-                    : draft.type === 'comparison'
+                  : isTenderMethod(draft.type)
+                    ? `${method.title} follows the formal bid workbench path with documents, eligibility, schedule, approval and seller visibility controls.`
+                    : isComparisonMethod(draft.type)
                       ? 'L1 Comparison is used for procurement up to Rs. 2.5 Lakhs by comparing at least three distinct sellers to establish a competitive price record.'
                       : 'Request for Quotation (RFQ) is deployed to solicit sealed bids from verified micro and small enterprise suppliers in the local registry.'}
             </p>
@@ -1962,10 +2660,10 @@ function GuidanceBand({ draft, method }: { draft: Draft; method: MethodConfig })
 
 function SummaryCard({ draft, readiness, method }: { draft: Draft; readiness: Array<{ label: string; ok: boolean }>; method: MethodConfig }) {
   const ready = readiness.filter(item => item.ok).length;
-  const workflow = draft.type === 'tender'
+  const workflow = isTenderMethod(draft.type)
     ? draft.tender.approvalChain || draft.approval.workflow
     : draft.approval.workflow;
-  const deadline = draft.type === 'tender'
+  const deadline = isTenderMethod(draft.type)
     ? draft.tender.bidClosingDate || 'Not set'
     : draft.schedule.submissionDate || 'Not set';
 
@@ -1979,7 +2677,7 @@ function SummaryCard({ draft, readiness, method }: { draft: Draft; readiness: Ar
         <Metric label="Estimated value" value={money(draft.basics.estimatedValue || grandTotal(draft.items))} />
         <Metric label="Grand total from BOQ" value={money(grandTotal(draft.items))} />
         <Metric label="Readiness" value={`${ready}/${readiness.length}`} />
-        <Metric label={draft.type === 'tender' ? 'Bid closing' : 'Submission'} value={deadline} />
+        <Metric label={isTenderMethod(draft.type) ? 'Bid closing' : 'Submission'} value={deadline} />
         <Metric label="Workflow" value={workflow} />
       </div>
     </Panel>
@@ -1990,41 +2688,88 @@ function getReadiness(draft: Draft) {
   const value = draft.basics.estimatedValue || grandTotal(draft.items);
   const hasItems = draft.items.some(item => item.name.trim() && item.quantity > 0);
   const requiredDocs = draft.documents.filter(document => document.requirement === 'Mandatory');
+  const totalItemQuantity = draft.items.reduce((total, item) => total + Number(item.quantity || 0), 0);
+  const totalConsigneeQuantity = draft.consigneeDetails.reduce((total, consignee) => total + Number(consignee.quantity || 0), 0);
+  const hasConsigneeDetails = draft.consigneeDetails.some(consignee => consignee.location.trim() || consignee.name.trim());
+  const hasAllRequiredDocs = requiredDocs.length === 0 || requiredDocs.every(document => document.fileName);
+  const hasAnyBoqFile = draft.documents.some(document => /boq|price schedule|specification/i.test(document.name) && document.fileName);
+  const hasPacCertificate = draft.documents.some(document => /pac certificate/i.test(document.name) && document.fileName);
+  const hasCustomSpecification = draft.items.some(item => item.specification.trim().length >= 10 || item.technicalSpecification.trim().length >= 10 || item.specificationFileName);
+  const bidStart = draft.tender.bidStartDate || draft.schedule.publishDate;
+  const bidEnd = draft.tender.bidClosingDate || draft.schedule.submissionDate;
+  const technicalDate = draft.tender.technicalEvaluationDate || draft.schedule.openingDate;
+  const financialDate = draft.tender.financialEvaluationDate;
+  const isAfter = (later?: string, earlier?: string) => {
+    if (!later || !earlier) return true;
+    return new Date(later).getTime() > new Date(earlier).getTime();
+  };
   const hasContact = Boolean(draft.tender.contactName || draft.tender.contactEmail || draft.tender.contactMobile);
   const baseChecks = [
     { label: 'Requirement title', ok: draft.basics.title.trim().length >= 3 },
     { label: 'Budget estimate', ok: value > 0 },
     { label: 'Line item details', ok: hasItems },
+    { label: 'Consignee allocation', ok: hasConsigneeDetails && totalItemQuantity > 0 && totalItemQuantity === totalConsigneeQuantity },
     { label: 'Supplier path', ok: Boolean(draft.vendors.selection) },
   ];
+  const methodChecks = [
+    ...(isDirectMethod(draft.type) ? [{ label: 'Selected vendor', ok: Boolean(draft.vendors.selectedSellerId) }] : []),
+    ...(draft.type === 'boq' ? [{ label: 'BOQ file or line schedule', ok: hasAnyBoqFile || hasItems }] : []),
+    ...(draft.type === 'pac' ? [
+      { label: 'PAC certificate', ok: hasPacCertificate },
+      { label: 'PAC justification', ok: draft.basics.justification.trim().length >= 20 },
+    ] : []),
+    ...(draft.type === 'custom-product' ? [
+      { label: 'Catalogue unavailability reason', ok: draft.basics.justification.trim().length >= 20 },
+      { label: 'Custom specification', ok: hasCustomSpecification },
+    ] : []),
+    ...(draft.type === 'custom-service' ? [
+      { label: 'Scope of work', ok: (draft.tender.scopeOfWork || draft.basics.justification).trim().length >= 20 },
+      { label: 'Service milestone', ok: draft.tender.milestones.some(milestone => milestone.label.trim() && Number(milestone.percentage) > 0) },
+    ] : []),
+    ...(draft.type === 'emergency' ? [{ label: 'Emergency audit justification', ok: draft.basics.justification.trim().length >= 30 }] : []),
+    ...(draft.type === 'repeat-order' ? [{ label: 'Previous order reference', ok: draft.basics.justification.trim().length >= 10 || draft.approval.notes.trim().length >= 10 }] : []),
+    ...(isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent ? [
+      { label: 'Auction start price', ok: draft.rules.startPrice > 0 },
+      { label: 'Auction decrement', ok: draft.rules.minimumDecrement > 0 },
+    ] : []),
+    ...(draft.rules.emdRequired ? [{ label: 'EMD amount', ok: draft.rules.emdAmount > 0 }] : []),
+    ...(draft.rules.performanceSecurity ? [{ label: 'ePBG / performance security amount', ok: Number(draft.tender.performanceSecurityAmount || 0) > 0 }] : []),
+  ];
 
-  if (draft.type === 'tender') {
+  if (isTenderMethod(draft.type)) {
     const technicalWeightage = Number(draft.tender.technicalWeightage);
     const priceWeightage = Number(draft.tender.priceWeightage);
     return [
       ...baseChecks,
       { label: 'Tender scope', ok: draft.tender.shortDescription.trim().length >= 10 && draft.tender.scopeOfWork.trim().length >= 10 },
       { label: 'Bid closing', ok: Boolean(draft.tender.bidClosingDate && draft.tender.bidClosingTime) },
+      { label: 'Bid end after start', ok: isAfter(bidEnd, bidStart) },
+      { label: 'Technical opening after bid end', ok: isAfter(technicalDate, bidEnd) },
+      { label: 'Financial opening after technical', ok: isAfter(financialDate, technicalDate) },
       { label: 'Delivery details', ok: Boolean(draft.tender.deliveryLocation || draft.tender.deliveryTimeline || draft.schedule.deliveryDate) },
       { label: 'Commercial basis', ok: Boolean(draft.tender.priceType && draft.tender.taxType) },
       { label: 'Evaluation weights', ok: Number.isFinite(technicalWeightage) && Number.isFinite(priceWeightage) && technicalWeightage + priceWeightage === 100 },
       { label: 'Buyer contact', ok: hasContact },
       { label: 'Approval workflow', ok: !draft.tender.approvalRequired || Boolean(draft.tender.approverName || draft.tender.approvalChain) },
-      { label: 'Primary documents', ok: requiredDocs.length === 0 || requiredDocs.some(document => document.fileName) },
+      { label: 'Primary documents', ok: hasAllRequiredDocs },
+      ...methodChecks,
     ];
   }
 
   return [
     ...baseChecks,
     { label: 'Schedule date', ok: Boolean(draft.schedule.submissionDate || draft.schedule.deliveryDate) },
+    { label: 'Submission after publish', ok: isAfter(draft.schedule.submissionDate, draft.schedule.publishDate) },
     { label: 'Approval workflow', ok: Boolean(draft.approval.workflow) },
-    { label: 'Supporting documents', ok: requiredDocs.length === 0 || requiredDocs.some(document => document.fileName) },
+    { label: 'Supporting documents', ok: hasAllRequiredDocs },
+    ...methodChecks,
   ];
 }
 
 type StepProps = {
   draft: Draft;
   updateDraft: (updater: (current: Draft) => Draft) => void;
+  onDocumentUpload?: (documentId: string, file: File) => Promise<void>;
 };
 
 type SelectWithOtherOption = string | { value: string; label: string };

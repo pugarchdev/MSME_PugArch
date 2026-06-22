@@ -28,6 +28,7 @@ import { EntityIdLink } from '../../shared/EntityIdLink';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
+import { compressImage } from '../../../lib/compress';
 import { uploadDeliveryFile as uploadMessageFile, type UploadedFileAsset } from '../../delivery/upload';
 import {
     useArchiveConversation,
@@ -71,6 +72,7 @@ export default function MessagesPage() {
     const router = useRouter();
     const pathname = usePathname() || routeForRole(user?.role);
     const searchParams = useSearchParams();
+    const queryClient = useQueryClient();
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [showCreate, setShowCreate] = useState(false);
     const queryInitializedRef = useRef(false);
@@ -89,6 +91,7 @@ export default function MessagesPage() {
             recipientRole: sellerId ? 'seller' : buyerId ? 'buyer' : searchParams?.get('role') || '',
             subject: searchParams?.get('subject') || '',
             message: searchParams?.get('message') || '',
+            intent: searchParams?.get('intent') || '',
         };
     }, [searchParams, user?.role]);
 
@@ -104,7 +107,10 @@ export default function MessagesPage() {
         setShowCreate(true);
     }, [initialModalValues.counterpartyId, initialModalValues.conversationId, user]);
 
-    const handleCreated = (id: number) => {
+    const handleCreated = (id: number, conversation?: ConversationDto) => {
+        if (conversation) {
+            queryClient.setQueryData(['conversations', 'detail', id], conversation);
+        }
         setShowCreate(false);
         setSelectedId(id);
         if (searchParams?.toString()) router.replace(pathname);
@@ -167,11 +173,12 @@ export default function MessagesPage() {
 
             {showCreate && (
                 <CreateConversationModal
-                    key={`${initialModalValues.counterpartyId}-${initialModalValues.subject}-${initialModalValues.recipientRole}`}
+                    key={`${initialModalValues.counterpartyId}-${initialModalValues.subject}-${initialModalValues.recipientRole}-${initialModalValues.intent}`}
                     initialCounterpartyId={initialModalValues.counterpartyId}
                     initialRecipientRole={initialModalValues.recipientRole}
                     initialSubject={initialModalValues.subject}
                     initialMessage={initialModalValues.message}
+                    initialIntent={initialModalValues.intent}
                     onClose={() => setShowCreate(false)}
                     onCreated={handleCreated}
                 />
@@ -332,28 +339,31 @@ function ConversationDetail({ id, onBack }: { id: number; onBack: () => void }) 
         if (files.length === 0) return;
         setUploadError(null);
 
-        for (const file of files) {
-            if (file.size > MAX_MESSAGE_ATTACHMENT_SIZE) {
-                setUploadError(`${file.name} is larger than 20 MB`);
-                continue;
-            }
-
+        const uploadTasks = files.map(async (file) => {
             const uploadId = `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
             setUploadingFiles(current => [...current, { id: uploadId, name: file.name, progress: 0 }]);
             try {
-                const uploaded = await uploadMessageFile(file, {
+                const uploadFile = await compressImage(file, 1280, 1280, 0.68);
+                if (uploadFile.size > MAX_MESSAGE_ATTACHMENT_SIZE) {
+                    throw new Error(`${file.name} is larger than 20 MB`);
+                }
+                const uploaded = await uploadMessageFile(uploadFile, {
                     entityType: 'message',
                     onProgress: percent => {
                         setUploadingFiles(current => current.map(item => item.id === uploadId ? { ...item, progress: percent } : item));
                     }
                 });
-                setUploadedAttachments(current => [...current, uploaded]);
+                setUploadedAttachments(current => [...current, { ...uploaded, originalName: file.name }]);
             } catch (err) {
-                setUploadError(err instanceof Error ? err.message : `Unable to upload ${file.name}`);
+                const message = err instanceof Error ? err.message : `Unable to upload ${file.name}`;
+                setUploadError(message);
+                throw err;
             } finally {
                 setUploadingFiles(current => current.filter(item => item.id !== uploadId));
             }
-        }
+        });
+
+        await Promise.allSettled(uploadTasks);
     };
 
     const handleSend = async () => {
@@ -601,13 +611,15 @@ function CreateConversationModal({
     initialRecipientRole = '',
     initialSubject = '',
     initialMessage = '',
+    initialIntent = '',
 }: {
     onClose: () => void;
-    onCreated: (id: number) => void;
+    onCreated: (id: number, conversation?: ConversationDto) => void;
     initialCounterpartyId?: string;
     initialRecipientRole?: string;
     initialSubject?: string;
     initialMessage?: string;
+    initialIntent?: string;
 }) {
     const { user } = useAuth();
     const [recipientRole, setRecipientRole] = useState(initialRecipientRole || (user?.role === 'buyer' ? 'seller' : 'buyer'));
@@ -621,6 +633,12 @@ function CreateConversationModal({
     const mut = useCreateConversation();
     const canSearchUsers = isAdminRole(user?.role);
     const users = useMessageUserSearch({ q: query, role: recipientRole }, canSearchUsers);
+    const isPrefilledCounterparty = Boolean(initialCounterpartyId);
+    const isMarketplaceQuoteRequest = Boolean(
+        isPrefilledCounterparty &&
+        (initialIntent === 'quote' || initialSubject.toLowerCase().startsWith('quote request:') || initialMessage.toLowerCase().includes('request a quotation'))
+    );
+    const recipientLabel = recipientRole === 'seller' ? 'seller' : recipientRole === 'buyer' ? 'buyer' : roleLabel(recipientRole);
 
     const payloadForRole = () => {
         if (!counterpartyId) return null;
@@ -630,29 +648,40 @@ function CreateConversationModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className={`w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl ${canSearchUsers ? 'max-w-2xl' : 'max-w-xl'}`}>
                 <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-[#0b1f3a] to-[#12335f] px-5 py-4 text-white">
                     <div>
-                        <h3 className="text-sm font-black uppercase tracking-widest">New Role-Based Message</h3>
+                        <h3 className="text-sm font-black uppercase tracking-widest">{isMarketplaceQuoteRequest ? 'Request Quote' : 'New Message'}</h3>
                     </div>
                     <button onClick={onClose} className="rounded-md p-1 text-white/80 hover:bg-white/10"><X className="h-4 w-4" /></button>
                 </div>
-                <div className="grid gap-4 p-5 md:grid-cols-[1fr_260px]">
+                <div className={`grid gap-4 p-5 ${canSearchUsers ? 'md:grid-cols-[1fr_260px]' : ''}`}>
                     <div className="space-y-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <Select label="Recipient Role" value={recipientRole} onChange={event => setRecipientRole(event.target.value)}>
-                                <option value="buyer">Buyer</option>
-                                <option value="seller">Seller</option>
-                                {isAdminRole(user?.role) && <option value="admin">Admin</option>}
-                            </Select>
-                            <Input
-                                label="Recipient User ID"
-                                type="number"
-                                value={counterpartyId}
-                                onChange={event => setCounterpartyId(event.target.value === '' ? '' : Number(event.target.value))}
-                                placeholder="e.g. 42"
-                            />
-                        </div>
+                        {isPrefilledCounterparty && !canSearchUsers ? (
+                            <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Recipient</p>
+                                <p className="mt-1 text-xs font-bold text-blue-950">
+                                    {isMarketplaceQuoteRequest
+                                        ? `This quote request will be sent to the listing ${recipientLabel}.`
+                                        : `This conversation will be sent to the selected ${recipientLabel}.`}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <Select label="Recipient Role" value={recipientRole} onChange={event => setRecipientRole(event.target.value)}>
+                                    <option value="buyer">Buyer</option>
+                                    <option value="seller">Seller</option>
+                                    {isAdminRole(user?.role) && <option value="admin">Admin</option>}
+                                </Select>
+                                <Input
+                                    label="Recipient User ID"
+                                    type="number"
+                                    value={counterpartyId}
+                                    onChange={event => setCounterpartyId(event.target.value === '' ? '' : Number(event.target.value))}
+                                    placeholder="e.g. 42"
+                                />
+                            </div>
+                        )}
                         <Input
                             label="Subject"
                             value={subject}
@@ -672,9 +701,8 @@ function CreateConversationModal({
                             <p className="text-right text-[10px] text-slate-400">{message.length}/2000</p>
                         </div>
                     </div>
-                    <div className="space-y-3">
-                        {canSearchUsers ? (
-                            <>
+                    {canSearchUsers ? (
+                        <div className="space-y-3">
                                 <Input
                                     label="Find User"
                                     value={query}
@@ -704,9 +732,8 @@ function CreateConversationModal({
                                         <div className="py-4 text-center text-xs font-semibold text-slate-400">No matching users</div>
                                     )}
                                 </div>
-                            </>
-                        ) : null}
-                    </div>
+                        </div>
+                    ) : null}
                 </div>
                 <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -717,11 +744,11 @@ function CreateConversationModal({
                             if (subject.trim().length < 3) { toast.error('Subject required'); return; }
                             try {
                                 const result = await runWithToast(() => mut.mutateAsync(payload), {
-                                    loading: 'Creating conversation...',
-                                    success: 'Conversation created',
+                                    loading: isMarketplaceQuoteRequest ? 'Sending quote request...' : 'Starting conversation...',
+                                    success: isMarketplaceQuoteRequest ? 'Quote request sent' : 'Conversation started',
                                     error: err => err instanceof Error ? err.message : 'Unable to create conversation'
                                 });
-                                if (result?.conversation?.id) onCreated(result.conversation.id);
+                                if (result?.conversation?.id) onCreated(result.conversation.id, result.conversation);
                             } catch {
                                 // runWithToast already surfaces the API message.
                             }
@@ -730,7 +757,7 @@ function CreateConversationModal({
                         className="bg-[#12335f] text-white"
                     >
                         {mut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                        Start Conversation
+                        {isMarketplaceQuoteRequest ? 'Send Quote Request' : 'Start Conversation'}
                     </Button>
                 </div>
             </div>

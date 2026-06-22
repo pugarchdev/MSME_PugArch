@@ -25,7 +25,7 @@ import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { ensureOrgMembership } from '../services/org-membership.service.js';
-import { transporter } from '../services/mail.service.js';
+import { getTransporter } from '../services/mail.service.js';
 import { env } from '../config/env.js';
 import { hashPassword, validatePasswordStrength } from '../services/password.service.js';
 import { issueAuthResponse } from '../services/token.service.js';
@@ -709,7 +709,7 @@ router.post(
         const roleName = customRole?.name || fallbackRole.replace(/_/g, ' ');
 
         try {
-            await transporter.sendMail({
+            await getTransporter().sendMail({
                 from: `"JsgSmile Portal" <${env.SMTP_USER}>`,
                 to: body.email,
                 subject: `You're invited to join ${org?.organizationName} on JsgSmile`,

@@ -8,7 +8,7 @@ import { marketplaceApi, type MarketplaceProduct } from '../api';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
 import { MarketplaceFooter } from '../components/MarketplaceFooter';
 import { toast } from 'sonner';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
@@ -77,7 +77,7 @@ export default function MarketplaceProductDetail() {
     const product = detailData?.product;
     const related = detailData?.relatedProducts || [];
 
-    const { items: cartItems, add: addGuestItem, update: updateGuestItemQty } = useGuestCart();
+    const { add: addCartItem, update: updateCartQty, getQuantity } = useMarketplaceCart();
 
     const [selectedImage, setSelectedImage] = useState(0);
     const [failedImages, setFailedImages] = useState<string[]>([]);
@@ -87,31 +87,29 @@ export default function MarketplaceProductDetail() {
         setFailedImages([]);
     }, [productId]);
 
-    const cartItem = cartItems.find((item: any) => item.id === productId && item.type === 'product');
-    const cartQuantity = cartItem ? Number(cartItem.quantity) : 0;
+    const cartQuantity = getQuantity(productId, 'product');
 
     const handleAddToCart = () => {
         if (cartQuantity === 0 && product) {
             const img = resolveMarketplaceImage(product, 'product');
-            addGuestItem({
-                id: product.id,
-                name: product.name,
-                price: product.price ? Number(product.price) : undefined,
-                unit: product.unitOfMeasure,
-                imageUrl: img,
-                category: product.category?.name,
-                type: 'product',
-            });
-            toast.success(`${product.name} added to cart`);
+            addCartItem(
+                {
+                    id: product.id,
+                    name: product.name,
+                    price: product.price ? Number(product.price) : undefined,
+                    unit: product.unitOfMeasure,
+                    imageUrl: img,
+                    category: product.category?.name,
+                    type: 'product',
+                },
+                { source: 'product-detail' }
+            );
         }
     };
 
     const handleQuantityChange = (delta: number) => {
         const newQuantity = Math.max(0, cartQuantity + delta);
-        updateGuestItemQty(productId, 'product', newQuantity);
-        if (newQuantity === 0 && product) {
-            toast.info(`${product.name} removed from cart`);
-        }
+        updateCartQty(productId, 'product', newQuantity);
     };
 
     const handleRequestQuote = () => {
@@ -132,6 +130,7 @@ export default function MarketplaceProductDetail() {
             return;
         }
         const params = new URLSearchParams({
+            intent: 'quote',
             sellerId: String(sellerUserId),
             subject: `Quote request: ${product.name}`,
             message: `Hello, I would like to request a quotation for ${product.name}.\n\nCategory: ${product.category?.name || 'Not specified'}\nQuantity: Please confirm minimum order quantity and availability.\nDelivery: Please share delivery timeline, payment terms, and applicable taxes.`

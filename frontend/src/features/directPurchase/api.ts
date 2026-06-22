@@ -1,4 +1,4 @@
-import { deleteApi, getApi, postApi, putApi } from '../shared/apiClient';
+import { deleteApi, getApi, postApi, putApi, patchApi } from '../shared/apiClient';
 import type {
     DirectPurchaseDto,
     DirectPurchasesListResponse,
@@ -38,3 +38,81 @@ export const acceptDirectPurchase = (id: number) =>
 
 export const rejectDirectPurchase = (id: number) =>
     postApi<DirectPurchaseDto>(`/api/direct-purchases/${id}/reject`, {});
+
+export interface DirectPurchaseCheckoutPayload {
+    deliveryAddressId?: number | null;
+    deliveryAddressText?: string | null;
+    department: string;
+    budgetHead: string;
+    costCenter: string;
+    justification: string;
+    remarks?: string | null;
+    deliveryInstructions?: string | null;
+    requiredDeliveryDate?: string | null;
+}
+
+export const directPurchaseCheckout = (payload: DirectPurchaseCheckoutPayload) =>
+    postApi<DirectPurchaseDto[]>(`/api/direct-purchases/checkout`, payload);
+
+export const sendDirectPurchaseToSeller = (id: number) =>
+    postApi<DirectPurchaseDto>(`/api/direct-purchases/${id}/send-to-seller`, {});
+
+// ─── Delivery Address Book APIs ──────────────────────────────────────────────
+
+export interface DeliveryAddressDto {
+    id: number;
+    buyerId: number;
+    organizationId?: number | null;
+    addressGroupId?: number | null;
+    addressLabel: string;
+    organizationName?: string | null;
+    contactPersonName: string;
+    mobileNumber: string;
+    alternateMobileNumber?: string | null;
+    email?: string | null;
+    addressLine1: string;
+    addressLine2?: string | null;
+    city: string;
+    district: string;
+    state: string;
+    pincode: string;
+    landmark?: string | null;
+    gstState?: string | null;
+    placeOfSupply?: string | null;
+    addressType: string;
+    isDefault: boolean;
+    isActive: boolean;
+}
+
+export interface AddressGroupDto {
+    id: number;
+    buyerId: number;
+    organizationId?: number | null;
+    groupName: string;
+    groupDescription?: string | null;
+    isDefaultGroup: boolean;
+    isActive: boolean;
+    addresses?: DeliveryAddressDto[];
+}
+
+export const fetchDeliveryAddresses = () =>
+    getApi<DeliveryAddressDto[]>(`/api/buyer/delivery-addresses`);
+
+export const createDeliveryAddress = (payload: Partial<DeliveryAddressDto>) =>
+    postApi<DeliveryAddressDto>(`/api/buyer/delivery-addresses`, payload);
+
+export const updateDeliveryAddress = (id: number, payload: Partial<DeliveryAddressDto>) =>
+    patchApi<DeliveryAddressDto>(`/api/buyer/delivery-addresses/${id}`, payload);
+
+export const deleteDeliveryAddress = (id: number) =>
+    deleteApi<{ success: boolean }>(`/api/buyer/delivery-addresses/${id}`);
+
+export const setAddressAsDefault = (id: number) =>
+    postApi<{ message: string }>(`/api/buyer/delivery-addresses/${id}/default`, {});
+
+export const fetchAddressGroups = () =>
+    getApi<AddressGroupDto[]>(`/api/buyer/address-groups`);
+
+export const createAddressGroup = (payload: Partial<AddressGroupDto>) =>
+    postApi<AddressGroupDto>(`/api/buyer/address-groups`, payload);
+

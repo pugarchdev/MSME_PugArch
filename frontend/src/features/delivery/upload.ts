@@ -58,11 +58,14 @@ export const uploadDeliveryFile = (file: File, opts: UploadOptions = {}): Promis
       }
       if (xhr.status >= 200 && xhr.status < 300) {
         const asset = body?.file ?? body?.data ?? body;
-        const assetId = asset?.id ?? body?.fileId;
+        const nestedFile = asset?.file ?? body?.data?.file ?? body?.file;
+        const assetId = asset?.id ?? asset?.fileId ?? nestedFile?.id ?? body?.fileId;
         if (assetId) {
           resolve({
             ...asset,
-            id: assetId
+            ...nestedFile,
+            id: assetId,
+            url: asset?.url ?? nestedFile?.url ?? nestedFile?.documentUrl,
           } as UploadedFileAsset);
           return;
         }

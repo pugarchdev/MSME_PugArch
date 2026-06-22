@@ -47,6 +47,30 @@ type FilterState = {
 
 type EvaluationDraft = Record<number, { status: 'QUALIFIED' | 'DISQUALIFIED' | ''; remarks: string; score: string }>;
 
+type ProcurementIntakeRecord = {
+  id: number;
+  requirementNumber?: string;
+  title: string;
+  methodSlug?: string;
+  procurementMethod?: string;
+  status?: string;
+  estimatedValue?: number;
+  updatedAt?: string;
+  payload?: {
+    documents?: Array<{
+      id?: string;
+      name?: string;
+      label?: string;
+      requirement?: string;
+      fileName?: string;
+      fileAssetId?: number | null;
+      documentUrl?: string;
+    }>;
+  };
+  buyer?: { name?: string; organization?: { organizationName?: string } | null };
+  organization?: { organizationName?: string } | null;
+};
+
 const initialFilters: FilterState = {
   search: '',
   status: '',
@@ -85,6 +109,7 @@ const sortedRanking = (participants: ProcurementBidParticipation[]) =>
 export default function AdminBidManagementPage() {
   const { user } = useAuth();
   const [bids, setBids] = useState<ProcurementBid[]>([]);
+  const [intakeRecords, setIntakeRecords] = useState<ProcurementIntakeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<FilterState>(initialFilters);
@@ -98,14 +123,22 @@ export default function AdminBidManagementPage() {
   const [recommendationParticipantId, setRecommendationParticipantId] = useState('');
   const [recommendationReason, setRecommendationReason] = useState('');
   const [technicalDraft, setTechnicalDraft] = useState<EvaluationDraft>({});
+  const [updatingIntakeId, setUpdatingIntakeId] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
     setError('');
-    procurementBidApi.getAdminBids()
-      .then(rows => setBids(rows))
+    Promise.all([
+      procurementBidApi.getAdminBids(),
+      procurementBidApi.getAdminProcurementIntake().catch(() => []),
+    ])
+      .then(([rows, intake]) => {
+        setBids(rows);
+        setIntakeRecords(intake);
+      })
       .catch((err: any) => {
         setBids([]);
+        setIntakeRecords([]);
         setError(err?.message || 'Unable to load admin bids right now.');
       })
       .finally(() => setLoading(false));
@@ -167,6 +200,19 @@ export default function AdminBidManagementPage() {
       load();
     } catch (err: any) {
       toast.error(err?.message || 'Unable to reject bid.');
+    }
+  };
+
+  const updateIntakeStatus = async (record: ProcurementIntakeRecord, status: 'APPROVED' | 'REJECTED') => {
+    setUpdatingIntakeId(record.id);
+    try {
+      await procurementBidApi.updateProcurementIntakeStatus(record.id, status);
+      toast.success(status === 'APPROVED' ? 'Procurement intake approved.' : 'Procurement intake rejected.');
+      load();
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to update procurement intake.');
+    } finally {
+      setUpdatingIntakeId(null);
     }
   };
 
@@ -342,8 +388,9 @@ export default function AdminBidManagementPage() {
       { label: 'Awarded bids', value: bids.filter(bid => bid.status === 'Awarded').length, icon: Gavel },
       { label: 'Cancelled/expired', value: bids.filter(bid => ['CANCELLED', 'EXPIRED'].includes(String(bid.lifecycleStage))).length, icon: X },
       { label: 'Participating sellers', value: totalParticipants, icon: Users },
+      { label: 'Create Procurement intake', value: intakeRecords.length, icon: ClipboardCheck },
     ];
-  }, [bids]);
+  }, [bids, intakeRecords.length]);
 
   const selectedRanking = sortedRanking(participants);
   const selectedAwards = participants.flatMap(participant =>
@@ -387,6 +434,74 @@ export default function AdminBidManagementPage() {
                 );
               })}
             </div>
+
+            {intakeRecords.length > 0 && (
+              <section className="mt-5 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-base font-black text-[#0b2447]">Create Procurement Intake</h2>
+                    <p className="text-xs font-semibold text-slate-600">Buyer procurements submitted from the new method-first wizard before they become published seller-facing bids.</p>
+                  </div>
+                  <span className="inline-flex h-9 items-center justify-center rounded-md border border-amber-200 bg-white px-3 text-xs font-black text-[#0b2447]">
+                    {intakeRecords.length} intake record(s)
+                  </span>
+                </div>
+                <div className="mt-4 overflow-x-auto rounded-md border border-amber-100 bg-white">
+                  <table className="min-w-[1080px] w-full text-left text-xs">
+                    <thead className="bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-800">
+                      <tr>
+                        {['Reference', 'Title', 'Method', 'Buyer', 'Status', 'Documents', 'Value', 'Updated', 'Actions'].map(head => <th key={head} className="px-3 py-2">{head}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {intakeRecords.slice(0, 8).map(record => {
+                        const docs = record.payload?.documents?.filter(document => document.fileName || document.fileAssetId || document.documentUrl) || [];
+                        const isUpdating = updatingIntakeId === record.id;
+                        const canAct = !['APPROVED', 'REJECTED', 'PUBLISHED', 'OPEN'].includes(String(record.status || '').toUpperCase());
+                        return (
+                          <tr key={record.id} className="align-top">
+                            <td className="px-3 py-2 font-black text-[#0b2447]">{record.requirementNumber || `REQ-${record.id}`}</td>
+                            <td className="px-3 py-2 font-bold text-slate-900">{record.title}</td>
+                            <td className="px-3 py-2 font-semibold text-slate-600">{readable(record.methodSlug || record.procurementMethod)}</td>
+                            <td className="px-3 py-2 font-semibold text-slate-600">{record.organization?.organizationName || record.buyer?.organization?.organizationName || record.buyer?.name || 'Buyer'}</td>
+                            <td className="px-3 py-2"><StatusBadge label={readable(record.status)} /></td>
+                            <td className="px-3 py-2">
+                              {docs.length ? (
+                                <div className="space-y-1">
+                                  {docs.slice(0, 3).map(document => (
+                                    <p key={document.id || document.fileName || document.fileAssetId} className="max-w-[180px] truncate font-semibold text-slate-600">
+                                      {document.name || document.label || 'Document'}: {document.fileName || `Asset #${document.fileAssetId}`}
+                                    </p>
+                                  ))}
+                                  {docs.length > 3 && <p className="text-[10px] font-black text-slate-400">+{docs.length - 3} more</p>}
+                                </div>
+                              ) : (
+                                <span className="font-semibold text-slate-400">No files</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 font-black text-slate-900">{money(Number(record.estimatedValue || 0))}</td>
+                            <td className="px-3 py-2 font-semibold text-slate-500">{record.updatedAt ? formatDate(record.updatedAt) : '-'}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex flex-wrap gap-2">
+                                {canAct && (
+                                  <>
+                                    <button type="button" disabled={isUpdating} onClick={() => updateIntakeStatus(record, 'APPROVED')} className="inline-flex h-8 items-center rounded-md bg-emerald-600 px-3 text-[10px] font-black text-white disabled:opacity-60">Approve</button>
+                                    <button type="button" disabled={isUpdating} onClick={() => updateIntakeStatus(record, 'REJECTED')} className="inline-flex h-8 items-center rounded-md bg-red-600 px-3 text-[10px] font-black text-white disabled:opacity-60">Reject</button>
+                                  </>
+                                )}
+                                {!canAct && (
+                                  <span className="inline-flex h-8 items-center rounded-md border border-slate-200 px-3 text-[10px] font-black text-slate-500">No action</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             <section className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

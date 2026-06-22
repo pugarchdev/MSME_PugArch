@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../hooks/useAuth';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { MarketplaceHeader } from '../components/MarketplaceHeader';
 import { MarketplaceFooter } from '../components/MarketplaceFooter';
 import {
@@ -15,7 +15,7 @@ import {
 export default function GuestCartPage() {
     const { user } = useAuth();
     const router = useRouter();
-    const { items, count, update, remove, clear } = useGuestCart();
+    const { items, count, update, remove, clear } = useMarketplaceCart();
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
     const total = items.reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0);
@@ -224,12 +224,17 @@ export default function GuestCartPage() {
                                             </div>
                                         </div>
 
-                                        <button
-                                            onClick={() => setShowCheckoutModal(true)}
-                                            className="w-full h-11 bg-[#0b2447] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#12335f] active:scale-[0.98] transition shadow-md flex items-center justify-center gap-2"
-                                        >
-                                            Checkout / Submit Inquiry <ArrowRight className="h-4 w-4" />
-                                        </button>
+                                        <div className="flex flex-col items-center space-y-1">
+                                            <button
+                                                onClick={() => setShowCheckoutModal(true)}
+                                                className="w-full h-11 bg-[#0b2447] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#12335f] active:scale-[0.98] transition shadow-md flex items-center justify-center gap-2"
+                                            >
+                                                Login to Checkout <ArrowRight className="h-4 w-4" />
+                                            </button>
+                                            <span className="text-[10px] font-semibold text-slate-500">
+                                                Proceed to Direct Purchase review and approval.
+                                            </span>
+                                        </div>
 
                                         <div className="grid grid-cols-2 gap-2 mt-2">
                                             <Link

@@ -14,6 +14,37 @@ export interface EntitySummary {
     value: number;
     status: string;
     createdAt: string;
+    // Direct purchase checkout details (only present for direct_purchase entities)
+    department?: string | null;
+    budgetHead?: string | null;
+    costCenter?: string | null;
+    justification?: string | null;
+    remarks?: string | null;
+    deliveryInstructions?: string | null;
+    deliveryAddressText?: string | null;
+    requiredDeliveryDate?: string | null;
+    consigneeName?: string | null;
+    mobileNumber?: string | null;
+    email?: string | null;
+    seller?: { id: number; name: string; email?: string; mobile?: string } | null;
+    requirement?: {
+        id: number;
+        requirementNumber?: string;
+        title?: string;
+        description?: string | null;
+        procurementMethod?: string;
+        estimatedValue?: number | string | null;
+        items?: Array<{
+            id: number;
+            itemName: string;
+            description?: string | null;
+            quantity: number | string;
+            unitOfMeasure: string;
+            estimatedUnitPrice?: number | string | null;
+        }>;
+    } | null;
+    payload?: any | null;
+    methodSlug?: string | null;
 }
 
 export interface ApprovalDto {

@@ -28,6 +28,7 @@ import {
     type ApprovalEntityType
 } from '../services/approval-chain.service.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
+import { serializeProcurementDraft } from './phase4.routes.js';
 
 const router = Router();
 
@@ -292,12 +293,58 @@ async function getEntitySummary(type: ApprovalEntityType, id: number) {
     if (type === 'tender') {
         const t = await prisma.tender.findUnique({
             where: { id },
-            select: { id: true, tenderId: true, title: true, budget: true, status: true, createdAt: true }
+            select: {
+                id: true,
+                tenderId: true,
+                title: true,
+                budget: true,
+                status: true,
+                createdAt: true,
+                requirementId: true,
+                requirement: {
+                    select: {
+                        id: true,
+                        requirementNumber: true,
+                        title: true,
+                        description: true,
+                        procurementMethod: true,
+                        estimatedValue: true,
+                        status: true,
+                        items: {
+                            select: {
+                                id: true,
+                                itemName: true,
+                                description: true,
+                                quantity: true,
+                                unitOfMeasure: true,
+                                estimatedUnitPrice: true,
+                                specifications: true
+                            }
+                        }
+                    }
+                }
+            }
         });
         if (!t) return null;
+        
+        let payload = null;
+        let methodSlug = 'tender';
+        if (t.requirement) {
+            const serialized = serializeProcurementDraft(t.requirement);
+            payload = serialized.payload;
+            methodSlug = serialized.methodSlug;
+        }
+
         return {
-            id: t.id, label: t.tenderId, title: t.title, value: Number(t.budget),
-            status: t.status, createdAt: t.createdAt
+            id: t.id,
+            label: t.tenderId,
+            title: t.title,
+            value: Number(t.budget),
+            status: t.status,
+            createdAt: t.createdAt,
+            payload,
+            methodSlug,
+            requirement: t.requirement
         };
     }
     if (type === 'purchase_order') {
@@ -326,12 +373,58 @@ async function getEntitySummary(type: ApprovalEntityType, id: number) {
     if (type === 'direct_purchase') {
         const dp = await prisma.directPurchase.findUnique({
             where: { id },
-            select: { id: true, purchaseNumber: true, totalAmount: true, status: true, createdAt: true }
+            select: {
+                id: true, purchaseNumber: true, totalAmount: true, status: true, createdAt: true,
+                department: true, budgetHead: true, costCenter: true,
+                justification: true, remarks: true,
+                deliveryInstructions: true, deliveryAddressText: true,
+                requiredDeliveryDate: true,
+                consigneeName: true, mobileNumber: true, email: true,
+                seller: { select: { id: true, name: true, email: true, mobile: true } },
+                requirement: {
+                    select: {
+                        id: true, requirementNumber: true, title: true, description: true,
+                        procurementMethod: true, estimatedValue: true,
+                        status: true,
+                        items: {
+                            select: {
+                                id: true, itemName: true, description: true,
+                                quantity: true, unitOfMeasure: true, estimatedUnitPrice: true,
+                                specifications: true
+                            }
+                        }
+                    }
+                }
+            }
         });
         if (!dp) return null;
+        
+        let payload = null;
+        let methodSlug = 'direct-purchase';
+        if (dp.requirement) {
+            const serialized = serializeProcurementDraft(dp.requirement);
+            payload = serialized.payload;
+            methodSlug = serialized.methodSlug;
+        }
+
         return {
-            id: dp.id, label: dp.purchaseNumber, title: `Direct Purchase ${dp.purchaseNumber}`,
-            value: Number(dp.totalAmount || 0), status: dp.status, createdAt: dp.createdAt
+            id: dp.id, label: dp.purchaseNumber, title: dp.requirement?.title || `Direct Purchase ${dp.purchaseNumber}`,
+            value: Number(dp.totalAmount || 0), status: dp.status, createdAt: dp.createdAt,
+            department: dp.department,
+            budgetHead: dp.budgetHead,
+            costCenter: dp.costCenter,
+            justification: dp.justification,
+            remarks: dp.remarks,
+            deliveryInstructions: dp.deliveryInstructions,
+            deliveryAddressText: dp.deliveryAddressText,
+            requiredDeliveryDate: dp.requiredDeliveryDate,
+            consigneeName: dp.consigneeName,
+            mobileNumber: dp.mobileNumber,
+            email: dp.email,
+            seller: dp.seller,
+            requirement: dp.requirement,
+            payload,
+            methodSlug
         };
     }
     return null;

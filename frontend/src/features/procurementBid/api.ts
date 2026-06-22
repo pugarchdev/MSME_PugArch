@@ -235,6 +235,16 @@ export const procurementBidApi = {
     const data = unwrapApiData(body);
     return (data || []).map(normalizeBid);
   },
+  async getAdminProcurementIntake(params: Record<string, string | number> = {}) {
+    const qs = buildQueryString(params);
+    const res = await api.fetch(`/api/admin/procurement/intake${qs ? `?${qs}` : ''}`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const data = await readApiBody(res);
+    return data?.records || data?.items || data || [];
+  },
+  async updateProcurementIntakeStatus(id: number | string, status: string) {
+    const res = await api.patch(`/api/procurement/${encodeURIComponent(String(id))}/status`, { status }, { headers: authHeaders() });
+    return readApiBody(res);
+  },
   async adminList() {
     return this.getAdminBids();
   },

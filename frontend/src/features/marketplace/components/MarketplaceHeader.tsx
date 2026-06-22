@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { useGuestCart } from '../hooks/useGuestCart';
+import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import {
     Search, ShoppingCart, User, Phone, Mail, Globe,
     HelpCircle, LogIn, Store, Building2, ChevronDown,
@@ -93,21 +93,18 @@ export function MarketplaceHeader({ user }: Props) {
     const router = useRouter();
     const { size, adjust, reset } = useFontSize();
     const { on: highContrast, toggle: toggleContrast } = useContrast();
-    const { count: cartCount } = useGuestCart();
+    const { count: cartCount } = useMarketplaceCart();
 
     const [searchQ, setSearchQ] = useState('');
-    const [showLogin, setShowLogin] = useState(false);
     const [showSignup, setShowSignup] = useState(false);
     const [showLang, setShowLang] = useState(false);
 
-    const loginRef = useRef<HTMLDivElement>(null);
     const signupRef = useRef<HTMLDivElement>(null);
     const langRef = useRef<HTMLDivElement>(null);
 
     /* Close dropdowns on outside click */
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (loginRef.current && !loginRef.current.contains(e.target as Node)) setShowLogin(false);
             if (signupRef.current && !signupRef.current.contains(e.target as Node)) setShowSignup(false);
             if (langRef.current && !langRef.current.contains(e.target as Node)) setShowLang(false);
         };
@@ -180,7 +177,7 @@ export function MarketplaceHeader({ user }: Props) {
                         {/* ── Language selector ─────────────────────────────── */}
                         {/* <div className="relative" ref={langRef}>
                             <button
-                                onClick={() => { setShowLang(v => !v); setShowLogin(false); }}
+                                onClick={() => { setShowLang(v => !v); }}
                                 className={`${utilBtn} h-6 px-2 gap-1 text-[10px] font-medium`}
                             >
                                 <Globe className="h-3 w-3 opacity-70 shrink-0" />
@@ -257,53 +254,14 @@ export function MarketplaceHeader({ user }: Props) {
 
                         {!user ? (
                             <>
-                                {/* Login dropdown */}
-                                <div className="relative" ref={loginRef}>
-                                    <button
-                                        onClick={() => { setShowLogin(v => !v); setShowLang(false); }}
-                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 active:scale-95 sm:px-3 [&:not(:disabled):hover]:translate-y-0"
-                                    >
-                                        <LogIn className="h-3.5 w-3.5 shrink-0" />
-                                        <span>Login</span>
-                                        <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
-                                    </button>
-
-                                    {showLogin && (
-                                        <div className="absolute right-0 top-[calc(100%+4px)] w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-50">
-                                            <p className="px-3 pb-1 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                                Sign in as
-                                            </p>
-                                            {[
-                                                { href: '/login', label: 'Buyer Login', icon: <Building2 className="h-3 w-3 text-blue-600" />, bg: 'bg-blue-50' },
-                                                { href: '/login', label: 'Seller Login', icon: <Store className="h-3 w-3 text-green-600" />, bg: 'bg-green-50' },
-                                                { href: '/login', label: 'SHG Login', icon: <User className="h-3 w-3 text-emerald-600" />, bg: 'bg-emerald-50' },
-                                            ].map(item => (
-                                                <Link
-                                                    key={item.label}
-                                                    href={item.href}
-                                                    onClick={() => setShowLogin(false)}
-                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                                                >
-                                                    <span className={`w-5 h-5 rounded-full ${item.bg} flex items-center justify-center shrink-0`}>
-                                                        {item.icon}
-                                                    </span>
-                                                    {item.label}
-                                                </Link>
-                                            ))}
-                                            <div className="border-t border-slate-100 my-1" />
-                                            <Link
-                                                href="/login"
-                                                onClick={() => setShowLogin(false)}
-                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
-                                            >
-                                                <span className="w-5 h-5 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
-                                                    <User className="h-3 w-3 text-purple-600" />
-                                                </span>
-                                                Admin Login
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Login Button */}
+                                <Link
+                                    href="/login"
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 active:scale-95 sm:px-3 [&:not(:disabled):hover]:translate-y-0"
+                                >
+                                    <LogIn className="h-3.5 w-3.5 shrink-0" />
+                                    <span>Login</span>
+                                </Link>
 
                                 {/* Sign Up dropdown */}
                                 <div ref={signupRef} className="relative">

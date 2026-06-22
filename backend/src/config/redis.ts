@@ -32,6 +32,7 @@ const getRedisInstance = () => {
   if (env.REDIS_URL) {
     return new Redis(env.REDIS_URL, redisOptions);
   }
+  logger.info('No REDIS_HOST or REDIS_URL configured; running with in-memory fallback only');
   return null;
 };
 

@@ -47,10 +47,42 @@ export const withIdempotency = async <T extends Record<string, unknown>>(input: 
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
   const isPaymentRoute = input.route.toLowerCase().includes('payment');
   const redisIdemKey = isPaymentRoute ? redisKeys.idemPayment(input.key) : null;
+  const MAX_RETRIES = 3;
 
-  if (redisIdemKey && redis && isRedisReady()) {
-    const acquired = await redis.set(redisIdemKey, requestHash, 'EX', ttlSeconds, 'NX');
-    if (acquired !== 'OK') {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (redisIdemKey && redis && isRedisReady()) {
+      const acquired = await redis.set(redisIdemKey, requestHash, 'EX', ttlSeconds, 'NX');
+      if (acquired !== 'OK') {
+        const existing = await prisma.idempotencyKey.findUnique({
+          where: {
+            idempotencyKeyCompound: {
+              key: input.key,
+              userId: input.userId,
+              route: input.route
+            }
+          }
+        });
+        if (existing?.requestHash && existing.requestHash !== requestHash) {
+          throw new ApiError(409, 'Idempotency key reused with a different request', 'IDEMPOTENCY_CONFLICT');
+        }
+        if (existing?.status === 'completed' && existing.responseBody) return existing.responseBody as T;
+        throw new ApiError(409, 'Request is already being processed', 'IDEMPOTENCY_PROCESSING');
+      }
+    }
+
+    try {
+      await prisma.idempotencyKey.create({
+        data: {
+          key: input.key,
+          userId: input.userId,
+          route: input.route,
+          requestHash,
+          status: 'processing',
+          expiresAt
+        }
+      });
+      break;
+    } catch {
       const existing = await prisma.idempotencyKey.findUnique({
         where: {
           idempotencyKeyCompound: {
@@ -60,53 +92,29 @@ export const withIdempotency = async <T extends Record<string, unknown>>(input: 
           }
         }
       });
-      if (existing?.requestHash && existing.requestHash !== requestHash) {
+
+      if (!existing || existing.expiresAt <= new Date()) {
+        await prisma.idempotencyKey.deleteMany({
+          where: { key: input.key, userId: input.userId, route: input.route }
+        });
+        if (redisIdemKey && redis && isRedisReady()) {
+          await redis.del(redisIdemKey).catch(() => undefined);
+        }
+        if (attempt === MAX_RETRIES - 1) {
+          throw new ApiError(500, 'Failed to acquire idempotency lock after retries', 'IDEMPOTENCY_LOCK_FAILED');
+        }
+        await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+        continue;
+      }
+
+      if (existing.requestHash !== requestHash) {
         throw new ApiError(409, 'Idempotency key reused with a different request', 'IDEMPOTENCY_CONFLICT');
       }
-      if (existing?.status === 'completed' && existing.responseBody) return existing.responseBody as T;
+      if (existing.status === 'completed' && existing.responseBody) {
+        return existing.responseBody as T;
+      }
       throw new ApiError(409, 'Request is already being processed', 'IDEMPOTENCY_PROCESSING');
     }
-  }
-
-  try {
-    await prisma.idempotencyKey.create({
-      data: {
-        key: input.key,
-        userId: input.userId,
-        route: input.route,
-        requestHash,
-        status: 'processing',
-        expiresAt
-      }
-    });
-  } catch {
-    const existing = await prisma.idempotencyKey.findUnique({
-      where: {
-        idempotencyKeyCompound: {
-          key: input.key,
-          userId: input.userId,
-          route: input.route
-        }
-      }
-    });
-
-    if (!existing || existing.expiresAt <= new Date()) {
-      await prisma.idempotencyKey.deleteMany({
-        where: { key: input.key, userId: input.userId, route: input.route }
-      });
-      if (redisIdemKey && redis && isRedisReady()) {
-        await redis.del(redisIdemKey).catch(() => undefined);
-      }
-      return withIdempotency(input);
-    }
-
-    if (existing.requestHash !== requestHash) {
-      throw new ApiError(409, 'Idempotency key reused with a different request', 'IDEMPOTENCY_CONFLICT');
-    }
-    if (existing.status === 'completed' && existing.responseBody) {
-      return existing.responseBody as T;
-    }
-    throw new ApiError(409, 'Request is already being processed', 'IDEMPOTENCY_PROCESSING');
   }
 
   try {

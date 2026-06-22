@@ -13,7 +13,6 @@ import {
     ShoppingCart, FileText, Globe, Mail, Phone, X, User,
     Send, MessageSquare
 } from 'lucide-react';
-import { useGuestCart } from '../hooks/useGuestCart';
 import { useQueryClient } from '@tanstack/react-query';
 import { MarketplaceItemCard } from '../components/MarketplaceItemCard';
 import { saveSupplier } from '../utils/savedSuppliers';
@@ -29,7 +28,6 @@ export default function MarketplaceSellerStore() {
     const router = useRouter();
     const sellerId = Number(pathname.split('/').pop());
     const queryClient = useQueryClient();
-    const { items: cartItems } = useGuestCart();
 
     const [vendor, setVendor] = useState<any>(null);
     const [products, setProducts] = useState<any[]>([]);

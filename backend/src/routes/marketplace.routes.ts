@@ -1946,25 +1946,90 @@ router.get('/marketplace/requirements', shortCache(30), async (req: Request, res
 router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30), async (req: AuthRequest, res: Response) => {
     try {
         const id = Number(req.params.id);
-        if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
-        const requirement = await db.buyerRequirement.findFirst({ where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } }, select: publicRequirementDetailSelect });
-        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
-        const [similar, ownResponse] = await Promise.all([
-            db.buyerRequirement.findMany({
-                where: { ...getPublicRequirementWhere(), id: { not: id }, OR: [{ categoryId: requirement.categoryId || undefined }, { requirementType: requirement.requirementType }] },
+        if (isNaN(id) || id === 0) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+
+        let requirement: any = null;
+        let isLegacy = false;
+
+        if (id < 0) {
+            const legacyId = Math.abs(id);
+            const legacyReq = await db.requirement.findFirst({
+                where: { id: legacyId },
+                select: publicLegacyRequirementSelect
+            });
+            if (!legacyReq) {
+                return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+            }
+            requirement = mapLegacyRequirementToPublic(legacyReq);
+            isLegacy = true;
+        } else {
+            const buyerReq = await db.buyerRequirement.findFirst({
+                where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } },
+                select: publicRequirementDetailSelect
+            });
+            if (buyerReq) {
+                requirement = decorateRequirement(buyerReq);
+            } else {
+                const legacyReq = await db.requirement.findFirst({
+                    where: { id },
+                    select: publicLegacyRequirementSelect
+                });
+                if (legacyReq) {
+                    requirement = mapLegacyRequirementToPublic(legacyReq);
+                    isLegacy = true;
+                }
+            }
+        }
+
+        if (!requirement) {
+            return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+        }
+
+        let similar: any[] = [];
+        let ownResponse: any = null;
+
+        if (!isLegacy) {
+            const [similarList, response] = await Promise.all([
+                db.buyerRequirement.findMany({
+                    where: {
+                        ...getPublicRequirementWhere(),
+                        id: { not: requirement.id },
+                        OR: [
+                            { categoryId: requirement.categoryId || undefined },
+                            { requirementType: requirement.requirementType }
+                        ]
+                    },
+                    take: 4,
+                    orderBy: { lastDate: 'asc' },
+                    select: publicRequirementListSelect
+                }),
+                req.user?.role === 'seller'
+                    ? db.requirementResponse.findFirst({
+                        where: { requirementId: requirement.id, sellerUserId: Number(req.user.id) },
+                        orderBy: { createdAt: 'desc' },
+                        select: { id: true, status: true, createdAt: true, updatedAt: true }
+                    })
+                    : Promise.resolve(null)
+            ]);
+            similar = similarList.map(decorateRequirement);
+            ownResponse = response;
+        } else {
+            const similarList = await db.buyerRequirement.findMany({
+                where: {
+                    ...getPublicRequirementWhere(),
+                    OR: [
+                        { categoryId: requirement.categoryId || undefined },
+                        { requirementType: requirement.requirementType }
+                    ]
+                },
                 take: 4,
                 orderBy: { lastDate: 'asc' },
                 select: publicRequirementListSelect
-            }),
-            req.user?.role === 'seller'
-                ? db.requirementResponse.findFirst({
-                    where: { requirementId: id, sellerUserId: Number(req.user.id) },
-                    orderBy: { createdAt: 'desc' },
-                    select: { id: true, status: true, createdAt: true, updatedAt: true }
-                })
-                : Promise.resolve(null)
-        ]);
-        return ok(res, { requirement: decorateRequirement(requirement), similarRequirements: similar.map(decorateRequirement), ownResponse });
+            });
+            similar = similarList.map(decorateRequirement);
+        }
+
+        return ok(res, { requirement, similarRequirements: similar, ownResponse });
     } catch (error) {
         console.error('[Marketplace Requirement Detail]', error);
         return apiResponse.error(res, 500, 'Failed to load requirement detail', 'REQUIREMENT_DETAIL_ERROR');

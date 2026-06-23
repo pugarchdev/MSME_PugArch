@@ -34,7 +34,7 @@ export default function MarketplaceProductList() {
     const router = useRouter();
     const isServices = pathname.includes('/services') || searchParams?.get('type') === 'services';
     const queryClient = useQueryClient();
-    const { items: cartItems, add: addCartItem, update: updateCartItemQty, count: cartCount, getQuantity } = useMarketplaceCart();
+    const { items: cartItems, add: addCartItem, update: updateCartItemQty, count: cartCount, getQuantity, buyNow } = useMarketplaceCart();
 
     const [query, setQuery] = useState(searchParams?.get('q') || '');
     const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
@@ -218,6 +218,49 @@ export default function MarketplaceProductList() {
     const handleCartQuantityChange = (item: any, nextQuantity: number) => {
         const itemType = isServices ? 'service' : 'product';
         updateCartItemQty(item.id, itemType, nextQuantity);
+    };
+
+    const handleBuy = async (item: any) => {
+        if (item.id < 0) {
+            toast.info(`Open a live ${isServices ? 'service' : 'product'} listing to proceed to checkout.`);
+            return;
+        }
+
+        if (!user) {
+            toast.info('Login is required to proceed to checkout.', {
+                action: {
+                    label: 'Login',
+                    onClick: () => router.push(`/login?redirect=${encodeURIComponent('/buyer/procurement/checkout')}`),
+                },
+            });
+            return;
+        }
+
+        if (user.role !== 'buyer') {
+            toast.info('Checkout is available from buyer accounts.');
+            return;
+        }
+
+        const itemType = isServices ? 'service' : 'product';
+        const itemPrice = Number(isServices ? item.basePrice || 0 : item.price || 0);
+
+        try {
+            await buyNow(
+                {
+                    id: item.id,
+                    name: item.name,
+                    price: Number.isFinite(itemPrice) && itemPrice > 0 ? itemPrice : undefined,
+                    unit: isServices ? item.pricingModel : item.unitOfMeasure,
+                    imageUrl: resolveMarketplaceImage(item, itemType),
+                    category: item.category?.name,
+                    type: itemType,
+                },
+                { source: isServices ? 'services-list-buy' : 'products-list-buy', showToast: false }
+            );
+            router.push('/buyer/procurement/checkout');
+        } catch {
+            toast.error('Unable to prepare checkout. Please try again.');
+        }
     };
 
     const handleRequestQuote = (item: any) => {
@@ -560,6 +603,11 @@ export default function MarketplaceProductList() {
                                                                 </button>
                                                             )}
                                                             {!isFallback && showBuyerMarketplaceActions && (
+                                                                <button type="button" onClick={() => handleBuy(item)} className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-600 px-3 text-[10px] font-black text-white hover:bg-emerald-700">
+                                                                    Buy
+                                                                </button>
+                                                            )}
+                                                            {!isFallback && showBuyerMarketplaceActions && (
                                                                 cartQuantity > 0 ? (
                                                                     <div className="inline-flex h-8 min-w-[96px] items-center justify-between overflow-hidden rounded-md border border-[#0b2447]/25 bg-white text-[#0b2447] shadow-sm">
                                                                         <button
@@ -683,6 +731,11 @@ export default function MarketplaceProductList() {
                                                 )}
                                                 {!isFallback && showBuyerMarketplaceActions && (
                                                     <button type="button" onClick={() => handleRequestQuote(item)} className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-[#0b2447]/20 bg-white text-[#0b2447] hover:bg-blue-50 active:scale-90 transition" aria-label="Request quote" title="Request quote"><FileText className="h-3 w-3" /></button>
+                                                )}
+                                                {!isFallback && showBuyerMarketplaceActions && (
+                                                    <button type="button" onClick={() => handleBuy(item)} className="inline-flex h-7 items-center justify-center rounded-md bg-emerald-600 px-2 text-[10px] font-black text-white hover:bg-emerald-700 active:scale-90 transition" aria-label="Buy" title="Buy">
+                                                        Buy
+                                                    </button>
                                                 )}
                                                 {!isFallback && showBuyerMarketplaceActions && (
                                                     cartQuantity > 0 ? (

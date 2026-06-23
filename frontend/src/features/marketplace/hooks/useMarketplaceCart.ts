@@ -136,6 +136,47 @@ export function useMarketplaceCart() {
             toast.info('Cart cleared');
         };
 
+        const buyNow = async (
+            item: Omit<UnifiedCartItem, 'quantity' | 'dbCartItemId'>,
+            options?: { source?: string; showToast?: boolean }
+        ) => {
+            const otherItems = mappedItems.filter(
+                (cartItem) => !(cartItem.id === item.id && cartItem.type === item.type)
+            );
+
+            await Promise.all(
+                otherItems
+                    .filter((cartItem) => cartItem.dbCartItemId)
+                    .map((cartItem) => removeCartItemMut.mutateAsync(cartItem.dbCartItemId!))
+            );
+
+            const hasTarget = mappedItems.some(
+                (cartItem) => cartItem.id === item.id && cartItem.type === item.type
+            );
+
+            if (!hasTarget) {
+                await addToCartMut.mutateAsync({
+                    productId: item.type === 'product' ? item.id : undefined,
+                    serviceId: item.type === 'service' ? item.id : undefined,
+                    quantity: 1,
+                    itemName: item.name,
+                    unitPrice: item.price,
+                    unitOfMeasure: item.unit,
+                });
+            }
+
+            marketplaceApi.trackInteraction({
+                itemId: item.id,
+                itemType: item.type === 'service' ? 'SERVICE' : 'PRODUCT',
+                action: 'ADD_TO_CART',
+                metadata: { source: options?.source || 'marketplace-buy-now', buyNow: true },
+            }).catch(() => undefined);
+
+            if (options?.showToast !== false) {
+                toast.success(`${item.name} ready for checkout`);
+            }
+        };
+
         return {
             items: mappedItems,
             count,
@@ -144,6 +185,7 @@ export function useMarketplaceCart() {
             update,
             remove,
             clear,
+            buyNow,
             isLoading: activeCartQuery.isLoading
         };
     }
@@ -210,6 +252,33 @@ export function useMarketplaceCart() {
         }
     };
 
+    const guestBuyNow = async (
+        item: Omit<UnifiedCartItem, 'quantity' | 'dbCartItemId'>,
+        options?: { source?: string; showToast?: boolean }
+    ) => {
+        guestCart.clear();
+        guestCart.add({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            unit: item.unit,
+            imageUrl: item.imageUrl,
+            category: item.category,
+            type: item.type,
+        });
+
+        marketplaceApi.trackInteraction({
+            itemId: item.id,
+            itemType: item.type === 'service' ? 'SERVICE' : 'PRODUCT',
+            action: 'ADD_TO_CART',
+            metadata: { source: options?.source || 'marketplace-buy-now', buyNow: true },
+        }).catch(() => undefined);
+
+        if (options?.showToast !== false) {
+            toast.success(`${item.name} ready for checkout`);
+        }
+    };
+
     return {
         items: mappedGuestItems,
         count: guestCart.count,
@@ -218,6 +287,7 @@ export function useMarketplaceCart() {
         update: guestUpdate,
         remove: guestRemove,
         clear: guestCart.clear,
+        buyNow: guestBuyNow,
         isLoading: false
     };
 }

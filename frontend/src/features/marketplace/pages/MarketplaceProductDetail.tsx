@@ -77,7 +77,7 @@ export default function MarketplaceProductDetail() {
     const product = detailData?.product;
     const related = detailData?.relatedProducts || [];
 
-    const { add: addCartItem, update: updateCartQty, getQuantity } = useMarketplaceCart();
+    const { add: addCartItem, update: updateCartQty, getQuantity, count: cartCount, buyNow } = useMarketplaceCart();
 
     const [selectedImage, setSelectedImage] = useState(0);
     const [failedImages, setFailedImages] = useState<string[]>([]);
@@ -136,6 +136,49 @@ export default function MarketplaceProductDetail() {
             message: `Hello, I would like to request a quotation for ${product.name}.\n\nCategory: ${product.category?.name || 'Not specified'}\nQuantity: Please confirm minimum order quantity and availability.\nDelivery: Please share delivery timeline, payment terms, and applicable taxes.`
         });
         router.push(`/buyer/messages?${params.toString()}`);
+    };
+
+    const handleCheckout = async () => {
+        if (!product) return;
+
+        if (!user) {
+            toast.info('Login is required to proceed to checkout.', {
+                action: {
+                    label: 'Login',
+                    onClick: () => router.push(`/login?redirect=${encodeURIComponent('/buyer/procurement/checkout')}`),
+                },
+            });
+            return;
+        }
+
+        if (user.role !== 'buyer') {
+            toast.info('Checkout is available from buyer accounts.');
+            return;
+        }
+
+        const img = resolveMarketplaceImage(product, 'product');
+
+        try {
+            await buyNow(
+                {
+                    id: product.id,
+                    name: product.name,
+                    price: product.price ? Number(product.price) : undefined,
+                    unit: product.unitOfMeasure,
+                    imageUrl: img,
+                    category: product.category?.name,
+                    type: 'product',
+                },
+                { source: 'product-detail-checkout', showToast: false }
+            );
+            router.push('/buyer/procurement/checkout');
+        } catch {
+            toast.error('Unable to prepare checkout. Please try again.');
+        }
+    };
+
+    const handleOpenCart = () => {
+        router.push(user ? '/cart' : '/marketplace/cart');
     };
 
     if (loading) return <PremiumLoader />;
@@ -231,18 +274,42 @@ export default function MarketplaceProductDetail() {
             <main className="flex-1">
                 {/* Breadcrumb */}
                 <div className="bg-slate-50 border-b border-slate-200">
-                    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2 text-[11px] text-slate-500">
-                        <Link href="/" className="hover:text-[#0b2447] transition">Home</Link>
-                        <ChevronRight className="h-3 w-3" />
-                        <Link href="/marketplace/products" className="hover:text-[#0b2447] transition">Products</Link>
-                        <ChevronRight className="h-3 w-3" />
-                        {product.category && (
-                            <>
-                                <Link href={`/marketplace/products?categoryId=${product.category.id}`} className="hover:text-[#0b2447] transition">{product.category.name}</Link>
-                                <ChevronRight className="h-3 w-3" />
-                            </>
-                        )}
-                        <span className="text-slate-700 font-medium truncate max-w-[200px]">{product.name}</span>
+                    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
+                            <Link href="/" className="hover:text-[#0b2447] transition">Home</Link>
+                            <ChevronRight className="h-3 w-3 shrink-0" />
+                            <Link href="/marketplace/products" className="hover:text-[#0b2447] transition">Products</Link>
+                            <ChevronRight className="h-3 w-3 shrink-0" />
+                            {product.category && (
+                                <>
+                                    <Link href={`/marketplace/products?categoryId=${product.category.id}`} className="hover:text-[#0b2447] transition">{product.category.name}</Link>
+                                    <ChevronRight className="h-3 w-3 shrink-0" />
+                                </>
+                            )}
+                            <span className="text-slate-700 font-medium truncate max-w-[200px]">{product.name}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handleOpenCart}
+                                className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                            >
+                                <ShoppingCart className="h-4 w-4" />
+                                {cartCount > 0 && (
+                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white">
+                                        {cartCount > 99 ? '99+' : cartCount}
+                                    </span>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCheckout}
+                                className="inline-flex h-9 items-center rounded-lg bg-[#0b2447] px-4 text-[11px] font-black uppercase tracking-wide text-white transition hover:bg-[#12335f]"
+                            >
+                                Checkout
+                            </button>
+                        </div>
                     </div>
                 </div>
 

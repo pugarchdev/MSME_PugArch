@@ -23,6 +23,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDateTime, formatNumber, formatRelative } from '../../shared/format';
 import { cn } from '../../../lib/utils';
+import { useAuth } from '../../../hooks/useAuth';
 import { reverseAuctionApi, type ReverseAuction, type ReverseAuctionBid, type ReverseAuctionParticipant } from '../api';
 
 const numberValue = (value: unknown, fallback = 0) => {
@@ -47,6 +48,8 @@ const liveSummaryCache = new Map<number, any>();
 
 export default function ReverseAuctionLivePage({ id }: { id: number }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isBuyerOrAdmin = user?.role === 'buyer' || user?.role === 'admin' || user?.role === 'master_admin';
   const [amount, setAmount] = useState('');
   const summary = useQuery({
     queryKey: ['reverse-auction-live', id],
@@ -182,6 +185,7 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
                       <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
                         <tr>
                           <th className="px-3 py-2">S.No.</th>
+                          {isBuyerOrAdmin && <th className="px-3 py-2">Seller Organization</th>}
                           <th className="px-3 py-2">Bid amount</th>
                           <th className="px-3 py-2">Rank</th>
                           <th className="px-3 py-2">Submitted</th>
@@ -192,6 +196,7 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
                         {bidRows.slice(0, 10).map((row, index) => (
                           <tr key={row.id} className="hover:bg-slate-50">
                             <td className="px-3 py-2 font-black text-slate-500">{index + 1}</td>
+                            {isBuyerOrAdmin && <td className="px-3 py-2 font-bold text-slate-700">{row.sellerOrgName || `Organization #${row.sellerOrgId}`}</td>}
                             <td className="px-3 py-2 font-black text-[#12335f]">{formatCurrency(getBidAmount(row))}</td>
                             <td className="px-3 py-2 font-semibold text-slate-700">{row.rankAtSubmission ? `L${row.rankAtSubmission}` : '-'}</td>
                             <td className="px-3 py-2 font-semibold text-slate-600">{formatDateTime(row.submittedAt)}</td>

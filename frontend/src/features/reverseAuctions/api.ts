@@ -50,6 +50,9 @@ export type ReverseAuctionParticipant = {
 export type ReverseAuctionBid = {
   id: number;
   auctionId: number;
+  sellerOrgId?: number | null;
+  sellerId?: number | null;
+  sellerOrgName?: string | null;
   bidAmount?: number | string | null;
   amount?: number | string | null;
   rankAtSubmission?: number | null;

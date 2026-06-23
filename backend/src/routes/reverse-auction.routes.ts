@@ -401,7 +401,22 @@ router.get('/reverse-auctions/:id/bids', authorize('buyer', 'seller', 'admin', '
     if (req.user?.role === 'seller') where.OR = [{ sellerId: req.user.id }, { sellerOrgId: req.user.organizationId || -1 }];
     else assertAuctionManager(req, auction);
     const bids = await db.auctionBid.findMany({ where, orderBy: [{ amount: 'asc' }, { submittedAt: 'asc' }] });
-    return apiResponse.success(res, { bids: maskSensitive(bids) });
+    
+    let mappedBids = bids;
+    if (req.user?.role !== 'seller') {
+      const orgIds = Array.from(new Set(bids.map((b: any) => b.sellerOrgId).filter(Boolean)));
+      const orgs = await db.organization.findMany({
+        where: { id: { in: orgIds as number[] } },
+        select: { id: true, organizationName: true }
+      });
+      const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
+      mappedBids = bids.map((b: any) => ({
+        ...b,
+        sellerOrgName: orgMap.get(b.sellerOrgId) || `Organization #${b.sellerOrgId}`
+      }));
+    }
+    
+    return apiResponse.success(res, { bids: maskSensitive(mappedBids) });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load bids', error.code || 'REVERSE_AUCTION_BIDS_ERROR');
   }
@@ -435,7 +450,20 @@ router.get('/reverse-auctions/:id/result', authorize('buyer', 'admin', 'master_a
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     assertAuctionManager(req, auction);
     const participants = await db.auctionParticipant.findMany({ where: { auctionId: id }, orderBy: [{ currentRank: 'asc' }, { lastBidAmount: 'asc' }] });
-    return apiResponse.success(res, { auction: maskSensitive(auction), ranking: maskSensitive(participants) });
+    
+    // Resolve organization names for the ranking table
+    const orgIds = participants.map((p: any) => p.sellerOrgId).filter(Boolean);
+    const orgs = await db.organization.findMany({
+      where: { id: { in: orgIds } },
+      select: { id: true, organizationName: true }
+    });
+    const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
+    const ranking = participants.map((p: any) => ({
+      ...p,
+      sellerOrgName: orgMap.get(p.sellerOrgId) || `Organization #${p.sellerOrgId}`
+    }));
+
+    return apiResponse.success(res, { auction: maskSensitive(auction), ranking: maskSensitive(ranking) });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load auction result', error.code || 'REVERSE_AUCTION_RESULT_ERROR');
   }

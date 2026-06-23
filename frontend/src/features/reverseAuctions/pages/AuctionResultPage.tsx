@@ -48,7 +48,7 @@ export default function AuctionResultPage({ id }: { id: number }) {
                   {ranking.map((row: any, index: number) => (
                     <tr key={row.id}>
                       <td className="p-3 text-lg font-black text-slate-950">L{row.currentRank || index + 1}</td>
-                      <td className="p-3 font-bold text-slate-800">Organization #{row.sellerOrgId}</td>
+                      <td className="p-3 font-bold text-slate-800">{row.sellerOrgName || `Organization #${row.sellerOrgId}`}</td>
                       <td className="p-3 font-black text-slate-950">{row.lastBidAmount ? formatCurrency(row.lastBidAmount) : '-'}</td>
                       <td className="p-3 text-xs font-bold uppercase text-slate-500">{row.status}</td>
                       <td className="p-3 text-right">

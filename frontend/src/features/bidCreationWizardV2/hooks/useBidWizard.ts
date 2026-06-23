@@ -1,10 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { BidType, PacketType, WizardFormData } from '../types/steps';
 import { bidWizardApi } from '../api';
 import { defaultStep4ForBidType, emptyWizardFormData, mergeStepData } from '../utils/helpers';
+import { validateStepClient } from '../utils/validation';
+import { scrollToFirstFieldError } from '../utils/fieldStyles';
 import { useStepValidation } from './useStepValidation';
 import { useDraftPersistence } from './useDraftPersistence';
+
+const ALL_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 export const useBidWizard = () => {
   const [draftId, setDraftId] = useState<number | null>(null);
@@ -13,11 +17,42 @@ export const useBidWizard = () => {
   const [validationErrors, setValidationErrors] = useState<Record<number, Record<string, string[]>>>({});
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [touchedSteps, setTouchedSteps] = useState<Set<number>>(() => new Set());
+  const stepContentRef = useRef<HTMLDivElement | null>(null);
 
   const bidType = (formData.step1.bidType || null) as BidType | null;
   const packetType = (formData.step1.packetType || 'SINGLE_PACKET') as PacketType;
   const validateStep = useStepValidation(formData, bidType, packetType, setValidationErrors);
   const persistence = useDraftPersistence({ draftId, currentStep, formData, validationErrors, completedSteps, enabled: Boolean(draftId) });
+
+  const validateStepClientOnly = useCallback((step: number) => {
+    const result = validateStepClient(step, formData, bidType, packetType);
+    setValidationErrors(prev => ({ ...prev, [step]: result.errors }));
+    return result;
+  }, [bidType, formData, packetType]);
+
+  const markStepTouched = useCallback((step: number) => {
+    setTouchedSteps(prev => {
+      if (prev.has(step)) return prev;
+      const next = new Set(prev);
+      next.add(step);
+      return next;
+    });
+  }, []);
+
+  const markAllStepsTouched = useCallback(() => {
+    setTouchedSteps(new Set(ALL_STEPS));
+  }, []);
+
+  const showValidationFailure = useCallback((step: number, message?: string) => {
+    scrollToFirstFieldError(stepContentRef.current);
+    toast.error(message || 'Please fix the highlighted fields before continuing.');
+  }, []);
+
+  useEffect(() => {
+    if (!touchedSteps.has(currentStep)) return;
+    validateStepClientOnly(currentStep);
+  }, [currentStep, formData, touchedSteps, validateStepClientOnly]);
 
   const updateField = useCallback((step: number, field: string, value: any) => {
     setFormData(prev => {
@@ -44,13 +79,24 @@ export const useBidWizard = () => {
 
   const goToStep = useCallback(async (step: number) => {
     if (step > currentStep) {
+      markStepTouched(currentStep);
+      const clientResult = validateStepClientOnly(currentStep);
+      if (!clientResult.valid) {
+        showValidationFailure(currentStep);
+        return;
+      }
+
       const ok = await validateStep(currentStep, true);
-      if (!ok) return;
+      if (!ok) {
+        showValidationFailure(currentStep);
+        return;
+      }
+
       setCompletedSteps(prev => Array.from(new Set([...prev, currentStep])));
       if (currentStep === 1) await ensureDraft();
     }
     setCurrentStep(Math.min(9, Math.max(1, step)));
-  }, [currentStep, ensureDraft, validateStep]);
+  }, [currentStep, ensureDraft, markStepTouched, showValidationFailure, validateStep, validateStepClientOnly]);
 
   const saveDraft = useCallback(async () => {
     const hadDraft = Boolean(draftId);
@@ -76,26 +122,60 @@ export const useBidWizard = () => {
   const submitBid = useCallback(async (submitForApproval = true) => {
     const id = await ensureDraft();
     if (!id) return;
+    markAllStepsTouched();
     setIsSubmitting(true);
     try {
+      await bidWizardApi.updateDraft(id, {
+        currentStep,
+        formData,
+        validationState: validationErrors,
+        completedSteps,
+      });
+
+      const collectedErrors: Record<number, Record<string, string[]>> = {};
       const invalidSteps: number[] = [];
       for (let step = 1; step <= 9; step += 1) {
-        const ok = await validateStep(step, true);
-        if (!ok) invalidSteps.push(step);
+        const serverResult = await bidWizardApi.validateStep(step, formData, bidType, packetType);
+        if (!serverResult.valid) {
+          invalidSteps.push(step);
+          collectedErrors[step] = serverResult.errors || {};
+        }
       }
       if (invalidSteps.length) {
-        setCurrentStep(invalidSteps[0]);
-        toast.error(`Please fix validation errors in step ${invalidSteps[0]}`);
+        setValidationErrors(prev => ({ ...prev, ...collectedErrors }));
+        const firstStep = invalidSteps[0];
+        setCurrentStep(firstStep);
+        const firstError = Object.values(collectedErrors[firstStep] || {})[0]?.[0];
+        showValidationFailure(firstStep, firstError || `Please fix validation errors in step ${firstStep}`);
         return;
       }
+
       const result = await bidWizardApi.submit(id, submitForApproval);
       toast.success(`Bid submitted: ${result.procurementBid?.bidNumber || result.procurementBid?.id}`);
     } catch (error: any) {
+      const details = error?.details;
+      if (details && typeof details === 'object') {
+        const stepKeys = Object.keys(details)
+          .map((key) => Number(key))
+          .filter((step) => Number.isFinite(step) && step > 0)
+          .sort((a, b) => a - b);
+
+        if (stepKeys.length) {
+          const normalized = Object.fromEntries(
+            stepKeys.map((step) => [step, details[String(step)] as Record<string, string[]>])
+          );
+          setValidationErrors(prev => ({ ...prev, ...normalized }));
+          setCurrentStep(stepKeys[0]);
+          const firstError = Object.values(normalized[stepKeys[0]] || {})[0]?.[0];
+          showValidationFailure(stepKeys[0], firstError || `Please fix validation errors in step ${stepKeys[0]}`);
+          return;
+        }
+      }
       toast.error(error.message || 'Unable to submit bid');
     } finally {
       setIsSubmitting(false);
     }
-  }, [ensureDraft, validateStep]);
+  }, [bidType, completedSteps, currentStep, ensureDraft, formData, markAllStepsTouched, packetType, showValidationFailure, validationErrors]);
 
   const loadDraft = useCallback(async (id: number) => {
     const draft = await bidWizardApi.getDraft(id);
@@ -103,7 +183,8 @@ export const useBidWizard = () => {
     setCurrentStep(draft.currentStep || 1);
     setFormData({ ...emptyWizardFormData(), ...(draft.formData || {}) });
     setCompletedSteps(draft.completedSteps || []);
-    setValidationErrors(draft.validationState || {});
+    setValidationErrors({});
+    setTouchedSteps(new Set());
     persistence.setLastSavedAt(draft.lastSavedAt);
   }, [persistence]);
 
@@ -113,6 +194,7 @@ export const useBidWizard = () => {
     setFormData(emptyWizardFormData());
     setValidationErrors({});
     setCompletedSteps([]);
+    setTouchedSteps(new Set());
   }, []);
 
   return useMemo(() => ({
@@ -123,6 +205,8 @@ export const useBidWizard = () => {
     formData,
     validationErrors,
     completedSteps,
+    touchedSteps,
+    stepContentRef,
     saveStatus: persistence.saveStatus,
     lastSavedAt: persistence.lastSavedAt,
     isSubmitting,
@@ -134,5 +218,5 @@ export const useBidWizard = () => {
     submitBid,
     loadDraft,
     resetWizard,
-  }), [bidType, completedSteps, currentStep, draftId, formData, goToStep, isSubmitting, loadDraft, packetType, persistence.lastSavedAt, persistence.saveStatus, resetWizard, saveDraft, submitBid, updateField, updateStepData, validateStep, validationErrors]);
+  }), [bidType, completedSteps, currentStep, draftId, formData, goToStep, isSubmitting, loadDraft, packetType, persistence.lastSavedAt, persistence.saveStatus, resetWizard, saveDraft, submitBid, touchedSteps, updateField, updateStepData, validateStep, validationErrors]);
 };

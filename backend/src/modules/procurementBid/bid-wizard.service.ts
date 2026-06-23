@@ -134,13 +134,39 @@ export const resolveOtherValues = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(resolveOtherValues);
   if (value && typeof value === 'object') {
     const record = value as Record<string, any>;
-    if (record.dropdownValue === 'Other' && typeof record.otherValue === 'string') {
-      return record.otherValue.trim();
+    if (typeof record.dropdownValue === 'string') {
+      if (record.dropdownValue === 'Other' && typeof record.otherValue === 'string') {
+        return record.otherValue.trim();
+      }
+      if (record.dropdownValue !== 'Other') {
+        return record.dropdownValue.trim();
+      }
     }
     return Object.fromEntries(Object.entries(record).map(([key, nested]) => [key, resolveOtherValues(nested)]));
   }
   return value;
 };
+
+const DOCUMENT_FIELD_LABELS: Record<string, string> = {
+  technicalSpecificationDocumentIds: 'Technical Specification Document',
+  budgetSanctionDocumentIds: 'Budget Sanction Document',
+  administrativeApprovalDocumentIds: 'Administrative Approval Document',
+  scopeOfWorkDocumentIds: 'Scope of Work Document',
+  boqDocumentIds: 'BOQ Document',
+  pacCertificateDocumentIds: 'PAC Certificate',
+  competentAuthorityApprovalUploads: 'Competent Authority Approval',
+  priceReasonabilityDocumentUploads: 'Price Reasonability Document',
+  'technicalPacket.technicalDocumentUploads': 'Technical packet documents',
+  'financialPacket.financialDocumentUploads': 'Financial packet documents',
+};
+
+const documentValidationErrors = (missingFields: string[]) =>
+  Object.fromEntries(
+    missingFields.map((field) => [
+      field,
+      [`${DOCUMENT_FIELD_LABELS[field] || field} is required`],
+    ])
+  );
 
 export const assertDraftOwner = async (draftId: number, buyerId: number) => {
   const draft = await db.bidWizardDraft.findUnique({ where: { id: draftId } });
@@ -210,9 +236,37 @@ export const updateDraft = async (
 export const validateStep = (step: number, formData: Record<string, any>, bidType?: BidType, packetType?: PacketType): StepValidationResult => {
   const resolvedFormData = resolveOtherValues(formData) as Record<string, any>;
   const payload = resolvedFormData[`step${step}`] || resolvedFormData;
-  const inferredBidType = bidType || resolvedFormData?.step1?.bidType || payload?.bidType;
-  const inferredPacketType = packetType || resolvedFormData?.step1?.packetType || payload?.packetType;
-  return validateWizardStep(step, payload, inferredBidType, inferredPacketType);
+  const inferredBidType = (bidType || resolvedFormData?.step1?.bidType || payload?.bidType) as BidType;
+  const inferredPacketType = (packetType || resolvedFormData?.step1?.packetType || payload?.packetType) as PacketType;
+  const result = validateWizardStep(step, payload, inferredBidType, inferredPacketType);
+  if (!result.valid) return result;
+
+  const missingDocuments = validateRequiredDocumentUploads(resolvedFormData as BidWizardFormData, inferredBidType, inferredPacketType);
+  if (missingDocuments.length === 0) return result;
+
+  const stepDocumentFields: Record<number, string[]> = {
+    4: ['boqDocumentIds', 'pacCertificateDocumentIds', 'competentAuthorityApprovalUploads', 'priceReasonabilityDocumentUploads'],
+    6: ['technicalPacket.technicalDocumentUploads'],
+    7: [
+      'technicalSpecificationDocumentIds',
+      'budgetSanctionDocumentIds',
+      'administrativeApprovalDocumentIds',
+      'scopeOfWorkDocumentIds',
+      'boqDocumentIds',
+      'pacCertificateDocumentIds',
+      'competentAuthorityApprovalUploads',
+      'priceReasonabilityDocumentUploads',
+      'financialPacket.financialDocumentUploads',
+    ],
+  };
+
+  const relevantMissing = missingDocuments.filter((field) => (stepDocumentFields[step] || []).includes(field));
+  if (relevantMissing.length === 0) return result;
+
+  return {
+    valid: false,
+    errors: documentValidationErrors(relevantMissing),
+  };
 };
 
 export const validateAllSteps = (formData: BidWizardFormData, bidType: BidType, packetType: PacketType) => {
@@ -225,7 +279,7 @@ export const validateAllSteps = (formData: BidWizardFormData, bidType: BidType, 
   if (missingDocuments.length > 0) {
     errors['7'] = {
       ...(errors['7'] || {}),
-      ...Object.fromEntries(missingDocuments.map(field => [field, ['Required document upload is missing']]))
+      ...documentValidationErrors(missingDocuments),
     };
   }
   const totalQuantity = Number(formData.step4?.quantity || 0);

@@ -11,18 +11,15 @@ export default function Step7_TermsDocuments({ data, packetType, errors, updateF
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3">
-        <DocumentUploadSection label="Technical Specification Document" mandatory value={data.technicalSpecificationDocumentIds} onChange={value => updateField('technicalSpecificationDocumentIds', value)} />
-        <DocumentUploadSection label="Budget Sanction Document" mandatory value={data.budgetSanctionDocumentIds} onChange={value => updateField('budgetSanctionDocumentIds', value)} />
-        <DocumentUploadSection label="Administrative Approval Document" mandatory value={data.administrativeApprovalDocumentIds} onChange={value => updateField('administrativeApprovalDocumentIds', value)} />
-        <DocumentUploadSection label="Scope of Work" value={data.scopeOfWorkDocumentIds} onChange={value => updateField('scopeOfWorkDocumentIds', value)} />
-        <DocumentUploadSection label="BOQ Document" value={data.boqDocumentIds} onChange={value => updateField('boqDocumentIds', value)} />
-        <DocumentUploadSection label="PAC Certificate" value={data.pacCertificateDocumentIds} onChange={value => updateField('pacCertificateDocumentIds', value)} />
+        <DocumentUploadSection label="Technical Specification Document" mandatory value={data.technicalSpecificationDocumentIds} onChange={value => updateField('technicalSpecificationDocumentIds', value)} error={errors.technicalSpecificationDocumentIds} />
+        <DocumentUploadSection label="Budget Sanction Document" mandatory value={data.budgetSanctionDocumentIds} onChange={value => updateField('budgetSanctionDocumentIds', value)} error={errors.budgetSanctionDocumentIds} />
+        <DocumentUploadSection label="Administrative Approval Document" mandatory value={data.administrativeApprovalDocumentIds} onChange={value => updateField('administrativeApprovalDocumentIds', value)} error={errors.administrativeApprovalDocumentIds} />
+        <DocumentUploadSection label="Scope of Work" value={data.scopeOfWorkDocumentIds} onChange={value => updateField('scopeOfWorkDocumentIds', value)} error={errors.scopeOfWorkDocumentIds} />
+        <DocumentUploadSection label="BOQ Document" value={data.boqDocumentIds} onChange={value => updateField('boqDocumentIds', value)} error={errors.boqDocumentIds} />
+        <DocumentUploadSection label="PAC Certificate" value={data.pacCertificateDocumentIds} onChange={value => updateField('pacCertificateDocumentIds', value)} error={errors.pacCertificateDocumentIds} />
         <DocumentUploadSection label="Drawings / Layouts" value={data.drawingDocumentIds} onChange={value => updateField('drawingDocumentIds', value)} />
         <DocumentUploadSection label="Additional Terms" value={data.additionalTermDocumentIds} onChange={value => updateField('additionalTermDocumentIds', value)} />
       </div>
-      {Object.entries(errors).filter(([key]) => key.includes('Document') || key.includes('document') || key.includes('Uploads')).map(([key, value]) => (
-        <p key={key} className="text-xs font-bold text-red-600">{value[0]}</p>
-      ))}
       <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Payment Terms" required error={errors.paymentTerms}><SearchableSelect value={data.paymentTerms} options={PAYMENT_TERMS_OPTIONS} onChange={value => updateField('paymentTerms', value)} allowOther /></FormField>
         {['advancePaymentAllowed', 'partPaymentAllowed', 'invoiceRequired', 'gstInvoiceRequired', 'ewayBillRequired'].map(field => (
@@ -34,8 +31,13 @@ export default function Step7_TermsDocuments({ data, packetType, errors, updateF
       </div>
       <ConditionalSection showWhen={packetType === 'TWO_PACKET'}>
         <h3 className="mb-4 text-sm font-black text-slate-900">Financial Packet</h3>
-        <FinancialPacketSection value={data.financialPacket} onChange={value => updateField('financialPacket', value)} />
-        {errors.financialPacket && <p className="mt-2 text-xs font-bold text-red-600">{errors.financialPacket[0]}</p>}
+        <div data-field-error={errors.financialPacket || errors['financialPacket.financialDocumentUploads'] ? 'true' : undefined}>
+          <FinancialPacketSection value={data.financialPacket} onChange={value => updateField('financialPacket', value)} />
+          {errors.financialPacket && <p className="mt-2 text-xs font-bold text-red-600">{errors.financialPacket[0]}</p>}
+          {errors['financialPacket.financialDocumentUploads'] && (
+            <p className="mt-2 text-xs font-bold text-red-600">{errors['financialPacket.financialDocumentUploads'][0]}</p>
+          )}
+        </div>
       </ConditionalSection>
     </div>
   );

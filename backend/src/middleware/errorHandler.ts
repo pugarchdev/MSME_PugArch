@@ -18,6 +18,6 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     statusCode,
     message,
     err?.code,
-    isProduction ? undefined : err?.details
+    (isProduction && statusCode >= 500) ? undefined : err?.details
   );
 };

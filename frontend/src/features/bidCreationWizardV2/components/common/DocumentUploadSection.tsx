@@ -11,13 +11,16 @@ export default function DocumentUploadSection({
   mandatory,
   value,
   onChange,
+  error,
 }: {
   label: string;
   mandatory?: boolean;
   value?: any[];
   onChange: (value: any[]) => void;
+  error?: string[];
 }) {
   const rows = Array.isArray(value) ? value : [];
+  const hasError = Boolean(error?.length);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const upload = async (file: File) => {
@@ -49,10 +52,13 @@ export default function DocumentUploadSection({
   };
 
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
+    <div
+      data-field-error={hasError ? 'true' : undefined}
+      className={`rounded-lg border border-dashed bg-white p-4 ${hasError ? 'border-red-400 bg-red-50/40 ring-2 ring-red-500/20' : 'border-slate-300'}`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-black text-slate-900">{label}</p>
+          <p className={`text-sm font-black ${hasError ? 'text-red-800' : 'text-slate-900'}`}>{label}</p>
           <p className="text-xs font-semibold text-slate-500">{mandatory ? 'Mandatory document' : 'Optional document'} - PDF, Office, CSV or image up to 10MB.</p>
         </div>
         <input
@@ -91,6 +97,9 @@ export default function DocumentUploadSection({
             );
           })}
         </div>
+      )}
+      {hasError && (
+        <p className="mt-3 text-xs font-bold text-red-600">{error![0]}</p>
       )}
     </div>
   );

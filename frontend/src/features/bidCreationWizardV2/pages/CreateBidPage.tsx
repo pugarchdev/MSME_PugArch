@@ -101,7 +101,10 @@ export default function CreateBidPage() {
     goToStep: wizard.setStep,
   }), [stepKey, wizard]);
 
-  const canSubmit = Boolean(wizard.formData.step9.buyerDeclarationAccepted && wizard.formData.step9.restrictiveConditionsDeclarationAccepted);
+  const canSubmit = Boolean(
+    wizard.formData.step9.buyerDeclarationAccepted &&
+    wizard.formData.step9.restrictiveConditionsDeclarationAccepted
+  );
   const generatePreviewPdf = async () => {
     const { default: jsPDF } = await import('jspdf');
     const doc = new jsPDF();
@@ -137,6 +140,8 @@ export default function CreateBidPage() {
       lastSavedAt={wizard.lastSavedAt}
       canSubmit={canSubmit}
       isSubmitting={wizard.isSubmitting}
+      validationErrors={wizard.validationErrors}
+      stepContentRef={wizard.stepContentRef}
       onStepClick={wizard.setStep}
       onPrevious={() => wizard.setStep(wizard.currentStep - 1)}
       onNext={() => wizard.setStep(wizard.currentStep + 1)}

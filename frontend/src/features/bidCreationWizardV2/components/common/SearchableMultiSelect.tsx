@@ -7,19 +7,23 @@ export default function SearchableMultiSelect({
   options,
   onChange,
   placeholder,
+  error,
 }: {
   value: string[];
   options: readonly SelectOption[];
   onChange: (value: string[]) => void;
   placeholder?: string;
+  error?: string[];
 }) {
   const selected = Array.isArray(value) ? value : [];
+  const hasError = Boolean(error?.length);
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-field-error={hasError ? 'true' : undefined}>
       <SearchableSelect
         value=""
         options={options}
         placeholder={placeholder || 'Add option'}
+        error={error}
         onChange={next => {
           const text = typeof next === 'object' ? next.otherValue || next.dropdownValue : next;
           if (text && !selected.includes(text)) onChange([...selected, text]);

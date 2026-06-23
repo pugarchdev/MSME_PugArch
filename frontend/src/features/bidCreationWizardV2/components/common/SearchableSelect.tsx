@@ -17,6 +17,7 @@ export default function SearchableSelect({
   allowNA = false,
   className,
   disabled = false,
+  error,
 }: {
   value: any;
   options: readonly SelectOption[];
@@ -26,7 +27,9 @@ export default function SearchableSelect({
   allowNA?: boolean;
   className?: string;
   disabled?: boolean;
+  error?: string[];
 }) {
+  const hasError = Boolean(error?.length);
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,8 +120,12 @@ export default function SearchableSelect({
           disabled={disabled}
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            "flex h-11 w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400",
-            isOpen && "border-[#12335f] ring-2 ring-[#12335f]/15"
+            "flex h-11 w-full items-center justify-between rounded-lg border bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400",
+            hasError
+              ? 'border-red-500 ring-red-500/20 focus:border-red-600 focus:ring-red-500/25'
+              : 'border-slate-200 focus:border-[#12335f] focus:ring-[#12335f]/15',
+            isOpen && !hasError && "border-[#12335f] ring-2 ring-[#12335f]/15",
+            isOpen && hasError && 'border-red-600 ring-red-500/25'
           )}
         >
           <span className={cn("truncate", !selectedOption && normalizedValue !== 'Other' && normalizedValue !== 'N/A' && "text-slate-400")}>

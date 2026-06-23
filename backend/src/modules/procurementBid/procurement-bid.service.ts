@@ -231,7 +231,8 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
       mimeType: doc.mimeType,
       fileSize: doc.fileSize,
       visibility: doc.visibility,
-      fileAssetId: doc.fileAssetId
+      fileAssetId: doc.fileAssetId,
+      fileUrl: doc.fileUrl
     })),
     participantsCount: bid.participations?.length || 0,
     participations: canSeeParticipants ? (bid.participations || []).map((p: any) => serializeParticipation(p, { canSeeFinancial })) : undefined,
@@ -305,7 +306,7 @@ const getTenderBidActivityWhere = (query: any = {}) => {
   return where;
 };
 
-const serializeTenderBidActivity = (tender: any) => {
+export const serializeTenderBidActivity = (tender: any) => {
   const profile = tender.buyer?.buyerProfile;
   const latestBid = tender.bids?.[0];
   const location = [profile?.city, profile?.state].filter(Boolean).join(', ');
@@ -348,9 +349,51 @@ const serializeTenderBidActivity = (tender: any) => {
       mimeType: '',
       fileSize: 0,
       visibility: 'PUBLIC',
-      fileAssetId: null
+      fileAssetId: null,
+      fileUrl: tender.documentUrl
     }] : []
   };
+};
+
+export const resolveTenderBidActivity = async (idOrNumber: string | number) => {
+  const token = String(idOrNumber);
+  const tenderId = token.startsWith('TENDER-') ? Number(token.replace('TENDER-', '')) : null;
+  const where = tenderId ? { id: tenderId } : { tenderId: token };
+
+  const tender = await db.tender.findFirst({
+    where,
+    select: {
+      id: true,
+      tenderId: true,
+      title: true,
+      description: true,
+      category: true,
+      budget: true,
+      documentUrl: true,
+      status: true,
+      closesAt: true,
+      publishedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      buyer: {
+        select: {
+          id: true,
+          name: true,
+          buyerProfile: { select: { organizationName: true, organizationType: true, city: true, state: true } }
+        }
+      },
+      bids: {
+        where: { status: { not: 'withdrawn' }, withdrawnAt: null },
+        select: { createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1
+      },
+      _count: { select: { bids: { where: { status: { not: 'withdrawn' }, withdrawnAt: null } } } }
+    }
+  });
+
+  if (!tender) throw new ApiError(404, 'Tender opportunity not found', 'TENDER_NOT_FOUND');
+  return serializeTenderBidActivity(tender);
 };
 
 export const assertSellerVerified = async (actor: Actor) => {

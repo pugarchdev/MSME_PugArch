@@ -52,7 +52,7 @@ function ProductFields({ data, errors, updateField }: any) {
     <FormField label="Unit" required error={errors.unitOfMeasurement}><SearchableSelect value={data.unitOfMeasurement} options={UNIT_OPTIONS} onChange={(value) => updateField('unitOfMeasurement', value)} allowOther /></FormField>
     <FormField label="Product Description" required error={errors.productDescription} className="md:col-span-2"><textarea value={data.productDescription || ''} onChange={event => updateField('productDescription', event.target.value)} rows={3} className={textClass} /></FormField>
     <FormField label="Technical Specification" required error={errors.technicalSpecification} className="md:col-span-2"><textarea value={data.technicalSpecification || ''} onChange={event => updateField('technicalSpecification', event.target.value)} rows={4} className={textClass} /></FormField>
-    {['specificationFormat', 'brandRestriction', 'inspectionType', 'deliveryLocation', 'deliveryPeriod'].map(field => <FormField key={field} label={field} required error={errors[field]}><input value={data[field] || ''} onChange={event => updateField(field, event.target.value)} className={inputClass} /></FormField>)}
+    {['specificationFormat', 'brandRestriction', 'inspectionType'].map(field => <FormField key={field} label={field} required error={errors[field]}><input value={data[field] || ''} onChange={event => updateField(field, event.target.value)} className={inputClass} /></FormField>)}
     {['warrantyRequired', 'installationRequired', 'testingCommissioningRequired'].map(field => <ToggleField key={field} label={field} checked={Boolean(data[field])} onChange={value => updateField(field, value)} />)}
   </div>;
 }

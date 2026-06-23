@@ -265,6 +265,7 @@ export interface BuyerRequirement {
     items?: BuyerRequirementItem[];
     itemSummary?: string | null;
     directPurchase?: BuyerRequirementDirectPurchase | null;
+    payload?: any;
     category?: { id: number; name: string; slug?: string };
     buyerOrganization?: {
         id: number;

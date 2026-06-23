@@ -49,7 +49,7 @@ export const validateStepClient = (step: number, formData: WizardFormData, bidTy
             ? ['oemBrandName', 'modelName', 'proprietaryJustification', 'technicalReason', 'alternativesNotSuitableReason']
             : bidType === 'REVERSE_AUCTION'
               ? ['raTriggerStage', 'raDuration', 'minimumDecrementValue', 'raStartPrice', 'eligibleSellersForRa', 'raWinnerRule']
-              : ['productCategory', 'productName', 'productDescription', 'quantity', 'unitOfMeasurement', 'technicalSpecification', 'inspectionType', 'deliveryLocation', 'deliveryPeriod'];
+              : ['productCategory', 'productName', 'productDescription', 'quantity', 'unitOfMeasurement', 'technicalSpecification', 'inspectionType'];
     common.forEach(field => need(field, field));
   }
   if (step === 5) ['consigneeType', 'consigneeName', 'consigneeDesignation', 'consigneeMobile', 'deliveryAddress', 'deliveryDistrict', 'pincode', 'deliveryPeriod', 'acceptanceCriteria'].forEach(field => need(field, field));

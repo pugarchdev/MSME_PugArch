@@ -2,7 +2,19 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  X,
+  CalendarDays,
+  FileText,
+  Download,
+  Landmark,
+  MapPin,
+  IndianRupee,
+  Shield,
+  FileCheck,
+  Info
+} from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { BidCard, EmptyState, PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, StatusBadge } from '../components';
 import { formatDate, money, type ProcurementBid } from '../data';
@@ -11,6 +23,7 @@ import { Pagination } from '../../shared/Pagination';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
+import { openFileAsset } from '../../../lib/files';
 
 const pageSize = 10;
 const selectClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10';
@@ -53,11 +66,45 @@ export default function BidsListingPage() {
   const [loading, setLoading] = useState(() => !globalBidsCache);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useResponsiveViewMode('phase7:bids-listing:view-mode');
+
+  // Modal states
+  const [selectedBidId, setSelectedBidId] = useState<string | null>(null);
+  const [detailedBid, setDetailedBid] = useState<ProcurementBid | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+
   const isTenderBid = (bid: ProcurementBid) => bid.sourceModel === 'TENDER';
   const viewHref = (bid: ProcurementBid) => isTenderBid(bid) && bid.sourceId ? `/tenders?tender=${bid.sourceId}` : `/bids/${bid.id}`;
   const participationHref = (bid: ProcurementBid) => {
     const target = isTenderBid(bid) && bid.sourceId ? `/seller/tenders/${bid.sourceId}/bid` : `/bids/${bid.id}/participate`;
     return user ? target : `/login?returnUrl=${encodeURIComponent(target)}`;
+  };
+
+  const handleViewDetails = (bidId: string) => {
+    setSelectedBidId(bidId);
+    setDetailedBid(null);
+    setIsDetailsModalOpen(true);
+    setLoadingDetails(true);
+
+    procurementBidApi.detail(bidId)
+      .then(data => {
+        setDetailedBid(data);
+      })
+      .catch(err => {
+        console.error('Error loading bid details:', err);
+      })
+      .finally(() => {
+        setLoadingDetails(false);
+      });
+  };
+
+  const handleDownloadDoc = async (doc: any) => {
+    try {
+      await openFileAsset({ id: doc.fileAssetId, url: doc.url }, doc.name);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to open document.');
+    }
   };
 
   const loadBids = React.useCallback(() => {
@@ -134,8 +181,11 @@ export default function BidsListingPage() {
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const toggleSort = (field: BidSortKey) => {
-    setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');
-    setSortKey(field);
+    setSortKey(currentKey => {
+      const newDirection = currentKey === field ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'asc';
+      setSortDirection(newDirection);
+      return field;
+    });
     setPage(1);
   };
 
@@ -184,7 +234,13 @@ export default function BidsListingPage() {
         <ProcurementHero
           title="Latest Buyer Requirements & Bids"
           subtitle="Search, filter, participate, download documents, and track procurement opportunities from private buyers, MSMEs, large industries, government buyers, PSUs, suppliers, and service providers."
-          action={<Link href="/buyer/publish-bid" className="inline-flex h-10 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">Publish Requirement</Link>}
+          action={
+            user?.role === 'buyer' ? (
+              <Link href="/buyer/publish-bid" className="inline-flex h-10 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">Publish Requirement</Link>
+            ) : (
+              <button onClick={() => setIsPublishModalOpen(true)} type="button" className="inline-flex h-10 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">Publish Requirement</button>
+            )
+          }
         />
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
@@ -222,7 +278,7 @@ export default function BidsListingPage() {
               />
             ) : pageRows.length ? (
               viewMode === 'grid' ? (
-                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} viewHref={viewHref(bid)} participationHref={participationHref(bid)} participationLabel={user ? 'Participate' : 'Login to Participate'} />)}</div>
+                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} viewHref={viewHref(bid)} participationHref={participationHref(bid)} participationLabel={user ? 'Participate' : 'Login to Participate'} onViewClick={() => handleViewDetails(bid.id)} />)}</div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="overflow-x-auto">
@@ -256,7 +312,7 @@ export default function BidsListingPage() {
                             <td className="px-4 py-3 text-xs font-semibold text-slate-600">{formatDate(bid.endDate)}</td>
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2">
-                                <Link href={viewHref(bid)} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700">View</Link>
+                                <button onClick={() => handleViewDetails(bid.id)} type="button" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700">View</button>
                                 <Link href={participationHref(bid)} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white">{user ? 'Participate' : 'Login'}</Link>
                               </div>
                             </td>
@@ -277,6 +333,277 @@ export default function BidsListingPage() {
           </section>
         </div>
       </main>
+
+      {isDetailsModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#c86413] bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                    {detailedBid?.id || selectedBidId}
+                  </span>
+                  {detailedBid && (
+                    <span className="text-xs font-semibold text-slate-500">• {detailedBid.buyerType}</span>
+                  )}
+                </div>
+                <h2 className="mt-1 text-base font-black text-slate-900 truncate pr-6" title={detailedBid?.title || 'Loading details...'}>
+                  {detailedBid?.title || 'Loading detailed opportunity view...'}
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 active:scale-95 shadow-sm"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 bg-slate-50/30">
+              {loadingDetails ? (
+                <div className="flex h-full flex-col items-center justify-center py-20">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#0b2447]"></div>
+                  <p className="mt-3 text-xs font-bold text-slate-500">Fetching comprehensive details...</p>
+                </div>
+              ) : !detailedBid ? (
+                <div className="text-center py-20">
+                  <p className="text-sm font-bold text-red-500">Failed to load detailed information for this record.</p>
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+                  
+                  {/* Left Column: Details */}
+                  <div className="space-y-6">
+                    
+                    {/* Badges & Key Stats */}
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        <StatusBadge label={detailedBid.status} />
+                        <StatusBadge label={detailedBid.technicalStatus} />
+                        <StatusBadge label={detailedBid.clarificationStatus} />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Buyer Entity</p>
+                          <p className="mt-1 text-xs font-black text-slate-800 truncate">{detailedBid.buyerName}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Procurement Category</p>
+                          <p className="mt-1 text-xs font-black text-slate-800 truncate">{detailedBid.category}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Department</p>
+                          <p className="mt-1 text-xs font-black text-slate-800 truncate">{detailedBid.departmentName || 'Procurement'}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Quantity / Scope</p>
+                          <p className="mt-1 text-xs font-black text-slate-800">{detailedBid.quantity || 'As specified'}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Estimated Value</p>
+                          <p className="mt-1 text-xs font-black text-emerald-700">{money(detailedBid.estimatedValue)}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bid Type</p>
+                          <p className="mt-1 text-xs font-black text-slate-800">{detailedBid.bidType}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 uppercase tracking-wider">
+                        <Info className="h-4 w-4" /> Description & Scope of Work
+                      </h3>
+                      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm text-xs leading-relaxed text-slate-600 whitespace-pre-line font-medium">
+                        {detailedBid.description}
+                      </div>
+                    </div>
+
+                    {/* Eligibility Criteria */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 uppercase tracking-wider">
+                        <FileCheck className="h-4 w-4" /> Eligibility & Bidder Qualification Criteria
+                      </h3>
+                      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        {detailedBid.eligibility && detailedBid.eligibility.length > 0 ? (
+                          <ul className="space-y-2 text-xs text-slate-600">
+                            {detailedBid.eligibility.map((crit, idx) => (
+                              <li key={idx} className="flex gap-2 items-start bg-slate-50 px-3 py-2 rounded-md font-semibold">
+                                <span className="text-blue-600 font-black">✓</span>
+                                <span>{crit}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-slate-500 font-bold bg-slate-50 p-3 rounded-md text-center">No explicit eligibility criteria listed. Basic compliance rules apply.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Terms and Conditions */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 uppercase tracking-wider">
+                        <Shield className="h-4 w-4" /> Commercial Terms & Conditions
+                      </h3>
+                      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        {detailedBid.terms && detailedBid.terms.length > 0 ? (
+                          <ul className="space-y-2 text-xs text-slate-600">
+                            {detailedBid.terms.map((term, idx) => (
+                              <li key={idx} className="flex gap-2 items-start bg-slate-50 px-3 py-2 rounded-md font-semibold">
+                                <span className="text-blue-600 font-black">•</span>
+                                <span>{term}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-slate-500 font-bold bg-slate-50 p-3 rounded-md text-center">Standard portal terms and procurement guidelines apply.</p>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Right Column: Timelines & Documents */}
+                  <div className="space-y-6">
+                    
+                    {/* Important Timelines */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 border-b border-slate-100 pb-3 uppercase tracking-wider">
+                        <CalendarDays className="h-4 w-4 text-[#0b2447]" /> Key Milestones & Dates
+                      </h3>
+                      <div className="mt-3 space-y-3">
+                        {[
+                          ['Published Date', detailedBid.startDate],
+                          ['Closing Date', detailedBid.endDate],
+                          ...((detailedBid.importantDates || []).filter(d => !d.label.toLowerCase().includes('published') && !d.label.toLowerCase().includes('closes')).map(d => [d.label, d.date]))
+                        ].map(([label, value], idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                            <span className="font-semibold text-slate-500">{label}</span>
+                            <span className="font-black text-slate-800">{formatDate(String(value))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Required Submissions Checklist */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 border-b border-slate-100 pb-3 uppercase tracking-wider">
+                        <FileText className="h-4 w-4 text-[#0b2447]" /> Required Submissions
+                      </h3>
+                      <div className="mt-3">
+                        {detailedBid.requiredDocuments && detailedBid.requiredDocuments.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {detailedBid.requiredDocuments.map((docName, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-700">
+                                📄 {docName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 font-bold bg-slate-50 p-3 rounded-md text-center">No special submission documents requested.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Uploaded Bid Documents */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <h3 className="text-xs font-black text-[#0b2447] flex items-center gap-1.5 border-b border-slate-100 pb-3 uppercase tracking-wider">
+                        <Download className="h-4 w-4 text-[#0b2447]" /> Uploaded Specifications & BOQ
+                      </h3>
+                      <div className="mt-3 space-y-2">
+                        {detailedBid.bidDocuments && detailedBid.bidDocuments.length > 0 ? (
+                          detailedBid.bidDocuments.map((doc, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleDownloadDoc(doc)}
+                              type="button"
+                              className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50 hover:border-slate-300"
+                            >
+                              <FileText className="h-4 w-4 text-[#0b2447] shrink-0" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[11px] font-black text-slate-800 truncate" title={doc.name}>
+                                  {doc.name}
+                                </span>
+                                <span className="text-[9px] text-slate-500">
+                                  {doc.meta}
+                                </span>
+                              </span>
+                              <Download className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            </button>
+                          ))
+                        ) : (
+                          <p className="text-xs text-slate-500 font-bold bg-slate-50 p-3 rounded-md text-center">No documents uploaded for this procurement draft.</p>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+              <button
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Close View
+              </button>
+              {detailedBid && (
+                <Link
+                  href={participationHref(detailedBid)}
+                  className="inline-flex h-10 items-center justify-center rounded-xl bg-[#0b2447] px-5 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f] active:scale-98"
+                >
+                  {user ? 'Participate in Bid' : 'Login to Participate'}
+                </Link>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {isPublishModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+              <Landmark className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 text-lg font-black text-[#0b2447]">
+              Publish Procurement Requirement
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 font-semibold">
+              To publish a new RFQ, Tender, or procurement requirement on JSGSMILE, please login or register with a verified Buyer organization account.
+            </p>
+            <div className="mt-6 flex flex-col gap-2">
+              <Link
+                href="/login?returnUrl=/buyer/publish-bid"
+                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0b2447] text-xs font-black text-white shadow-sm transition hover:bg-[#12335f] active:scale-98"
+              >
+                Login as Buyer
+              </Link>
+              <Link
+                href="/buyer/register"
+                className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-98"
+              >
+                Register as Buyer
+              </Link>
+              <button
+                onClick={() => setIsPublishModalOpen(false)}
+                className="mt-4 text-xs font-black text-slate-400 hover:text-slate-600 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }

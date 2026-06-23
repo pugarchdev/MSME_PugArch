@@ -401,6 +401,9 @@ export default function BuyerPublishBidPage() {
       } else {
         toast.success('Bid published and verified automatically.');
       }
+      setTimeout(() => {
+        router.push('/buyer/bids');
+      }, 1500);
     } catch (err: any) {
       toast.error(err?.message || 'Unable to submit for approval.');
     } finally {

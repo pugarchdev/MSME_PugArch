@@ -289,7 +289,7 @@ export default function App() {
   }, [mounted, loading, user]);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/buyer/publish-bid') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -380,7 +380,11 @@ export default function App() {
     if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
     if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;
-    if (pathname === '/buyer/publish-bid') return <BuyerPublishBidPage />;
+    if (pathname === '/buyer/publish-bid') {
+      if (!user) return <Redirect to="/login?returnUrl=/buyer/publish-bid" />;
+      if (user.role !== 'buyer') return <Redirect to={authenticatedHome} />;
+      return <BuyerPublishBidPage />;
+    }
     if (pathname === '/admin/bids') {
       const isFeatureEnabled = user?.enabledFeatures?.includes('admin-bid-approval');
       if (!isFeatureEnabled) {

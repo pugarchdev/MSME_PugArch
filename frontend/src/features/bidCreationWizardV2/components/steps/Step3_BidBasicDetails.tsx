@@ -18,7 +18,7 @@ export default function Step3_BidBasicDetails({ data, errors, updateField }: Ste
       <FormField label="Publishing Date" required error={errors.publishingDate}><input type="datetime-local" value={data.publishingDate || ''} onChange={event => updateField('publishingDate', event.target.value)} className={inputClass} /></FormField>
       <FormField label="Closing Date & Time" required error={errors.closingDate}><input type="datetime-local" value={data.closingDate || ''} onChange={event => updateField('closingDate', event.target.value)} className={inputClass} /></FormField>
       <FormField label="Bid Validity Period" required error={errors.validityPeriod}><SearchableSelect value={data.validityPeriod} options={['30 days', '60 days', '90 days', '120 days', 'Other']} onChange={value => updateField('validityPeriod', value)} allowOther /></FormField>
-      <FormField label="Budget Head"><input value={data.budgetHead || ''} disabled={!data.budgetConfirmed} onChange={event => updateField('budgetHead', event.target.value)} className={inputClass} /></FormField>
+      <FormField label="Budget Head"><input value={data.budgetHead || ''} onChange={event => updateField('budgetHead', event.target.value)} className={inputClass} /></FormField>
       <FormField label="Procurement Purpose" required error={errors.procurementPurpose} className="md:col-span-2"><textarea value={data.procurementPurpose || ''} onChange={event => updateField('procurementPurpose', event.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15" /></FormField>
     </div>
   );

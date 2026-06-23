@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import type { BidType, PacketType, WizardFormData } from '../types/steps';
 import { bidWizardApi } from '../api';
@@ -11,6 +12,7 @@ import { useDraftPersistence } from './useDraftPersistence';
 const ALL_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 export const useBidWizard = () => {
+  const router = useRouter();
   const [draftId, setDraftId] = useState<number | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<WizardFormData>(() => emptyWizardFormData());
@@ -152,6 +154,9 @@ export const useBidWizard = () => {
 
       const result = await bidWizardApi.submit(id, submitForApproval);
       toast.success(`Bid submitted: ${result.procurementBid?.bidNumber || result.procurementBid?.id}`);
+      setTimeout(() => {
+        router.push('/buyer/bids');
+      }, 1500);
     } catch (error: any) {
       const details = error?.details;
       if (details && typeof details === 'object') {

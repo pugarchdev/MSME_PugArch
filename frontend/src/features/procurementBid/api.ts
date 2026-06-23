@@ -163,6 +163,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
       name: doc.fileName || doc.documentType || 'Bid document',
       meta: [doc.documentType, doc.mimeType].filter(Boolean).join(' - ') || 'Uploaded document',
       fileAssetId: doc.fileAssetId,
+      url: doc.fileUrl || doc.url,
     })),
   };
 };

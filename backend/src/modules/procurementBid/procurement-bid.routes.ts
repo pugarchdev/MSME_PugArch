@@ -174,7 +174,12 @@ router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyn
 
 router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const actor = await optionalActor(req);
-  const bid = await service.resolveBid(req.params.bidId);
+  const token = req.params.bidId;
+  if (token.startsWith('TENDER-') || token.startsWith('TND-')) {
+    const data = await service.resolveTenderBidActivity(token);
+    return apiResponse.success(res, data, 200, 'Tender opportunity details fetched successfully');
+  }
+  const bid = await service.resolveBid(token);
   const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
   return apiResponse.success(res, service.serializeBid(bid, { actor: actor || undefined, detail: true, includeParticipants: sellerCanSeeParticipants }), 200, 'Bid details fetched successfully');
 }));

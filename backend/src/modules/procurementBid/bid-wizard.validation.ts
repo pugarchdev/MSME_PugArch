@@ -119,8 +119,8 @@ export const step4ProductSchema = z.object({
   installationRequired: booleanWithDefault,
   testingCommissioningRequired: booleanWithDefault,
   inspectionType: requiredString('Inspection type', 120),
-  deliveryLocation: requiredString('Delivery location', 400),
-  deliveryPeriod: requiredString('Delivery period', 120)
+  deliveryLocation: optionalString(400),
+  deliveryPeriod: optionalString(120)
 });
 
 export const step4ServiceSchema = z.object({

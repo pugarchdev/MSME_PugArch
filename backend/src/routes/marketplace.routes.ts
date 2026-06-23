@@ -367,7 +367,8 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
                 requiredDeliveryDate: directPurchase.requiredDeliveryDate,
                 totalAmount: directPurchase.totalAmount
             }
-            : null
+            : null,
+        payload: requirement.payload
     });
 };
 

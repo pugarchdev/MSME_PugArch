@@ -425,21 +425,12 @@ export function BuyerRequirementsList({
                                             </td>
                                             <td className="px-5 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    {isLegacy ? (
-                                                        <button 
-                                                            onClick={() => setSelected(req)} 
-                                                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-center text-xs font-black text-slate-700 hover:bg-slate-100 transition shadow-sm"
-                                                        >
-                                                            View
-                                                        </button>
-                                                    ) : (
-                                                        <Link 
-                                                            href={detailHref} 
-                                                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-center text-xs font-black text-slate-700 hover:bg-slate-100 transition shadow-sm"
-                                                        >
-                                                            View
-                                                        </Link>
-                                                    )}
+                                                    <button 
+                                                        onClick={() => setSelected(req)} 
+                                                        className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-center text-xs font-black text-slate-700 hover:bg-slate-100 transition shadow-sm"
+                                                    >
+                                                        View
+                                                    </button>
                                                     <button 
                                                         onClick={() => isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? setSelected(req) : handleSubmit(req)} 
                                                         className="inline-flex items-center justify-center gap-1 rounded-md bg-[#0b2447] px-2.5 py-1.5 text-xs font-black text-white hover:bg-[#12335f] transition shadow-sm"
@@ -460,7 +451,6 @@ export function BuyerRequirementsList({
                             const buyer = req.buyerOrganization;
                             const badge = statusBadge(req);
                             const isLegacy = isLegacyRequirement(req);
-                            const detailHref = isLegacy ? '' : `/marketplace/requirements/${req.id}`;
                             const daysRemaining = Math.max(0, Math.ceil((new Date(req.lastDate).getTime() - Date.now()) / 86400000));
                             const publishedDate = formatDateIN(req.approvedAt || req.createdAt || req.updatedAt);
 
@@ -535,17 +525,10 @@ export function BuyerRequirementsList({
                                                 {daysRemaining <= 0 ? 'Closed' : `${daysRemaining}d remaining`}
                                             </span>
                                             <div className="flex items-center gap-2">
-                                                {isLegacy ? (
-                                                    <button onClick={() => setSelected(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447] shadow-sm">
-                                                        <Eye className="h-3.5 w-3.5" />
-                                                        View
-                                                    </button>
-                                                ) : (
-                                                    <Link href={detailHref} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447] shadow-sm">
-                                                        <Eye className="h-3.5 w-3.5" />
-                                                        View
-                                                    </Link>
-                                                )}
+                                                <button onClick={() => setSelected(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447] shadow-sm">
+                                                    <Eye className="h-3.5 w-3.5" />
+                                                    View
+                                                </button>
                                                 <button onClick={() => isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? setSelected(req) : handleSubmit(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-black text-white transition hover:bg-[#12335f] active:scale-95 shadow-sm">
                                                     <Send className="h-3.5 w-3.5" />
                                                     {isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : actionLabel}

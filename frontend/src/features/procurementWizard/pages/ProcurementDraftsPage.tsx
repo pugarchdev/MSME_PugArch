@@ -276,7 +276,7 @@ export default function ProcurementDraftsPage() {
             </Button>
             <Button
               type="button"
-              onClick={() => router.push('/buyer/create-procurement')}
+              onClick={() => router.push('/buyer/procurement')}
               className="h-10 rounded-md bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
             >
               <Plus className="mr-2 h-4 w-4" /> Create Procurement

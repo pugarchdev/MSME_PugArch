@@ -311,7 +311,7 @@ test('auction race conditions are protected', () => {
 test('OTP is not stored in plain text by application code', () => {
   assert.doesNotMatch(otpService, /prisma\.otp\.create/, 'OTP service must not write plain OTP rows');
   assert.match(otpService, /otpHash/, 'OTP service must hash OTP values before storage');
-  assert.match(otpService, /OTP_TTL_SECONDS = 5 \* 60/, 'OTP expiry must be five minutes');
+  assert.match(otpService, /OTP_TTL_SECONDS = 10 \* 60/, 'OTP expiry must be ten minutes');
   assert.match(otpService, /MAX_OTP_ATTEMPTS = 5/, 'OTP max attempts must be enforced');
   assert.match(schema, /model OtpVerification/, 'OTP audit model must exist without plain OTP');
 });

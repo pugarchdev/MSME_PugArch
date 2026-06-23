@@ -28,6 +28,7 @@ export default function Login() {
   const [twoFactorPending, setTwoFactorPending] = useState(false);
   const [twoFactorOtp, setTwoFactorOtp] = useState('');
   const [twoFactorChannel, setTwoFactorChannel] = useState<'email' | 'sms'>('email');
+  const [canSms, setCanSms] = useState(false);
 
   const { user, login } = useAuth();
   const router = useRouter();
@@ -66,6 +67,7 @@ export default function Login() {
         if (data.requiresTwoFactor) {
           setTwoFactorPending(true);
           setTwoFactorChannel(data.channel === 'sms' ? 'sms' : 'email');
+          setCanSms(!!data.canSms);
           toast.success(`Enter the two-factor code sent to your ${data.channel === 'sms' ? 'mobile' : 'email'}`, { id: loadToast });
           return;
         }
@@ -255,7 +257,33 @@ export default function Login() {
                   className="w-full h-14 rounded-2xl border border-slate-200 bg-white px-4 text-center text-xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition-all shadow-sm"
                   required
                 />
-                <button type="button" onClick={() => setTwoFactorPending(false)} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4">
+                {canSms && (
+                  <div className="flex justify-between items-center pt-1 px-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newChannel = twoFactorChannel === 'sms' ? 'email' : 'sms';
+                        const loadToast = toast.loading(`Sending code to your ${newChannel === 'sms' ? 'mobile' : 'email'}...`);
+                        try {
+                          const res = await api.post('/api/auth/login', { email, password, channel: newChannel });
+                          const data = await readJsonResponse(res);
+                          if (res.ok && data.requiresTwoFactor) {
+                            setTwoFactorChannel(newChannel);
+                            toast.success(`OTP sent to your ${newChannel === 'sms' ? 'mobile' : 'email'}`, { id: loadToast });
+                          } else {
+                            toast.error('Failed to send OTP to the requested channel', { id: loadToast });
+                          }
+                        } catch {
+                          toast.error('Error switching verification channel', { id: loadToast });
+                        }
+                      }}
+                      className="text-xs font-bold text-[#12335f] underline decoration-blue-200 underline-offset-4 animate-pulse"
+                    >
+                      Receive OTP via {twoFactorChannel === 'sms' ? 'Email' : 'SMS'} instead
+                    </button>
+                  </div>
+                )}
+                <button type="button" onClick={() => setTwoFactorPending(false)} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 block mt-1">
                   Use different credentials
                 </button>
               </div>

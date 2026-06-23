@@ -210,17 +210,17 @@ const BuyerMarketplaceDiscovery = React.memo(function BuyerMarketplaceDiscovery(
           <p className="mt-0.5 text-xs font-semibold text-slate-500">Compact shortcuts for products, services, and requirements.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-        <Link href="/buyer/marketplace">
-          <Button variant="outline" className="h-8 rounded-md px-3 text-[10px] font-black uppercase tracking-wide">
-            Browse
-            <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-          </Button>
-        </Link>
-        <Link href="/buyer/requirements/new">
+          <Link href="/buyer/marketplace">
+            <Button variant="outline" className="h-8 rounded-md px-3 text-[10px] font-black uppercase tracking-wide">
+              Browse
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+          </Link>
+          {/* <Link href="/buyer/requirements/new">
           <Button className="h-8 rounded-md bg-[#12335f] px-3 text-[10px] font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
             Publish Requirement
           </Button>
-        </Link>
+        </Link> */}
         </div>
       </div>
 
@@ -282,7 +282,7 @@ export default function Dashboard() {
   const [errorMsg, setErrorMsg] = useState('');
 
   // 1. Profile Query
-  const { data: profileData } = useQuery({
+  const { data: profileData, isLoading: isProfileLoading } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => {
       const res = await api.fetch('/api/auth/me', { headers: authHeaders });
@@ -452,113 +452,113 @@ export default function Dashboard() {
   }, []);
 
   const adminTiles = useMemo(() => [
-      {
-        label: 'Pending Approval',
-        value: adminStats?.pendingApproval ?? 0,
-        helper: 'Applications waiting for review',
-        icon: FileSearch,
-        path: '/admin/onboarding',
-        tone: 'bg-amber-50 text-amber-700'
-      },
-      {
-        label: 'Active Sellers',
-        value: adminStats?.activeSellers ?? 0,
-        helper: 'Approved suppliers in the network',
-        icon: Users,
-        path: '/admin/onboarding?tab=sellers',
-        tone: 'bg-emerald-50 text-emerald-700'
-      },
-      {
-        label: 'Active Buyers',
-        value: adminStats?.activeBuyers ?? 0,
-        helper: 'Buyer departments enabled',
-        icon: ClipboardCheck,
-        path: '/admin/onboarding?tab=buyers',
-        tone: 'bg-slate-50 text-[#12335f]'
-      },
-      {
-        label: 'Total Network',
-        value: adminStats?.totalNetwork ?? 0,
-        helper: 'Stakeholders registered',
-        icon: BarChart3,
-        path: '/admin/reports',
-        tone: 'bg-slate-100 text-slate-700'
-      },
-      {
-        label: 'Role Policies',
-        value: 6,
-        helper: 'Invite-based access roles',
-        icon: KeyRound,
-        path: '/admin/rbac',
-        tone: 'bg-blue-50 text-blue-700'
-      },
-      {
-        label: 'Tender Queue',
-        value: adminStats?.pendingTenders ?? 0,
-        helper: 'Procurement bids needing action',
-        icon: Gavel,
-        path: '/admin/bids',
-        tone: 'bg-purple-50 text-purple-700'
-      },
-      {
-        label: 'Reports Ready',
-        value: adminStats?.totalNetwork ? 3 : 0,
-        helper: 'Procurement, payments, suppliers',
-        icon: FileText,
-        path: '/admin/reports',
-        tone: 'bg-cyan-50 text-cyan-700'
-      }
+    {
+      label: 'Pending Approval',
+      value: adminStats?.pendingApproval ?? 0,
+      helper: 'Applications waiting for review',
+      icon: FileSearch,
+      path: '/admin/onboarding',
+      tone: 'bg-amber-50 text-amber-700'
+    },
+    {
+      label: 'Active Sellers',
+      value: adminStats?.activeSellers ?? 0,
+      helper: 'Approved suppliers in the network',
+      icon: Users,
+      path: '/admin/onboarding?tab=sellers',
+      tone: 'bg-emerald-50 text-emerald-700'
+    },
+    {
+      label: 'Active Buyers',
+      value: adminStats?.activeBuyers ?? 0,
+      helper: 'Buyer departments enabled',
+      icon: ClipboardCheck,
+      path: '/admin/onboarding?tab=buyers',
+      tone: 'bg-slate-50 text-[#12335f]'
+    },
+    {
+      label: 'Total Network',
+      value: adminStats?.totalNetwork ?? 0,
+      helper: 'Stakeholders registered',
+      icon: BarChart3,
+      path: '/admin/reports',
+      tone: 'bg-slate-100 text-slate-700'
+    },
+    {
+      label: 'Role Policies',
+      value: 6,
+      helper: 'Invite-based access roles',
+      icon: KeyRound,
+      path: '/admin/rbac',
+      tone: 'bg-blue-50 text-blue-700'
+    },
+    {
+      label: 'Tender Queue',
+      value: adminStats?.pendingTenders ?? 0,
+      helper: 'Procurement bids needing action',
+      icon: Gavel,
+      path: '/admin/bids',
+      tone: 'bg-purple-50 text-purple-700'
+    },
+    {
+      label: 'Reports Ready',
+      value: adminStats?.totalNetwork ? 3 : 0,
+      helper: 'Procurement, payments, suppliers',
+      icon: FileText,
+      path: '/admin/reports',
+      tone: 'bg-cyan-50 text-cyan-700'
+    }
   ], [adminStats]);
 
   const adminModules = useMemo(() => [
-      {
-        title: 'Stakeholder Approvals',
-        detail: 'Review seller and buyer onboarding, compliance exceptions, review queues, and approved stakeholder capacity.',
-        path: '/admin/onboarding',
-        icon: ClipboardCheck
-      },
-      {
-        title: 'Onboarding Console',
-        detail: 'Approve, reject, request section changes, and send administrator feedback.',
-        path: '/admin/onboarding',
-        icon: FileSearch
-      },
-      {
-        title: 'Roles & Invite Permissions',
-        detail: 'Create role policies, assign permission scopes, and use invite-based team access for organizations.',
-        path: '/admin/rbac',
-        icon: KeyRound
-      },
-      {
-        title: 'MIS Reports',
-        detail: 'Export filtered records and review overall stakeholder network health.',
-        path: '/admin/reports',
-        icon: BarChart3
-      },
-      {
-        title: 'Monthly Rankings',
-        detail: 'Compute buyer and seller ranking lists that unlock homepage promotion eligibility.',
-        path: '/admin/monthly-rankings',
-        icon: Trophy
-      },
-      {
-        title: 'Banner Management',
-        detail: 'Create, approve, hide, and review homepage banners submitted by eligible organizations.',
-        path: '/admin/banners',
-        icon: Images
-      },
-      {
-        title: 'Marketplace Sections',
-        detail: 'Control homepage discovery order, section visibility, and section item limits.',
-        path: '/admin/marketplace/home-sections',
-        icon: ShoppingBag
-      },
-      {
-        title: 'Reverse Auction Monitoring',
-        detail: 'Track live auctions, monitor L1 rankings, review results, and open award recommendations.',
-        path: '/reverse-auctions',
-        icon: Gavel
-      }
+    {
+      title: 'Stakeholder Approvals',
+      detail: 'Review seller and buyer onboarding, compliance exceptions, review queues, and approved stakeholder capacity.',
+      path: '/admin/onboarding',
+      icon: ClipboardCheck
+    },
+    {
+      title: 'Onboarding Console',
+      detail: 'Approve, reject, request section changes, and send administrator feedback.',
+      path: '/admin/onboarding',
+      icon: FileSearch
+    },
+    {
+      title: 'Roles & Invite Permissions',
+      detail: 'Create role policies, assign permission scopes, and use invite-based team access for organizations.',
+      path: '/admin/rbac',
+      icon: KeyRound
+    },
+    {
+      title: 'MIS Reports',
+      detail: 'Export filtered records and review overall stakeholder network health.',
+      path: '/admin/reports',
+      icon: BarChart3
+    },
+    {
+      title: 'Monthly Rankings',
+      detail: 'Compute buyer and seller ranking lists that unlock homepage promotion eligibility.',
+      path: '/admin/monthly-rankings',
+      icon: Trophy
+    },
+    {
+      title: 'Banner Management',
+      detail: 'Create, approve, hide, and review homepage banners submitted by eligible organizations.',
+      path: '/admin/banners',
+      icon: Images
+    },
+    {
+      title: 'Marketplace Sections',
+      detail: 'Control homepage discovery order, section visibility, and section item limits.',
+      path: '/admin/marketplace/home-sections',
+      icon: ShoppingBag
+    },
+    {
+      title: 'Reverse Auction Monitoring',
+      detail: 'Track live auctions, monitor L1 rankings, review results, and open award recommendations.',
+      path: '/reverse-auctions',
+      icon: Gavel
+    }
   ], []);
 
   const sectionMessages = useMemo(() => Object.entries(user?.sectionRejectionReasons || {}).filter(([section, reason]) => {
@@ -708,142 +708,145 @@ export default function Dashboard() {
       {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
       <div className="space-y-4">
-          {!hasGst && (
-            <Card className="rounded-lg border border-slate-200 shadow-sm overflow-hidden bg-gradient-to-br from-slate-700 to-slate-900 text-white relative">
-              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                <ShieldCheck className="h-20 w-20 text-white" />
-              </div>
-              <CardContent className="p-4">
-                <div className="space-y-3">
-                  <div>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/20 mb-1.5 uppercase tracking-wide">
-                      <Briefcase className="h-3 w-3" /> Fast-Track Procurement
-                    </span>
-                    <h3 className="text-sm font-bold uppercase tracking-tight text-slate-100">
-                      Add & Verify Business GSTIN
-                    </h3>
-                    <p className="text-[11px] font-medium text-slate-350 leading-relaxed max-w-xl mt-0.5">
-                      Boost your MSME trust quotient. Instantly verify your business details to auto-approve key sections and fast-track your onboarding to approved procurement status.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleGstSubmit} className="space-y-2 max-w-md">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          placeholder="Enter 15-digit GSTIN (e.g. 27AAAAA1111A1Z1)"
-                          value={gstInput}
-                          onChange={(e) => {
-                            setGstInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
-                            if (errorMsg) setErrorMsg('');
-                          }}
-                          maxLength={15}
-                          className="w-full h-8 px-2.5 bg-white/10 border border-white/20 rounded text-[11px] font-semibold text-white placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-white uppercase tracking-wider"
-                          disabled={isSubmittingGst}
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        disabled={isSubmittingGst || !validators.gstin(gstInput)}
-                        className="h-8 bg-white hover:bg-slate-100 text-slate-900 rounded px-4 text-[11px] font-bold uppercase tracking-wider transition-all"
-                      >
-                        {isSubmittingGst && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                        {isSubmittingGst ? 'Submitting...' : 'Verify & Save'}
-                      </Button>
-                    </div>
-                    {errorMsg && (
-                      <p className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2.5 py-1 rounded border border-red-500/20">
-                        {errorMsg}
-                      </p>
-                    )}
-                  </form>
-
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-slate-800 text-[9.5px] font-semibold text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Auto-approve Offices
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Direct Procurement Live
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-400" /> AES-256 Encryption
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <AIInsightBox dashboardData={dashboardData} />
-
-          <PromotionEligibilityCard eligibility={bannerEligibility} isLoading={isBannerEligibilityLoading} />
-
-          {user?.role === 'buyer' && (
-            <BuyerMarketplaceDiscovery
-              data={marketplaceRecommendations}
-              isLoading={isMarketplaceRecommendationsLoading}
-            />
-          )}
-
-          <Card className="rounded-lg border-slate-200 shadow-sm overflow-hidden bg-white">
-            <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase text-slate-900 tracking-tight flex items-center gap-1.5">
-                <ShieldCheck className="h-4.5 w-4.5 text-[#12335f]" />
-                Verification Status Tracker
-              </h3>
-              <Badge className="bg-white text-[#12335f] border border-slate-200 px-2 py-0.5 rounded text-[9px] font-bold uppercase">
-                Live Monitoring
-              </Badge>
+        {/* Only show the GST onboarding card once the profile query has settled.
+            Before it resolves, hasGst is false (no data yet) which would flash
+            the card briefly even for users who already have GST verified. */}
+        {!isProfileLoading && !hasGst && (
+          <Card className="rounded-lg border border-slate-200 shadow-sm overflow-hidden bg-gradient-to-br from-slate-700 to-slate-900 text-white relative">
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              <ShieldCheck className="h-20 w-20 text-white" />
             </div>
             <CardContent className="p-4">
-              <div className="flex flex-col md:flex-row items-center gap-4">
-                <div className="relative h-14 w-14 shrink-0">
-                  <div className="absolute inset-0 bg-slate-50 rounded-full animate-pulse opacity-50" />
-                  <div className="absolute inset-0 flex items-center justify-center scale-75">
-                    {getStatusIcon(user?.onboardingStatus || 'pending')}
-                  </div>
+              <div className="space-y-3">
+                <div>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/20 mb-1.5 uppercase tracking-wide">
+                    <Briefcase className="h-3 w-3" /> Fast-Track Procurement
+                  </span>
+                  <h3 className="text-sm font-bold uppercase tracking-tight text-slate-100">
+                    Add & Verify Business GSTIN
+                  </h3>
+                  <p className="text-[11px] font-medium text-slate-350 leading-relaxed max-w-xl mt-0.5">
+                    Boost your MSME trust quotient. Instantly verify your business details to auto-approve key sections and fast-track your onboarding to approved procurement status.
+                  </p>
                 </div>
-                <div className="space-y-2 text-center md:text-left flex-1">
-                  <div>
-                    <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
-                      {getStatusLabel(user?.onboardingStatus || 'pending')}
-                    </h4>
-                    <p className="text-slate-550 font-medium text-[11px] mt-0.5 leading-snug">
-                      {user?.onboardingStatus === 'approved_for_procurement'
-                        ? "Your profile is fully verified. You can now participate in all procurement activities."
-                        : "Your profile is currently being reviewed by the MSME compliance department."}
-                    </p>
+
+                <form onSubmit={handleGstSubmit} className="space-y-2 max-w-md">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Enter 15-digit GSTIN (e.g. 27AAAAA1111A1Z1)"
+                        value={gstInput}
+                        onChange={(e) => {
+                          setGstInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                          if (errorMsg) setErrorMsg('');
+                        }}
+                        maxLength={15}
+                        className="w-full h-8 px-2.5 bg-white/10 border border-white/20 rounded text-[11px] font-semibold text-white placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-white uppercase tracking-wider"
+                        disabled={isSubmittingGst}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={isSubmittingGst || !validators.gstin(gstInput)}
+                      className="h-8 bg-white hover:bg-slate-100 text-slate-900 rounded px-4 text-[11px] font-bold uppercase tracking-wider transition-all"
+                    >
+                      {isSubmittingGst && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                      {isSubmittingGst ? 'Submitting...' : 'Verify & Save'}
+                    </Button>
                   </div>
-                  <Button
-                    onClick={() => router.push(user?.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding')}
-                    className="bg-[#12335f] hover:bg-[#0b2445] text-white rounded h-8 px-4 font-bold uppercase text-[10px] tracking-wide transition-all"
-                  >
-                    {user?.onboardingStatus === 'approved_for_procurement' ? 'View Full Profile' : 'Complete Profile'}
-                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                  </Button>
+                  {errorMsg && (
+                    <p className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2.5 py-1 rounded border border-red-500/20">
+                      {errorMsg}
+                    </p>
+                  )}
+                </form>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-slate-800 text-[9.5px] font-semibold text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Auto-approve Offices
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Direct Procurement Live
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400" /> AES-256 Encryption
+                  </span>
                 </div>
               </div>
             </CardContent>
           </Card>
+        )}
 
-          {/* Quick Actions / Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2">
-              <div className="h-7 w-7 rounded bg-slate-50 text-[#12335f] flex items-center justify-center">
-                <Info className="h-4 w-4" />
-              </div>
-              <h5 className="font-bold text-slate-950 uppercase text-[11px] tracking-wide">Need Help?</h5>
-              <p className="text-[10.5px] font-medium text-slate-500 leading-snug">Our support team is available to help you with the onboarding process.</p>
-              <Button
-                variant="ghost"
-                onClick={() => toast.info('Support desk request noted. Please email support@msme-portal.gov.in for urgent help.')}
-                className="text-[#12335f] font-bold uppercase text-[9.5px] p-0 h-auto hover:bg-transparent"
-              >
-                Contact Support
-              </Button>
-            </div>
+        <AIInsightBox dashboardData={dashboardData} />
+
+        <PromotionEligibilityCard eligibility={bannerEligibility} isLoading={isBannerEligibilityLoading} />
+
+        {user?.role === 'buyer' && (
+          <BuyerMarketplaceDiscovery
+            data={marketplaceRecommendations}
+            isLoading={isMarketplaceRecommendationsLoading}
+          />
+        )}
+
+        <Card className="rounded-lg border-slate-200 shadow-sm overflow-hidden bg-white">
+          <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase text-slate-900 tracking-tight flex items-center gap-1.5">
+              <ShieldCheck className="h-4.5 w-4.5 text-[#12335f]" />
+              Verification Status Tracker
+            </h3>
+            <Badge className="bg-white text-[#12335f] border border-slate-200 px-2 py-0.5 rounded text-[9px] font-bold uppercase">
+              Live Monitoring
+            </Badge>
           </div>
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              <div className="relative h-14 w-14 shrink-0">
+                <div className="absolute inset-0 bg-slate-50 rounded-full animate-pulse opacity-50" />
+                <div className="absolute inset-0 flex items-center justify-center scale-75">
+                  {getStatusIcon(user?.onboardingStatus || 'pending')}
+                </div>
+              </div>
+              <div className="space-y-2 text-center md:text-left flex-1">
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                    {getStatusLabel(user?.onboardingStatus || 'pending')}
+                  </h4>
+                  <p className="text-slate-550 font-medium text-[11px] mt-0.5 leading-snug">
+                    {user?.onboardingStatus === 'approved_for_procurement'
+                      ? "Your profile is fully verified. You can now participate in all procurement activities."
+                      : "Your profile is currently being reviewed by the MSME compliance department."}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => router.push(user?.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding')}
+                  className="bg-[#12335f] hover:bg-[#0b2445] text-white rounded h-8 px-4 font-bold uppercase text-[10px] tracking-wide transition-all"
+                >
+                  {user?.onboardingStatus === 'approved_for_procurement' ? 'View Full Profile' : 'Complete Profile'}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions / Info */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2">
+            <div className="h-7 w-7 rounded bg-slate-50 text-[#12335f] flex items-center justify-center">
+              <Info className="h-4 w-4" />
+            </div>
+            <h5 className="font-bold text-slate-950 uppercase text-[11px] tracking-wide">Need Help?</h5>
+            <p className="text-[10.5px] font-medium text-slate-500 leading-snug">Our support team is available to help you with the onboarding process.</p>
+            <Button
+              variant="ghost"
+              onClick={() => toast.info('Support desk request noted. Please email support@msme-portal.gov.in for urgent help.')}
+              className="text-[#12335f] font-bold uppercase text-[9.5px] p-0 h-auto hover:bg-transparent"
+            >
+              Contact Support
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

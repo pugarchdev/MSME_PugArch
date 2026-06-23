@@ -41,7 +41,10 @@ const offlineProofSchema = z.object({
   payerAccountLast4: z.string().trim().regex(/^\d{4}$/).optional(),
   beneficiaryBankName: z.string().trim().max(160).optional(),
   receiptFileId: z.coerce.number().int().positive().optional(),
-  receiptFileUrl: z.string().trim().url().max(1000).optional(),
+  receiptFileUrl: z.string().trim().max(1000).optional().refine(
+    val => !val || val === '' || /^\//.test(val) || /^https?:\/\/.+/.test(val),
+    { message: 'receiptFileUrl must be a valid absolute URL, relative path, or empty' }
+  ),
   remarks: z.string().trim().max(1000).optional()
 }).refine(value => value.paymentDate <= new Date(), {
   message: 'Payment date cannot be in the future',

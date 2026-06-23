@@ -18,7 +18,7 @@ export type OtpPurpose =
 
 export type OtpChannel = 'email' | 'sms';
 
-const OTP_TTL_SECONDS = 5 * 60;
+const OTP_TTL_SECONDS = 10 * 60;
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_SEND_WINDOW_SECONDS = 15 * 60;
 const MAX_OTP_SENDS = 5;

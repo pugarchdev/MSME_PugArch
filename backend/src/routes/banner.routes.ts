@@ -33,9 +33,15 @@ const publicLocationSchema = z.object({
 const bannerFieldsSchema = z.object({
   title: z.string().trim().min(2).max(160),
   subtitle: z.string().trim().max(500).optional(),
-  imageUrl: z.string().trim().url().max(1000).optional(),
+  imageUrl: z.string().trim().max(1000).optional().refine(
+    val => !val || val === '' || /^\//.test(val) || /^https?:\/\/.+/.test(val),
+    { message: 'imageUrl must be a valid absolute URL, relative path, or empty' }
+  ),
   documentId: z.coerce.number().int().positive().optional(),
-  targetUrl: z.string().trim().url().max(1000).optional(),
+  targetUrl: z.string().trim().max(1000).optional().refine(
+    val => !val || val === '' || /^\//.test(val) || /^https?:\/\/.+/.test(val),
+    { message: 'targetUrl must be a valid absolute URL, relative path, or empty' }
+  ),
   bannerType: z.enum(['DEFAULT_ADMIN', 'TOP_BUYER_PROMOTION', 'TOP_SELLER_PROMOTION', 'ANNOUNCEMENT']).default('DEFAULT_ADMIN'),
   status: z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'ACTIVE', 'HIDDEN']).optional(),
   startAt: z.coerce.date().optional(),

@@ -63,45 +63,70 @@ export default function VendorStorefrontPage({ id }: Props) {
             </button>
 
             {/* Hero card */}
-            <Card className="overflow-hidden border-slate-200/80">
-                <div className="bg-gradient-to-r from-[#0b1f3a] to-[#12335f] px-6 py-6 text-white">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="flex items-start gap-4 min-w-0">
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/10 text-2xl font-black">
+            <div className="rounded-3xl border border-slate-200/60 shadow-[0_12px_40px_rgba(0,0,0,0.03)] bg-white/95 backdrop-blur-md relative overflow-hidden">
+                {/* Banner Area */}
+                <div className="w-full h-48 md:h-64 relative bg-[#12335f] overflow-hidden">
+                    {v.bannerUrl ? (
+                        <img
+                            src={v.bannerUrl}
+                            alt="Seller Banner"
+                            className="w-full h-full object-cover opacity-90"
+                        />
+                    ) : (
+                        <div className="absolute inset-0 bg-gradient-to-tr from-[#0b2447] via-[#12335f] to-indigo-900 opacity-90" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-900/30 to-transparent" />
+                </div>
+
+                {/* Overlapping Info Area */}
+                <div className="relative px-6 pb-6 pt-16 md:px-8">
+                    {/* Logo Box */}
+                    <div className="absolute -top-16 left-6 md:left-8 w-28 h-28 rounded-2xl bg-white border border-slate-200/80 shadow-lg flex items-center justify-center p-2.5 z-20 bg-white transition-transform duration-300 hover:scale-105">
+                        {v.logoUrl ? (
+                            <img src={v.logoUrl} alt="Seller Logo" className="w-full h-full object-contain rounded-xl bg-white" />
+                        ) : (
+                            <div className="w-full h-full rounded-xl flex items-center justify-center text-3xl font-black bg-gradient-to-br from-blue-50 to-indigo-100 text-[#0b2447] border border-indigo-150">
                                 {(v.name || profile.businessName || '?').charAt(0).toUpperCase()}
                             </div>
-                            <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-200">Verified Seller</p>
-                                <h1 className="mt-1 text-2xl font-black text-wrap-anywhere">
-                                    {profile.businessName || v.name}
-                                </h1>
-                                <p className="mt-1 text-xs font-semibold text-blue-100 text-wrap-anywhere">
-                                    {profile.nameAsInPan && profile.nameAsInPan !== profile.businessName && profile.nameAsInPan} ·
-                                    {profile.organizationType && ` ${profile.organizationType}`}
-                                </p>
-                                {office.city && (
-                                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-100">
-                                        <MapPin className="h-3 w-3" /> {office.city}, {office.state}
-                                    </p>
-                                )}
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+                        <div className="min-w-0 space-y-1">
+                            <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider mb-1">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                Verified Seller
                             </div>
+                            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-snug uppercase text-wrap-anywhere">
+                                {profile.businessName || v.name}
+                            </h1>
+                            <p className="text-xs font-bold text-slate-500 text-wrap-anywhere">
+                                {profile.nameAsInPan && profile.nameAsInPan !== profile.businessName && `${profile.nameAsInPan} · `}
+                                {profile.organizationType && `${profile.organizationType}`}
+                            </p>
+                            {office.city && (
+                                <p className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-400">
+                                    <MapPin className="h-3.5 w-3.5 text-slate-400" /> {office.city}, {office.state}
+                                </p>
+                            )}
                         </div>
-                        <div className="flex gap-3 flex-wrap">
+
+                        <div className="flex gap-3 flex-wrap self-start md:self-end">
                             {ratingSummary.data && (
-                                <div className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-center">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-blue-200">Rating</p>
-                                    <p className="mt-1 inline-flex items-center gap-1 text-lg font-black">
-                                        <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
+                                <div className="rounded-xl border border-slate-150 bg-slate-50/50 px-4 py-2.5 text-center shadow-sm">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rating</p>
+                                    <p className="mt-0.5 inline-flex items-center gap-1 text-lg font-black text-[#0b2447]">
+                                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                                         {(ratingSummary.data as any).average?.toFixed(1) || '—'}
                                     </p>
-                                    <p className="text-[9px] text-blue-200">{(ratingSummary.data as any).count || 0} reviews</p>
+                                    <p className="text-[9px] font-bold text-slate-500">{(ratingSummary.data as any).count || 0} reviews</p>
                                 </div>
                             )}
                             {profile.isUdyamCertified && (
-                                <div className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-center">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-blue-200">Status</p>
-                                    <p className="mt-1 inline-flex items-center gap-1 text-xs font-black">
-                                        <ShieldCheck className="h-4 w-4 text-emerald-300" /> Udyam
+                                <div className="rounded-xl border border-slate-150 bg-slate-50/50 px-4 py-2.5 text-center shadow-sm flex flex-col justify-center">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status</p>
+                                    <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-black text-slate-800">
+                                        <ShieldCheck className="h-4 w-4 text-emerald-600" /> Udyam Verified
                                     </p>
                                 </div>
                             )}
@@ -109,12 +134,12 @@ export default function VendorStorefrontPage({ id }: Props) {
                     </div>
                 </div>
 
-                <CardContent className="grid gap-3 p-4 md:grid-cols-3">
+                <div className="grid gap-3 p-4 md:grid-cols-3 border-t border-slate-100 bg-slate-50/30">
                     <ContactBlock icon={Mail} label="Email" value={v.email} />
                     {v.mobile && <ContactBlock icon={Phone} label="Mobile" value={v.mobile} />}
                     {profile.website && <ContactBlock icon={Globe} label="Website" value={profile.website} />}
-                </CardContent>
-            </Card>
+                </div>
+            </div>
 
             {/* Action bar (buyer only) */}
             {isBuyer && (

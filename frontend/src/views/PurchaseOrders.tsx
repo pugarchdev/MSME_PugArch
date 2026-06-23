@@ -150,6 +150,8 @@ export default function PurchaseOrders() {
       setSortBy(sortBy === 'expected_asc' ? 'expected_desc' : 'expected_asc');
     } else if (key === 'status') {
       setSortBy(sortBy === 'status_asc' ? 'status_desc' : 'status_asc');
+    } else if (key === 'updated') {
+      setSortBy(sortBy === 'updated_asc' ? 'updated_desc' : 'updated_asc');
     }
   };
 
@@ -175,6 +177,9 @@ export default function PurchaseOrders() {
     } else if (columnKey === 'status') {
       isActive = sortBy === 'status' || sortBy === 'status_asc' || sortBy === 'status_desc';
       isAsc = sortBy === 'status' || sortBy === 'status_asc';
+    } else if (columnKey === 'updated') {
+      isActive = sortBy === 'updated_asc' || sortBy === 'updated_desc';
+      isAsc = sortBy === 'updated_asc';
     }
 
     return (
@@ -471,6 +476,7 @@ export default function PurchaseOrders() {
                     <InfoTile label="Party" value={order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`} />
                     <InfoTile label="Value" value={formatCurrency(order.amount || order.totalValue)} />
                     <InfoTile label="Expected" value={formatDate(order.expectedDelivery)} />
+                    <InfoTile label="Updated" value={formatDate(order.updatedAt)} />
                     <InfoTile label="Created" value={formatDate(order.createdAt)} />
                   </div>
 
@@ -493,7 +499,7 @@ export default function PurchaseOrders() {
       ) : (
         <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="p-3">Sr. No</th>
@@ -502,6 +508,7 @@ export default function PurchaseOrders() {
                   <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
                   <th className="p-3"><SortHeader label="Value" columnKey="value" /></th>
                   <th className="p-3"><SortHeader label="Expected" columnKey="expected" /></th>
+                  <th className="p-3"><SortHeader label="Updated At" columnKey="updated" /></th>
                   <th className="p-3"><SortHeader label="Status" columnKey="status" /></th>
                   <th className="p-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>
                 </tr>
@@ -534,6 +541,18 @@ export default function PurchaseOrders() {
                       <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
                       <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
                       <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
+                      <td className="p-3">
+                        {order.updatedAt ? (
+                          <div>
+                            <p className="text-xs font-bold text-slate-700">{formatDate(order.updatedAt)}</p>
+                            <p className="text-[9px] font-semibold text-slate-400 mt-0.5">
+                              {new Date(order.updatedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="p-3"><StatusPill status={order.status} /></td>
                       <td className="p-3 text-right w-[380px] min-w-[380px]">
                         {renderOrderActions(order)}

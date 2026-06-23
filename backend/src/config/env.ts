@@ -104,12 +104,6 @@ const envSchema = z.object({
   MSG91_SENDER_ID: optionalString(),
   MSG91_BASE_URL: z.string().url().default('https://control.msg91.com'),
   MSG91_COMMON_OTP_TEMPLATE_ID: optionalString(),
-  MSG91_FORGOT_PASSWORD_TEMPLATE_ID: optionalString(),
-  MSG91_LOGIN_OTP_TEMPLATE_ID: optionalString(),
-  MSG91_REGISTRATION_OTP_TEMPLATE_ID: optionalString(),
-  MSG91_NOTIFICATION_TEMPLATE_ID: optionalString(),
-  MSG91_TENDER_ALERT_TEMPLATE_ID: optionalString(),
-  MSG91_ONBOARDING_ALERT_TEMPLATE_ID: optionalString(),
   APISETU_API_KEY: z.string().optional(),
   APISETU_CLIENT_ID: z.string().optional(),
   APISETU_GST_URL: z.string().url().default('https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}'),
@@ -197,3 +191,56 @@ export const env = {
 };
 
 export const isProduction = env.NODE_ENV === 'production';
+
+// ---------------------------------------------------------------------------
+// MeriPehchaan / Aadhaar KYC startup configuration report
+// Logs presence/absence of each required variable WITHOUT exposing values.
+// ---------------------------------------------------------------------------
+const kycConfigReport = () => {
+  const scopes = env.MERIPEHCHAAN_SCOPES || '';
+  const needsIdToken = scopes.split(/\s+/).includes('openid');
+
+  const checks: Array<[string, boolean, string?]> = [
+    ['MERIPEHCHAAN_CLIENT_ID', Boolean(env.MERIPEHCHAAN_CLIENT_ID)],
+    ['MERIPEHCHAAN_CLIENT_SECRET', Boolean(env.MERIPEHCHAAN_CLIENT_SECRET)],
+    ['MERIPEHCHAAN_AUTH_URL', Boolean(env.MERIPEHCHAAN_AUTH_URL)],
+    ['MERIPEHCHAAN_TOKEN_URL', Boolean(env.MERIPEHCHAAN_TOKEN_URL)],
+    ['MERIPEHCHAAN_USERINFO_URL', Boolean(env.MERIPEHCHAAN_USERINFO_URL), 'optional but recommended'],
+    ['MERIPEHCHAAN_REDIRECT_URI', Boolean(env.MERIPEHCHAAN_REDIRECT_URI)],
+    ['MERIPEHCHAAN_JWKS_URL', Boolean(env.MERIPEHCHAAN_JWKS_URL), needsIdToken ? 'REQUIRED (openid scope active)' : 'optional'],
+    ['MERIPEHCHAAN_ISSUER', Boolean(env.MERIPEHCHAAN_ISSUER), 'recommended for full id_token validation'],
+    ['FRONTEND_URL', Boolean(env.FRONTEND_URL)],
+  ];
+
+  const lines = checks.map(([key, present, note]) => {
+    const status = present ? '✓ present' : '✗ MISSING';
+    return `  ${status.padEnd(12)} ${key}${note ? ` (${note})` : ''}`;
+  });
+
+  const missingRequired = checks
+    .filter(([, present, note]) => !present && (!note || note.includes('REQUIRED') || (!note.includes('optional') && !note.includes('recommended'))))
+    .map(([key]) => key);
+
+  // Also flag JWKS as missing-required when openid is in scopes.
+  const missingJwks = needsIdToken && !env.MERIPEHCHAAN_JWKS_URL;
+  if (missingJwks && !missingRequired.includes('MERIPEHCHAAN_JWKS_URL')) {
+    missingRequired.push('MERIPEHCHAAN_JWKS_URL');
+  }
+
+  console.log('[MeriPehchaan KYC] Configuration status:');
+  lines.forEach(l => console.log(l));
+
+  if (missingRequired.length > 0) {
+    console.warn(`[MeriPehchaan KYC] WARNING: The following required variable(s) are missing. Aadhaar KYC will return KYC_NOT_CONFIGURED (503) until they are set: ${missingRequired.join(', ')}`);
+  } else {
+    console.log('[MeriPehchaan KYC] All required variables are present. Service is ready.');
+  }
+
+  if (env.MERIPEHCHAAN_REDIRECT_URI) {
+    // Log the redirect URI (not a secret) so it is easy to cross-check against the API Setu dashboard.
+    console.log(`[MeriPehchaan KYC] Callback URL: ${env.MERIPEHCHAAN_REDIRECT_URI}`);
+    console.log('[MeriPehchaan KYC] Ensure this exact URL is registered as the redirect/callback URI in the API Setu / MeriPehchaan Auth Partner dashboard.');
+  }
+};
+
+kycConfigReport();

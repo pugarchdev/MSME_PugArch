@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { ShieldCheck, Mail, Lock, UserX, Info, AlertTriangle, PlayCircle } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, UserX, Info, AlertTriangle, PlayCircle, Building2 } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { GeMSettingsSidebar } from '../components/GeMSettingsSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
@@ -19,6 +19,11 @@ export default function SellerSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [profileData, setProfileData] = useState<any>(null);
+
+  // Logo & Branding states
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [isBrandingLoading, setIsBrandingLoading] = useState(false);
 
   // Form states
   const [aadhaarForm, setAadhaarForm] = useState({ number: '', mobile: '', consent: false });
@@ -51,9 +56,10 @@ export default function SellerSettings() {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         });
         const data = await res.json();
-        setProfileData(data.user?.sellerProfile || {});
-        if (data.user?.sellerProfile?.aadhaarNumber) {
-           setAadhaarForm(prev => ({ ...prev, number: data.user.sellerProfile.aadhaarNumber }));
+        const profile = data.user?.sellerProfile || data.user?.shgProfile || {};
+        setProfileData(profile);
+        if (profile.aadhaarNumber) {
+           setAadhaarForm(prev => ({ ...prev, number: profile.aadhaarNumber }));
         }
       } catch (err) {
         console.error(err);
@@ -63,6 +69,181 @@ export default function SellerSettings() {
     };
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    if (currentSection === 'branding') {
+      const fetchBranding = async () => {
+        setIsBrandingLoading(true);
+        try {
+          const res = await api.fetch('/api/seller/settings/branding', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setLogoUrl(data.data?.logoUrl || null);
+            setBannerUrl(data.data?.bannerUrl || null);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setIsBrandingLoading(false);
+        }
+      };
+      fetchBranding();
+    }
+  }, [currentSection]);
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const limitMB = 2;
+    if (file.size > limitMB * 1024 * 1024) {
+      return toast.error(`File size exceeds limit of ${limitMB}MB`);
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const loadingToast = toast.loading('Uploading logo...');
+    setIsBrandingLoading(true);
+    try {
+      const uploadRes = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      if (uploadRes.ok) {
+        const body = await uploadRes.json();
+        const uploadedLogoUrl = body.data?.url || body.url;
+
+        const saveRes = await api.fetch('/api/seller/settings/branding', {
+          method: 'PUT',
+          body: JSON.stringify({ logoUrl: uploadedLogoUrl }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (saveRes.ok) {
+          setLogoUrl(uploadedLogoUrl);
+          toast.success('Logo uploaded and updated successfully');
+        } else {
+          toast.error('Failed to update logo in your profile settings');
+        }
+      } else {
+        toast.error('Logo file upload failed');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Logo upload failed due to network error');
+    } finally {
+      setIsBrandingLoading(false);
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    const loadingToast = toast.loading('Removing logo...');
+    setIsBrandingLoading(true);
+    try {
+      const res = await api.fetch('/api/seller/settings/branding', {
+        method: 'PUT',
+        body: JSON.stringify({ logoUrl: null }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        setLogoUrl(null);
+        toast.success('Logo removed successfully');
+      } else {
+        toast.error('Failed to remove logo');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to remove logo due to network error');
+    } finally {
+      setIsBrandingLoading(false);
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const limitMB = 5;
+    if (file.size > limitMB * 1024 * 1024) {
+      return toast.error(`File size exceeds limit of ${limitMB}MB`);
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const loadingToast = toast.loading('Uploading banner...');
+    setIsBrandingLoading(true);
+    try {
+      const uploadRes = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      if (uploadRes.ok) {
+        const body = await uploadRes.json();
+        const uploadedBannerUrl = body.data?.url || body.url;
+
+        const saveRes = await api.fetch('/api/seller/settings/branding', {
+          method: 'PUT',
+          body: JSON.stringify({ bannerUrl: uploadedBannerUrl }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (saveRes.ok) {
+          setBannerUrl(uploadedBannerUrl);
+          toast.success('Storefront cover banner uploaded successfully');
+        } else {
+          toast.error('Failed to update banner in your profile settings');
+        }
+      } else {
+        toast.error('Banner file upload failed');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Banner upload failed due to network error');
+    } finally {
+      setIsBrandingLoading(false);
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleRemoveBanner = async () => {
+    const loadingToast = toast.loading('Removing banner...');
+    setIsBrandingLoading(true);
+    try {
+      const res = await api.fetch('/api/seller/settings/branding', {
+        method: 'PUT',
+        body: JSON.stringify({ bannerUrl: null }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        setBannerUrl(null);
+        toast.success('Storefront cover banner removed successfully');
+      } else {
+        toast.error('Failed to remove banner');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to remove banner due to network error');
+    } finally {
+      setIsBrandingLoading(false);
+      toast.dismiss(loadingToast);
+    }
+  };
 
   const handleUpdateAadhaar = async () => {
     if (!aadhaarForm.number || !aadhaarForm.mobile) return toast.error("Please fill all required fields");
@@ -470,6 +651,96 @@ export default function SellerSettings() {
                   <Button onClick={handleUpdateAadhaar} disabled={isLoading} className="w-full sm:w-auto bg-[#12335f] hover:bg-slate-800 text-white font-bold px-10 h-12 uppercase tracking-widest text-xs shadow-lg shadow-blue-100">
                     {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'UPDATE AADHAAR'}
                   </Button>
+                </div>
+              </div>
+            )}
+
+            {currentSection === 'branding' && (
+              <div className="p-5 sm:p-8 space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Logo & Branding</h2>
+                  <p className="text-gray-500 mt-1">Upload your organization logo and cover banner to show on your public storefront and portal landing pages.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Logo Upload Card */}
+                  <div className="bg-[#f8fafc]/60 border border-[#e2e8f0] hover:border-[#12335f]/20 hover:shadow-md transition-all duration-300 rounded-2xl p-6 flex flex-col items-center justify-between min-h-[280px]">
+                    <div className="text-center space-y-1.5 w-full flex flex-col items-center">
+                      <p className="text-xs font-black uppercase tracking-wider text-[#12335f] mb-2">Organization Logo</p>
+                      {isBrandingLoading ? (
+                        <div className="flex flex-col items-center justify-center h-32 animate-pulse">
+                          <Loader2 className="animate-spin h-8 w-8 text-[#12335f]" />
+                        </div>
+                      ) : logoUrl ? (
+                        <div className="h-32 w-32 rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm flex items-center justify-center transition-transform hover:scale-105 duration-300">
+                          <img src={logoUrl} alt="Organization Logo" className="max-h-full max-w-full object-contain rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="h-32 w-32 rounded-xl bg-slate-100/80 border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                          <Building2 className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {!isBrandingLoading && (
+                      <div className="w-full flex flex-col items-center gap-2 mt-4">
+                        {logoUrl ? (
+                          <Button onClick={handleRemoveLogo} className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-9 px-6 rounded-lg w-full">
+                            Remove Logo
+                          </Button>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-slate-500 font-medium text-center">PNG, JPG (Max 2MB)</p>
+                            <label className="cursor-pointer inline-flex items-center justify-center bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-[10px] tracking-wider h-10 px-6 rounded-xl shadow-md w-full transition-all">
+                              <span>Upload Logo</span>
+                              <input type="file" onChange={handleLogoUpload} className="hidden" accept="image/png, image/jpeg, image/jpg" />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Banner Upload Card */}
+                  <div className="bg-[#f8fafc]/60 border border-[#e2e8f0] hover:border-[#12335f]/20 hover:shadow-md transition-all duration-300 rounded-2xl p-6 flex flex-col items-center justify-between min-h-[280px]">
+                    <div className="text-center space-y-1.5 w-full flex flex-col items-center">
+                      <p className="text-xs font-black uppercase tracking-wider text-[#12335f] mb-2">Storefront Cover Banner</p>
+                      {isBrandingLoading ? (
+                        <div className="flex flex-col items-center justify-center h-32 animate-pulse">
+                          <Loader2 className="animate-spin h-8 w-8 text-[#12335f]" />
+                        </div>
+                      ) : bannerUrl ? (
+                        <div className="h-32 w-full rounded-xl border border-slate-100 bg-white shadow-sm flex items-center justify-center overflow-hidden transition-transform hover:scale-102 duration-300">
+                          <img src={bannerUrl} alt="Storefront Cover Banner" className="h-full w-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="h-32 w-full rounded-xl bg-slate-100/80 border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                          <div className="flex flex-col items-center gap-1">
+                            <Building2 className="h-8 w-8" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No Banner Selected</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {!isBrandingLoading && (
+                      <div className="w-full flex flex-col items-center gap-2 mt-4">
+                        {bannerUrl ? (
+                          <Button onClick={handleRemoveBanner} className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-9 px-6 rounded-lg w-full">
+                            Remove Banner
+                          </Button>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-slate-500 font-medium text-center">Recommended aspect ratio: 4:1 (Max 5MB)</p>
+                            <label className="cursor-pointer inline-flex items-center justify-center bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-[10px] tracking-wider h-10 px-6 rounded-xl shadow-md w-full transition-all">
+                              <span>Upload Banner</span>
+                              <input type="file" onChange={handleBannerUpload} className="hidden" accept="image/png, image/jpeg, image/jpg" />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

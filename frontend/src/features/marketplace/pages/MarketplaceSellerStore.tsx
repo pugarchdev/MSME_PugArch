@@ -164,15 +164,15 @@ export default function MarketplaceSellerStore() {
                     {/* Background decorations */}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,145,0,0.1),transparent_40%)]" />
                     <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(7,23,46,0.4))]" />
-                    
+
                     <div className="relative max-w-7xl mx-auto px-4 py-10 sm:py-12">
-                        <button 
-                            onClick={() => router.back()} 
+                        <button
+                            onClick={() => router.back()}
                             className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/60 hover:text-white mb-6 transition-all duration-200 hover:-translate-x-0.5 active:scale-95 bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm"
                         >
                             <ArrowLeft className="h-3.5 w-3.5" /> Back
                         </button>
-                        
+
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
                                 {/* Avatar */}
@@ -192,7 +192,7 @@ export default function MarketplaceSellerStore() {
                                         )}
                                     </div>
                                     <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-none">{name}</h1>
-                                    
+
                                     {/* Personal Seller Name/Contact */}
                                     {vendor.sellerName && (
                                         <p className="text-xs text-white/85 font-medium mt-1 inline-flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/5 backdrop-blur-sm">
@@ -204,7 +204,7 @@ export default function MarketplaceSellerStore() {
                                     {profile.nameAsInPan && profile.nameAsInPan !== name && (
                                         <p className="text-[11px] text-white/50 font-medium">{profile.nameAsInPan}</p>
                                     )}
-                                    
+
                                     <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-white/70">
                                         {loc && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#ff9100]" />{loc}</span>}
                                         {profile.organizationType && <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10">{profile.organizationType.replace(/_/g, ' ')}</span>}
@@ -212,7 +212,7 @@ export default function MarketplaceSellerStore() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {/* Stats */}
                             <div className="flex gap-4 shrink-0 self-start md:self-center">
                                 <div className="text-center min-w-[90px] px-4 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md shadow-sm hover:border-white/20 transition-all">
@@ -265,11 +265,10 @@ export default function MarketplaceSellerStore() {
                             <button
                                 key={id}
                                 onClick={() => setTab(id)}
-                                className={`relative h-12 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all duration-300 active:scale-95 [&:not(:disabled):hover]:translate-y-0 ${
-                                    tab === id 
-                                        ? 'border-[#0b2447] text-[#0b2447] font-extrabold' 
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
+                                className={`relative h-12 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all duration-300 active:scale-95 [&:not(:disabled):hover]:translate-y-0 ${tab === id
+                                    ? 'border-[#0b2447] text-[#0b2447] font-extrabold'
+                                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                    }`}
                             >
                                 {label}
                             </button>
@@ -305,11 +304,10 @@ export default function MarketplaceSellerStore() {
                                 {tab === 'products' && (
                                     <button
                                         onClick={() => setShowF(v => !v)}
-                                        className={`inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl border text-xs font-bold tracking-wide transition-all active:scale-95 [&:not(:disabled):hover]:translate-y-0 ${
-                                            showF 
-                                                ? 'bg-[#0b2447] text-white border-[#0b2447] shadow-md' 
-                                                : 'border-slate-200 text-slate-700 hover:bg-slate-50/80 bg-white'
-                                        }`}
+                                        className={`inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl border text-xs font-bold tracking-wide transition-all active:scale-95 [&:not(:disabled):hover]:translate-y-0 ${showF
+                                            ? 'bg-[#0b2447] text-white border-[#0b2447] shadow-md'
+                                            : 'border-slate-200 text-slate-700 hover:bg-slate-50/80 bg-white'
+                                            }`}
                                     >
                                         <SlidersHorizontal className="h-4 w-4" /> Filters
                                     </button>
@@ -351,7 +349,7 @@ export default function MarketplaceSellerStore() {
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                     {filteredProducts.map((p: any) => (
-                                        <MarketplaceItemCard key={p.id} item={p} itemType="product" className="w-full sm:w-full 2xl:w-full min-h-[380px]" />
+                                        <MarketplaceItemCard key={p.id} item={p} itemType="product" className="w-full sm:w-full 2xl:w-full" />
                                     ))}
                                 </div>
                             )}
@@ -373,7 +371,7 @@ export default function MarketplaceSellerStore() {
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {filteredServices.map((s: any) => (
-                                        <MarketplaceItemCard key={s.id} item={s} itemType="service" className="w-full sm:w-full 2xl:w-full min-h-[380px]" />
+                                        <MarketplaceItemCard key={s.id} item={s} itemType="service" className="w-full sm:w-full 2xl:w-full" />
                                     ))}
                                 </div>
                             )}
@@ -400,7 +398,7 @@ export default function MarketplaceSellerStore() {
                                     ))}
                                 </div>
                             </div>
-                            
+
                             <div className="bg-white rounded-2xl border border-slate-200/80 p-6 space-y-5 shadow-sm">
                                 <h3 className="text-sm font-black uppercase tracking-wider text-[#0b2447] border-b border-slate-100 pb-3">Contact Information</h3>
                                 <div className="space-y-3.5">
@@ -429,7 +427,7 @@ export default function MarketplaceSellerStore() {
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 {profile.productCategories?.length > 0 && (
                                     <div className="pt-2 border-t border-slate-100">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Product Categories</p>

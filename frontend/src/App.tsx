@@ -38,6 +38,7 @@ const ShgOnboarding = lazy(() => import('./views/ShgOnboarding'));
 const ShgRegistrationFlow = lazy(() => import('./views/ShgRegistrationFlow'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
+const PublicBuyerRequirements = lazy(() => import('./views/PublicBuyerRequirements'));
 const Tenders = lazy(() => import('./views/Tenders'));
 const Vendors = lazy(() => import('./views/Vendors'));
 const Quotations = lazy(() => import('./views/Quotations'));
@@ -289,7 +290,7 @@ export default function App() {
   }, [mounted, loading, user]);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname)) {
+    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
       router.replace('/');
     }
   }, [mounted, loading, user, pathname, router]);
@@ -396,6 +397,13 @@ export default function App() {
     if (/^\/marketplace\/services\/\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
     // Public vendor store — accessible to everyone
     if (/^\/vendors\/\d+$/.test(pathname)) return <MarketplaceSellerStore />;
+    {
+      const buyerRequirementsMatch = pathname.match(/^\/buyer-requirements\/(\d+)$/);
+      if (buyerRequirementsMatch) {
+        const buyerId = Number(buyerRequirementsMatch[1]);
+        if (Number.isFinite(buyerId) && buyerId > 0) return <PublicBuyerRequirements buyerId={buyerId} />;
+      }
+    }
     if (pathname === '/cart' && !user) return <GuestCartPage />;
     if (!user) return null;
     const shgRouteOk = isCurrentShg || roleOk(user.role, ['shg']);
@@ -415,7 +423,7 @@ export default function App() {
     if (pathname === '/shg/meetings' && shgRouteOk) return <ShgOnboarding section="meetings" />;
     if (pathname === '/shg/schemes' && shgRouteOk) return <ShgOnboarding section="schemes" />;
     if (pathname === '/shg/support' && shgRouteOk) return <ShgOnboarding section="support" />;
-    if (pathname === '/shg/settings' && shgRouteOk) return <ShgOnboarding section="settings" />;
+    if (pathname === '/shg/settings' && shgRouteOk) return <SellerSettings />;
     if (pathname === '/my-org/banner-eligibility') return <OrganizationBannerEligibilityPage />;
     if (pathname === '/cart' && roleOk(user.role, ['buyer', 'seller'])) return <CartPage />;
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
@@ -576,7 +584,7 @@ export default function App() {
     pathname === '/marketplace/services' ||
     /^\/marketplace\/products\/\d+$/.test(pathname) ||
     /^\/marketplace\/services\/\d+$/.test(pathname);
-  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/\d+$/.test(pathname);
+  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/\d+$/.test(pathname) || /^\/buyer-requirements\/\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute && !publicInfoRoutes.includes(pathname);
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 

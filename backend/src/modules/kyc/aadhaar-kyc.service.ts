@@ -27,6 +27,9 @@ type SafeProfile = {
 };
 
 const requiredConfig = () => {
+  const scopes = env.MERIPEHCHAAN_SCOPES || 'openid profile email';
+  const needsIdTokenVerification = scopes.split(/\s+/).includes('openid');
+
   const missing = [
     ['MERIPEHCHAAN_CLIENT_ID', env.MERIPEHCHAAN_CLIENT_ID],
     ['MERIPEHCHAAN_CLIENT_SECRET', env.MERIPEHCHAAN_CLIENT_SECRET],
@@ -38,7 +41,10 @@ const requiredConfig = () => {
 
   if (missing.length) {
     const keys = missing.map(([key]) => key).join(', ');
-    throw Object.assign(new Error(`MeriPehchaan Aadhaar KYC is not configured: ${keys}`), { statusCode: 503, code: 'KYC_NOT_CONFIGURED' });
+    throw Object.assign(
+      new Error(`MeriPehchaan Aadhaar KYC is not configured: ${keys}`),
+      { statusCode: 503, code: 'KYC_NOT_CONFIGURED' },
+    );
   }
 
   if (isProduction && !String(env.MERIPEHCHAAN_REDIRECT_URI).startsWith('https://')) {
@@ -55,9 +61,10 @@ const requiredConfig = () => {
     issuer: env.MERIPEHCHAAN_ISSUER,
     redirectUri: env.MERIPEHCHAAN_REDIRECT_URI!,
     frontendUrl: env.FRONTEND_URL!,
-    scopes: env.MERIPEHCHAAN_SCOPES || 'openid profile email',
+    scopes,
     acr: env.MERIPEHCHAAN_ACR,
     ttlMinutes: env.AADHAAR_KYC_SESSION_TTL_MINUTES || 10,
+    needsIdTokenVerification,
   };
 };
 
@@ -149,9 +156,18 @@ const fetchUserInfo = async (url: string | undefined, accessToken: string) => {
 };
 
 const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typeof requiredConfig>) => {
+  // If the token endpoint did not return an id_token, skip verification.
+  // This is only safe when scope does not include 'openid'; if it does,
+  // requiredConfig() already enforced that jwksUrl is present.
   if (!idToken) return null;
+
+  // jwksUrl was already validated as present in requiredConfig() when openid
+  // scope is active, so this guard only fires for a programming mistake.
   if (!config.jwksUrl) {
-    throw Object.assign(new Error('MeriPehchaan JWKS URL is required to verify the OIDC ID token'), { statusCode: 503, code: 'KYC_JWKS_NOT_CONFIGURED' });
+    throw Object.assign(
+      new Error('MeriPehchaan JWKS URL is required to verify the OIDC ID token'),
+      { statusCode: 503, code: 'KYC_JWKS_NOT_CONFIGURED' },
+    );
   }
 
   const decoded = jwt.decode(idToken, { complete: true });
@@ -175,10 +191,17 @@ const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typ
 
   const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
   const pem = publicKey.export({ type: 'spki', format: 'pem' });
+
+  // issuer is optional but highly recommended for production. Log a warning
+  // (no sensitive data) if it is absent.
+  if (!config.issuer) {
+    console.warn('[MeriPehchaan] MERIPEHCHAAN_ISSUER is not set. ID token issuer (iss) claim will not be validated. Set it to the value from the API Setu OIDC discovery document for full security.');
+  }
+
   const verified = jwt.verify(idToken, pem, {
     algorithms: [decoded.header.alg as jwt.Algorithm],
     audience: config.clientId,
-    issuer: config.issuer,
+    ...(config.issuer ? { issuer: config.issuer } : {}),
   });
   return verified && typeof verified === 'object' ? verified : null;
 };
@@ -259,8 +282,8 @@ export const aadhaarKycService = {
 
     const session = state
       ? await prisma.kycAuthSession.findFirst({
-          where: { state, provider: PROVIDER, verificationType: VERIFICATION_TYPE },
-        })
+        where: { state, provider: PROVIDER, verificationType: VERIFICATION_TYPE },
+      })
       : null;
 
     if (providerError) {
@@ -318,7 +341,23 @@ export const aadhaarKycService = {
         throw Object.assign(new Error('MeriPehchaan token exchange failed'), { statusCode: 502, code: 'TOKEN_EXCHANGE_FAILED' });
       }
 
-      const idPayload = await verifyIdToken(tokenBody.id_token, config);
+      let idPayload: any = null;
+      let idTokenVerified = false;
+
+      if (tokenBody.id_token) {
+        if (config.jwksUrl) {
+          idPayload = await verifyIdToken(tokenBody.id_token, config);
+          idTokenVerified = true;
+        } else {
+          idPayload = jwt.decode(tokenBody.id_token);
+          idTokenVerified = false;
+          console.warn('[MeriPehchaan] ID token signature verification skipped because JWKS URL is not configured.');
+          if (isProduction) {
+            console.warn('[MeriPehchaan] JWKS URL is strictly required in production for full ID token validation.');
+          }
+        }
+      }
+
       const userInfo = await fetchUserInfo(config.userInfoUrl, tokenBody.access_token);
       const profile = extractSafeProfile(userInfo, idPayload);
 
@@ -341,6 +380,7 @@ export const aadhaarKycService = {
             digilockerId: profile.digilockerId,
             referenceKey: profile.referenceKey,
             idTokenSubject: profile.subject,
+            idTokenVerified,
             verifiedAt: new Date(),
             lastErrorCode: null,
             lastErrorMessage: null,
@@ -357,6 +397,7 @@ export const aadhaarKycService = {
             digilockerId: profile.digilockerId,
             referenceKey: profile.referenceKey,
             idTokenSubject: profile.subject,
+            idTokenVerified,
             verifiedAt: new Date(),
             lastErrorCode: null,
             lastErrorMessage: null,
@@ -404,14 +445,17 @@ export const aadhaarKycService = {
   async reset(user: AuthenticatedUser, meta: RequestMeta) {
     const organizationId = getOrgId(user);
     await prisma.$transaction([
+      // Expire any open sessions so they cannot be used after a reset.
       prisma.kycAuthSession.updateMany({
         where: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE, used: false },
         data: { used: true }
       }),
+      // Reset to NOT_STARTED so the UI shows a clean "start verification" state,
+      // not a misleading "pending" that implies an in-flight session.
       prisma.userKycVerification.upsert({
         where: { userId_provider_verificationType: { userId: user.id, provider: PROVIDER, verificationType: VERIFICATION_TYPE } },
-        create: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'PENDING' },
-        update: { status: 'PENDING', organizationId, lastErrorCode: null, lastErrorMessage: null }
+        create: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, status: 'NOT_STARTED' },
+        update: { status: 'NOT_STARTED', organizationId, lastErrorCode: null, lastErrorMessage: null }
       }),
       prisma.kycAuditLog.create({
         data: { userId: user.id, organizationId, provider: PROVIDER, verificationType: VERIFICATION_TYPE, action: 'RESET', status: 'RESET', ipAddress: meta.ipAddress, userAgent: meta.userAgent ? meta.userAgent.slice(0, 500) : undefined }

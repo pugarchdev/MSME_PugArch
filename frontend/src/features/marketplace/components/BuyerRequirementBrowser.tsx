@@ -47,13 +47,11 @@ function initials(name: string) {
 function BuyerStripSkeleton() {
     return (
         <div className="flex gap-4 overflow-x-auto pb-4 pt-1 no-scrollbar lg:px-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex h-[82px] min-w-[240px] shrink-0 items-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 animate-pulse">
-                    <div className="h-12 w-12 rounded-xl bg-slate-100 shrink-0" />
-                    <div className="flex-1 space-y-2">
-                        <div className="h-3 w-3/4 rounded bg-slate-100" />
-                        <div className="h-3 w-1/2 rounded bg-slate-100" />
-                    </div>
+            {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex flex-col h-[175px] w-[160px] shrink-0 items-center justify-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 animate-pulse">
+                    <div className="h-20 w-20 rounded-xl bg-slate-100 shrink-0" />
+                    <div className="h-3.5 w-3/4 rounded bg-slate-100" />
+                    <div className="h-2.5 w-1/2 rounded bg-slate-100" />
                 </div>
             ))}
         </div>
@@ -125,7 +123,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
 
     return (
         <section className="mt-2 border-b border-slate-100 bg-white" aria-labelledby="buyer-browser-heading">
-            <div className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 sm:py-10 2xl:px-8">
+            <div className="mx-auto max-w-[1680px] px-4 pt-8 pb-3 sm:px-6 sm:pt-10 sm:pb-4 2xl:px-8">
                 <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                     <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Verified Buyer Strip</p>
@@ -163,86 +161,43 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                             role="list"
                             aria-label="Buyers with requirements"
                         >
-                            <button
-                                type="button"
-                                onClick={() => setSelectedBuyerId('all')}
-                                className={cn(
-                                    "group flex h-[82px] min-w-[210px] shrink-0 items-center gap-3.5 rounded-2xl border px-3.5 text-left transition-all duration-300 ease-out",
-                                    selectedBuyerId === 'all'
-                                        ? "border-[#0b2447] bg-gradient-to-r from-[#0b2447] to-[#12335f] text-white shadow-lg shadow-[#0b2447]/15 ring-2 ring-[#0b2447]/15"
-                                        : "border-slate-200/60 bg-white/85 backdrop-blur-md shadow-sm hover:-translate-y-0.5 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md text-slate-800"
-                                )}
+                            <Link
+                                href="/marketplace/requirements"
+                                className="group flex flex-col h-[175px] w-[160px] shrink-0 items-center justify-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 text-center backdrop-blur-md shadow-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.03] hover:border-[#0b2447]/35 hover:bg-white hover:shadow-lg hover:shadow-[#0b2447]/5 text-slate-800"
                             >
-                                <span className={cn(
-                                    "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 group-hover:scale-105",
-                                    selectedBuyerId === 'all' ? "bg-white/15 border-white/20 text-white" : "bg-gradient-to-br from-slate-50 to-slate-100 text-slate-600 border-slate-200"
-                                )}>
-                                    <Building2 className="h-5 w-5" />
+                                <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/80 text-slate-600 shadow-sm transition-all duration-300 group-hover:scale-105">
+                                    <Building2 className="h-9 w-9 text-[#0b2447]" />
                                 </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="block text-xs font-black tracking-tight">All Buyers</span>
-                                    <span className={cn("mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider", selectedBuyerId === 'all' ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500")}>
-                                        {requirements.length} requirement{requirements.length === 1 ? '' : 's'}
-                                    </span>
+                                <span className="block text-xs font-extrabold leading-snug text-[#0b2447] transition-colors line-clamp-2 mt-1 px-1">
+                                    All Buyers
                                 </span>
-                            </button>
+                            </Link>
 
                             {buyerSummaries.map(buyer => {
-                                const isActive = selectedBuyerId === buyer.id;
                                 const initialsText = initials(buyer.name);
                                 const initialsBgClass = getInitialsBg(buyer.id);
 
                                 return (
-                                    <button
+                                    <Link
                                         key={buyer.id}
-                                        type="button"
-                                        onClick={() => setSelectedBuyerId(buyer.id)}
-                                        className={cn(
-                                            "group flex h-[82px] min-w-[240px] max-w-[320px] shrink-0 items-center gap-3.5 rounded-2xl border px-3.5 text-left transition-all duration-300 ease-out",
-                                            isActive
-                                                ? "border-[#0b2447] bg-gradient-to-r from-[#0b2447] to-[#12335f] text-white shadow-lg shadow-[#0b2447]/15 ring-2 ring-[#0b2447]/15"
-                                                : "border-slate-200/60 bg-white/85 backdrop-blur-md shadow-sm hover:-translate-y-0.5 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md text-slate-800"
-                                        )}
+                                        href={`/buyer-requirements/${buyer.id}`}
+                                        className="group flex flex-col h-[175px] w-[160px] shrink-0 items-center justify-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 text-center backdrop-blur-md shadow-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.03] hover:border-[#0b2447]/35 hover:bg-white hover:shadow-lg hover:shadow-[#0b2447]/5 text-slate-800"
                                         role="listitem"
                                     >
                                         <span className={cn(
-                                            "flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-xl border transition-all duration-300 group-hover:scale-105 shadow-inner",
-                                            isActive ? "bg-white border-white/20 text-[#0b2447]" : `bg-gradient-to-br ${initialsBgClass}`
+                                            "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200/80 transition-all duration-300 group-hover:scale-105 shadow-sm bg-white",
+                                            !buyer.logoUrl && `bg-gradient-to-br ${initialsBgClass}`
                                         )}>
                                             {buyer.logoUrl ? (
-                                                <img src={buyer.logoUrl} alt={`${buyer.name} logo`} className="h-full w-full object-contain p-1.5" loading="lazy" />
+                                                <img src={buyer.logoUrl} alt={`${buyer.name} logo`} className="h-full w-full object-contain p-1.5 bg-white" loading="lazy" />
                                             ) : (
-                                                <span className="text-xs font-black tracking-wider">{initialsText}</span>
+                                                <span className="text-sm font-black tracking-wider">{initialsText}</span>
                                             )}
                                         </span>
-                                        <span className="min-w-0 flex-1">
-                                            <span className="flex items-center gap-1.5">
-                                                <span className="truncate text-xs font-black leading-tight">{buyer.name}</span>
-                                                {buyer.verified && (
-                                                    <BadgeCheck className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-blue-200" : "text-emerald-600")} />
-                                                )}
-                                                {buyer.gstin && (
-                                                    <span className={cn(
-                                                        "inline-flex items-center rounded px-1 py-0.5 text-[8px] font-black tracking-wide border shrink-0",
-                                                        isActive ? "bg-white/10 text-white border-white/20" : "bg-blue-50 text-blue-700 border-blue-100"
-                                                    )}>
-                                                        GST
-                                                    </span>
-                                                )}
-                                            </span>
-                                            {buyer.location && (
-                                                <span className="mt-0.5 flex items-center gap-1 text-[10px] font-bold opacity-80 truncate">
-                                                    <MapPin className="h-3 w-3 shrink-0 text-[#8a6a2f]" /> {buyer.location}
-                                                </span>
-                                            )}
-                                            <span className={cn(
-                                                "mt-1.5 inline-block rounded-full px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider",
-                                                isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
-                                            )}>
-                                                {buyer.requirementCount} requirement{buyer.requirementCount === 1 ? '' : 's'}
-                                            </span>
+                                        <span className="block text-xs font-extrabold leading-snug text-slate-850 group-hover:text-[#0b2447] transition-colors line-clamp-2 mt-1 px-1">
+                                            {buyer.name}
                                         </span>
-                                    </button>
+                                    </Link>
                                 );
                             })}
                         </div>
@@ -259,7 +214,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                     </button>
                 </div>
 
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                {/* <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="mb-4">
                         <h3 className="text-base font-black text-[#0b2447]">{selectedBuyer ? `${selectedBuyer.name} requirements` : 'All buyer requirements'}</h3>
                         <p className="text-xs font-medium text-slate-500">Procurement requirements from verified buyers</p>
@@ -273,7 +228,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                         showTabs={false}
                         showPagination={false}
                     />
-                </div>
+                </div> */}
             </div>
         </section>
     );

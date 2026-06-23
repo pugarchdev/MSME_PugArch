@@ -178,6 +178,9 @@ export default function AdminOnboarding() {
   const [sortBy, setSortBy] = useState("newest");
   const [adminView, setAdminView] = useState("applications");
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [showcaseItems, setShowcaseItems] = useState<any[]>([]);
+  const [showcaseItemsLoading, setShowcaseItemsLoading] = useState(false);
+  const [showcaseActive, setShowcaseActive] = useState(true);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [feedback, setFeedback] = useState("");
   const [page, setPage] = useState(1);
@@ -231,6 +234,103 @@ export default function AdminOnboarding() {
       setBuyers(Array.isArray(onboardingData.buyers) ? onboardingData.buyers : []);
     }
   }, [onboardingData]);
+
+  useEffect(() => {
+    if (selectedItem && selectedItem.role === "buyer" && selectedItem.profile?.id) {
+      const fetchAdminShowcase = async () => {
+        setShowcaseItemsLoading(true);
+        try {
+          const res = await api.fetch(`/api/buyer-showcase/admin/organizations/${selectedItem.profile.id}/items`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (res.ok) {
+            const body = await res.json();
+            setShowcaseItems(body.data || []);
+          }
+        } catch (err) {
+          console.error("Failed to fetch admin showcase items", err);
+        } finally {
+          setShowcaseItemsLoading(false);
+        }
+      };
+      fetchAdminShowcase();
+      setShowcaseActive(selectedItem.profile.isActive ?? true);
+    } else {
+      setShowcaseItems([]);
+    }
+  }, [selectedItem?.profile?.id, selectedItem?.role]);
+
+  const handleToggleShowcaseVisibility = async (checked: boolean) => {
+    if (!selectedItem?.profile?.id) return;
+    try {
+      const res = await api.post(
+        `/api/buyer-showcase/admin/organizations/${selectedItem.profile.id}/visibility`,
+        { isActive: checked },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      if (res.ok) {
+        setShowcaseActive(checked);
+        setSelectedItem((prev: any) => {
+          if (!prev || !prev.profile) return prev;
+          return {
+            ...prev,
+            profile: {
+              ...prev.profile,
+              isActive: checked
+            }
+          };
+        });
+        toast.success(checked ? "Showcase visibility activated" : "Showcase visibility deactivated");
+      } else {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.message || "Failed to update visibility");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Network error updating visibility");
+    }
+  };
+
+  const handleUpdateShowcaseStatus = async (status: 'VERIFIED' | 'REJECTED' | 'PENDING') => {
+    if (!selectedItem?.profile?.id) return;
+    try {
+      const res = await api.post(
+        `/api/buyer-showcase/admin/organizations/${selectedItem.profile.id}/status`,
+        { status },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      if (res.ok) {
+        setSelectedItem((prev: any) => {
+          if (!prev || !prev.profile) return prev;
+          return {
+            ...prev,
+            profile: {
+              ...prev.profile,
+              verificationStatus: status
+            }
+          };
+        });
+        toast.success(`Showcase status updated to ${status}`);
+      } else {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.message || "Failed to update showcase status");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Network error updating showcase status");
+    }
+  };
+
 
   /**
    * Open the scrutiny modal with the heavy detail (full profile, offices,
@@ -2541,6 +2641,148 @@ export default function AdminOnboarding() {
                             </div>
                           );
                         })()}
+                      </div>
+
+                      {/* Buyer Section 6: Showcase & Frequently Bought Items */}
+                      <div className="group rounded-lg border border-slate-200 bg-white p-5 pb-6 shadow-sm animate-in slide-in-from-bottom-4 duration-300">
+                        <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100 relative">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-9 h-9 rounded-md bg-slate-50 text-[#12335f] flex items-center justify-center shadow-sm">
+                              <ShoppingBag className="h-4 w-4" />
+                            </div>
+                            <h4 className="text-xs font-extrabold text-[#12335f] uppercase tracking-wide">
+                              6. Showcase & Frequently Bought Items
+                            </h4>
+                          </div>
+                          
+                          {/* Visibility & Verification Controls */}
+                          <div className="flex flex-wrap items-center gap-3">
+                            {/* Visibility Toggle */}
+                            <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200/60 px-3 py-1.5 rounded-xl shadow-sm">
+                              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Showcase Active:</span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleShowcaseVisibility(!showcaseActive)}
+                                className={cn(
+                                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                  showcaseActive ? "bg-emerald-500" : "bg-slate-350"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                    showcaseActive ? "translate-x-4" : "translate-x-0"
+                                  )}
+                                />
+                              </button>
+                            </div>
+
+                            {/* Verification Status & Buttons */}
+                            <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200/60 px-3 py-1.5 rounded-xl shadow-sm">
+                              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Status:</span>
+                              {selectedItem.profile?.verificationStatus === 'VERIFIED' ? (
+                                <span className="px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  Verified
+                                </span>
+                              ) : selectedItem.profile?.verificationStatus === 'REJECTED' ? (
+                                <span className="px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">
+                                  Rejected
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                  Pending Review
+                                </span>
+                              )}
+                              
+                              <div className="flex items-center space-x-1.5 border-l border-slate-200 pl-3">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateShowcaseStatus('VERIFIED')}
+                                  className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-[9px] font-black text-white uppercase transition-colors"
+                                >
+                                  Verify
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateShowcaseStatus('REJECTED')}
+                                  className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-[9px] font-black text-white uppercase transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Showcase Previews */}
+                        <div className="grid md:grid-cols-2 gap-6 mb-6">
+                          <div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">Showcase Logo</span>
+                            {selectedItem.profile?.logoUrl ? (
+                              <div className="border rounded-xl p-3 bg-white flex items-center justify-center h-24 w-24">
+                                <img src={selectedItem.profile.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+                              </div>
+                            ) : (
+                              <p className="text-[10px] font-bold text-slate-400 uppercase italic">No logo uploaded</p>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">Showcase Banner</span>
+                            {selectedItem.profile?.bannerUrl ? (
+                              <div className="border rounded-xl bg-slate-50 overflow-hidden h-24 w-full">
+                                <img src={selectedItem.profile.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <p className="text-[10px] font-bold text-slate-400 uppercase italic">No banner uploaded</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Frequently Bought Items List */}
+                        <div className="space-y-3">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Frequently Bought Requirements List ({showcaseItems.length})</span>
+                          
+                          {showcaseItemsLoading ? (
+                            <div className="py-6 text-center text-xs text-slate-400 font-bold uppercase tracking-wider">
+                              Loading requirements...
+                            </div>
+                          ) : showcaseItems.length === 0 ? (
+                            <p className="text-[10px] font-bold text-slate-400 uppercase italic">No showcase items uploaded by this buyer.</p>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-100 max-h-72 overflow-y-auto">
+                              <table className="w-full border-collapse text-left text-[11px] font-semibold text-slate-700">
+                                <thead>
+                                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-black uppercase text-slate-500 tracking-wider">
+                                    <th className="p-3 w-16">Sl. No.</th>
+                                    <th className="p-3">Item Description</th>
+                                    <th className="p-3 w-28">Category</th>
+                                    <th className="p-3 w-28">Monthly Qty</th>
+                                    <th className="p-3 w-20">Unit</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                  {showcaseItems.map((item, idx) => (
+                                    <tr key={item.id} className="hover:bg-slate-50/40">
+                                      <td className="p-3 font-bold text-slate-400">{item.serialNo || (idx + 1)}</td>
+                                      <td className="p-3 font-extrabold text-slate-900">{item.itemDescription}</td>
+                                      <td className="p-3">
+                                        {item.category ? (
+                                          <span className="bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-[9px] font-bold">
+                                            {item.category}
+                                          </span>
+                                        ) : (
+                                          "-"
+                                        )}
+                                      </td>
+                                      <td className="p-3 text-slate-900 font-bold">{item.estimatedMonthlyRequirement || "-"}</td>
+                                      <td className="p-3 text-slate-500 font-bold">{item.unit || "-"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </>
                   ) : (

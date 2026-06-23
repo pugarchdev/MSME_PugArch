@@ -162,6 +162,8 @@ model User {
   l1ComparisonsCreated               L1Comparison[]                        @relation("L1ComparisonBuyer")
   prcsGenerated                      ProvisionalReceiptCertificate[]       @relation("PrcGenerator")
   cracsGenerated                     ConsigneeReceiptAcceptanceCertificate[] @relation("CracGenerator")
+  frequentlyBoughtItems              BuyerFrequentlyBoughtItem[]
+  uploadBatches                      BuyerItemUploadBatch[]
 
   @@index([role, onboardingStatus])
   @@index([role])
@@ -246,6 +248,27 @@ model BuyerProfile {
   updatedAt               DateTime            @updatedAt
   organization            Organization?       @relation(fields: [organizationId], references: [id])
   user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  departmentName          String?
+  registrationNumber      String?
+  gstNumber               String?
+  panNumber               String?
+  address                 String?
+  officialEmail           String?
+  officialPhone           String?
+  contactPersonName       String?
+  contactPersonDesignation String?
+  contactPersonMobile     String?
+  contactPersonEmail      String?
+  logoUrl                 String?
+  bannerUrl               String?
+  verificationStatus      String              @default("PENDING")
+  isActive                Boolean             @default(true)
+  verifiedAt              DateTime?
+  verifiedBy              String?
+
+  frequentlyBoughtItems   BuyerFrequentlyBoughtItem[]
+  uploadBatches           BuyerItemUploadBatch[]
 
   @@index([organizationId])
   @@index([organizationTypeEnum])
@@ -572,6 +595,7 @@ model OrganizationProfile {
   organizationType   OrganizationType?
   industryType       String?
   logoUrl            String?
+  bannerUrl          String?
   description        String?
   isLargeIndustry    Boolean            @default(false)
   isBigMsme          Boolean            @default(false)
@@ -1709,6 +1733,7 @@ model UserKycVerification {
   digilockerId      String?
   referenceKey      String?
   idTokenSubject    String?
+  idTokenVerified   Boolean               @default(false)
   lastErrorCode     String?
   lastErrorMessage  String?
   verifiedAt        DateTime?
@@ -4975,4 +5000,42 @@ model ConsigneeReceiptAcceptanceCertificate {
   @@index([prcId])
   @@index([grnId])
   @@index([generatedById])
+}
+
+model BuyerFrequentlyBoughtItem {
+  id                          Int          @id @default(autoincrement())
+  buyerId                     Int
+  organizationProfileId      Int
+  serialNo                    String?
+  itemDescription             String
+  category                    String?
+  estimatedMonthlyRequirement String?
+  unit                        String?
+  remarks                     String?
+  status                      String?      @default("ACTIVE")
+  createdAt                   DateTime     @default(now())
+  updatedAt                   DateTime     @updatedAt
+  buyer                       User         @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerProfile                BuyerProfile @relation(fields: [organizationProfileId], references: [id], onDelete: Cascade)
+
+  @@index([buyerId])
+  @@index([organizationProfileId])
+}
+
+model BuyerItemUploadBatch {
+  id                    Int          @id @default(autoincrement())
+  buyerId               Int
+  organizationProfileId Int
+  fileName              String
+  fileUrl               String?
+  totalRows             Int
+  validRows             Int
+  invalidRows           Int
+  uploadedAt            DateTime     @default(now())
+  status                String       @default("SUCCESS")
+  buyer                 User         @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerProfile          BuyerProfile @relation(fields: [organizationProfileId], references: [id], onDelete: Cascade)
+
+  @@index([buyerId])
+  @@index([organizationProfileId])
 }

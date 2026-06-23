@@ -291,8 +291,8 @@ export function LatestBids({ tenders = [], bids = [], loading = false }: Props) 
     const emptyMessage = 'No active procurement opportunities found matching current records.';
 
     return (
-        <section ref={ref} className="mt-2 border-b border-slate-100 bg-[#f8fafc]" aria-labelledby="opportunities-heading">
-            <div className="mx-auto max-w-[1680px] px-4 py-10 sm:px-6 sm:py-12 2xl:px-8">
+        <section ref={ref} className="mt-0 border-b border-slate-100 bg-[#f8fafc]" aria-labelledby="opportunities-heading">
+            <div className="mx-auto max-w-[1680px] px-4 pt-5 pb-5 sm:px-6 sm:pt-6 sm:pb-6 2xl:px-8">
                 {/* Header */}
                 <div
                     className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end"

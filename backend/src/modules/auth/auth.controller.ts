@@ -351,11 +351,18 @@ export const authController = {
         registrationDetails?.businessName ||
         email
       ).trim();
-      const otpRecord = await assertEmailOtpVerified(email);
-      if (!otpRecord.ok && otpRecord.reason === 'expired') {
-        return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
+      const emailOtpRecord = await assertEmailOtpVerified(email);
+      let mobileOtpRecord = { ok: false, reason: '' };
+      if (mobile) {
+        mobileOtpRecord = await assertMobileOtpVerified(String(mobile).trim());
       }
-      if (!otpRecord.ok) return res.status(400).json({ message: 'Verify email first' });
+
+      if (!emailOtpRecord.ok && !mobileOtpRecord.ok) {
+        if (emailOtpRecord.reason === 'expired' || (mobile && mobileOtpRecord.reason === 'expired')) {
+          return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
+        }
+        return res.status(400).json({ message: 'Please verify your email or mobile number first.' });
+      }
 
       const passwordValidation = validatePasswordStrength(String(password || ''));
       if (!passwordValidation.ok) {
@@ -388,8 +395,8 @@ export const authController = {
           role: role as Role,
           mobile,
           dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
-          emailVerified: true,
-          mobileVerified: mobile ? Boolean((await assertMobileOtpVerified(String(mobile).trim())).ok) : false,
+          emailVerified: emailOtpRecord.ok,
+          mobileVerified: mobileOtpRecord.ok,
           lastPasswordChangeAt: new Date(),
           registrationStatus: RegistrationStatus.completed,
           accountStatus: 'ACTIVE',
@@ -398,8 +405,8 @@ export const authController = {
       });
 
 
-      await consumeEmailOtp(email);
-      if (mobile) await consumeMobileOtp(String(mobile).trim()).catch(() => undefined);
+      if (emailOtpRecord.ok) await consumeEmailOtp(email).catch(() => undefined);
+      if (mobileOtpRecord.ok && mobile) await consumeMobileOtp(String(mobile).trim()).catch(() => undefined);
 
       try {
         await notificationService.notifyAdmins({
@@ -541,9 +548,10 @@ export const authController = {
 
       if (user.twoFactorEnabled) {
         const otp = generateOtp();
-        const configuredChannel = normalizeChannel((user as any).twoFactorChannel || (user as any).preferredOtpChannel);
-        const canUseSms = configuredChannel === 'sms' && user.mobileVerified && user.mobile && smsService.isEnabled();
-        const channel: OtpChannel = canUseSms ? 'sms' : 'email';
+        const clientRequestedChannel = req.body.channel ? normalizeChannel(req.body.channel) : null;
+        const configuredChannel = clientRequestedChannel || normalizeChannel((user as any).twoFactorChannel || (user as any).preferredOtpChannel);
+        const hasMobileVerified = user.mobileVerified && user.mobile && smsService.isEnabled();
+        const channel: OtpChannel = (configuredChannel === 'sms' && hasMobileVerified) ? 'sms' : 'email';
         const otpIdentity = channel === 'sms' ? String(user.mobile) : email;
         await storeOtp('two_factor_login', otpIdentity, otp, { userId: user.id, channel }, channel);
         const delivery = await sendOtpByChannel(channel, otpIdentity, otp, '[SECURE AUTH] Two-factor login code', 'two_factor_login');
@@ -558,7 +566,13 @@ export const authController = {
           metadata: { channel, deliveryConfigured: delivery.success, smsSkipped: delivery.skipped, smsReason: delivery.reason }
         });
         await recordLoginEvent({ req, userId: user.id, success: false, reason: 'two_factor_required' });
-        return res.json({ requiresTwoFactor: true, email, channel, message: 'Two-factor verification required' });
+        return res.json({
+          requiresTwoFactor: true,
+          email,
+          channel,
+          canSms: !!hasMobileVerified,
+          message: 'Two-factor verification required'
+        });
       }
 
       const updatedUser = await prisma.user.update({
@@ -880,6 +894,7 @@ export const authController = {
               }
             }
           },
+          shgProfile: true,
           buyerProfile: true,
           organization: true,
           company: true

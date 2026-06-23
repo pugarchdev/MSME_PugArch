@@ -770,11 +770,11 @@ const toDraftItems = (items: Array<Record<string, unknown>> | undefined, methodS
 export const serializeProcurementDraft = (requirement: any) => {
   const firstMeta = requirement?.items?.find((item: any) => item.specifications)?.specifications || {};
   const methodSlug = firstMeta.procurementMethodSlug || String(requirement.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
-  
+
   // Try to get payload from requirement directly first (if stored in DB), then fall back to item specifications
   const payload = requirement.payload || firstMeta.draftMeta?.payload || null;
   const draftStep = requirement.draftStep ?? firstMeta.draftMeta?.draftStep ?? null;
-  
+
   return {
     ...requirement,
     methodSlug,
@@ -2135,6 +2135,25 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
   const user = approvalResult?.user || await db.user.update({ where: { id }, data: updateData });
   await auditWrite(req, 'admin.onboarding.status_updated', 'user', id, body);
 
+  if (existing.role === 'buyer') {
+    let showcaseStatus = 'PENDING';
+    if (body.onboardingStatus === 'approved_for_procurement') {
+      showcaseStatus = 'VERIFIED';
+    } else if (body.onboardingStatus === 'rejected') {
+      showcaseStatus = 'REJECTED';
+    }
+    const adminUser = req.user?.id ? await db.user.findUnique({ where: { id: req.user.id } }) : null;
+    const adminName = adminUser?.name || 'Admin';
+    await db.buyerProfile.updateMany({
+      where: { userId: id },
+      data: {
+        verificationStatus: showcaseStatus,
+        verifiedAt: showcaseStatus === 'VERIFIED' ? new Date() : null,
+        verifiedBy: showcaseStatus === 'VERIFIED' ? adminName : null
+      }
+    }).catch((err: any) => console.error('[Showcase Status Update Failed]', err));
+  }
+
   if (approvalResult) {
     await auditWrite(req, 'onboarding.approved', 'user', id, {
       organizationId: approvalResult.organization.id
@@ -2702,13 +2721,20 @@ router.post('/upload', authenticate, upload.single('file'), asyncRoute(async (re
   };
   const asset = await uploadFile(req.file, context, env.STORAGE_PROVIDER);
   const viewUrl = `/api/files/${asset.id}/view`;
+  // For image assets, return the direct CDN/storage URL so <img> tags can render
+  // without needing an Authorization header. For non-image files, fall back to the
+  // auth-gated view endpoint.
+  const isImage = (asset.mimeType || '').startsWith('image/');
+  const publicUrl = isImage && asset.url && /^https?:\/\//.test(asset.url)
+    ? asset.url
+    : viewUrl;
   ok(res, {
-    url: viewUrl,
+    url: publicUrl,
     signedUrl: viewUrl,
     fileId: asset.id,
     file: {
       id: asset.id,
-      url: viewUrl,
+      url: publicUrl,
       documentUrl: viewUrl,
       originalName: asset.originalName,
       mimeType: asset.mimeType,
@@ -2938,7 +2964,7 @@ router.post('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(
 
 router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  
+
   // We load V1 drafts from requirement table
   const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED'] } };
   if (query.procurementMethod) reqWhere.procurementMethod = procurementMethodCodeFor(query.procurementMethod);
@@ -2968,10 +2994,10 @@ router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(a
     const step3 = formData.step3 || {};
     const step4 = formData.step4 || {};
     const step5 = formData.step5 || {};
-    
+
     const title = step3.title || 'Untitled V2 Draft';
     const methodSlug = d.bidType.toLowerCase().replace(/_/g, '-');
-    
+
     const productOrService = step4.productName || step4.serviceCategory || '';
     const categoryName = step4.productCategory || step4.serviceCategory || '';
     const quantity = step4.quantity || '';
@@ -5259,7 +5285,7 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
         })();
 
         const [counts, aggregates] = await Promise.all([countsPromise, aggregatesPromise]);
-        
+
         const totalNetwork_val = counts[0];
         const activeSellers_val = counts[1];
         const activeBuyers_val = counts[2];
@@ -6416,6 +6442,58 @@ router.post('/seller/settings/close-account', authenticate, asyncRoute(async (re
     }
   });
   ok(res, { success: true, message: 'Account closed successfully' });
+}));
+
+router.get('/seller/settings/branding', authenticate, authorize('seller', 'shg'), asyncRoute(async (req, res) => {
+  const orgId = req.user?.organizationId;
+  if (!orgId) throw new ApiError(400, 'User is not associated with an organization');
+
+  const profile = await db.organizationProfile.findUnique({
+    where: { organizationId: orgId }
+  });
+  ok(res, { 
+    logoUrl: profile?.logoUrl || null,
+    bannerUrl: profile?.bannerUrl || null
+  });
+}));
+
+router.put('/seller/settings/branding', authenticate, authorize('seller', 'shg'), asyncRoute(async (req, res) => {
+  const orgId = req.user?.organizationId;
+  if (!orgId) throw new ApiError(400, 'User is not associated with an organization');
+
+  const body = parse(z.object({
+    logoUrl: z.string().trim().optional().nullable().refine(
+      val => !val || val === '' || /^\//.test(val) || /^https?:\/\/.+/.test(val),
+      { message: 'logoUrl must be a valid absolute URL, relative path, or empty' }
+    ),
+    bannerUrl: z.string().trim().optional().nullable().refine(
+      val => !val || val === '' || /^\//.test(val) || /^https?:\/\/.+/.test(val),
+      { message: 'bannerUrl must be a valid absolute URL, relative path, or empty' }
+    )
+  }), req.body);
+
+  const updateData: any = {};
+  if (body.logoUrl !== undefined) updateData.logoUrl = body.logoUrl;
+  if (body.bannerUrl !== undefined) updateData.bannerUrl = body.bannerUrl;
+
+  const updatedProfile = await db.organizationProfile.upsert({
+    where: { organizationId: orgId },
+    update: updateData,
+    create: {
+      organizationId: orgId,
+      logoUrl: body.logoUrl || null,
+      bannerUrl: body.bannerUrl || null
+    }
+  });
+
+  // Clear homepage and layout caches
+  await invalidateByPattern('cache:marketplace:home:v2');
+  await invalidateByPattern('cache:marketplace:home-layout:v2:*');
+
+  ok(res, { 
+    logoUrl: updatedProfile.logoUrl,
+    bannerUrl: updatedProfile.bannerUrl
+  });
 }));
 
 export default router;

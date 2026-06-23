@@ -7,19 +7,22 @@ import { Button } from '../components/ui/button';
 import { Input, Select } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { Store, Building2, ShieldCheck, Mail, Key } from 'lucide-react';
+import { Store, Building2, ShieldCheck, Mail, Key, Phone } from 'lucide-react';
 import { getSellerPortalPath } from '../lib/shg';
 
 export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    mobile: '',
     password: '',
   });
   const [passwordError, setPasswordError] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState<'email' | 'mobile'>('email');
   const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [isMobileVerified, setIsMobileVerified] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,31 +51,55 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   };
 
   const getOtpSentMessage = (data: any) => {
-    if (typeof data?.sendsRemaining !== 'number') return 'Verification code sent to your email';
+    const medium = verificationMethod === 'email' ? 'email' : 'mobile';
+    if (typeof data?.sendsRemaining !== 'number') return `Verification code sent to your ${medium}`;
     if (data.sendsRemaining <= 0) return 'Verification code sent. No resends remaining.';
     if (data.sendsRemaining === 1) return 'Verification code sent. Last resend is remaining.';
     return `Verification code sent. ${data.sendsRemaining} resends are remaining.`;
   };
 
   const handleSendOtp = async () => {
-    if (!formData.email) {
-      toast.error('Please enter an email address first');
-      return;
-    }
-    setIsSendingOtp(true);
-    try {
-      const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
-      const data = await res.json();
-      if (res.ok) {
-        setOtpSent(true);
-        toast.success(getOtpSentMessage(data));
-      } else {
-        toast.error(data.message || 'Failed to send OTP');
+    if (verificationMethod === 'email') {
+      if (!formData.email) {
+        toast.error('Please enter an email address first');
+        return;
       }
-    } catch (err: any) {
-      toast.error(err?.message || 'Network error. Check your connection.');
-    } finally {
-      setIsSendingOtp(false);
+      setIsSendingOtp(true);
+      try {
+        const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
+        const data = await res.json();
+        if (res.ok) {
+          setOtpSent(true);
+          toast.success(getOtpSentMessage(data));
+        } else {
+          toast.error(data.message || 'Failed to send OTP');
+        }
+      } catch (err: any) {
+        toast.error(err?.message || 'Network error. Check your connection.');
+      } finally {
+        setIsSendingOtp(false);
+      }
+    } else {
+      const cleanedMobile = formData.mobile.replace(/\D/g, '');
+      if (!cleanedMobile || cleanedMobile.length !== 10) {
+        toast.error('Please enter a valid 10-digit mobile number first');
+        return;
+      }
+      setIsSendingOtp(true);
+      try {
+        const res = await api.post('/api/auth/send-mobile-otp', { mobile: cleanedMobile });
+        const data = await res.json();
+        if (res.ok) {
+          setOtpSent(true);
+          toast.success(data.smsEnabled === false ? 'Mobile OTP saved (SMS is disabled)' : getOtpSentMessage(data));
+        } else {
+          toast.error(data.message || 'Failed to send OTP');
+        }
+      } catch (err: any) {
+        toast.error(err?.message || 'Network error. Check your connection.');
+      } finally {
+        setIsSendingOtp(false);
+      }
     }
   };
 
@@ -83,13 +110,25 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     }
     setIsVerifyingOtp(true);
     try {
-      const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp });
-      const data = await res.json();
-      if (res.ok) {
-        setIsEmailVerified(true);
-        toast.success('Email verified successfully!');
+      if (verificationMethod === 'email') {
+        const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp });
+        const data = await res.json();
+        if (res.ok) {
+          setIsEmailVerified(true);
+          toast.success('Email verified successfully!');
+        } else {
+          toast.error(data.message || 'Invalid code');
+        }
       } else {
-        toast.error(data.message || 'Invalid code');
+        const cleanedMobile = formData.mobile.replace(/\D/g, '');
+        const res = await api.post('/api/auth/verify-mobile-otp', { mobile: cleanedMobile, otp });
+        const data = await res.json();
+        if (res.ok) {
+          setIsMobileVerified(true);
+          toast.success('Mobile number verified successfully!');
+        } else {
+          toast.error(data.message || 'Invalid code');
+        }
       }
     } catch (err: any) {
       toast.error(err?.message || 'Verification failed');
@@ -100,8 +139,9 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isEmailVerified) {
-      toast.error('Please verify your email address to continue');
+    const isVerified = verificationMethod === 'email' ? isEmailVerified : isMobileVerified;
+    if (!isVerified) {
+      toast.error(`Please verify your ${verificationMethod === 'email' ? 'email address' : 'mobile number'} to continue`);
       return;
     }
     const nextPasswordError = getPasswordError(formData.password);
@@ -113,7 +153,12 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     setIsLoading(true);
 
     try {
-      const res = await api.post('/api/auth/register', { ...formData, role: type });
+      const payload = {
+        ...formData,
+        mobile: formData.mobile.replace(/\D/g, '') || undefined,
+        role: type
+      };
+      const res = await api.post('/api/auth/register', payload);
       const data = await res.json();
 
       if (res.ok) {
@@ -152,6 +197,8 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     return 'Administrator Name';
   };
 
+  const isVerified = verificationMethod === 'email' ? isEmailVerified : isMobileVerified;
+
   return (
     <div className="flex min-h-dvh items-center justify-center px-3 py-6 sm:px-4">
       <Card className="animate-in w-full max-w-md overflow-hidden rounded-2xl border-none shadow-xl shadow-indigo-100 fade-in slide-in-from-bottom-4 duration-500 sm:rounded-3xl sm:shadow-2xl">
@@ -173,42 +220,126 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               className="rounded-xl border-slate-200 focus:border-indigo-500"
             />
 
+            {/* Verification Method Toggle */}
             <div className="space-y-1.5">
-              <label className="text-xs font-black uppercase text-slate-400 tracking-widest  ml-1">Official Email</label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="email"
-                    placeholder="name@company.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    disabled={isEmailVerified || otpSent}
-                    required
-                    className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium "
-                  />
-                </div>
-                {!isEmailVerified && !otpSent && (
-                  <Button
+              <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Verification Method</label>
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                {(['email', 'mobile'] as const).map((method) => (
+                  <button
+                    key={method}
                     type="button"
-                    onClick={handleSendOtp}
-                    disabled={isSendingOtp}
-                    variant="outline"
-                    className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px]  border-indigo-100 text-indigo-600 hover:bg-indigo-50"
+                    disabled={otpSent}
+                    onClick={() => {
+                      setVerificationMethod(method);
+                      setOtp('');
+                    }}
+                    className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      verificationMethod === method
+                        ? 'bg-white text-indigo-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
                   >
-                    {isSendingOtp ? 'Sending...' : 'Verify'}
-                  </Button>
-                )}
-                {isEmailVerified && (
-                  <div className="flex items-center gap-1.5 text-green-600 font-black  text-[10px] uppercase bg-green-50 px-3 rounded-xl border border-green-100">
-                    <ShieldCheck className="h-4 w-4" />
-                    Verified
-                  </div>
-                )}
+                    {method === 'email' ? 'Email OTP' : 'Mobile OTP'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {otpSent && !isEmailVerified && (
+            {verificationMethod === 'email' ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Official Email</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="email"
+                      placeholder="name@company.com"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      disabled={isEmailVerified || otpSent}
+                      required={verificationMethod === 'email'}
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium "
+                    />
+                  </div>
+                  {!isEmailVerified && !otpSent && (
+                    <Button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={isSendingOtp}
+                      variant="outline"
+                      className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px] border-indigo-100 text-indigo-600 hover:bg-indigo-50"
+                    >
+                      {isSendingOtp ? 'Sending...' : 'Verify'}
+                    </Button>
+                  )}
+                  {isEmailVerified && (
+                    <div className="flex items-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 rounded-xl border border-green-100">
+                      <ShieldCheck className="h-4 w-4" />
+                      Verified
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Mobile Number</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      placeholder="10-digit mobile number"
+                      maxLength={10}
+                      value={formData.mobile}
+                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
+                      disabled={isMobileVerified || otpSent}
+                      required={verificationMethod === 'mobile'}
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium "
+                    />
+                  </div>
+                  {!isMobileVerified && !otpSent && (
+                    <Button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={isSendingOtp}
+                      variant="outline"
+                      className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px] border-indigo-100 text-indigo-600 hover:bg-indigo-50"
+                    >
+                      {isSendingOtp ? 'Sending...' : 'Verify'}
+                    </Button>
+                  )}
+                  {isMobileVerified && (
+                    <div className="flex items-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 rounded-xl border border-green-100">
+                      <ShieldCheck className="h-4 w-4" />
+                      Verified
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {verificationMethod === 'email' ? (
+              <Input
+                label="Mobile Number (Optional)"
+                placeholder="10-digit mobile number"
+                maxLength={10}
+                value={formData.mobile}
+                onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
+                className="rounded-xl border-slate-200"
+              />
+            ) : (
+              <Input
+                label="Official Email"
+                placeholder="name@company.com"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+                className="rounded-xl border-slate-200"
+              />
+            )}
+
+            {otpSent && !isVerified && (
               <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
                 <div className="space-y-1.5">
                   <label className="text-xs font-black uppercase text-indigo-600 tracking-widest  ml-1">Enter 6-Digit OTP</label>
@@ -233,7 +364,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                       {isVerifyingOtp ? 'Checking...' : 'Apply Code'}
                     </Button>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold  ml-1">Code expires in 5 minutes. No code? <button type="button" onClick={handleSendOtp} disabled={isSendingOtp} className="text-indigo-600 underline disabled:text-slate-400 disabled:no-underline">{isSendingOtp ? 'Sending...' : 'Resend'}</button></p>
+                  <p className="text-[10px] text-slate-400 font-bold  ml-1">Code expires in 10 minutes. No code? <button type="button" onClick={handleSendOtp} disabled={isSendingOtp} className="text-indigo-600 underline disabled:text-slate-400 disabled:no-underline">{isSendingOtp ? 'Sending...' : 'Resend'}</button></p>
                 </div>
               </div>
             )}
@@ -257,7 +388,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
             <Button
               type="submit"
               className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-[0.2em]  shadow-xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50"
-              disabled={isLoading || !isEmailVerified}
+              disabled={isLoading || !isVerified}
             >
               {isLoading ? 'Creating Account...' : 'Finish Registration'}
             </Button>

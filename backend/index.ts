@@ -4407,15 +4407,45 @@ app.get('/api/vendors/:id', authenticate, authorize('buyer', 'admin'), async (re
     const vendor = await prisma.user.findUnique({
       where: { id: Number(req.params.id), role: 'seller' },
       include: {
+        buyerProfile: true,
         sellerProfile: {
           include: {
             offices: true,
-            bankAccounts: true
+            bankAccounts: true,
+            organization: {
+              include: {
+                profile: true
+              }
+            }
           }
         }
       }
     });
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    let logoUrl = null;
+    let bannerUrl = null;
+
+    if (vendor.buyerProfile) {
+      logoUrl = vendor.buyerProfile.logoUrl || logoUrl;
+      bannerUrl = vendor.buyerProfile.bannerUrl || bannerUrl;
+    }
+
+    if (vendor.sellerProfile?.organization?.profile) {
+      logoUrl = vendor.sellerProfile.organization.profile.logoUrl || logoUrl;
+      bannerUrl = vendor.sellerProfile.organization.profile.bannerUrl || bannerUrl;
+    }
+
+    if (vendor.sellerProfile?.organizationId) {
+      const relatedBuyerProfile = await prisma.buyerProfile.findFirst({
+        where: { organizationId: vendor.sellerProfile.organizationId }
+      });
+      if (relatedBuyerProfile) {
+        logoUrl = logoUrl || relatedBuyerProfile.logoUrl;
+        bannerUrl = bannerUrl || relatedBuyerProfile.bannerUrl;
+      }
+    }
+
     const { password, ...vendorSafe } = vendor;
     if (vendorSafe.sellerProfile?.bankAccounts) {
       vendorSafe.sellerProfile.bankAccounts = vendorSafe.sellerProfile.bankAccounts.map((bank: any) => ({
@@ -4423,7 +4453,12 @@ app.get('/api/vendors/:id', authenticate, authorize('buyer', 'admin'), async (re
         accountNumber: bank.accountNumberMasked || maskValue(bank.accountNumber)
       }));
     }
-    res.json(maskSensitive({ ...vendorSafe, _id: vendor.id }));
+    res.json(maskSensitive({
+      ...vendorSafe,
+      _id: vendor.id,
+      logoUrl,
+      bannerUrl
+    }));
   } catch (err: any) {
     handleSecureRouteError(res, err);
   }

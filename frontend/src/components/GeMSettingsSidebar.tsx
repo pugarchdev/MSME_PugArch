@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../lib/utils';
-import { User, ShieldCheck, Mail, Lock, UserX } from 'lucide-react';
+import { User, ShieldCheck, Mail, Lock, UserX, Building2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface GeMSettingsSidebarProps {
   currentSection: string;
@@ -8,9 +9,12 @@ interface GeMSettingsSidebarProps {
 }
 
 export const GeMSettingsSidebar: React.FC<GeMSettingsSidebarProps> = ({ currentSection, onSectionChange }) => {
+  const { user } = useAuth();
+
   const sections = [
-    { id: 'profile', label: 'Seller Profile', icon: User },
-    { id: 'aadhaar', label: 'Update Aadhaar', icon: ShieldCheck },
+    { id: 'profile', label: user?.role === 'shg' ? 'SHG Profile' : 'Seller Profile', icon: User },
+    ...(user?.role === 'shg' ? [] : [{ id: 'aadhaar', label: 'Update Aadhaar', icon: ShieldCheck }]),
+    { id: 'branding', label: 'Logo & Branding', icon: Building2 },
     { id: 'password', label: 'Change Password', icon: Lock },
     { id: 'email', label: 'Change Email', icon: Mail },
     { id: 'close', label: 'Close Account', icon: UserX },

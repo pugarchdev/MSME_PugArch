@@ -47,8 +47,8 @@ export function SellerStrip({ sellers }: Props) {
     };
 
     return (
-        <section className="mt-2 border-b border-slate-100 bg-white" aria-labelledby="seller-strip-heading">
-            <div className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 sm:py-10 2xl:px-8">
+        <section className="mt-0 border-b border-slate-100 bg-white" aria-labelledby="seller-strip-heading">
+            <div className="mx-auto max-w-[1680px] px-4 pt-5 pb-8 sm:px-6 sm:pt-6 sm:pb-10 2xl:px-8">
                 <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                     <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a6a2f]">Trusted Partners</p>

@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRouter } from 'next/navigation';
-import { api } from '../lib/api';
+import { api, BASE_URL } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input, Select } from '../components/ui/input';
-import { 
+import {
   Building2,
   MapPin,
   CreditCard,
@@ -25,7 +25,14 @@ import {
   Lock,
   ExternalLink,
   Plus,
-  ShoppingBag
+  ShoppingBag,
+  Clock,
+  Eye,
+  EyeOff,
+  Pencil,
+  AlertCircle,
+  AlertTriangle,
+  ImageIcon,
 } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
@@ -33,6 +40,7 @@ import { toast } from 'sonner';
 import { MSME_TYPES } from '../constants/dropdowns';
 
 const SIDEBAR_NAV = [
+  { id: 'showcase_profile', label: 'Organization Showcase Profile', icon: Building2 },
   { id: 'address', label: 'Organisation Address', icon: MapPin },
   { id: 'delivery_addresses', label: 'Delivery Addresses', icon: MapPin, path: '/buyer/address-book' },
   // { id: 'hierarchy', label: 'Organisation Hierarchy', icon: Users },
@@ -48,7 +56,7 @@ const SIDEBAR_NAV = [
 export default function BuyerProfile() {
   const { user, refreshUser } = useAuth();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState('address');
+  const [activeSection, setActiveSection] = useState('showcase_profile');
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,6 +68,462 @@ export default function BuyerProfile() {
   const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Showcase profile states
+  const [showcaseTab, setShowcaseTab] = useState('details');
+  const [showcaseProfile, setShowcaseProfile] = useState<any>(null);
+  const [showcaseLoading, setShowcaseLoading] = useState(true);
+  const [showcaseSaving, setShowcaseSaving] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+  const [uploadingItems, setUploadingItems] = useState(false);
+  const [confirmReplaceWarning, setConfirmReplaceWarning] = useState<string | null>(null);
+  const [pendingUploadFile, setPendingUploadFile] = useState<any>(null);
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [itemForm, setItemForm] = useState({
+    serialNo: '',
+    itemDescription: '',
+    category: '',
+    estimatedMonthlyRequirement: '',
+    unit: '',
+    remarks: ''
+  });
+  // Upload result state — shown inline on the page
+  const [uploadErrors, setUploadErrors] = useState<Array<{ rowNumber: number; reason: string }>>([]);
+  const [uploadSummary, setUploadSummary] = useState<{ savedCount: number; invalidCount: number; hasDuplicates: boolean; duplicateCount: number } | null>(null);
+  // Image lightbox/preview
+  const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
+
+  const initialProfileRef = useRef<any>(null);
+  const [showcaseOtp, setShowcaseOtp] = useState('');
+  const [showcaseOtpSent, setShowcaseOtpSent] = useState(false);
+  const [isSendingShowcaseOtp, setIsSendingShowcaseOtp] = useState(false);
+
+  const fetchShowcaseProfile = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await api.fetch('/api/buyer-showcase/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const body = await res.json();
+        setShowcaseProfile(body.data);
+        initialProfileRef.current = body.data;
+      }
+    } catch (err) {
+      console.error('Failed to fetch showcase profile', err);
+    } finally {
+      setShowcaseLoading(false);
+    }
+  };
+
+  const fetchItems = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await api.fetch('/api/buyer-showcase/items', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const body = await res.json();
+        setItems(body.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch items', err);
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchShowcaseProfile();
+    fetchItems();
+  }, []);
+
+  const handleShowcaseFieldChange = (field: string, value: any) => {
+    setShowcaseProfile((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  const isSensitiveChanged = () => {
+    if (!initialProfileRef.current || !showcaseProfile) return false;
+    const init = initialProfileRef.current;
+    const current = showcaseProfile;
+    return (
+      (current.gstNumber || '') !== (init.gstNumber || '') ||
+      (current.registrationNumber || '') !== (init.registrationNumber || '') ||
+      (current.panNumber || '') !== (init.panNumber || '') ||
+      (current.officialEmail || '') !== (init.officialEmail || '')
+    );
+  };
+
+  const handleGetShowcaseOtp = async () => {
+    setIsSendingShowcaseOtp(true);
+    try {
+      const res = await api.fetch('/api/buyer-showcase/profile/send-otp', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      const body = await res.json();
+      if (res.ok) {
+        toast.success('Verification OTP code sent to registered Email and Mobile');
+        setShowcaseOtpSent(true);
+      } else {
+        toast.error(body?.message || 'Failed to send verification code');
+      }
+    } catch (err) {
+      toast.error('Failed to send verification code due to network error');
+    } finally {
+      setIsSendingShowcaseOtp(false);
+    }
+  };
+
+  const handleShowcaseSave = async () => {
+    // Validate required fields
+    if (!showcaseProfile?.organizationName?.trim()) {
+      return toast.error('Organization Name is required');
+    }
+
+    if (isSensitiveChanged() && !showcaseOtpSent) {
+      await handleGetShowcaseOtp();
+      return;
+    }
+
+    if (showcaseOtpSent && !showcaseOtp.trim()) {
+      return toast.error('Please enter the verification OTP');
+    }
+
+    setShowcaseSaving(true);
+    try {
+      const payload = {
+        ...showcaseProfile,
+        otp: showcaseOtpSent ? showcaseOtp.trim() : undefined
+      };
+
+      const res = await api.put('/api/buyer-showcase/profile', payload, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (res.ok) {
+        const body = await res.json();
+        setShowcaseProfile(body.data);
+        initialProfileRef.current = body.data;
+        setShowcaseOtpSent(false);
+        setShowcaseOtp('');
+        toast.success('Showcase profile updated successfully');
+      } else {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.message || 'Failed to update showcase profile');
+      }
+    } catch (err) {
+      toast.error('Network error saving showcase details');
+    } finally {
+      setShowcaseSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    const loadingToast = toast.loading('Uploading logo...');
+    try {
+      const res = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const logoUrl = body.data?.url || body.url;
+        const updateRes = await api.put('/api/buyer-showcase/profile', { logoUrl }, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (updateRes.ok) {
+          setShowcaseProfile((prev: any) => ({ ...prev, logoUrl }));
+          toast.success('Logo uploaded successfully');
+        } else {
+          toast.error('Failed to update profile logo');
+        }
+      } else {
+        toast.error('Logo upload failed');
+      }
+    } catch (err) {
+      toast.error('Upload failed due to network error');
+    } finally {
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    const loadingToast = toast.loading('Uploading banner...');
+    try {
+      const res = await api.fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const bannerUrl = body.data?.url || body.url;
+        const updateRes = await api.put('/api/buyer-showcase/profile', { bannerUrl }, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (updateRes.ok) {
+          setShowcaseProfile((prev: any) => ({ ...prev, bannerUrl }));
+          toast.success('Banner uploaded successfully');
+        } else {
+          toast.error('Failed to update profile banner');
+        }
+      } else {
+        toast.error('Banner upload failed');
+      }
+    } catch (err) {
+      toast.error('Upload failed due to network error');
+    } finally {
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleRemoveImage = async (field: 'logoUrl' | 'bannerUrl') => {
+    const loadingToast = toast.loading(`Removing ${field === 'logoUrl' ? 'logo' : 'banner'}...`);
+    try {
+      const updateRes = await api.put('/api/buyer-showcase/profile', { [field]: null }, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (updateRes.ok) {
+        setShowcaseProfile((prev: any) => ({ ...prev, [field]: null }));
+        toast.success(`${field === 'logoUrl' ? 'Logo' : 'Banner'} removed successfully`);
+      } else {
+        toast.error('Failed to update profile');
+      }
+    } catch (err) {
+      toast.error('Failed to remove image');
+    } finally {
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleItemExcelUpload = async (e: any, force = false) => {
+    const file = e.target?.files?.[0] || pendingUploadFile;
+    if (!file) return;
+    setPendingUploadFile(file);
+    // Clear previous upload results
+    setUploadErrors([]);
+    setUploadSummary(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (force) {
+      formData.append('confirmReplace', 'true');
+    }
+
+    setUploadingItems(true);
+    const loadingToast = toast.loading('Uploading excel file...');
+    try {
+      const res = await api.fetch('/api/buyer-showcase/items/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      const body = await res.json().catch(() => null);
+      if (res.ok || res.status === 200) {
+        if (body?.warning) {
+          setConfirmReplaceWarning(body.warning);
+          setUploadingItems(false);
+          toast.dismiss(loadingToast);
+          return;
+        }
+        // Store inline summary
+        setUploadSummary({
+          savedCount: body?.data?.savedCount ?? body?.savedCount ?? 0,
+          invalidCount: body?.data?.invalidCount ?? body?.invalidCount ?? 0,
+          hasDuplicates: body?.data?.hasDuplicates ?? body?.hasDuplicates ?? false,
+          duplicateCount: body?.data?.duplicateCount ?? body?.duplicateCount ?? 0,
+        });
+        // Store inline error rows
+        const rows = body?.data?.invalidRows ?? body?.invalidRows ?? [];
+        setUploadErrors(rows);
+        const saved = body?.data?.savedCount ?? body?.savedCount ?? 0;
+        if (saved > 0) {
+          toast.success(`Successfully uploaded ${saved} items`);
+        } else {
+          toast.warning('No valid items were saved. Check the errors below.');
+        }
+        setConfirmReplaceWarning(null);
+        setPendingUploadFile(null);
+        fetchItems();
+      } else {
+        const errMsg = body?.message || 'Excel upload failed';
+        setUploadErrors([{ rowNumber: 0, reason: errMsg }]);
+        toast.error(errMsg);
+      }
+    } catch (err) {
+      const msg = 'Upload failed due to network error';
+      setUploadErrors([{ rowNumber: 0, reason: msg }]);
+      toast.error(msg);
+    } finally {
+      setUploadingItems(false);
+      toast.dismiss(loadingToast);
+    }
+  };
+
+  const handleItemSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemForm.itemDescription.trim()) {
+      toast.error('Item Description is required');
+      return;
+    }
+    const isEditing = !!editingItem;
+    const url = isEditing ? `/api/buyer-showcase/items/${editingItem.id}` : '/api/buyer-showcase/items';
+    const method = isEditing ? 'PUT' : 'POST';
+
+    try {
+      const res = await api.fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(itemForm)
+      });
+      if (res.ok) {
+        toast.success(isEditing ? 'Item updated successfully' : 'Item added successfully');
+        setIsItemModalOpen(false);
+        setEditingItem(null);
+        setItemForm({ serialNo: '', itemDescription: '', category: '', estimatedMonthlyRequirement: '', unit: '', remarks: '' });
+        fetchItems();
+      } else {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.message || 'Failed to save item');
+      }
+    } catch (err) {
+      toast.error('Failed to save item');
+    }
+  };
+
+  const handleEditItem = (item: any) => {
+    setEditingItem(item);
+    setItemForm({
+      serialNo: item.serialNo || '',
+      itemDescription: item.itemDescription || '',
+      category: item.category || '',
+      estimatedMonthlyRequirement: item.estimatedMonthlyRequirement || '',
+      unit: item.unit || '',
+      remarks: item.remarks || ''
+    });
+    setIsItemModalOpen(true);
+  };
+
+  const handleDeleteItem = async (itemId: number) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    try {
+      const res = await api.fetch(`/api/buyer-showcase/items/${itemId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success('Item deleted successfully');
+        fetchItems();
+      } else {
+        toast.error('Failed to delete item');
+      }
+    } catch (err) {
+      toast.error('Failed to delete item');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedItemIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedItemIds.length} items?`)) return;
+    try {
+      const res = await api.fetch('/api/buyer-showcase/items/bulk-delete', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids: selectedItemIds })
+      });
+      if (res.ok) {
+        toast.success('Items deleted successfully');
+        setSelectedItemIds([]);
+        fetchItems();
+      } else {
+        toast.error('Bulk delete failed');
+      }
+    } catch (err) {
+      toast.error('Bulk delete failed');
+    }
+  };
+
+  const handleClearAllItems = async () => {
+    if (!confirm('Are you sure you want to delete ALL items? This action cannot be undone.')) return;
+    try {
+      const res = await api.fetch('/api/buyer-showcase/items/clear', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success('All items deleted successfully');
+        setUploadErrors([]);
+        setUploadSummary(null);
+        fetchItems();
+      } else {
+        toast.error('Failed to clear items');
+      }
+    } catch (err) {
+      toast.error('Failed to clear items');
+    }
+  };
+
+  const handleToggleItemVisibility = async (item: any) => {
+    const newStatus = item.status === 'HIDDEN' ? 'ACTIVE' : 'HIDDEN';
+    try {
+      const res = await api.fetch(`/api/buyer-showcase/items/${item.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          serialNo: item.serialNo,
+          itemDescription: item.itemDescription,
+          category: item.category,
+          estimatedMonthlyRequirement: item.estimatedMonthlyRequirement,
+          unit: item.unit,
+          remarks: item.remarks,
+          status: newStatus,
+        })
+      });
+      if (res.ok) {
+        toast.success(`Item ${newStatus === 'HIDDEN' ? 'hidden' : 'shown'} successfully`);
+        fetchItems();
+      } else {
+        toast.error('Failed to update item visibility');
+      }
+    } catch {
+      toast.error('Failed to update item visibility');
+    }
+  };
 
   const handleFieldChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -132,7 +596,7 @@ export default function BuyerProfile() {
         const res = await api.fetch('/api/auth/me', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        
+
         if (res.ok) {
           const data = await res.json();
           setProfile(data.profile);
@@ -440,11 +904,11 @@ export default function BuyerProfile() {
       payload.division = formData.division;
       payload.employeeCount = formData.employeeCount;
       payload.msmeType = formData.msmeType;
-      
+
       const res = await api.put('/api/buyer/onboarding', payload, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      
+
       if (res.ok) {
         const body = await res.json().catch(() => null);
         setProfile(body?.data || body || profile);
@@ -457,7 +921,7 @@ export default function BuyerProfile() {
       } else {
         const body = await res.json().catch(() => null);
         const errMsg = body?.message || 'Failed to update details';
-        
+
         // Map backend validation errors to formErrors to highlight fields inline
         const lowercaseMsg = errMsg.toLowerCase();
         if (lowercaseMsg.includes('ifsc')) {
@@ -529,8 +993,8 @@ export default function BuyerProfile() {
               }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left group",
-                activeSection === item.id 
-                  ? "bg-[#12335f]/5 text-[#12335f] shadow-sm border border-[#12335f]/10" 
+                activeSection === item.id
+                  ? "bg-[#12335f]/5 text-[#12335f] shadow-sm border border-[#12335f]/10"
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               )}
             >
@@ -552,28 +1016,690 @@ export default function BuyerProfile() {
             </h1>
           </div>
           <div className="flex items-center gap-3 bg-white p-2.5 rounded-2xl border border-slate-100 shadow-sm">
-             <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-black text-sm">
-               {user?.name?.charAt(0)}
-             </div>
-             <div className="pr-4">
-               <p className="text-[10px] font-black text-slate-900 uppercase  leading-none">{user?.name}</p>
-               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">ID: {profile?.pan || user?.id}</p>
-             </div>
+            <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-black text-sm">
+              {user?.name?.charAt(0)}
+            </div>
+            <div className="pr-4">
+              <p className="text-[10px] font-black text-slate-900 uppercase  leading-none">{user?.name}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">ID: {profile?.pan || user?.id}</p>
+            </div>
           </div>
         </div>
 
         <Card className="rounded-[2.5rem] border-none shadow-2xl shadow-slate-200/50 overflow-hidden bg-white">
           <CardContent className="p-5 sm:p-6 md:p-8">
+            {activeSection === 'showcase_profile' && (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                {/* Showcase Sub-tabs */}
+                <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar gap-2 mb-6">
+                  {[
+                    { id: 'details', label: 'Organization Details' },
+                    { id: 'branding', label: 'Branding & Logo' },
+                    { id: 'items', label: 'Frequently Bought Items' },
+                    { id: 'status', label: 'Verification Status' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setShowcaseTab(tab.id)}
+                      className={cn(
+                        "px-4 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap",
+                        showcaseTab === tab.id
+                          ? "border-[#12335f] text-[#12335f]"
+                          : "border-transparent text-slate-500 hover:text-slate-900"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {showcaseLoading ? (
+                  <div className="flex h-[200px] items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#12335f]" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Tab Content: Details */}
+                    {showcaseTab === 'details' && showcaseProfile && (
+                      <div className="space-y-6">
+                        <h3 className="text-base font-extrabold text-slate-900 uppercase">Organization Profile Details</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <Input
+                            label="Organization Name *"
+                            value={showcaseProfile.organizationName || ''}
+                            onChange={(e) => handleShowcaseFieldChange('organizationName', e.target.value)}
+                            placeholder="Enter organization name"
+                          />
+                          <Input
+                            label="Department Name *"
+                            value={showcaseProfile.departmentName || ''}
+                            onChange={(e) => handleShowcaseFieldChange('departmentName', e.target.value)}
+                            placeholder="Enter department name"
+                          />
+                          <Select
+                            label="Type of Organisation *"
+                            value={showcaseProfile.organizationType || ''}
+                            onChange={(e) => handleShowcaseFieldChange('organizationType', e.target.value)}
+                          >
+                            <option value="">Select Org Type</option>
+                            <option value="central">Central Government</option>
+                            <option value="state">State Government</option>
+                            <option value="psu">PSU</option>
+                            <option value="autonomous">Autonomous Body</option>
+                            <option value="local">Local Body</option>
+                            <option value="proprietorship">Proprietorship</option>
+                            <option value="partnership">Partnership Firm</option>
+                            <option value="company">Company (Pvt Ltd / Ltd)</option>
+                            <option value="llp">LLP</option>
+                            <option value="msme">MSME</option>
+                            <option value="startup">Startup</option>
+                          </Select>
+                          <Input
+                            label="Registration Number"
+                            value={showcaseProfile.registrationNumber || ''}
+                            onChange={(e) => handleShowcaseFieldChange('registrationNumber', e.target.value)}
+                            placeholder="CIN, Registration No. etc."
+                          />
+                          <Input
+                            label="GST Number"
+                            value={showcaseProfile.gstNumber || ''}
+                            onChange={(e) => handleShowcaseFieldChange('gstNumber', e.target.value)}
+                            placeholder="15-digit GSTIN"
+                          />
+                          <Input
+                            label="PAN Number"
+                            value={showcaseProfile.panNumber || ''}
+                            onChange={(e) => handleShowcaseFieldChange('panNumber', e.target.value)}
+                            placeholder="10-digit PAN"
+                          />
+                          <Input
+                            label="City"
+                            value={showcaseProfile.city || ''}
+                            onChange={(e) => handleShowcaseFieldChange('city', e.target.value)}
+                            placeholder="City"
+                          />
+                          <Input
+                            label="State"
+                            value={showcaseProfile.state || ''}
+                            onChange={(e) => handleShowcaseFieldChange('state', e.target.value)}
+                            placeholder="State"
+                          />
+                          <Input
+                            label="Pincode"
+                            value={showcaseProfile.pincode || ''}
+                            onChange={(e) => handleShowcaseFieldChange('pincode', e.target.value)}
+                            placeholder="6-digit Pincode"
+                          />
+                          <Input
+                            label="Official Email"
+                            value={showcaseProfile.officialEmail || ''}
+                            onChange={(e) => handleShowcaseFieldChange('officialEmail', e.target.value)}
+                            placeholder="e.g. contact@dept.gov.in"
+                          />
+                          <Input
+                            label="Official Phone"
+                            value={showcaseProfile.officialPhone || ''}
+                            onChange={(e) => handleShowcaseFieldChange('officialPhone', e.target.value)}
+                            placeholder="Phone number"
+                          />
+                          <Input
+                            label="Website URL"
+                            value={showcaseProfile.website || ''}
+                            onChange={(e) => handleShowcaseFieldChange('website', e.target.value)}
+                            placeholder="e.g. https://dept.gov.in"
+                          />
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-6 mt-6">
+                          <h4 className="text-sm font-extrabold text-slate-800 uppercase mb-4">Contact Person Information</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Input
+                              label="Contact Person Name *"
+                              value={showcaseProfile.contactPersonName || ''}
+                              onChange={(e) => handleShowcaseFieldChange('contactPersonName', e.target.value)}
+                              placeholder="Name"
+                            />
+                            <Input
+                              label="Contact Person Designation *"
+                              value={showcaseProfile.contactPersonDesignation || ''}
+                              onChange={(e) => handleShowcaseFieldChange('contactPersonDesignation', e.target.value)}
+                              placeholder="Designation"
+                            />
+                            <Input
+                              label="Contact Person Mobile *"
+                              value={showcaseProfile.contactPersonMobile || ''}
+                              onChange={(e) => handleShowcaseFieldChange('contactPersonMobile', e.target.value)}
+                              placeholder="Mobile"
+                            />
+                            <Input
+                              label="Contact Person Email *"
+                              value={showcaseProfile.contactPersonEmail || ''}
+                              onChange={(e) => handleShowcaseFieldChange('contactPersonEmail', e.target.value)}
+                              placeholder="Email"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Office Address *</label>
+                          <textarea
+                            value={showcaseProfile.address || ''}
+                            onChange={(e) => handleShowcaseFieldChange('address', e.target.value)}
+                            placeholder="Enter complete office address"
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none"
+                          />
+                        </div>
+
+                        {isSensitiveChanged() && (
+                          <div className="bg-[#12335f]/5 border border-[#12335f]/10 p-6 rounded-3xl flex items-start gap-4 mt-6 animate-in fade-in duration-300">
+                            <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-[#12335f] shadow-sm shrink-0">
+                              <Shield className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-black uppercase text-[#12335f] tracking-widest leading-none">Security Verification Protocol</p>
+                              <p className="text-xs font-semibold text-slate-600 leading-relaxed pt-1">
+                                Changing sensitive organization details (GST, CIN, PAN, or Official Email) requires secure verification. An OTP will be sent to your registered login email and mobile number.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {showcaseOtpSent && (
+                          <div className="max-w-md pt-4 animate-in fade-in duration-300">
+                            <Input
+                              label="Enter Verification OTP *"
+                              placeholder="Enter 6-digit OTP sent to Email & SMS"
+                              value={showcaseOtp}
+                              onChange={(e) => {
+                                setShowcaseOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                              }}
+                              className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
+                            />
+                            <p className="text-[11px] text-slate-400 font-medium mt-2 ml-1">
+                              Enter the 6-digit OTP code sent to your registered Email and Mobile number to authorize changes.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="pt-6 border-t border-slate-100 flex justify-end gap-4 mt-6">
+                          {showcaseOtpSent && (
+                            <Button
+                              onClick={handleGetShowcaseOtp}
+                              disabled={isSendingShowcaseOtp || showcaseSaving}
+                              variant="outline"
+                              className="border border-slate-200 text-[#12335f] hover:bg-slate-50 font-black uppercase text-xs tracking-wider h-14 px-8 rounded-2xl transition-all"
+                            >
+                              {isSendingShowcaseOtp ? 'Sending...' : 'Resend OTP'}
+                            </Button>
+                          )}
+                          <Button
+                            onClick={handleShowcaseSave}
+                            disabled={showcaseSaving || isSendingShowcaseOtp || (showcaseOtpSent && !showcaseOtp)}
+                            className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
+                          >
+                            {showcaseSaving ? 'Saving...' : showcaseOtpSent ? 'Verify & Save' : 'Save Showcase Details'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tab Content: Branding */}
+                    {showcaseTab === 'branding' && showcaseProfile && (
+                      <div className="space-y-8">
+                        {/* Image lightbox/preview modal */}
+                        {viewImageUrl && (
+                          <div
+                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                            onClick={() => setViewImageUrl(null)}
+                          >
+                            <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => setViewImageUrl(null)}
+                                className="absolute -top-10 right-0 text-white hover:text-slate-300 font-black text-xs uppercase tracking-wider flex items-center gap-1"
+                              >
+                                <X className="h-4 w-4" /> Close
+                              </button>
+                              <img src={viewImageUrl} alt="Preview" className="w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/10" />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          {/* Logo Upload Card */}
+                          <div className="p-6 rounded-3xl border border-slate-200/60 bg-white shadow-sm space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Organization Logo</h3>
+                              {showcaseProfile.logoUrl && (
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-2 py-0.5 text-[9px] font-black uppercase">
+                                  <CheckCircle2 className="h-3 w-3" /> Uploaded
+                                </span>
+                              )}
+                            </div>
+
+                            {showcaseProfile.logoUrl ? (
+                              <div className="space-y-4">
+                                {/* Image preview */}
+                                <div className="flex justify-center">
+                                  <div className="relative group">
+                                    <img
+                                      src={showcaseProfile.logoUrl}
+                                      alt="Org Logo"
+                                      className="h-32 w-32 object-contain rounded-xl border bg-white p-2 shadow-md"
+                                    />
+                                    <button
+                                      onClick={() => setViewImageUrl(showcaseProfile.logoUrl)}
+                                      className="absolute inset-0 bg-black/0 group-hover:bg-black/30 rounded-xl transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
+                                      title="View full size"
+                                    >
+                                      <Eye className="h-6 w-6 text-white drop-shadow" />
+                                    </button>
+                                  </div>
+                                </div>
+                                {/* Action buttons */}
+                                <div className="flex flex-wrap gap-2 justify-center">
+                                  <Button
+                                    type="button"
+                                    onClick={() => setViewImageUrl(showcaseProfile.logoUrl)}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 flex items-center gap-1"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> View
+                                  </Button>
+                                  <label className="cursor-pointer inline-flex items-center gap-1 bg-[#12335f]/10 hover:bg-[#12335f]/20 text-[#12335f] font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 transition-colors">
+                                    <Pencil className="h-3.5 w-3.5" /> Change
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                  </label>
+                                  <Button
+                                    type="button"
+                                    onClick={() => handleRemoveImage('logoUrl')}
+                                    className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 flex items-center gap-1"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                                  </Button>
+                                </div>
+                                <p className="text-center text-[10px] text-slate-400 font-semibold">PNG, JPG · Max 2MB</p>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-8 bg-slate-50/50 space-y-3">
+                                <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
+                                  <ImageIcon className="h-8 w-8" />
+                                </div>
+                                <p className="text-xs text-slate-400 font-semibold text-center">No logo uploaded yet<br />PNG, JPG · Max 2MB</p>
+                                <label className="cursor-pointer inline-flex items-center justify-center bg-[#12335f] text-white hover:bg-slate-800 font-black uppercase text-[10px] tracking-wider h-10 px-5 rounded-xl shadow-md gap-1.5">
+                                  <Plus className="h-3.5 w-3.5" /> Select File
+                                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                </label>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Banner Upload Card */}
+                          <div className="p-6 rounded-3xl border border-slate-200/60 bg-white shadow-sm space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Organization Banner <span className="text-slate-300 font-medium">(Optional)</span></h3>
+                              {showcaseProfile.bannerUrl && (
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-2 py-0.5 text-[9px] font-black uppercase">
+                                  <CheckCircle2 className="h-3 w-3" /> Uploaded
+                                </span>
+                              )}
+                            </div>
+
+                            {showcaseProfile.bannerUrl ? (
+                              <div className="space-y-4">
+                                {/* Banner preview */}
+                                <div className="relative group rounded-xl overflow-hidden border shadow-md">
+                                  <img
+                                    src={showcaseProfile.bannerUrl}
+                                    alt="Org Banner"
+                                    className="w-full h-28 object-cover"
+                                  />
+                                  <button
+                                    onClick={() => setViewImageUrl(showcaseProfile.bannerUrl)}
+                                    className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
+                                    title="View full size"
+                                  >
+                                    <Eye className="h-6 w-6 text-white drop-shadow" />
+                                  </button>
+                                </div>
+                                {/* Action buttons */}
+                                <div className="flex flex-wrap gap-2 justify-center">
+                                  <Button
+                                    type="button"
+                                    onClick={() => setViewImageUrl(showcaseProfile.bannerUrl)}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 flex items-center gap-1"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> View
+                                  </Button>
+                                  <label className="cursor-pointer inline-flex items-center gap-1 bg-[#12335f]/10 hover:bg-[#12335f]/20 text-[#12335f] font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 transition-colors">
+                                    <Pencil className="h-3.5 w-3.5" /> Change
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+                                  </label>
+                                  <Button
+                                    type="button"
+                                    onClick={() => handleRemoveImage('bannerUrl')}
+                                    className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-8 rounded-lg px-3 flex items-center gap-1"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                                  </Button>
+                                </div>
+                                <p className="text-center text-[10px] text-slate-400 font-semibold">PNG, JPG · Max 5MB · Recommended 1200×300px</p>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-8 bg-slate-50/50 space-y-3">
+                                <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
+                                  <ImageIcon className="h-8 w-8" />
+                                </div>
+                                <p className="text-xs text-slate-400 font-semibold text-center">No banner uploaded yet<br />PNG, JPG · Max 5MB · Recommended 1200×300px</p>
+                                <label className="cursor-pointer inline-flex items-center justify-center bg-[#12335f] text-white hover:bg-slate-800 font-black uppercase text-[10px] tracking-wider h-10 px-5 rounded-xl shadow-md gap-1.5">
+                                  <Plus className="h-3.5 w-3.5" /> Select File
+                                  <input type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tab Content: Frequently Bought Items */}
+                    {showcaseTab === 'items' && (
+                      <div className="space-y-6">
+                        {/* Summary / Stats Bar */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 border border-slate-100 p-5 rounded-2xl">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Total Items</p>
+                            <p className="text-lg font-black text-slate-900 mt-1.5">
+                              {items.length}
+                              {items.filter(i => i.status === 'HIDDEN').length > 0 && (
+                                <span className="ml-2 text-xs font-bold text-slate-400">({items.filter(i => i.status === 'HIDDEN').length} hidden)</span>
+                              )}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Upload Status</p>
+                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md px-2 py-0.5 text-[9px] font-black mt-1.5 uppercase">Active</Badge>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Template</p>
+                            <a href={`${BASE_URL}/api/buyer-showcase/items/template`} target="_blank" className="text-[#12335f] hover:underline text-xs font-bold block mt-1.5">Download template</a>
+                          </div>
+                          <div className="flex items-center md:justify-end gap-2 col-span-2 md:col-span-1">
+                            <label className="cursor-pointer bg-[#12335f] text-white hover:bg-[#0b2445] font-black uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl flex items-center shadow-md justify-center gap-1.5">
+                              {uploadingItems ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading...</> : 'Upload Excel'}
+                              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleItemExcelUpload} disabled={uploadingItems} />
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Upload result summary */}
+                        {uploadSummary && (
+                          <div className={cn('rounded-2xl border p-4 space-y-2', uploadSummary.savedCount > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200')}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {uploadSummary.savedCount > 0 ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />}
+                                <p className={cn('text-xs font-black uppercase tracking-wide', uploadSummary.savedCount > 0 ? 'text-emerald-800' : 'text-amber-800')}>Upload Result</p>
+                              </div>
+                              <button type="button" onClick={() => setUploadSummary(null)} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 tracking-wider">Dismiss</button>
+                            </div>
+                            <div className="flex flex-wrap gap-4 text-xs font-bold">
+                              <span className="text-emerald-700">{uploadSummary.savedCount} item{uploadSummary.savedCount !== 1 ? 's' : ''} saved</span>
+                              {uploadSummary.invalidCount > 0 && <span className="text-red-600">{uploadSummary.invalidCount} row{uploadSummary.invalidCount !== 1 ? 's' : ''} skipped</span>}
+                              {uploadSummary.hasDuplicates && <span className="text-amber-700">{uploadSummary.duplicateCount} duplicate description{uploadSummary.duplicateCount !== 1 ? 's' : ''} flagged</span>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Inline upload errors */}
+                        {uploadErrors.length > 0 && (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                                <p className="text-xs font-black uppercase tracking-wide text-red-800">{uploadErrors.length} row{uploadErrors.length !== 1 ? 's' : ''} could not be imported</p>
+                              </div>
+                              <button type="button" onClick={() => setUploadErrors([])} className="text-red-400 hover:text-red-700 text-[10px] font-black uppercase tracking-wider">Dismiss</button>
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-red-100 bg-white">
+                              <table className="w-full text-left text-xs">
+                                <thead><tr className="border-b border-red-100 bg-red-50"><th className="p-2 pr-4 text-[10px] font-black text-red-600 uppercase tracking-wider w-24">Row #</th><th className="p-2 text-[10px] font-black text-red-600 uppercase tracking-wider">Reason</th></tr></thead>
+                                <tbody className="divide-y divide-red-50">
+                                  {uploadErrors.map((err, i) => (
+                                    <tr key={i}><td className="p-2 pr-4 font-bold text-red-700">{err.rowNumber > 0 ? `Row ${err.rowNumber}` : 'File Error'}</td><td className="p-2 text-red-800 font-semibold">{err.reason}</td></tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Confirmation dialog for replace */}
+                        {confirmReplaceWarning && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+                            <div className="flex items-start gap-2"><AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" /><p className="text-xs font-bold text-amber-800">{confirmReplaceWarning}</p></div>
+                            <div className="flex gap-3">
+                              <Button onClick={() => handleItemExcelUpload(null, true)} className="bg-amber-600 hover:bg-amber-700 text-white font-black uppercase text-[10px] tracking-wider h-9 px-4 rounded-lg">Replace Current List</Button>
+                              <Button onClick={() => { setConfirmReplaceWarning(null); setPendingUploadFile(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black uppercase text-[10px] tracking-wider h-9 px-4 rounded-lg">Cancel</Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Table Header actions */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                          <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Manage Frequently Bought Items</h3>
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <Button onClick={() => { setEditingItem(null); setItemForm({ serialNo: '', itemDescription: '', category: '', estimatedMonthlyRequirement: '', unit: '', remarks: '' }); setIsItemModalOpen(true); }} className="flex-1 sm:flex-none bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl flex items-center gap-1">
+                              <Plus className="h-3.5 w-3.5" /> Add Manually
+                            </Button>
+                            {items.length > 0 && (
+                              <a href={`${BASE_URL}/api/buyer-showcase/items/export`} target="_blank" className="flex-1 sm:flex-none border border-slate-200 text-slate-600 hover:bg-slate-50 font-black uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl flex items-center justify-center shadow-sm">
+                                Export list
+                              </a>
+                            )}
+                            {selectedItemIds.length > 0 && (
+                              <Button onClick={handleBulkDelete} className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl">
+                                Delete Selected ({selectedItemIds.length})
+                              </Button>
+                            )}
+                            {items.length > 0 && (
+                              <Button onClick={handleClearAllItems} className="bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl">
+                                Clear All
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Items Table */}
+                        {itemsLoading ? (
+                          <div className="flex h-[150px] items-center justify-center">
+                            <Loader2 className="h-6 w-6 animate-spin text-[#12335f]" />
+                          </div>
+                        ) : items.length === 0 ? (
+                          <div className="text-center py-12 border border-dashed rounded-3xl bg-slate-50/50">
+                            <Building2 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                            <p className="text-sm font-bold text-slate-500">No frequently bought items uploaded yet</p>
+                            <p className="text-xs text-slate-400 mt-1 leading-relaxed">Download the template, fill it out, and upload it above or add items manually.</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                            <table className="w-full border-collapse text-left">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-100">
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider w-12 text-center">
+                                    <input type="checkbox" checked={selectedItemIds.length === items.length && items.length > 0} onChange={(e) => { if (e.target.checked) setSelectedItemIds(items.map(item => item.id)); else setSelectedItemIds([]); }} className="rounded border-slate-300" />
+                                  </th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider w-16">Sl.</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider">Item Description</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider">Category</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider">Qty/Month</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider w-20">Unit</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider">Remarks</th>
+                                  <th className="p-3 text-[10px] font-black uppercase text-slate-500 tracking-wider w-28 text-center">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map((item, idx) => {
+                                  const isHidden = item.status === 'HIDDEN';
+                                  const isDuplicate = item.remarks && item.remarks.includes('[DUPLICATE DESCRIPTION]');
+                                  return (
+                                    <tr key={item.id} className={cn('border-b border-slate-100 transition-colors', isHidden ? 'bg-slate-50 opacity-60' : 'hover:bg-slate-50/50', isDuplicate && !isHidden && 'bg-amber-50/30')}>
+                                      <td className="p-3 text-center">
+                                        <input type="checkbox" checked={selectedItemIds.includes(item.id)} onChange={(e) => { if (e.target.checked) setSelectedItemIds(prev => [...prev, item.id]); else setSelectedItemIds(prev => prev.filter(id => id !== item.id)); }} className="rounded border-slate-300" />
+                                      </td>
+                                      <td className="p-3 text-xs font-bold text-slate-500">{item.serialNo || idx + 1}</td>
+                                      <td className="p-3 text-xs font-bold text-slate-900">
+                                        <span className={cn(isHidden && 'line-through text-slate-400')}>{item.itemDescription}</span>
+                                        {isDuplicate && <span className="ml-2 inline-flex bg-amber-100 text-amber-800 text-[8px] font-black uppercase px-1 py-0.5 rounded">Duplicate</span>}
+                                        {isHidden && <span className="ml-2 inline-flex bg-slate-200 text-slate-500 text-[8px] font-black uppercase px-1 py-0.5 rounded">Hidden</span>}
+                                      </td>
+                                      <td className="p-3 text-xs font-semibold text-slate-600">{item.category || '—'}</td>
+                                      <td className="p-3 text-xs font-semibold text-slate-600">{item.estimatedMonthlyRequirement || '—'}</td>
+                                      <td className="p-3 text-xs font-semibold text-slate-600">{item.unit || '—'}</td>
+                                      <td className="p-3 text-xs font-semibold text-slate-500 max-w-[12rem] truncate" title={item.remarks}>{item.remarks || '—'}</td>
+                                      <td className="p-3 text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                          <button onClick={() => handleEditItem(item)} className="p-1.5 text-slate-500 hover:text-[#12335f] hover:bg-slate-100 rounded-md transition-colors" title="Edit Item">
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button onClick={() => handleToggleItemVisibility(item)} className={cn('p-1.5 rounded-md transition-colors', isHidden ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-500 hover:text-amber-600 hover:bg-amber-50')} title={isHidden ? 'Show item' : 'Hide item'}>
+                                            {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                                          </button>
+                                          <button onClick={() => handleDeleteItem(item.id)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete Item">
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Add/Edit Modal dialog */}
+                        {isItemModalOpen && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg border overflow-hidden animate-in zoom-in-95 duration-200">
+                              <div className="bg-[#12335f] p-4 text-white flex justify-between items-center">
+                                <h4 className="text-sm font-black uppercase tracking-wider">{editingItem ? 'Edit Item' : 'Add Item Manually'}</h4>
+                                <button onClick={() => setIsItemModalOpen(false)} className="text-white hover:text-slate-200"><X className="h-5 w-5" /></button>
+                              </div>
+                              <form onSubmit={handleItemSubmit} className="p-6 space-y-4">
+                                <div className="grid grid-cols-3 gap-4">
+                                  <div className="col-span-1"><Input label="Sl. No." value={itemForm.serialNo} onChange={(e) => setItemForm(prev => ({ ...prev, serialNo: e.target.value }))} placeholder="e.g. 1" /></div>
+                                  <div className="col-span-2"><Input label="Category" value={itemForm.category} onChange={(e) => setItemForm(prev => ({ ...prev, category: e.target.value }))} placeholder="e.g. Safety" /></div>
+                                </div>
+                                <Input label="Item Description *" value={itemForm.itemDescription} onChange={(e) => setItemForm(prev => ({ ...prev, itemDescription: e.target.value }))} placeholder="Enter item description" required />
+                                <div className="grid grid-cols-2 gap-4">
+                                  <Input label="Monthly Qty" value={itemForm.estimatedMonthlyRequirement} onChange={(e) => setItemForm(prev => ({ ...prev, estimatedMonthlyRequirement: e.target.value }))} placeholder="e.g. 100" />
+                                  <Input label="Unit" value={itemForm.unit} onChange={(e) => setItemForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="e.g. Nos" />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Remarks</label>
+                                  <textarea value={itemForm.remarks} onChange={(e) => setItemForm(prev => ({ ...prev, remarks: e.target.value }))} placeholder="Any additional information" rows={2} className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 transition-all resize-none" />
+                                </div>
+                                <div className="pt-4 flex justify-end gap-2 border-t">
+                                  <Button type="button" onClick={() => setIsItemModalOpen(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black uppercase text-[10px] tracking-wider h-10 px-4 rounded-xl">Cancel</Button>
+                                  <Button type="submit" className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-[10px] tracking-wider h-10 px-6 rounded-xl">Save Item</Button>
+                                </div>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab Content: Verification Status */}
+                    {showcaseTab === 'status' && showcaseProfile && (
+                      <div className="space-y-6">
+                        <h3 className="text-base font-extrabold text-slate-900 uppercase">Showcase Verification Status</h3>
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-3xl p-6 md:p-8 space-y-6">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Verification Status</p>
+                              <div className="mt-2.5">
+                                {showcaseProfile.verificationStatus === 'VERIFIED' ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg px-4 py-1.5 text-[10px] font-black uppercase">
+                                    <CheckCircle2 className="h-4 w-4 mr-1 text-emerald-600 inline shrink-0" />
+                                    Verified Showcase
+                                  </Badge>
+                                ) : showcaseProfile.verificationStatus === 'REJECTED' ? (
+                                  <Badge className="bg-red-50 text-red-700 border border-red-100 rounded-lg px-4 py-1.5 text-[10px] font-black uppercase">
+                                    <X className="h-4 w-4 mr-1 text-red-600 inline shrink-0" />
+                                    Rejected — Contact Admin
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-50 text-amber-700 border border-amber-100 rounded-lg px-4 py-1.5 text-[10px] font-black uppercase">
+                                    <Clock className="h-4 w-4 mr-1 text-amber-600 inline shrink-0" />
+                                    Awaiting Admin Approval
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Explain the pending state so users aren't confused */}
+                              {showcaseProfile.verificationStatus !== 'VERIFIED' && (
+                                <p className="mt-2 text-[10px] font-semibold text-slate-400 max-w-xs leading-relaxed">
+                                  {showcaseProfile.verificationStatus === 'REJECTED'
+                                    ? 'Your showcase profile was rejected. Please update your details and contact an administrator.'
+                                    : 'Your showcase profile is under review by the portal administrator. This is separate from your GST or onboarding verification. No action needed from your side.'}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Visibility Status</p>
+                              <div className="mt-2.5">
+                                {showcaseProfile.isActive ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg px-4 py-1.5 text-[10px] font-black uppercase">
+                                    Showcase Publicly Active
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-slate-100 text-slate-600 border border-slate-200/50 rounded-lg px-4 py-1.5 text-[10px] font-black uppercase">
+                                    Showcase Suspended / Inactive
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
+                            <div className="bg-white p-4 rounded-2xl border shadow-sm">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Verified At</p>
+                              <p className="text-xs font-bold text-slate-800 mt-2 font-mono">
+                                {showcaseProfile.verifiedAt ? new Date(showcaseProfile.verifiedAt).toLocaleString() : 'Not verified yet'}
+                              </p>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border shadow-sm">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Verified By</p>
+                              <p className="text-xs font-bold text-slate-800 mt-2">
+                                {showcaseProfile.verifiedBy || 'Not verified yet'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 space-y-2">
+                            <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Showcase Security Policy</p>
+                            <p className="text-xs text-indigo-900 leading-relaxed font-semibold">
+                              Showcase verification is managed strictly by official administrators. It is independent of your GST or onboarding status. Changing your organization details will trigger a re-review. Frequently bought requirements are only visible to the public once verification status is set to VERIFIED and visibility status is set to Active.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {activeSection === 'hierarchy' && (
               <div className="space-y-4 animate-in fade-in duration-500">
                 <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                   <h3 className="text-lg font-black text-slate-900 uppercase ">Organisation Hierarchy</h3>
-                  
+
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <Select 
-                    label="Type of Organisation *" 
+                  <Select
+                    label="Type of Organisation *"
                     value={formData.organizationType}
                     onChange={(e) => handleFieldChange('organizationType', e.target.value)}
                     error={formErrors.organizationType}
@@ -584,8 +1710,8 @@ export default function BuyerProfile() {
                     <option value="autonomous">Autonomous Body</option>
                     <option value="local">Local Body</option>
                   </Select>
-                  <Select 
-                    label="MSME Type *" 
+                  <Select
+                    label="MSME Type *"
                     value={formData.msmeType}
                     onChange={(e) => handleFieldChange('msmeType', e.target.value)}
                     error={formErrors.msmeType}
@@ -595,24 +1721,24 @@ export default function BuyerProfile() {
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </Select>
-                  <Input 
-                    label="Ministry/Department *" 
-                    value={formData.ministry} 
+                  <Input
+                    label="Ministry/Department *"
+                    value={formData.ministry}
                     onChange={(e) => handleFieldChange('ministry', e.target.value)}
                     placeholder="Enter Ministry name"
                     error={formErrors.ministry}
                   />
-                  <Input 
-                    label="Division *" 
-                    value={formData.division} 
+                  <Input
+                    label="Division *"
+                    value={formData.division}
                     onChange={(e) => handleFieldChange('division', e.target.value)}
                     placeholder="Enter Division name"
                     error={formErrors.division}
                   />
-                  <Input 
-                    label="Number of Employees *" 
+                  <Input
+                    label="Number of Employees *"
                     type="number"
-                    value={formData.employeeCount} 
+                    value={formData.employeeCount}
                     onChange={(e) => handleFieldChange('employeeCount', e.target.value)}
                     placeholder="e.g. 150"
                     error={formErrors.employeeCount}
@@ -620,28 +1746,28 @@ export default function BuyerProfile() {
                 </div>
 
                 <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 space-y-4">
-                   <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm">
-                         <Shield className="h-5 w-5" />
-                      </div>
-                      <h4 className="text-sm font-black text-slate-900 uppercase ">Primary User (HOD)</h4>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Full Name</p>
-                         <p className="text-xs font-bold text-slate-700">{user?.name}</p>
-                      </div>
-                      <div>
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Designation</p>
-                         <p className="text-xs font-bold text-slate-700">{profile?.designation || 'Head of Department'}</p>
-                      </div>
-                   </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm">
+                      <Shield className="h-5 w-5" />
+                    </div>
+                    <h4 className="text-sm font-black text-slate-900 uppercase ">Primary User (HOD)</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Full Name</p>
+                      <p className="text-xs font-bold text-slate-700">{user?.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Designation</p>
+                      <p className="text-xs font-bold text-slate-700">{profile?.designation || 'Head of Department'}</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end">
-                   <Button onClick={handleSave} disabled={isSaving} className="bg-slate-900 hover:bg-black text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-slate-200">
-                      Save Hierarchy
-                   </Button>
+                  <Button onClick={handleSave} disabled={isSaving} className="bg-slate-900 hover:bg-black text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-slate-200">
+                    Save Hierarchy
+                  </Button>
                 </div>
               </div>
             )}
@@ -664,31 +1790,31 @@ export default function BuyerProfile() {
                     { role: 'Technical Evaluator', desc: 'Can evaluate technical bid parameters', icon: Shield, color: 'text-indigo-600', bg: 'bg-slate-100' }
                   ].map((role) => (
                     <div key={role.role} className="p-6 rounded-3xl border border-slate-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all group">
-                       <div className="flex items-start gap-4">
-                          <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", role.bg, role.color)}>
-                             <role.icon className="h-5 w-5" />
+                      <div className="flex items-start gap-4">
+                        <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", role.bg, role.color)}>
+                          <role.icon className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-black text-slate-900 uppercase ">{role.role}</h4>
+                          <p className="text-[11px] text-slate-500 font-medium  leading-relaxed">{role.desc}</p>
+                          <div className="pt-2 flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">0 Active Users</p>
                           </div>
-                          <div className="space-y-1">
-                             <h4 className="text-sm font-black text-slate-900 uppercase ">{role.role}</h4>
-                             <p className="text-[11px] text-slate-500 font-medium  leading-relaxed">{role.desc}</p>
-                             <div className="pt-2 flex items-center gap-2">
-                                <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">0 Active Users</p>
-                             </div>
-                          </div>
-                       </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
-                
+
                 <div className="bg-amber-50 rounded-3xl p-8 border border-amber-100 space-y-3">
-                   <div className="flex items-center gap-2 text-amber-700">
-                      <Lock className="h-4 w-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Security Protocol</p>
-                   </div>
-                   <p className="text-xs font-semibold text-amber-900  leading-relaxed">
-                     Secondary users must verify their identity using an Aadhaar-linked mobile number before they can access assigned roles.
-                   </p>
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <Lock className="h-4 w-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">Security Protocol</p>
+                  </div>
+                  <p className="text-xs font-semibold text-amber-900  leading-relaxed">
+                    Secondary users must verify their identity using an Aadhaar-linked mobile number before they can access assigned roles.
+                  </p>
                 </div>
               </div>
             )}
@@ -702,25 +1828,25 @@ export default function BuyerProfile() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                   <div className="space-y-6">
-                    <Input 
-                      label="Pincode *" 
-                      value={formData.pincode} 
+                    <Input
+                      label="Pincode *"
+                      value={formData.pincode}
                       onChange={(e) => handleFieldChange('pincode', e.target.value)}
                       placeholder="e.g. 411030"
                       error={formErrors.pincode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="State *" 
-                      value={formData.state} 
+                    <Input
+                      label="State *"
+                      value={formData.state}
                       onChange={(e) => handleFieldChange('state', e.target.value)}
                       placeholder="MAHARASHTRA"
                       error={formErrors.state}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="District *" 
-                      value={formData.district} 
+                    <Input
+                      label="District *"
+                      value={formData.district}
                       onChange={(e) => handleFieldChange('district', e.target.value)}
                       placeholder="Pune"
                       error={formErrors.district}
@@ -731,7 +1857,7 @@ export default function BuyerProfile() {
                   <div className="space-y-6">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Street Address *</label>
-                      <textarea 
+                      <textarea
                         value={formData.streetAddress}
                         onChange={(e) => handleFieldChange('streetAddress', e.target.value)}
                         placeholder="Enter full street address"
@@ -751,22 +1877,22 @@ export default function BuyerProfile() {
                 <div className="space-y-4">
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Contact No. (Office) * <span className="text-slate-300 font-medium ml-2">ⓘ</span></label>
                   <div className="grid grid-cols-3 gap-4">
-                    <Input 
-                      placeholder="STD code" 
+                    <Input
+                      placeholder="STD code"
                       value={formData.stdCode}
                       onChange={(e) => handleFieldChange('stdCode', e.target.value)}
                       error={formErrors.stdCode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      placeholder="Office Contact No." 
+                    <Input
+                      placeholder="Office Contact No."
                       value={formData.officeContact}
                       onChange={(e) => handleFieldChange('officeContact', e.target.value)}
                       error={formErrors.officeContact}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      placeholder="Extension No." 
+                    <Input
+                      placeholder="Extension No."
                       value={formData.extensionNo}
                       onChange={(e) => handleFieldChange('extensionNo', e.target.value)}
                       error={formErrors.extensionNo}
@@ -776,8 +1902,8 @@ export default function BuyerProfile() {
                 </div>
 
                 <div className="space-y-6">
-                  <Input 
-                    label="Website URL *" 
+                  <Input
+                    label="Website URL *"
                     value={formData.websiteUrl}
                     onChange={(e) => handleFieldChange('websiteUrl', e.target.value)}
                     placeholder="WWW.GEMEXPERT.COM"
@@ -787,13 +1913,13 @@ export default function BuyerProfile() {
                 </div>
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end">
-                   <Button 
-                     onClick={handleSave}
-                     disabled={isSaving}
-                     className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
-                   >
-                     {isSaving ? 'Processing...' : 'Save Changes'}
-                   </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
+                  >
+                    {isSaving ? 'Processing...' : 'Save Changes'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -807,17 +1933,17 @@ export default function BuyerProfile() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                   <div className="space-y-6">
-                    <Input 
-                      label="IFSC Code *" 
-                      value={formData.ifscCode} 
+                    <Input
+                      label="IFSC Code *"
+                      value={formData.ifscCode}
                       onChange={(e) => handleFieldChange('ifscCode', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11))}
                       placeholder="e.g. SBIN0001234"
                       error={formErrors.ifscCode}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Bank Name *" 
-                      value={formData.bankName} 
+                    <Input
+                      label="Bank Name *"
+                      value={formData.bankName}
                       onChange={(e) => handleFieldChange('bankName', e.target.value.slice(0, 100))}
                       placeholder="STATE BANK OF INDIA"
                       error={formErrors.bankName}
@@ -825,7 +1951,7 @@ export default function BuyerProfile() {
                     />
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Bank Address *</label>
-                      <textarea 
+                      <textarea
                         value={formData.bankAddress}
                         onChange={(e) => handleFieldChange('bankAddress', e.target.value.slice(0, 250))}
                         placeholder="Enter full bank branch address"
@@ -842,26 +1968,26 @@ export default function BuyerProfile() {
                   </div>
 
                   <div className="space-y-6">
-                    <Input 
-                      label="Bank Account No *" 
+                    <Input
+                      label="Bank Account No *"
                       type="password"
-                      value={formData.bankAccountNo} 
+                      value={formData.bankAccountNo}
                       onChange={(e) => handleFieldChange('bankAccountNo', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       placeholder="••••••••••••"
                       error={formErrors.bankAccountNo}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Confirm Bank Account No *" 
-                      value={formData.confirmBankAccountNo} 
+                    <Input
+                      label="Confirm Bank Account No *"
+                      value={formData.confirmBankAccountNo}
                       onChange={(e) => handleFieldChange('confirmBankAccountNo', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       placeholder="Enter account number again"
                       error={formErrors.confirmBankAccountNo}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Account Holder Name *" 
-                      value={formData.accountHolderName} 
+                    <Input
+                      label="Account Holder Name *"
+                      value={formData.accountHolderName}
                       onChange={(e) => handleFieldChange('accountHolderName', e.target.value.slice(0, 100))}
                       placeholder="AS PER BANK RECORDS"
                       error={formErrors.accountHolderName}
@@ -871,13 +1997,13 @@ export default function BuyerProfile() {
                 </div>
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end">
-                   <Button 
-                     onClick={handleSave}
-                     disabled={isSaving}
-                     className="bg-slate-900 hover:bg-black text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-[0.98]"
-                   >
-                     {isSaving ? 'Processing...' : 'Save Bank Details'}
-                   </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="bg-slate-900 hover:bg-black text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-[0.98]"
+                  >
+                    {isSaving ? 'Processing...' : 'Save Bank Details'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -891,34 +2017,34 @@ export default function BuyerProfile() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                   <div className="space-y-6">
-                    <Input 
-                      label="First Name" 
-                      value={formData.firstName} 
+                    <Input
+                      label="First Name"
+                      value={formData.firstName}
                       onChange={(e) => handleFieldChange('firstName', e.target.value)}
                       placeholder="e.g. Sampati"
                       error={formErrors.firstName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Last Name *" 
-                      value={formData.lastName} 
+                    <Input
+                      label="Last Name *"
+                      value={formData.lastName}
                       onChange={(e) => handleFieldChange('lastName', e.target.value)}
                       placeholder="e.g. Ingale"
                       error={formErrors.lastName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Designation *" 
-                      value={formData.designation} 
+                    <Input
+                      label="Designation *"
+                      value={formData.designation}
                       onChange={(e) => handleFieldChange('designation', e.target.value)}
                       placeholder="e.g. Primary User"
                       error={formErrors.designation}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Date of Retirement *" 
+                    <Input
+                      label="Date of Retirement *"
                       type="date"
-                      value={formData.dateOfRetirement} 
+                      value={formData.dateOfRetirement}
                       onChange={(e) => handleFieldChange('dateOfRetirement', e.target.value)}
                       error={formErrors.dateOfRetirement}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
@@ -926,89 +2052,89 @@ export default function BuyerProfile() {
                   </div>
 
                   <div className="space-y-6">
-                    <Input 
-                      label="Name ( As in PAN ) *" 
-                      value={formData.nameAsInPan} 
+                    <Input
+                      label="Name ( As in PAN ) *"
+                      value={formData.nameAsInPan}
                       onChange={(e) => handleFieldChange('nameAsInPan', e.target.value)}
                       placeholder="ENTER FULL NAME"
                       error={formErrors.nameAsInPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Organisation PAN *" 
-                      value={formData.orgPan} 
+                    <Input
+                      label="Organisation PAN *"
+                      value={formData.orgPan}
                       onChange={(e) => handleFieldChange('orgPan', e.target.value)}
                       placeholder="ABCDE1234F"
                       error={formErrors.orgPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Date (As in Pan) *" 
+                    <Input
+                      label="Date (As in Pan) *"
                       type="date"
-                      value={formData.dateAsInPan} 
+                      value={formData.dateAsInPan}
                       onChange={(e) => handleFieldChange('dateAsInPan', e.target.value)}
                       error={formErrors.dateAsInPan}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
 
                     <div className="space-y-4 pt-2">
-                       <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Are you registered for GST? *</p>
-                       <div className="flex items-center gap-8">
-                          <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                               type="radio" 
-                               name="gst" 
-                               value="yes"
-                               checked={formData.registeredForGst === 'yes'}
-                               onChange={() => setFormData({...formData, registeredForGst: 'yes'})}
-                               className="w-4 h-4 text-[#12335f] border-slate-300 focus:ring-[#12335f]/20"
-                             />
-                             <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">Yes</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                               type="radio" 
-                               name="gst" 
-                               value="no"
-                               checked={formData.registeredForGst === 'no'}
-                               onChange={() => setFormData({...formData, registeredForGst: 'no'})}
-                               className="w-4 h-4 text-[#12335f] border-slate-300 focus:ring-[#12335f]/20"
-                             />
-                             <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">No</span>
-                          </label>
-                       </div>
+                      <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider ml-1">Are you registered for GST? *</p>
+                      <div className="flex items-center gap-8">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="gst"
+                            value="yes"
+                            checked={formData.registeredForGst === 'yes'}
+                            onChange={() => setFormData({ ...formData, registeredForGst: 'yes' })}
+                            className="w-4 h-4 text-[#12335f] border-slate-300 focus:ring-[#12335f]/20"
+                          />
+                          <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">Yes</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="gst"
+                            value="no"
+                            checked={formData.registeredForGst === 'no'}
+                            onChange={() => setFormData({ ...formData, registeredForGst: 'no' })}
+                            className="w-4 h-4 text-[#12335f] border-slate-300 focus:ring-[#12335f]/20"
+                          />
+                          <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">No</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-6 rounded-2xl flex items-start gap-4 group cursor-pointer" onClick={() => setFormData({...formData, gstNotLiable: !formData.gstNotLiable})}>
-                   <input 
-                     type="checkbox" 
-                     checked={formData.gstNotLiable}
-                     onChange={() => {}} 
-                     className="mt-1 w-4 h-4 text-[#12335f] rounded border-slate-300"
-                   />
-                   <p className="text-xs font-medium text-slate-600 leading-relaxed  group-hover:text-slate-900 transition-colors">
-                     I hereby declare that I am not liable to be registered under the ambit of GST.
-                   </p>
+                <div className="bg-slate-50 p-6 rounded-2xl flex items-start gap-4 group cursor-pointer" onClick={() => setFormData({ ...formData, gstNotLiable: !formData.gstNotLiable })}>
+                  <input
+                    type="checkbox"
+                    checked={formData.gstNotLiable}
+                    onChange={() => { }}
+                    className="mt-1 w-4 h-4 text-[#12335f] rounded border-slate-300"
+                  />
+                  <p className="text-xs font-medium text-slate-600 leading-relaxed  group-hover:text-slate-900 transition-colors">
+                    I hereby declare that I am not liable to be registered under the ambit of GST.
+                  </p>
                 </div>
 
                 <div className="bg-[#12335f]/5 border border-[#12335f]/10 p-6 rounded-3xl flex items-start gap-4">
-                   <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-[#12335f] shadow-sm shrink-0">
-                      <Shield className="h-5 w-5" />
-                   </div>
-                   <div className="space-y-1">
-                      <p className="text-[10px] font-black uppercase text-[#12335f] tracking-widest leading-none">Security Verification Protocol</p>
-                      <p className="text-xs font-semibold text-slate-600 leading-relaxed pt-1">
-                         To authorize modifications to your Personal Information, an OTP will be sent to your registered email. After you enter the OTP, click verify to automatically update and save the changes.
-                      </p>
-                   </div>
+                  <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-[#12335f] shadow-sm shrink-0">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black uppercase text-[#12335f] tracking-widest leading-none">Security Verification Protocol</p>
+                    <p className="text-xs font-semibold text-slate-600 leading-relaxed pt-1">
+                      To authorize modifications to your Personal Information, an OTP will be sent to your registered email. After you enter the OTP, click verify to automatically update and save the changes.
+                    </p>
+                  </div>
                 </div>
 
                 {personalOtpSent && (
                   <div className="max-w-md pt-4 animate-in fade-in duration-300">
-                    <Input 
-                      label="Enter Email OTP *" 
+                    <Input
+                      label="Enter Email OTP *"
                       placeholder="Enter 6-digit OTP sent to email"
                       value={personalOtp}
                       onChange={(e) => {
@@ -1031,23 +2157,23 @@ export default function BuyerProfile() {
                 )}
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end gap-4">
-                   {personalOtpSent && (
-                     <Button 
-                       onClick={handleGetPersonalOtp}
-                       disabled={isSendingOtp || isSaving}
-                       variant="outline"
-                       className="border border-slate-200 text-[#12335f] hover:bg-slate-50 font-black uppercase text-xs tracking-wider h-14 px-8 rounded-2xl transition-all"
-                     >
-                       {isSendingOtp ? 'Sending...' : 'Resend OTP'}
-                     </Button>
-                   )}
-                   <Button 
-                     onClick={handleSave}
-                     disabled={isSaving || isSendingOtp || (personalOtpSent && !personalOtp)}
-                     className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
-                   >
-                     {isSaving ? 'Processing...' : personalOtpSent ? 'Verify & Save' : 'Save Personal Info'}
-                   </Button>
+                  {personalOtpSent && (
+                    <Button
+                      onClick={handleGetPersonalOtp}
+                      disabled={isSendingOtp || isSaving}
+                      variant="outline"
+                      className="border border-slate-200 text-[#12335f] hover:bg-slate-50 font-black uppercase text-xs tracking-wider h-14 px-8 rounded-2xl transition-all"
+                    >
+                      {isSendingOtp ? 'Sending...' : 'Resend OTP'}
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving || isSendingOtp || (personalOtpSent && !personalOtp)}
+                    className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
+                  >
+                    {isSaving ? 'Processing...' : personalOtpSent ? 'Verify & Save' : 'Save Personal Info'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -1059,11 +2185,11 @@ export default function BuyerProfile() {
                     <h3 className="text-lg font-black text-slate-900 uppercase ">Competent Authority Details</h3>
                     <Badge className="bg-[#12335f]/5 text-[#12335f] border-[#12335f]/10 rounded-lg px-4 py-1 text-[9px] font-black ">APPROVAL CHAIN</Badge>
                   </div>
-                  
+
                   <div className="max-w-xl">
-                    <Input 
-                      label="Competent Authority Email *" 
-                      value={formData.competentAuthorityEmail} 
+                    <Input
+                      label="Competent Authority Email *"
+                      value={formData.competentAuthorityEmail}
                       onChange={(e) => handleFieldChange('competentAuthorityEmail', e.target.value)}
                       placeholder="e.g. secy.dhe@nic.in"
                       error={formErrors.competentAuthorityEmail}
@@ -1079,26 +2205,26 @@ export default function BuyerProfile() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
-                    <Input 
-                      label="First Name *" 
-                      value={formData.verifyingFirstName} 
+                    <Input
+                      label="First Name *"
+                      value={formData.verifyingFirstName}
                       onChange={(e) => handleFieldChange('verifyingFirstName', e.target.value)}
                       placeholder="DATTATRAY"
                       error={formErrors.verifyingFirstName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Last Name *" 
-                      value={formData.verifyingLastName} 
+                    <Input
+                      label="Last Name *"
+                      value={formData.verifyingLastName}
                       onChange={(e) => handleFieldChange('verifyingLastName', e.target.value)}
                       placeholder="INGALE"
                       error={formErrors.verifyingLastName}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="space-y-1">
-                      <Input 
-                        label="Email (Official) *" 
-                        value={formData.verifyingEmail} 
+                      <Input
+                        label="Email (Official) *"
+                        value={formData.verifyingEmail}
                         onChange={(e) => handleFieldChange('verifyingEmail', e.target.value)}
                         placeholder="buyer@example.com"
                         error={formErrors.verifyingEmail}
@@ -1106,18 +2232,18 @@ export default function BuyerProfile() {
                       />
                       <p className="text-[10px] text-slate-400 font-medium  ml-1">Secondary email must be registered with your official organization domain.</p>
                     </div>
-                    <Input 
-                      label="Mobile (Official) *" 
-                      value={formData.verifyingMobile} 
+                    <Input
+                      label="Mobile (Official) *"
+                      value={formData.verifyingMobile}
                       onChange={(e) => handleFieldChange('verifyingMobile', e.target.value)}
                       placeholder="9763982676"
                       error={formErrors.verifyingMobile}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="md:col-span-2 max-w-xl">
-                      <Input 
-                        label="Designation *" 
-                        value={formData.verifyingDesignation} 
+                      <Input
+                        label="Designation *"
+                        value={formData.verifyingDesignation}
                         onChange={(e) => handleFieldChange('verifyingDesignation', e.target.value)}
                         placeholder="OWNER"
                         error={formErrors.verifyingDesignation}
@@ -1128,13 +2254,13 @@ export default function BuyerProfile() {
                 </div>
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end">
-                   <Button 
-                     onClick={handleSave}
-                     disabled={isSaving}
-                     className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
-                   >
-                     {isSaving ? 'Processing...' : 'Save Authority Details'}
-                   </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
+                  >
+                    {isSaving ? 'Processing...' : 'Save Authority Details'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -1146,7 +2272,7 @@ export default function BuyerProfile() {
                     <h3 className="text-lg font-black text-slate-900 uppercase ">User Details</h3>
                     <Badge className="bg-slate-50 text-slate-700 border-slate-100 rounded-lg px-4 py-1 text-[9px] font-black ">CURRENT ACCOUNT</Badge>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">User Id</p>
@@ -1167,9 +2293,9 @@ export default function BuyerProfile() {
 
                   <div className="space-y-8">
                     <div className="max-w-xl">
-                      <Input 
-                        label="Mobile number linked with Aadhaar *" 
-                        value={formData.aadhaarMobile} 
+                      <Input
+                        label="Mobile number linked with Aadhaar *"
+                        value={formData.aadhaarMobile}
                         onChange={(e) => handleFieldChange('aadhaarMobile', e.target.value)}
                         placeholder="Enter mobile number linked with Aadhaar"
                         error={formErrors.aadhaarMobile}
@@ -1177,35 +2303,35 @@ export default function BuyerProfile() {
                       />
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-3xl flex items-start gap-4 group cursor-pointer" onClick={() => setFormData({...formData, aadhaarConsent: !formData.aadhaarConsent})}>
-                       <input 
-                         type="checkbox" 
-                         checked={formData.aadhaarConsent}
-                         onChange={() => {}} 
-                         className="mt-1 w-4 h-4 text-[#12335f] rounded border-slate-300"
-                       />
-                       <div className="space-y-3">
-                         <p className="text-[11px] font-medium text-slate-600 leading-relaxed  group-hover:text-slate-900 transition-colors">
-                           I, the holder of Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
-                         </p>
-                         <p className="text-[11px] font-medium text-slate-400 leading-relaxed ">
-                           मैं, आधार का धारक, एतदद्वारा अपनी पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को पंजीकरण हेतु प्रयोग में लाने हेतु JsgSmile Portal को अपनी सहमति प्रदान करता हूँ। JsgSmile Portal ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
-                         </p>
-                       </div>
+                    <div className="bg-slate-50 p-6 rounded-3xl flex items-start gap-4 group cursor-pointer" onClick={() => setFormData({ ...formData, aadhaarConsent: !formData.aadhaarConsent })}>
+                      <input
+                        type="checkbox"
+                        checked={formData.aadhaarConsent}
+                        onChange={() => { }}
+                        className="mt-1 w-4 h-4 text-[#12335f] rounded border-slate-300"
+                      />
+                      <div className="space-y-3">
+                        <p className="text-[11px] font-medium text-slate-600 leading-relaxed  group-hover:text-slate-900 transition-colors">
+                          I, the holder of Aadhaar, hereby give my consent to JsgSmile Portal, for using my Aadhaar number as allotted by UIDAI for registration. JsgSmile Portal has informed me that my Aadhaar data will not be stored/shared.
+                        </p>
+                        <p className="text-[11px] font-medium text-slate-400 leading-relaxed ">
+                          मैं, आधार का धारक, एतदद्वारा अपनी पहचान प्राधिकरण द्वारा आवंटित अपने आधार नंबर को पंजीकरण हेतु प्रयोग में लाने हेतु JsgSmile Portal को अपनी सहमति प्रदान करता हूँ। JsgSmile Portal ने मुझे अवगत कराया है कि मेरे आधार डेटा को संग्रहीत/साझा नहीं किया जाएगा।
+                        </p>
+                      </div>
                     </div>
 
-                    
+
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-slate-50 flex justify-end">
-                   <Button 
-                     onClick={handleSave}
-                     disabled={isSaving}
-                     className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
-                   >
-                     {isSaving ? 'Verifying...' : 'Verify & Update'}
-                   </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="bg-[#12335f] hover:bg-slate-800 text-white font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-[0.98]"
+                  >
+                    {isSaving ? 'Verifying...' : 'Verify & Update'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -1252,7 +2378,7 @@ export default function BuyerProfile() {
                       <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                       <p className="text-xs font-bold ">To change your organisation hierarchy please click here</p>
                     </div>
-                    <Button 
+                    <Button
                       className="bg-[#1e67d6] hover:bg-[#1656b5] text-white font-black uppercase  text-xs tracking-wider h-14 px-10 rounded-xl shadow-lg transition-all active:scale-[0.98]"
                       onClick={() => toast.info('Hierarchy change request submitted to administrator')}
                     >
@@ -1270,7 +2396,7 @@ export default function BuyerProfile() {
                     <h3 className="text-lg font-black text-slate-900 uppercase ">Email/Mobile</h3>
                     <Badge className="bg-slate-50 text-slate-700 border-slate-100 rounded-lg px-4 py-1 text-[9px] font-black ">CURRENT CONTACT</Badge>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">User Id</p>
@@ -1294,9 +2420,9 @@ export default function BuyerProfile() {
                   </div>
 
                   <div className="space-y-6 max-w-2xl">
-                    <Input 
-                      label="Official Email Id *" 
-                      value={formData.newEmail} 
+                    <Input
+                      label="Official Email Id *"
+                      value={formData.newEmail}
                       onChange={(e) => {
                         handleFieldChange('newEmail', e.target.value);
                         setEmailOtpSent(false);
@@ -1306,9 +2432,9 @@ export default function BuyerProfile() {
                       error={formErrors.newEmail}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
-                    <Input 
-                      label="Verify Email Id *" 
-                      value={formData.verifyEmail} 
+                    <Input
+                      label="Verify Email Id *"
+                      value={formData.verifyEmail}
                       onChange={(e) => {
                         handleFieldChange('verifyEmail', e.target.value);
                         setEmailOtpSent(false);
@@ -1351,13 +2477,13 @@ export default function BuyerProfile() {
                       {isSendingEmailOtp ? 'Sending...' : 'Resend OTP'}
                     </Button>
                   )}
-                   <Button 
-                     onClick={emailOtpSent ? handleChangeEmail : handleSendEmailOtp}
-                     disabled={isSaving || isSendingEmailOtp}
-                     className="bg-slate-200 hover:bg-slate-300 text-slate-600 font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-sm transition-all active:scale-[0.98]"
-                   >
-                     {isSendingEmailOtp ? 'Sending...' : isSaving ? 'Updating...' : emailOtpSent ? 'Update Email' : 'Send OTP'}
-                   </Button>
+                  <Button
+                    onClick={emailOtpSent ? handleChangeEmail : handleSendEmailOtp}
+                    disabled={isSaving || isSendingEmailOtp}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-600 font-black uppercase  text-xs tracking-[0.2em] h-14 px-10 rounded-2xl shadow-sm transition-all active:scale-[0.98]"
+                  >
+                    {isSendingEmailOtp ? 'Sending...' : isSaving ? 'Updating...' : emailOtpSent ? 'Update Email' : 'Send OTP'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -1373,7 +2499,7 @@ export default function BuyerProfile() {
                   <div className="h-16 w-16 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center rotate-3 shadow-lg shadow-red-200/50">
                     <Trash2 className="h-8 w-8" />
                   </div>
-                  
+
                   <div className="space-y-4">
                     <h4 className="text-xl font-black text-slate-900 uppercase ">Are you absolutely sure?</h4>
                     <p className="text-sm font-medium text-slate-600  leading-relaxed max-w-2xl">
@@ -1384,10 +2510,10 @@ export default function BuyerProfile() {
                   <div className="space-y-6 pt-4">
                     <label className="flex items-start gap-4 cursor-pointer group">
                       <div className="mt-1">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={formData.deactivateConsent}
-                          onChange={(e) => setFormData({...formData, deactivateConsent: e.target.checked})}
+                          onChange={(e) => setFormData({ ...formData, deactivateConsent: e.target.checked })}
                           className="h-5 w-5 rounded-lg border-red-200 text-red-600 focus:ring-red-500 transition-all cursor-pointer"
                         />
                       </div>
@@ -1398,13 +2524,13 @@ export default function BuyerProfile() {
                     </label>
 
                     <div className="pt-6 border-t border-red-100 flex justify-end">
-                      <Button 
+                      <Button
                         disabled={!formData.deactivateConsent || isSaving}
                         onClick={() => toast.error('Please contact MSME administrator for account deactivation')}
                         className={cn(
                           "h-14 px-10 rounded-2xl font-black uppercase  text-xs tracking-widest transition-all active:scale-[0.98] shadow-xl",
-                          formData.deactivateConsent 
-                            ? "bg-red-600 hover:bg-red-700 text-white shadow-red-200" 
+                          formData.deactivateConsent
+                            ? "bg-red-600 hover:bg-red-700 text-white shadow-red-200"
                             : "bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 shadow-none"
                         )}
                       >
@@ -1425,13 +2551,13 @@ export default function BuyerProfile() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-8 border-t border-gray-100 gap-4 mt-4">
                   <p className="text-sm font-semibold text-slate-600  max-w-xl">Please complete OTP verification, by clicking the below button to proceed with change of password.</p>
                   <Button className="bg-[#12335f] hover:bg-slate-800 text-white rounded-xl px-8 h-12 font-black uppercase  text-xs tracking-widest whitespace-nowrap shadow-lg shadow-blue-100">
-                     Get OTP
+                    Get OTP
                   </Button>
                 </div>
               </div>
             )}
 
-            {activeSection !== 'address' && activeSection !== 'bank' && activeSection !== 'personal' && activeSection !== 'referral' && activeSection !== 'mobile' && activeSection !== 'hierarchy' && activeSection !== 'email' && activeSection !== 'deactivate' && activeSection !== 'password' && (
+            {activeSection !== 'address' && activeSection !== 'bank' && activeSection !== 'personal' && activeSection !== 'referral' && activeSection !== 'mobile' && activeSection !== 'hierarchy' && activeSection !== 'email' && activeSection !== 'deactivate' && activeSection !== 'password' && activeSection !== 'showcase_profile' && (
               <div className="flex flex-col items-center justify-center py-20 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="h-20 w-20 rounded-[2rem] bg-slate-50 flex items-center justify-center rotate-3 transition-transform hover:rotate-0">
                   {SIDEBAR_NAV.find(s => s.id === activeSection)?.icon && (
@@ -1454,7 +2580,7 @@ export default function BuyerProfile() {
           </CardContent>
         </Card>
 
-       
+
       </main>
 
       {/* Background Decorations */}

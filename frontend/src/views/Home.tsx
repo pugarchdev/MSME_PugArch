@@ -1,21 +1,40 @@
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
-import { Building2, Store, ArrowRight, ShieldCheck, CheckCircle2, LayoutDashboard, LogIn, Award } from 'lucide-react';
+import { Building2, Store, ArrowRight, ShieldCheck, CheckCircle2, LayoutDashboard, MapPin } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../lib/api';
 
 export default function Home() {
   const { user } = useAuth();
+  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrgs = async () => {
+      try {
+        const res = await api.fetch('/api/buyer-showcase/public/organizations');
+        if (res.ok) {
+          const body = await res.json();
+          setOrganizations(body.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch verified buyer organizations', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOrgs();
+  }, []);
 
   return (
     <div className="relative min-h-dvh w-full bg-[#f8fafc] text-[#1f2937] flex flex-col justify-between overflow-hidden">
       {/* 3-Color Flag Accent Strip at the very top */}
-      <div className="brand-tricolor-strip w-full absolute top-0 left-0 z-50" />
+      <div className="brand-tricolor-strip w-full absolute top-0 left-0 z-50 h-1.5 bg-gradient-to-r from-orange-500 via-white to-green-600" />
 
       {/* Dynamic Glow Orbs in Background */}
       <div className="absolute top-[-10%] left-[-15%] h-[50%] w-[50%] rounded-full bg-blue-100/50 blur-[140px] animate-pulse pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-15%] h-[50%] w-[50%] rounded-full bg-amber-100/40 blur-[140px] animate-pulse pointer-events-none" />
-
-
 
       {/* Hero Section Container */}
       <div className="relative w-full max-w-[1600px] mx-auto flex-grow flex flex-col justify-center px-4 py-10 sm:px-6 md:px-10 lg:px-16 xl:px-20 lg:py-16 xl:py-20 z-10">
@@ -123,6 +142,77 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Verified Buyer Requirements Showcase Strip */}
+      {organizations.length > 0 && (
+        <div className="relative w-full max-w-[1600px] mx-auto px-4 sm:px-6 md:px-10 lg:px-16 xl:px-20 py-12 z-10 border-t border-slate-200/50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+              <p className="text-[10px] sm:text-xs font-black text-[#c8a45c] uppercase tracking-[0.2em]">Verified Industry Partners</p>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#0b2447] tracking-tight uppercase mt-1">
+                Buyer Requirements Showcase
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold mt-1">
+                Explore frequently bought items and requirements posted by verified buyer organizations.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {organizations.map((org) => (
+              <Link key={org.id} href={`/buyer-requirements/${org.id}`}>
+                <div className="group relative flex flex-col justify-between h-full rounded-3xl border border-white bg-white/60 hover:bg-white/95 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all hover:translate-y-[-4px] duration-300 cursor-pointer">
+                  <div>
+                    {/* Banner preview or top accent */}
+                    <div className="h-20 w-full rounded-2xl overflow-hidden bg-slate-100 mb-4 relative border">
+                      {org.bannerUrl ? (
+                        <img src={org.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-slate-100 to-slate-200 flex items-center justify-center">
+                          <Building2 className="h-6 w-6 text-slate-350" />
+                        </div>
+                      )}
+                      {/* Logo badge overlapping banner */}
+                      <div className="absolute bottom-2 left-2 w-10 h-10 rounded-xl bg-white border flex items-center justify-center p-1 shadow-sm">
+                        {org.logoUrl ? (
+                          <img src={org.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                        ) : (
+                          <Building2 className="h-4 w-4 text-slate-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 mt-2">
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-sm font-black text-[#0b2447] tracking-tight truncate group-hover:text-amber-700 transition-colors uppercase">
+                          {org.organizationName}
+                        </h3>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      </div>
+                      
+                      {org.departmentName && (
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">
+                          {org.departmentName}
+                        </p>
+                      )}
+
+                      <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {org.city || 'Odisha'}, {org.state || 'IN'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100/50 mt-4 flex items-center justify-between text-[10px] font-black uppercase text-slate-400 tracking-wider group-hover:text-[#0b2447] transition-colors">
+                    <span>View Requirements</span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Premium Footer */}
       <footer className="w-full bg-white/50 backdrop-blur-sm border-t border-slate-200/50 py-5 sm:py-6 px-4 sm:px-6 z-10">

@@ -37,6 +37,7 @@ export type PurchaseOrderDto = {
   paymentTerms?: string;
   deliveryType?: string;
   createdAt?: string;
+  updatedAt?: string;
   acceptedAt?: string;
   items?: Array<{ itemName?: string; quantity?: number; unitPrice?: number | string; totalAmount?: number | string }>;
   deliveryTrackings?: DeliveryTrackingDto[];

@@ -204,6 +204,30 @@ export interface MarketplaceSeller {
     _count?: { products: number; services: number };
 }
 
+export interface BuyerRequirementItem {
+    id: number;
+    productId?: number | null;
+    itemName: string;
+    description?: string | null;
+    quantity?: number | string | null;
+    unitOfMeasure?: string | null;
+    estimatedUnitPrice?: number | string | null;
+    specifications?: Record<string, unknown> | null;
+    product?: { id: number; name: string; hsnCode?: string; unitOfMeasure?: string } | null;
+}
+
+export interface BuyerRequirementDirectPurchase {
+    deliveryAddressText?: string | null;
+    department?: string | null;
+    budgetHead?: string | null;
+    costCenter?: string | null;
+    justification?: string | null;
+    remarks?: string | null;
+    deliveryInstructions?: string | null;
+    requiredDeliveryDate?: string | null;
+    totalAmount?: number | string | null;
+}
+
 export interface BuyerRequirement {
     id: number;
     sourceModel?: 'BUYER_REQUIREMENT' | 'REQUIREMENT' | string;
@@ -234,6 +258,13 @@ export interface BuyerRequirement {
     contactPerson?: string | null;
     attachmentUrl?: string | null;
     terms?: string | null;
+    procurementMethod?: string | null;
+    procurementMethodLabel?: string | null;
+    estimatedValue?: number | string | null;
+    currency?: string | null;
+    items?: BuyerRequirementItem[];
+    itemSummary?: string | null;
+    directPurchase?: BuyerRequirementDirectPurchase | null;
     category?: { id: number; name: string; slug?: string };
     buyerOrganization?: {
         id: number;

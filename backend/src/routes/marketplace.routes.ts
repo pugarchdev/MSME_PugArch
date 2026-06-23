@@ -137,6 +137,7 @@ const publicLegacyRequirementSelect = {
     procurementMethod: true,
     status: true,
     estimatedValue: true,
+    currency: true,
     requiredBy: true,
     createdAt: true,
     updatedAt: true,
@@ -152,9 +153,46 @@ const publicLegacyRequirementSelect = {
     _count: { select: { tenders: true } }
 };
 
+const publicLegacyRequirementDetailSelect = {
+    ...publicLegacyRequirementSelect,
+    payload: true,
+    items: {
+        select: {
+            id: true,
+            productId: true,
+            itemName: true,
+            description: true,
+            quantity: true,
+            unitOfMeasure: true,
+            estimatedUnitPrice: true,
+            specifications: true,
+            product: { select: { id: true, name: true, hsnCode: true, unitOfMeasure: true } }
+        },
+        orderBy: { id: 'asc' as const }
+    },
+    directPurchases: {
+        select: {
+            deliveryAddressText: true,
+            department: true,
+            budgetHead: true,
+            costCenter: true,
+            justification: true,
+            remarks: true,
+            deliveryInstructions: true,
+            requiredDeliveryDate: true,
+            totalAmount: true
+        },
+        take: 1,
+        orderBy: { createdAt: 'desc' as const }
+    }
+};
+
 const publicRequirementDetailSelect = {
     ...publicRequirementListSelect,
-    requiredDocuments: true
+    requiredDocuments: true,
+    contactPerson: true,
+    terms: true,
+    attachmentUrl: true
 };
 
 const ownerRequirementSelect = {
@@ -267,6 +305,15 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
         verificationStatus: 'VERIFIED'
     };
     const requiredBy = requirement.requiredBy || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const items = Array.isArray(requirement.items) ? requirement.items : [];
+    const totalQty = items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
+    const primaryUnit = items[0]?.unitOfMeasure || null;
+    const directPurchase = Array.isArray(requirement.directPurchases) ? requirement.directPurchases[0] : null;
+    const procurementMethod = String(requirement.procurementMethod || '').replace(/_/g, ' ');
+    const itemSummary = items.length
+        ? items.map((item: any) => item.itemName).filter(Boolean).join(', ')
+        : null;
+
     return decorateRequirement({
         id: -Number(requirement.id),
         sourceModel: 'REQUIREMENT',
@@ -275,11 +322,11 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
         requirementType: 'PRODUCT',
         categoryId: requirement.categoryId,
         description: requirement.description || requirement.title,
-        quantity: null,
-        unit: null,
-        location: [organization.city, organization.district, organization.state].filter(Boolean).join(', ') || null,
-        budgetMin: requirement.estimatedValue || null,
-        budgetMax: requirement.estimatedValue || null,
+        quantity: totalQty > 0 ? totalQty : null,
+        unit: primaryUnit,
+        location: [organization.city, organization.district, organization.state].filter(Boolean).join(', ') || directPurchase?.deliveryAddressText || null,
+        budgetMin: requirement.estimatedValue || directPurchase?.totalAmount || null,
+        budgetMax: requirement.estimatedValue || directPurchase?.totalAmount || null,
         lastDate: requiredBy,
         visibility: 'PUBLIC',
         status: requirement.status === 'FULFILLED' ? 'AWARDED' : requirement.status === 'CANCELLED' ? 'CANCELLED' : 'OPEN',
@@ -291,7 +338,36 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
         category: requirement.category,
         buyerOrganization: organization,
         _count: { responses: requirement._count?.tenders || 0 },
-        requirementNumber: requirement.requirementNumber
+        requirementNumber: requirement.requirementNumber,
+        procurementMethod: requirement.procurementMethod,
+        procurementMethodLabel: procurementMethod || null,
+        estimatedValue: requirement.estimatedValue || directPurchase?.totalAmount || null,
+        currency: requirement.currency || 'INR',
+        items: items.map((item: any) => ({
+            id: item.id,
+            productId: item.productId,
+            itemName: item.itemName,
+            description: item.description,
+            quantity: item.quantity,
+            unitOfMeasure: item.unitOfMeasure,
+            estimatedUnitPrice: item.estimatedUnitPrice,
+            specifications: item.specifications,
+            product: item.product || null
+        })),
+        itemSummary,
+        directPurchase: directPurchase
+            ? {
+                deliveryAddressText: directPurchase.deliveryAddressText,
+                department: directPurchase.department,
+                budgetHead: directPurchase.budgetHead,
+                costCenter: directPurchase.costCenter,
+                justification: directPurchase.justification,
+                remarks: directPurchase.remarks,
+                deliveryInstructions: directPurchase.deliveryInstructions,
+                requiredDeliveryDate: directPurchase.requiredDeliveryDate,
+                totalAmount: directPurchase.totalAmount
+            }
+            : null
     });
 };
 
@@ -1955,7 +2031,7 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
             const legacyId = Math.abs(id);
             const legacyReq = await db.requirement.findFirst({
                 where: { id: legacyId },
-                select: publicLegacyRequirementSelect
+                select: publicLegacyRequirementDetailSelect
             });
             if (!legacyReq) {
                 return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
@@ -1972,7 +2048,7 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
             } else {
                 const legacyReq = await db.requirement.findFirst({
                     where: { id },
-                    select: publicLegacyRequirementSelect
+                    select: publicLegacyRequirementDetailSelect
                 });
                 if (legacyReq) {
                     requirement = mapLegacyRequirementToPublic(legacyReq);

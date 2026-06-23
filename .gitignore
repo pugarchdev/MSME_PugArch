@@ -52,4 +52,5 @@ graphify.ps1
 
 # Codex / AI Agent config
 .codex/
+.agent/
 

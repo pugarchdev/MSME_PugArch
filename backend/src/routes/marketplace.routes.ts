@@ -1831,6 +1831,7 @@ router.get('/marketplace/sellers/:id', shortCache(60), async (req: Request, res:
             where: { id },
             include: {
                 logoFile: { select: organizationLogoSelect },
+                profile: { select: { logoUrl: true, bannerUrl: true } },
                 sellerProfiles: {
                     include: {
                         offices: true
@@ -1863,6 +1864,8 @@ router.get('/marketplace/sellers/:id', shortCache(60), async (req: Request, res:
             state: org.state,
             email: org.users?.map((u: any) => u.email).filter(Boolean).join(', ') || sellerUser.email || null,
             mobile: org.users?.map((u: any) => u.mobile).filter(Boolean).join(', ') || sellerUser.mobile || null,
+            logoUrl: org.profile?.logoUrl || org.logoFile?.url || null,
+            bannerUrl: org.profile?.bannerUrl || null,
             sellerProfile: {
                 ...primaryProfile,
                 businessName: org.organizationName,

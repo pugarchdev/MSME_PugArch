@@ -160,75 +160,97 @@ export default function MarketplaceSellerStore() {
                 </div>
 
                 {/* Seller Hero Card */}
-                <div className="relative overflow-hidden bg-gradient-to-r from-[#07172e] via-[#0b2447] to-[#12335f] text-white">
-                    {/* Background decorations */}
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,145,0,0.1),transparent_40%)]" />
-                    <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(7,23,46,0.4))]" />
+                <div className="bg-white border-b border-slate-200">
+                    {/* Banner Area */}
+                    <div className="w-full h-48 sm:h-64 md:h-80 relative overflow-hidden bg-gradient-to-r from-[#07172e] via-[#0b2447] to-[#12335f]">
+                        {vendor.bannerUrl ? (
+                            <img
+                                src={vendor.bannerUrl}
+                                alt={`${name} Banner`}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <>
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,145,0,0.1),transparent_40%)]" />
+                                <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(7,23,46,0.4))]" />
+                            </>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
+                        
+                        {/* Back Button overlay on banner */}
+                        <div className="absolute top-4 left-4 z-20">
+                            <button
+                                onClick={() => router.back()}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white bg-slate-950/40 hover:bg-slate-950/60 border border-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm transition-all"
+                            >
+                                <ArrowLeft className="h-3.5 w-3.5" /> Back
+                            </button>
+                        </div>
+                    </div>
 
-                    <div className="relative max-w-7xl mx-auto px-4 py-10 sm:py-12">
-                        <button
-                            onClick={() => router.back()}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/60 hover:text-white mb-6 transition-all duration-200 hover:-translate-x-0.5 active:scale-95 bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm"
-                        >
-                            <ArrowLeft className="h-3.5 w-3.5" /> Back
-                        </button>
-
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-                                {/* Avatar */}
-                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-white/15 to-white/5 border border-white/20 flex items-center justify-center text-3xl font-black text-white shrink-0 shadow-lg backdrop-blur-md">
+                    {/* Profile Header Info with Overlapping Logo */}
+                    <div className="max-w-7xl mx-auto px-4 pb-6 pt-16 sm:pt-20 relative">
+                        {/* Logo Box */}
+                        <div className="absolute -top-16 sm:-top-20 left-4 w-28 h-28 sm:w-36 sm:h-36 rounded-2xl bg-white border border-slate-200/80 shadow-lg flex items-center justify-center p-2 z-20 transition-transform duration-300 hover:scale-105">
+                            {vendor.logoUrl ? (
+                                <img 
+                                    src={vendor.logoUrl} 
+                                    alt={`${name} Logo`} 
+                                    className="w-full h-full object-contain rounded-xl bg-white" 
+                                />
+                            ) : (
+                                <div className="w-full h-full rounded-xl flex items-center justify-center text-4xl sm:text-5xl font-black bg-gradient-to-br from-blue-50 to-indigo-100 text-[#0b2447] border border-indigo-150">
                                     {initial}
                                 </div>
-                                {/* Info */}
-                                <div className="min-w-0 space-y-1.5">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-blue-300 backdrop-blur-sm">
-                                            Verified Seller
+                            )}
+                        </div>
+
+                        {/* Content Grid */}
+                        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pl-0 sm:pl-40 pt-2 sm:pt-0">
+                            <div className="min-w-0 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-blue-700">
+                                        Verified Seller
+                                    </span>
+                                    {profile.isUdyamCertified && (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-green-700">
+                                            <BadgeCheck className="h-3.5 w-3.5 text-green-600" /> Udyam Certified
                                         </span>
-                                        {profile.isUdyamCertified && (
-                                            <span className="inline-flex items-center gap-1 rounded-full border border-green-400/30 bg-green-500/10 px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-green-300 backdrop-blur-sm">
-                                                <BadgeCheck className="h-3 w-3" /> Udyam Certified
-                                            </span>
-                                        )}
-                                    </div>
-                                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-none">{name}</h1>
-
-                                    {/* Personal Seller Name/Contact */}
-                                    {vendor.sellerName && (
-                                        <p className="text-xs text-white/85 font-medium mt-1 inline-flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/5 backdrop-blur-sm">
-                                            <User className="h-3.5 w-3.5 text-blue-300" />
-                                            Representative: <span className="text-white font-bold">{vendor.sellerName}</span>
-                                        </p>
                                     )}
+                                </div>
+                                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 leading-tight">{name}</h1>
 
-                                    {profile.nameAsInPan && profile.nameAsInPan !== name && (
-                                        <p className="text-[11px] text-white/50 font-medium">{profile.nameAsInPan}</p>
-                                    )}
+                                {/* Representative Name */}
+                                {vendor.sellerName && (
+                                    <p className="text-xs text-slate-600 font-medium inline-flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                                        <User className="h-3.5 w-3.5 text-blue-600" />
+                                        Representative: <span className="text-slate-800 font-bold">{vendor.sellerName}</span>
+                                    </p>
+                                )}
 
-                                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-white/70">
-                                        {loc && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#ff9100]" />{loc}</span>}
-                                        {profile.organizationType && <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10">{profile.organizationType.replace(/_/g, ' ')}</span>}
-                                        {profile.msmeCategory && <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10">MSME: {profile.msmeCategory}</span>}
-                                    </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs font-semibold text-slate-500">
+                                    {loc && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-orange-500" />{loc}</span>}
+                                    {profile.organizationType && <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200">{profile.organizationType.replace(/_/g, ' ')}</span>}
+                                    {profile.msmeCategory && <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200">MSME: {profile.msmeCategory}</span>}
                                 </div>
                             </div>
 
                             {/* Stats */}
-                            <div className="flex gap-4 shrink-0 self-start md:self-center">
-                                <div className="text-center min-w-[90px] px-4 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md shadow-sm hover:border-white/20 transition-all">
-                                    <p className="text-2xl font-black text-white leading-tight">{products.length}</p>
-                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-white/50 mt-0.5">Products</p>
+                            <div className="flex gap-4 shrink-0">
+                                <div className="text-center min-w-[90px] px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all">
+                                    <p className="text-2xl font-black text-[#0b2447] leading-tight">{products.length}</p>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mt-0.5">Products</p>
                                 </div>
-                                <div className="text-center min-w-[90px] px-4 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md shadow-sm hover:border-white/20 transition-all">
-                                    <p className="text-2xl font-black text-white leading-tight">{services.length}</p>
-                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-white/50 mt-0.5">Services</p>
+                                <div className="text-center min-w-[90px] px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all">
+                                    <p className="text-2xl font-black text-[#0b2447] leading-tight">{services.length}</p>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mt-0.5">Services</p>
                                 </div>
                             </div>
                         </div>
 
                         {/* Action buttons for logged-in Buyers */}
                         {user?.role === 'buyer' && (
-                            <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-white/10">
+                            <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-100 pl-0 sm:pl-40">
                                 <button
                                     onClick={() => router.push(`/buyer/rfq?sellerId=${sellerUserId || vendor.id}`)}
                                     className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-orange-500 text-white text-xs font-bold uppercase tracking-wider hover:bg-orange-600 active:scale-95 transition-all shadow-md shadow-orange-500/25 cursor-pointer"
@@ -237,21 +259,21 @@ export default function MarketplaceSellerStore() {
                                 </button>
                                 <button
                                     onClick={() => router.push(`/buyer/direct-purchase?sellerId=${sellerUserId || vendor.id}`)}
-                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#0b2447] hover:bg-[#12335f] text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                                 >
                                     <ShoppingCart className="h-4 w-4" /> Direct Purchase
                                 </button>
                                 <button
                                     onClick={() => sellerUserId ? router.push(`/buyer/messages?sellerId=${sellerUserId}&subject=${encodeURIComponent(`Supplier inquiry: ${name}`)}`) : toast.error('Seller contact is not available for this store.')}
-                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                                 >
-                                    <MessageSquare className="h-4 w-4" /> Message Seller
+                                    <MessageSquare className="h-4 w-4 text-slate-500" /> Message Seller
                                 </button>
                                 <button
                                     onClick={handleSaveSupplier}
-                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                                 >
-                                    <Building2 className="h-4 w-4" /> Save Supplier
+                                    <Building2 className="h-4 w-4 text-slate-500" /> Save Supplier
                                 </button>
                             </div>
                         )}
@@ -380,7 +402,7 @@ export default function MarketplaceSellerStore() {
 
                     {/* ── About tab ── */}
                     {tab === 'about' && (
-                        <div className="grid lg:grid-cols-2 gap-6">
+                        <div className="max-w-3xl mx-auto space-y-6">
                             <div className="bg-white rounded-2xl border border-slate-200/80 p-6 space-y-5 shadow-sm">
                                 <h3 className="text-sm font-black uppercase tracking-wider text-[#0b2447] border-b border-slate-100 pb-3">Business Profile</h3>
                                 <div className="grid sm:grid-cols-2 gap-4">
@@ -389,47 +411,24 @@ export default function MarketplaceSellerStore() {
                                         ['Organization Type', profile.organizationType || '—'],
                                         ['MSME Category', profile.msmeCategory || profile.msmeType || '—'],
                                         ['Vendor Type', profile.vendorType || '—'],
-                                        ['GST Status', profile.panVerified ? 'Verified' : 'Pending'],
                                     ].map(([label, value]) => (
                                         <div key={label} className="space-y-0.5">
                                             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
                                             <p className="text-xs font-bold text-slate-800">{value}</p>
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-
-                            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 space-y-5 shadow-sm">
-                                <h3 className="text-sm font-black uppercase tracking-wider text-[#0b2447] border-b border-slate-100 pb-3">Contact Information</h3>
-                                <div className="space-y-3.5">
-                                    {vendor.email && (
-                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-700 bg-slate-50/60 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                                            <Mail className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-                                            <span className="truncate">{vendor.email}</span>
-                                        </div>
-                                    )}
-                                    {vendor.mobile && (
-                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-700 bg-slate-50/60 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                                            <Phone className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-                                            <span>{vendor.mobile}</span>
-                                        </div>
-                                    )}
                                     {profile.website && (
-                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-700 bg-slate-50/60 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                                            <Globe className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-                                            <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-[#0b2447] hover:underline truncate">{profile.website}</a>
-                                        </div>
-                                    )}
-                                    {loc && (
-                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-700 bg-slate-50/60 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                                            <MapPin className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-                                            <span>{loc}</span>
+                                        <div className="space-y-0.5 sm:col-span-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Website</p>
+                                            <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#0b2447] hover:underline truncate block">
+                                                {profile.website}
+                                            </a>
                                         </div>
                                     )}
                                 </div>
 
                                 {profile.productCategories?.length > 0 && (
-                                    <div className="pt-2 border-t border-slate-100">
+                                    <div className="pt-4 border-t border-slate-100">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Product Categories</p>
                                         <div className="flex flex-wrap gap-2">
                                             {profile.productCategories.map((c: string) => (

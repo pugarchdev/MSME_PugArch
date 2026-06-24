@@ -182,7 +182,7 @@ const isApiSetuHost = (url: string) => {
 
 const apiSetuCa = () => {
   const configured = clean(process.env.APISETU_CA_CERT).replace(/\\n/g, '\n');
-  return configured || APISETU_ROOT_CA;
+  return configured || undefined;
 };
 
 const apiSetuAllowInsecureTls = () =>
@@ -193,10 +193,11 @@ const requestJson = async (url: string, init: RequestInit, headers: Record<strin
   if (isApiSetuHost(url)) {
     return new Promise<{ ok: boolean; status: number; body: any; text: string }>((resolve, reject) => {
       const allowInsecure = apiSetuAllowInsecureTls();
+      const caCert = apiSetuCa();
       const request = https.request(url, {
         method: init.method || 'GET',
         headers,
-        ca: apiSetuCa(),
+        ...(caCert ? { ca: caCert } : {}),
         rejectUnauthorized: !allowInsecure
       }, response => {
         let text = '';

@@ -39,7 +39,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getBackendPort(filePath, timeoutMs = 30000) {
+async function getBackendPort(filePath, timeoutMs = 90000) {
   const start = Date.now();
   console.log('Waiting for backend to bind and write port to .backend-port...');
   while (Date.now() - start < timeoutMs) {
@@ -78,40 +78,61 @@ async function main() {
     console.log(`Detected backend running on port: ${backendPort}`);
     console.log(`Starting Next.js dev server on port ${port}...`);
 
-    // Next.js executable lookup
-    let nextPath = '';
-    const possiblePaths = [
-      path.resolve(__dirname, '../node_modules/.bin/next'),
-      path.resolve(__dirname, '../frontend/node_modules/.bin/next')
+    // Next.js executable lookup - locate the JS file first to run it directly via Node
+    let nextBinPath = '';
+    const possibleBinPaths = [
+      path.resolve(__dirname, '../node_modules/next/dist/bin/next'),
+      path.resolve(__dirname, '../frontend/node_modules/next/dist/bin/next')
     ];
-    for (const p of possiblePaths) {
-      if (process.platform === 'win32') {
-        if (fs.existsSync(p + '.cmd')) {
-          nextPath = p + '.cmd';
-          break;
-        } else if (fs.existsSync(p + '.bat')) {
-          nextPath = p + '.bat';
-          break;
-        } else if (fs.existsSync(p)) {
-          nextPath = p;
-          break;
-        }
-      } else {
-        if (fs.existsSync(p)) {
-          nextPath = p;
-          break;
-        }
+    for (const p of possibleBinPaths) {
+      if (fs.existsSync(p)) {
+        nextBinPath = p;
+        break;
       }
     }
 
-    if (!nextPath) {
-      nextPath = process.platform === 'win32' ? 'next.cmd' : 'next';
+    let spawnCmd = process.execPath;
+    let spawnArgs = [nextBinPath, 'dev', '-p', String(port)];
+    let useShell = false;
+
+    if (!nextBinPath) {
+      // Fallback: look for .cmd/shell binary
+      let nextPath = '';
+      const possiblePaths = [
+        path.resolve(__dirname, '../node_modules/.bin/next'),
+        path.resolve(__dirname, '../frontend/node_modules/.bin/next')
+      ];
+      for (const p of possiblePaths) {
+        if (process.platform === 'win32') {
+          if (fs.existsSync(p + '.cmd')) {
+            nextPath = p + '.cmd';
+            break;
+          } else if (fs.existsSync(p + '.bat')) {
+            nextPath = p + '.bat';
+            break;
+          } else if (fs.existsSync(p)) {
+            nextPath = p;
+            break;
+          }
+        } else {
+          if (fs.existsSync(p)) {
+            nextPath = p;
+            break;
+          }
+        }
+      }
+      if (!nextPath) {
+        nextPath = process.platform === 'win32' ? 'next.cmd' : 'next';
+      }
+      spawnCmd = nextPath;
+      spawnArgs = ['dev', '-p', String(port)];
+      useShell = true;
     }
 
-    const child = spawn(nextPath, ['dev', '-p', String(port)], {
+    const child = spawn(spawnCmd, spawnArgs, {
       cwd: path.resolve(__dirname, '../frontend'),
-      stdio: 'inherit',
-      shell: true,
+      stdio: ['pipe', 'inherit', 'inherit'],
+      shell: useShell,
       env: {
         ...process.env,
         NEXT_PUBLIC_BACKEND_PORT: String(backendPort)

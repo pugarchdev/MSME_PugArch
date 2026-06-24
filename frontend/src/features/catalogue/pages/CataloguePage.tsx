@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown, Download, Copy, ToggleLeft } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -27,6 +27,9 @@ import { useDebounce } from '../../../hooks/useDebounce';
 import { CompareToggleButton } from '../../marketplace/components/CompareToggleButton';
 import { CompareTray } from '../../marketplace/components/CompareTray';
 import { resolveMarketplaceImage } from '../../marketplace/utils/marketplaceImages';
+import { CatalogueImportModal } from '../components/CatalogueImportModal';
+import { marketplaceVisibilityLabel } from '../utils/catalogueDetailUtils';
+import type { ImportBatchDto } from '../api';
 
 type CatalogueMode = 'buyer' | 'seller' | 'admin';
 type ItemKind = 'product' | 'service';
@@ -257,6 +260,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   const [sellerLoading, setSellerLoading] = useState(false);
   const [addingItemKey, setAddingItemKey] = useState<string | null>(null);
   const [buyerActions, setBuyerActions] = useState<Record<string, BuyerActionState>>({});
+  const [importKind, setImportKind] = useState<'product' | 'service' | null>(null);
+  const [importHistory, setImportHistory] = useState<ImportBatchDto[]>([]);
   const debouncedSearchTerm = useDebounce(searchTerm, 200);
 
   // File upload state for catalogue form
@@ -426,6 +431,54 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   useEffect(() => {
     void loadCatalogue();
   }, [loadCatalogue]);
+
+  const loadImportHistory = useCallback(async () => {
+    if (mode !== 'seller') return;
+    try {
+      const rows = await catalogueApi.importHistory();
+      setImportHistory(normalizeList<ImportBatchDto>(rows));
+    } catch {
+      // non-blocking
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    void loadImportHistory();
+  }, [loadImportHistory]);
+
+  const openViewDetails = async (item: CatalogueRecord) => {
+    try {
+      const full = item.itemKind === 'product'
+        ? await catalogueApi.getProduct(item.id)
+        : await catalogueApi.getService(item.id);
+      setSelectedDetailsItem({ ...full, itemKind: item.itemKind });
+    } catch {
+      setSelectedDetailsItem(item);
+    }
+  };
+
+  const duplicateItem = async (item: CatalogueRecord) => {
+    try {
+      if (item.itemKind === 'product') await catalogueApi.duplicateProduct(item.id);
+      else await catalogueApi.duplicateService(item.id);
+      toast.success(`${item.itemKind === 'product' ? 'Product' : 'Service'} duplicated as draft`);
+      await loadCatalogue();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Duplicate failed');
+    }
+  };
+
+  const togglePublish = async (item: CatalogueRecord) => {
+    const next = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      if (item.itemKind === 'product') await catalogueApi.setProductStatus(item.id, next);
+      else await catalogueApi.setServiceStatus(item.id, next);
+      toast.success(next === 'ACTIVE' ? 'Published to marketplace' : 'Deactivated');
+      await loadCatalogue();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Status update failed');
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -681,11 +734,51 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         <div className="flex flex-wrap gap-2">
           {mode === 'seller' && (
             <>
-              <Button disabled={!sellerApproved} onClick={() => openCreateForm('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
+              <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
                 <PackagePlus className="mr-2 h-4 w-4" /> Add Product
               </Button>
-              <Button disabled={!sellerApproved} onClick={() => openCreateForm('service')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
+              <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
                 <Wrench className="mr-2 h-4 w-4" />Add Service
+              </Button>
+              <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
+                <FileUp className="mr-2 h-4 w-4" /> Import Products
+              </Button>
+              <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('service')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
+                <FileUp className="mr-2 h-4 w-4" /> Import Services
+              </Button>
+              <Button disabled={!sellerApproved} variant="outline" onClick={() => {
+                const path = '/api/catalogue/import/templates/products';
+                const token = localStorage.getItem('token') || '';
+                fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+                  .then(r => r.blob())
+                  .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'catalogue_products_template.xlsx';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch(() => toast.error('Template download failed'));
+              }} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
+                <Download className="mr-2 h-4 w-4" /> Product Template
+              </Button>
+              <Button disabled={!sellerApproved} variant="outline" onClick={() => {
+                const path = '/api/catalogue/import/templates/services';
+                const token = localStorage.getItem('token') || '';
+                fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+                  .then(r => r.blob())
+                  .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'catalogue_services_template.xlsx';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch(() => toast.error('Template download failed'));
+              }} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
+                <Download className="mr-2 h-4 w-4" /> Service Template
               </Button>
             </>
           )}
@@ -805,9 +898,9 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                   item={item}
                   mode={mode}
                   viewMode={viewMode}
-                  onEdit={openEditForm}
+                  onEdit={(item) => router.push(item.itemKind === 'product' ? `/seller/products/${item.id}/edit` : `/seller/services/${item.id}/edit`)}
                   onDelete={deleteItem}
-                  onViewDetails={setSelectedDetailsItem}
+                  onViewDetails={openViewDetails}
                   onPurchaseBid={openPurchaseBid}
                   onAddToCart={mode === 'buyer' ? handleAddToCart : undefined}
                   addingToCart={addingItemKey === `${item.itemKind}-${item.id}`}
@@ -974,23 +1067,19 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                             <div className="inline-flex items-center justify-end gap-1">
                               {mode === 'seller' && (
                                 <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditForm(item)}
-                                    disabled={status === 'ARCHIVED'}
-                                    title="Edit item"
-                                    aria-label="Edit"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                                  >
+                                  <button type="button" onClick={() => openViewDetails(item)} title="View details" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0">
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => router.push(item.itemKind === 'product' ? `/seller/products/${item.id}/edit` : `/seller/services/${item.id}/edit`)} disabled={status === 'ARCHIVED'} title="Edit" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 shrink-0">
                                     <Settings2 className="h-3.5 w-3.5" />
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteItem(item)}
-                                    title="Delete item"
-                                    aria-label="Delete"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                                  >
+                                  <button type="button" onClick={() => duplicateItem(item)} title="Duplicate" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0">
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => togglePublish(item)} title={status === 'ACTIVE' ? 'Deactivate' : 'Publish'} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-[#12335f] hover:bg-blue-50 shrink-0">
+                                    <ToggleLeft className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => deleteItem(item)} title="Delete" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 shrink-0">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>
                                 </>
@@ -1103,6 +1192,58 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         />
       )}
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
+      {importKind && (
+        <CatalogueImportModal
+          kind={importKind}
+          open={Boolean(importKind)}
+          onClose={() => setImportKind(null)}
+          onComplete={() => { void loadCatalogue(); void loadImportHistory(); }}
+        />
+      )}
+      {mode === 'seller' && importHistory.length > 0 && (
+        <Card className="border-slate-200">
+          <CardHeader className="border-b border-slate-100 pb-3">
+            <CardTitle className="text-sm font-black">Import History</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto pt-4">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <th className="pb-2 pr-3">Batch</th><th className="pb-2 pr-3">Type</th><th className="pb-2 pr-3">File</th><th className="pb-2 pr-3">Rows</th><th className="pb-2 pr-3">Status</th><th className="pb-2 pr-3">Date</th><th className="pb-2">Report</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importHistory.map(batch => (
+                  <tr key={batch.id} className="border-t border-slate-100">
+                    <td className="py-2 pr-3 font-mono">#{batch.id}</td>
+                    <td className="py-2 pr-3">{batch.type}</td>
+                    <td className="py-2 pr-3 max-w-[180px] truncate">{batch.fileName}</td>
+                    <td className="py-2 pr-3">{batch.validRows}/{batch.totalRows} ok · {batch.invalidRows} fail</td>
+                    <td className="py-2 pr-3"><Badge>{batch.status}</Badge></td>
+                    <td className="py-2 pr-3">{formatDateTime(batch.createdAt)}</td>
+                    <td className="py-2">
+                      {batch.invalidRows > 0 && (
+                        <button type="button" className="text-[10px] font-black uppercase text-red-700 hover:underline" onClick={() => {
+                          const token = localStorage.getItem('token') || '';
+                          fetch(`${BASE_URL}/api/catalogue/import/${batch.id}/errors/download`, { headers: { Authorization: `Bearer ${token}` } })
+                            .then(r => r.blob()).then(blob => {
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `import_errors_${batch.id}.xlsx`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }).catch(() => toast.error('Download failed'));
+                        }}>Errors</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
       {mode === 'buyer' && <CompareTray />}
     </div>
   );
@@ -1525,21 +1666,9 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
               <div className="flex items-center gap-1.5">
                 {mode === 'seller' && onEdit && onDelete && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => onEdit(item)}
-                      disabled={status === 'ARCHIVED'}
-                      className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(item)}
-                      className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      Delete
-                    </button>
+                    <button type="button" onClick={() => onViewDetails?.(item)} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50">View</button>
+                    <button type="button" onClick={() => onEdit(item)} disabled={status === 'ARCHIVED'} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 hover:bg-emerald-50 disabled:opacity-50">Edit</button>
+                    <button type="button" onClick={() => onDelete(item)} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-50">Delete</button>
                   </>
                 )}
                 {mode === 'admin' && (

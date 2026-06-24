@@ -164,6 +164,7 @@ model User {
   cracsGenerated                     ConsigneeReceiptAcceptanceCertificate[] @relation("CracGenerator")
   frequentlyBoughtItems              BuyerFrequentlyBoughtItem[]
   uploadBatches                      BuyerItemUploadBatch[]
+  catalogueImportBatches             CatalogueImportBatch[]
 
   @@index([role, onboardingStatus])
   @@index([role])
@@ -1165,6 +1166,7 @@ model Product {
   @@index([status])
   @@index([isOfferActive])
   @@index([offerStartAt, offerEndAt])
+  @@unique([sellerId, sku])
   @@index([sku])
 }
 
@@ -1218,12 +1220,19 @@ model Service {
   bulkMinQuantity Decimal?       @db.Decimal(18, 3)
   currency       String          @default("INR")
   serviceArea    String?
+  scopeOfWork    String?
+  deliverables   String?
+  inclusions     String?
+  exclusions     String?
+  duration       String?
+  slaResponseTime String?
   status         ProductStatus   @default(DRAFT)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   seller         User            @relation("ServiceSeller", fields: [sellerId], references: [id], onDelete: Restrict)
   organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  specifications ServiceSpecification[]
   certifications Certification[]
   cartItems      CartItem[]
   guestCartItems GuestCartItem[]
@@ -1236,6 +1245,19 @@ model Service {
   @@index([status])
   @@index([isOfferActive])
   @@index([offerStartAt, offerEndAt])
+}
+
+model ServiceSpecification {
+  id        Int      @id @default(autoincrement())
+  serviceId Int
+  name      String
+  value     String
+  unit      String?
+  createdAt DateTime @default(now())
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, name])
+  @@index([serviceId])
 }
 
 model Certification {
@@ -5020,6 +5042,54 @@ model BuyerFrequentlyBoughtItem {
 
   @@index([buyerId])
   @@index([organizationProfileId])
+}
+
+enum CatalogueImportType {
+  PRODUCT
+  SERVICE
+}
+
+enum CatalogueImportStatus {
+  PREVIEWED
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+model CatalogueImportBatch {
+  id           Int                   @id @default(autoincrement())
+  sellerId     Int
+  type         CatalogueImportType
+  fileName     String
+  totalRows    Int                   @default(0)
+  validRows    Int                   @default(0)
+  invalidRows  Int                   @default(0)
+  duplicateRows Int                  @default(0)
+  status       CatalogueImportStatus @default(PREVIEWED)
+  previewData  Json?
+  warnings     Json?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  seller       User                  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  errors       CatalogueImportError[]
+
+  @@index([sellerId])
+  @@index([sellerId, status])
+  @@index([createdAt])
+}
+
+model CatalogueImportError {
+  id        Int                  @id @default(autoincrement())
+  batchId   Int
+  rowNumber Int
+  field     String?
+  message   String
+  rawData   Json?
+  createdAt DateTime             @default(now())
+  batch     CatalogueImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([batchId, rowNumber])
 }
 
 model BuyerItemUploadBatch {

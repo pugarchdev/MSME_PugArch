@@ -292,8 +292,18 @@ export default function App() {
   }, [mounted, loading, user]);
 
   React.useEffect(() => {
-    if (mounted && !loading && !user && !['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
-      router.replace('/');
+    if (mounted && !loading && !user) {
+      if (pathname === '/onboarding/kyc') {
+        const savedRedirect = sessionStorage.getItem('preRegisterKycRedirectPath');
+        if (savedRedirect) {
+          const search = window.location.search;
+          router.replace(`${savedRedirect}${search}`);
+          return;
+        }
+      }
+      if (!['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
+        router.replace('/');
+      }
     }
   }, [mounted, loading, user, pathname, router]);
 

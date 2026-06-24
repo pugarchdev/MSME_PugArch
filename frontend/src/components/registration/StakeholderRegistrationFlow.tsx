@@ -35,10 +35,38 @@ const steps = [
 ];
 
 export default function StakeholderRegistrationFlow({ role, variant = role, initialBusinessType = '' }: StakeholderRegistrationFlowProps) {
-  const [step, setStep] = useState(1);
-  const [businessType, setBusinessType] = useState(initialBusinessType);
-  const [shgType, setShgType] = useState('');
-  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
+  const [step, setStep] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('preRegisterKycStep');
+      if (saved) return Number(saved);
+    }
+    return 1;
+  });
+  const [businessType, setBusinessType] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('preRegisterKycBusinessType') || initialBusinessType;
+    }
+    return initialBusinessType;
+  });
+  const [shgType, setShgType] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('preRegisterKycShgType') || '';
+    }
+    return '';
+  });
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('preRegisterKycSelectedDocs');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
   const copy = variantCopy[variant];
 
   const handlePrerequisitesProceed = (type: string, documents: string[] = [], selectedShgType = '') => {

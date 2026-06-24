@@ -114,7 +114,13 @@ const validateCin = (value: string) => {
 };
 
 export default function RegistrationDetailsFlow({ businessType, shgType = '', onBack, role, variant, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
-  const [currentSubStep, setCurrentSubStep] = useState(1);
+  const [currentSubStep, setCurrentSubStep] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('preRegisterKycSubStep');
+      if (saved) return Number(saved);
+    }
+    return 1;
+  });
   const { user, login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -146,33 +152,46 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   }, [isSuccess]);
 
   // Form State
-  const [formData, setFormData] = useState({
-    businessName: '',
-    industry: '',
-    cin: '',
-    gstin: '',
-    udyamNumber: '',
-    website: '',
-    orgPan: '',
-    personalVerificationMethod: role === 'buyer' ? 'aadhaar' : 'pan',
-    aadhaarNumber: '',
-    panNumber: '',
-    personalName: '',
-    personalLastName: '',
-    dob: '',
-    mobile: '',
-    kycSessionToken: '',
-    roleInOrg: '',
-    email: '',
-    verifyEmail: '',
-    userId: '',
-    password: '',
-    confirmPassword: '',
-    organisationType: '',
-    state: '',
-    district: '',
-    organisation: '',
-    officeZoneName: ''
+  const [formData, setFormData] = useState(() => {
+    const initial = {
+      businessName: '',
+      industry: '',
+      cin: '',
+      gstin: '',
+      udyamNumber: '',
+      website: '',
+      orgPan: '',
+      personalVerificationMethod: role === 'buyer' ? 'aadhaar' : 'pan',
+      aadhaarNumber: '',
+      panNumber: '',
+      personalName: '',
+      personalLastName: '',
+      dob: '',
+      mobile: '',
+      kycSessionToken: '',
+      roleInOrg: '',
+      email: '',
+      verifyEmail: '',
+      userId: '',
+      password: '',
+      confirmPassword: '',
+      organisationType: '',
+      state: '',
+      district: '',
+      organisation: '',
+      officeZoneName: ''
+    };
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('preRegisterKycFormData');
+      if (saved) {
+        try {
+          return { ...initial, ...JSON.parse(saved) };
+        } catch {
+          return initial;
+        }
+      }
+    }
+    return initial;
   });
 
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
@@ -495,6 +514,13 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         const { authorizationUrl, kycSessionToken } = await aadhaarKycApi.preRegisterStart(payload);
         if (!authorizationUrl) throw new Error('Missing authorization URL');
         sessionStorage.setItem('preRegisterKycSessionToken', kycSessionToken);
+        sessionStorage.setItem('preRegisterKycRedirectPath', window.location.pathname);
+        sessionStorage.setItem('preRegisterKycFormData', JSON.stringify(formData));
+        sessionStorage.setItem('preRegisterKycSubStep', String(currentSubStep));
+        sessionStorage.setItem('preRegisterKycStep', '3');
+        sessionStorage.setItem('preRegisterKycBusinessType', businessType);
+        sessionStorage.setItem('preRegisterKycShgType', shgType);
+        sessionStorage.setItem('preRegisterKycSelectedDocs', JSON.stringify(prereqSelectedDocuments));
         window.location.assign(authorizationUrl);
       } catch {
         toast.error('Unable to start Aadhaar verification. Please try again.');
@@ -767,6 +793,14 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           router.push('/dashboard');
         } else {
           toast.success('Registration completed successfully!');
+          sessionStorage.removeItem('preRegisterKycSessionToken');
+          sessionStorage.removeItem('preRegisterKycRedirectPath');
+          sessionStorage.removeItem('preRegisterKycFormData');
+          sessionStorage.removeItem('preRegisterKycSubStep');
+          sessionStorage.removeItem('preRegisterKycStep');
+          sessionStorage.removeItem('preRegisterKycBusinessType');
+          sessionStorage.removeItem('preRegisterKycShgType');
+          sessionStorage.removeItem('preRegisterKycSelectedDocs');
           setIsSuccess(true);
         }
       } else {

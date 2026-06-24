@@ -606,7 +606,12 @@ const productBody = z.object({
   itemCondition: z.string().trim().nullable().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED']).optional(),
   imageIds: z.array(z.coerce.number().int()).optional(),
-  documentIds: z.array(z.coerce.number().int()).optional()
+  documentIds: z.array(z.coerce.number().int()).optional(),
+  specifications: z.array(z.object({
+    name: z.string().trim().min(1).max(120),
+    value: z.string().trim().min(1).max(500),
+    unit: z.string().trim().max(40).nullable().optional()
+  })).optional()
 });
 
 const serviceBody = z.object({
@@ -628,9 +633,20 @@ const serviceBody = z.object({
   bulkMinQuantity: z.coerce.number().nonnegative().nullable().optional(),
   currency: z.string().trim().length(3).default('INR').optional(),
   serviceArea: z.string().trim().max(300).nullable().optional(),
+  scopeOfWork: z.string().trim().max(4000).nullable().optional(),
+  deliverables: z.string().trim().max(4000).nullable().optional(),
+  inclusions: z.string().trim().max(4000).nullable().optional(),
+  exclusions: z.string().trim().max(4000).nullable().optional(),
+  duration: z.string().trim().max(120).nullable().optional(),
+  slaResponseTime: z.string().trim().max(120).nullable().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED']).optional(),
   imageIds: z.array(z.coerce.number().int()).optional(),
-  documentIds: z.array(z.coerce.number().int()).optional()
+  documentIds: z.array(z.coerce.number().int()).optional(),
+  specifications: z.array(z.object({
+    name: z.string().trim().min(1).max(120),
+    value: z.string().trim().min(1).max(500),
+    unit: z.string().trim().max(40).nullable().optional()
+  })).optional()
 });
 
 const requirementBody = z.object({
@@ -2859,6 +2875,42 @@ router.get('/seller/services', authenticate, authorize('seller'), asyncRoute(asy
     db.service.count({ where })
   ]);
   ok(res, paged(await attachCatalogueFiles(services as any[], 'service'), total, query, 'services'));
+}));
+
+router.get('/seller/services/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const service = await db.service.findFirst({
+    where: { id, sellerId: userId(req) },
+    include: { specifications: true, certifications: { include: { fileAsset: true } } }
+  });
+  if (!service) throw new ApiError(404, 'Service not found', 'SERVICE_NOT_FOUND');
+  ok(res, (await attachCatalogueFiles([service], 'service'))[0]);
+}));
+
+router.post('/seller/products/:id/duplicate', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const product = await catalogueWorkflow.duplicateProduct(actorFrom(req), id);
+  ok(res, product, 201);
+}));
+
+router.post('/seller/services/:id/duplicate', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const service = await catalogueWorkflow.duplicateService(actorFrom(req), id);
+  ok(res, service, 201);
+}));
+
+router.patch('/seller/products/:id/status', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { status } = parse(z.object({ status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']) }), req.body);
+  const product = await catalogueWorkflow.setProductStatus(actorFrom(req), id, status);
+  ok(res, product);
+}));
+
+router.patch('/seller/services/:id/status', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const { status } = parse(z.object({ status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']) }), req.body);
+  const service = await catalogueWorkflow.setServiceStatus(actorFrom(req), id, status);
+  ok(res, service);
 }));
 
 router.put('/seller/services/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {

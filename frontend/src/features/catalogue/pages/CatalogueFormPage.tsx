@@ -41,9 +41,21 @@ const blankForm = {
   basePrice: '',
   pricingModel: 'FIXED',
   serviceArea: '',
-  status: 'ACTIVE',
-  categoryId: ''
+  status: 'DRAFT',
+  categoryId: '',
+  sku: '',
+  brand: '',
+  modelNumber: '',
+  isMsmeMade: false,
+  scopeOfWork: '',
+  deliverables: '',
+  inclusions: '',
+  exclusions: '',
+  duration: '',
+  slaResponseTime: ''
 };
+
+type SpecRow = { name: string; value: string; unit: string };
 
 const toNumber = (value: unknown) => {
   if (value === null || value === undefined || value === '') return 0;
@@ -198,6 +210,7 @@ export default function CatalogueFormPage() {
   const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
+  const [specifications, setSpecifications] = useState<SpecRow[]>([]);
 
   useEffect(() => {
     const initPage = async () => {
@@ -236,9 +249,24 @@ export default function CatalogueFormPage() {
               basePrice: item.basePrice === null || item.basePrice === undefined ? '' : String(item.basePrice),
               pricingModel: item.pricingModel || 'FIXED',
               serviceArea: item.serviceArea || '',
-              status: item.status || 'ACTIVE',
-              categoryId: String(item.categoryId || '')
+              status: item.status || 'DRAFT',
+              categoryId: String(item.categoryId || ''),
+              sku: item.sku || '',
+              brand: item.brand || '',
+              modelNumber: item.modelNumber || '',
+              isMsmeMade: Boolean((item as any).isMsmeMade),
+              scopeOfWork: (item as any).scopeOfWork || '',
+              deliverables: (item as any).deliverables || '',
+              inclusions: (item as any).inclusions || '',
+              exclusions: (item as any).exclusions || '',
+              duration: (item as any).duration || '',
+              slaResponseTime: (item as any).slaResponseTime || ''
             });
+            setSpecifications(((item as any).specifications || []).map((s: any) => ({
+              name: s.name || '',
+              value: s.value || '',
+              unit: s.unit || ''
+            })));
             const media = catalogueMedia(item);
             setUploadedImages(media.filter(file => file.kind === 'image').map(mediaToUploadedAsset));
             setUploadedDocuments(media.filter(file => file.kind === 'document').map(mediaToUploadedAsset));
@@ -331,6 +359,11 @@ export default function CatalogueFormPage() {
         isOfferActive: Boolean(form.isOfferActive),
         bulkDealAvailable: Boolean(form.bulkDealAvailable),
         bulkMinQuantity: form.bulkMinQuantity ? Number(form.bulkMinQuantity) : null,
+        specifications: specifications.filter(s => s.name.trim() && s.value.trim()).map(s => ({
+          name: s.name.trim(),
+          value: s.value.trim(),
+          unit: s.unit.trim() || null
+        })),
         ...(kind === 'product'
           ? {
             price: form.price ? Number(form.price) : null,
@@ -338,14 +371,24 @@ export default function CatalogueFormPage() {
             discount: form.discount ? Number(form.discount) : 0,
             hsnCode: form.hsnCode.trim() || null,
             unitOfMeasure: form.unitOfMeasure.trim() || null,
-            itemCondition: form.itemCondition.trim() || null
+            itemCondition: form.itemCondition.trim() || null,
+            sku: form.sku.trim() || null,
+            brand: form.brand.trim() || null,
+            modelNumber: form.modelNumber.trim() || null,
+            isMsmeMade: Boolean(form.isMsmeMade)
           }
           : {
             basePrice: form.basePrice ? Number(form.basePrice) : null,
             taxRate: (form.splitTaxRate ? Number(form.splitTaxRate) : 0) + (form.igstTaxRate ? Number(form.igstTaxRate) : 0) + (form.otherTaxRate ? Number(form.otherTaxRate) : 0),
             discount: form.discount ? Number(form.discount) : 0,
             pricingModel: form.pricingModel,
-            serviceArea: form.serviceArea.trim() || null
+            serviceArea: form.serviceArea.trim() || null,
+            scopeOfWork: form.scopeOfWork.trim() || null,
+            deliverables: form.deliverables.trim() || null,
+            inclusions: form.inclusions.trim() || null,
+            exclusions: form.exclusions.trim() || null,
+            duration: form.duration.trim() || null,
+            slaResponseTime: form.slaResponseTime.trim() || null
           })
       };
 
@@ -497,6 +540,13 @@ export default function CatalogueFormPage() {
                   placeholder="8-digit HSN code"
                   className="bg-white"
                 />
+                <Input label="SKU" value={form.sku} onChange={e => updateForm('sku', e.target.value)} placeholder="Unique product code" className="bg-white" />
+                <Input label="Brand" value={form.brand} onChange={e => updateForm('brand', e.target.value)} placeholder="Brand name" className="bg-white" />
+                <Input label="Model Number" value={form.modelNumber} onChange={e => updateForm('modelNumber', e.target.value)} placeholder="Model / variant" className="bg-white" />
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 lg:col-span-2">
+                  <input type="checkbox" checked={Boolean(form.isMsmeMade)} onChange={e => updateForm('isMsmeMade', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+                  MSME Made Product
+                </label>
               </>
             ) : (
               <>
@@ -540,8 +590,51 @@ export default function CatalogueFormPage() {
                   placeholder="e.g. Delhi NCR, Pan-India"
                   className="bg-white"
                 />
+                <Input label="Duration" value={form.duration} onChange={e => updateForm('duration', e.target.value)} placeholder="e.g. 30 days" className="bg-white" />
+                <Input label="SLA / Response Time" value={form.slaResponseTime} onChange={e => updateForm('slaResponseTime', e.target.value)} placeholder="e.g. 24 hours" className="bg-white" />
+                <div className="lg:col-span-2 grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Scope of Work</label>
+                    <textarea value={form.scopeOfWork} onChange={e => updateForm('scopeOfWork', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Deliverables</label>
+                    <textarea value={form.deliverables} onChange={e => updateForm('deliverables', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Inclusions</label>
+                    <textarea value={form.inclusions} onChange={e => updateForm('inclusions', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Exclusions</label>
+                    <textarea value={form.exclusions} onChange={e => updateForm('exclusions', e.target.value)} rows={2} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                  </div>
+                </div>
               </>
             )}
+
+            <div className="lg:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Specifications</h3>
+                <Button type="button" variant="outline" className="h-8 text-[10px] font-black uppercase" onClick={() => setSpecifications(prev => [...prev, { name: '', value: '', unit: '' }])}>
+                  <Plus className="mr-1 h-3 w-3" /> Add Row
+                </Button>
+              </div>
+              {specifications.length === 0 ? (
+                <p className="text-[11px] font-semibold text-slate-500">Add technical specifications (optional).</p>
+              ) : (
+                <div className="space-y-2">
+                  {specifications.map((spec, index) => (
+                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto]">
+                      <Input label={index === 0 ? 'Name' : undefined} value={spec.name} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Spec name" className="bg-white" />
+                      <Input label={index === 0 ? 'Value' : undefined} value={spec.value} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, value: e.target.value } : row))} placeholder="Value" className="bg-white" />
+                      <Input label={index === 0 ? 'Unit' : undefined} value={spec.unit} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, unit: e.target.value } : row))} placeholder="Unit" className="bg-white" />
+                      <button type="button" onClick={() => setSpecifications(prev => prev.filter((_, i) => i !== index))} className="self-end rounded border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="lg:col-span-2 rounded-lg border border-blue-100 bg-blue-50/40 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

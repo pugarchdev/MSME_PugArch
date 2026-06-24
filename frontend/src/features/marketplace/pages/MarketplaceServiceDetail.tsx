@@ -14,6 +14,7 @@ import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
 import { saveSupplier } from '../utils/savedSuppliers';
+import { buildServiceDetailFields, formatCatalogueDate } from '../../catalogue/utils/catalogueDetailUtils';
 
 const pricingLabels: Record<string, string> = {
     FIXED: 'Fixed Price',
@@ -22,23 +23,6 @@ const pricingLabels: Record<string, string> = {
     MONTHLY: 'Monthly',
     PER_PROJECT: 'Per Project',
     CUSTOM: 'Quote Based',
-};
-
-const formatValue = (value: unknown, fallback = 'Not provided') => {
-    if (value === null || value === undefined || value === '') return fallback;
-    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-    return String(value);
-};
-
-const formatMoney = (value: unknown) => {
-    const amount = Number(value || 0);
-    return amount > 0 ? `Rs. ${amount.toLocaleString('en-IN')}` : 'Not provided';
-};
-
-const formatDate = (value: unknown) => {
-    if (!value) return 'Not provided';
-    const date = new Date(String(value));
-    return Number.isNaN(date.getTime()) ? 'Not provided' : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const isImageFile = (file: any) => String(file?.mimeType || '').toLowerCase().startsWith('image/');
@@ -236,28 +220,15 @@ export default function MarketplaceServiceDetail() {
                 fileAsset: file,
             })),
     ];
-    const serviceDetails = [
-        ['Category', service.category?.name],
-        ['Listing Status', service.status],
-        ['Provider', service.organization?.organizationName || service.seller?.name],
-        ['Provider Location', location],
-        ['Service Area', service.serviceArea],
-        ['Pricing Model', pricingLabels[service.pricingModel] || service.pricingModel],
-        ['Base Price', formatMoney(service.basePrice)],
-        ['Original Price', formatMoney(service.originalPrice)],
-        ['Discount Price', formatMoney(service.discountPrice)],
-        ['Discount Percent', service.discountPercent ? `${service.discountPercent}%` : undefined],
-        ['GST Rate', service.taxRate ? `${service.taxRate}%` : undefined],
-        ['Currency', service.currency],
-        ['Bulk Deal', service.bulkDealAvailable],
-        ['Bulk Minimum Quantity', service.bulkMinQuantity],
-        ['Offer Label', service.offerLabel],
-        ['Offer Starts', formatDate(service.offerStartAt)],
-        ['Offer Ends', formatDate(service.offerEndAt)],
-        ['Provider GSTIN', serviceAny.organization?.gstin],
-        ['Created', formatDate(service.createdAt)],
-        ['Last Updated', formatDate(service.updatedAt)],
-    ];
+    const overviewFields = buildServiceDetailFields(serviceAny).filter(f =>
+        ['Service Name', 'Category', 'Seller', 'Seller Location', 'Description', 'Status', 'Service Area'].includes(f.label)
+    );
+    const pricingFields = buildServiceDetailFields(serviceAny).filter(f =>
+        ['Pricing Model', 'Base Price', 'Currency', 'GST Rate', 'Original Price', 'Discount Price', 'Discount Percent', 'Offer Label', 'Offer Start Date', 'Offer End Date'].includes(f.label)
+    );
+    const scopeFields = buildServiceDetailFields(serviceAny).filter(f =>
+        ['Scope of Work', 'Deliverables', 'Inclusions', 'Exclusions', 'SLA / Response Time', 'Duration'].includes(f.label)
+    );
 
     return (
         <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
@@ -364,22 +335,70 @@ export default function MarketplaceServiceDetail() {
                                 </div>
                             </div>
 
-                            <section className="rounded-lg border border-slate-200 bg-white p-4">
-                                <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Service Information</h3>
-                                <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
-                                    {serviceDetails.map(([label, value]) => (
-                                        <div key={String(label)} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-                                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-                                            <span className="mt-1 block font-bold text-slate-800 text-wrap-anywhere">{formatValue(value)}</span>
-                                        </div>
-                                    ))}
+                            <section className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
+                                <div>
+                                    <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Overview</h3>
+                                    <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                                        {overviewFields.map(({ label, value }) => (
+                                            <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                <span className="mt-1 block font-bold text-slate-800 text-wrap-anywhere">{String(value ?? '—')}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                                {pricingFields.length > 0 && (
+                                    <div>
+                                        <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Pricing</h3>
+                                        <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                                            {pricingFields.map(({ label, value }) => (
+                                                <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                    <span className="mt-1 block font-bold text-slate-800">{String(value)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {scopeFields.length > 0 && (
+                                    <div>
+                                        <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Scope & Deliverables</h3>
+                                        <div className="grid gap-3 text-xs sm:grid-cols-2">
+                                            {scopeFields.map(({ label, value }) => (
+                                                <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                    <span className="mt-1 block font-bold text-slate-800 whitespace-pre-line">{String(value)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </section>
 
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-700 mb-2">Service Description</h3>
-                                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{service.description || 'No detailed service description has been provided for this listing yet.'}</p>
-                            </div>
+                            {service.description && (
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-700 mb-2">Service Description</h3>
+                                    <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{service.description}</p>
+                                </div>
+                            )}
+
+                            {serviceAny.specifications?.length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-bold text-[#0b2447] mb-3">Specifications</h3>
+                                    <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+                                        <table className="w-full text-xs">
+                                            <tbody>
+                                                {serviceAny.specifications.map((spec: any, i: number) => (
+                                                    <tr key={spec.id || i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                                                        <td className="px-4 py-2.5 font-medium text-slate-600 w-1/3 border-r border-slate-100">{spec.name}</td>
+                                                        <td className="px-4 py-2.5 text-slate-800">{spec.value}{spec.unit ? ` ${spec.unit}` : ''}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="grid gap-3 sm:grid-cols-3">
                                 <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -410,10 +429,16 @@ export default function MarketplaceServiceDetail() {
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate font-black text-slate-800">{cert.name || cert.fileAsset?.originalName || 'Service document'}</span>
                                                         <span className="mt-1 block text-[10px] font-semibold text-slate-500">
-                                                            {cert.issuingAuthority || 'Authority not provided'} | {cert.verificationStatus || 'PENDING'}
+                                                            {cert.issuingAuthority ? `${cert.issuingAuthority} | ` : ''}{cert.verificationStatus || 'PENDING'}
                                                         </span>
                                                         {cert.certificateNumber && <span className="mt-1 block text-[10px] font-semibold text-slate-500">Certificate: {cert.certificateNumber}</span>}
-                                                        <span className="mt-1 block text-[10px] font-semibold text-slate-500">Issued: {formatDate(cert.issuedAt)} | Expires: {formatDate(cert.expiresAt)}</span>
+                                                        {(cert.issuedAt || cert.expiresAt) && (
+                                                            <span className="mt-1 block text-[10px] font-semibold text-slate-500">
+                                                                {cert.issuedAt ? `Issued: ${formatCatalogueDate(cert.issuedAt)}` : ''}
+                                                                {cert.issuedAt && cert.expiresAt ? ' | ' : ''}
+                                                                {cert.expiresAt ? `Expires: ${formatCatalogueDate(cert.expiresAt)}` : ''}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </>
                                             );

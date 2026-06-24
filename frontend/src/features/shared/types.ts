@@ -89,6 +89,15 @@ export type CatalogueItemDto = {
   itemCondition?: string;
   pricingModel?: string;
   serviceArea?: string;
+  scopeOfWork?: string;
+  deliverables?: string;
+  inclusions?: string;
+  exclusions?: string;
+  duration?: string;
+  slaResponseTime?: string;
+  isMsmeMade?: boolean;
+  specifications?: Array<{ id?: number; name: string; value: string; unit?: string | null }>;
+  organization?: { organizationName?: string; city?: string; district?: string; state?: string; verificationStatus?: string; id?: number };
   images?: Array<{ id?: number; fileAssetId?: number; altText?: string; fileAsset?: CatalogueFileDto }>;
   certifications?: Array<{ id?: number; name?: string; issuingAuthority?: string; fileAssetId?: number | null; fileAsset?: CatalogueFileDto | null }>;
   catalogueFiles?: CatalogueFileDto[];

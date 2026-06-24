@@ -15,23 +15,7 @@ import PremiumLoader from '../../../components/PremiumLoader';
 import { getMarketplaceImageCandidates, resolveMarketplaceImage } from '../utils/marketplaceImages';
 import { CompareToggleButton } from '../components/CompareToggleButton';
 import { saveSupplier } from '../utils/savedSuppliers';
-
-const formatValue = (value: unknown, fallback = 'Not provided') => {
-    if (value === null || value === undefined || value === '') return fallback;
-    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-    return String(value);
-};
-
-const formatMoney = (value: unknown) => {
-    const amount = Number(value || 0);
-    return amount > 0 ? `Rs. ${amount.toLocaleString('en-IN')}` : 'Not provided';
-};
-
-const formatDate = (value: unknown) => {
-    if (!value) return 'Not provided';
-    const date = new Date(String(value));
-    return Number.isNaN(date.getTime()) ? 'Not provided' : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-};
+import { buildProductDetailFields, formatCatalogueDate, formatCatalogueMoney } from '../../catalogue/utils/catalogueDetailUtils';
 
 const isImageFile = (file: any) => String(file?.mimeType || '').toLowerCase().startsWith('image/');
 
@@ -239,32 +223,16 @@ export default function MarketplaceProductDetail() {
                 fileAsset: file,
             })),
     ];
-    const productDetails = [
-        ['Category', product.category?.name],
-        ['Listing Status', product.status],
-        ['Seller', product.organization?.organizationName || product.seller?.name],
-        ['Seller Location', location],
-        ['Currency', product.currency],
-        ['List Price', formatMoney(product.price)],
-        ['Original Price', formatMoney(productAny.originalPrice)],
-        ['Discount Price', formatMoney(productAny.discountPrice)],
-        ['Discount Percent', productAny.discountPercent ? `${productAny.discountPercent}%` : undefined],
-        ['GST Rate', productAny.taxRate ? `${productAny.taxRate}%` : undefined],
-        ['Unit', product.unitOfMeasure],
-        ['Brand', product.brand],
-        ['Model Number', productAny.modelNumber],
-        ['SKU', product.sku],
-        ['HSN Code', product.hsnCode],
-        ['Condition', product.itemCondition],
-        ['MSME Made', product.isMsmeMade],
-        ['Bulk Deal', productAny.bulkDealAvailable],
-        ['Bulk Minimum Quantity', productAny.bulkMinQuantity ? `${productAny.bulkMinQuantity} ${product.unitOfMeasure || ''}` : undefined],
-        ['Offer Label', productAny.offerLabel],
-        ['Offer Starts', formatDate(productAny.offerStartAt)],
-        ['Offer Ends', formatDate(productAny.offerEndAt)],
-        ['Created', formatDate(product.createdAt)],
-        ['Last Updated', formatDate(product.updatedAt)],
-    ];
+
+    const overviewFields = buildProductDetailFields(productAny).filter(f =>
+        ['Product Name', 'Category', 'Seller', 'Seller Location', 'Description', 'Status'].includes(f.label)
+    );
+    const pricingFields = buildProductDetailFields(productAny).filter(f =>
+        ['Price', 'Currency', 'GST Rate', 'Original Price', 'Discount Price', 'Discount Percent', 'Offer Label', 'Offer Start Date', 'Offer End Date'].includes(f.label)
+    );
+    const detailFields = buildProductDetailFields(productAny).filter(f =>
+        ['Unit of Measure', 'SKU', 'Brand', 'Model Number', 'HSN Code', 'Item Condition', 'MSME Made', 'Bulk Deal Available', 'Bulk Minimum Quantity'].includes(f.label)
+    );
 
     return (
         <div className={useDashboardShell ? "min-h-full bg-white" : "min-h-dvh bg-white flex flex-col"}>
@@ -411,19 +379,47 @@ export default function MarketplaceProductDetail() {
                                 )}
                             </div>
 
-                            <section className="rounded-lg border border-slate-200 bg-white p-4">
-                                <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Product Information</h3>
-                                <div className="grid gap-3 text-xs sm:grid-cols-2">
-                                    {productDetails.map(([label, value]) => (
-                                        <div key={String(label)} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-                                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-                                            <span className="mt-1 block font-bold text-slate-800 text-wrap-anywhere">{formatValue(value)}</span>
-                                        </div>
-                                    ))}
+                            <section className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
+                                <div>
+                                    <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Overview</h3>
+                                    <div className="grid gap-3 text-xs sm:grid-cols-2">
+                                        {overviewFields.map(({ label, value }) => (
+                                            <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                <span className="mt-1 block font-bold text-slate-800 text-wrap-anywhere">{String(value ?? '—')}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                                {pricingFields.length > 0 && (
+                                    <div>
+                                        <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Pricing</h3>
+                                        <div className="grid gap-3 text-xs sm:grid-cols-2">
+                                            {pricingFields.map(({ label, value }) => (
+                                                <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                    <span className="mt-1 block font-bold text-slate-800">{String(value)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {detailFields.length > 0 && (
+                                    <div>
+                                        <h3 className="mb-3 text-sm font-bold text-[#0b2447]">Product Details</h3>
+                                        <div className="grid gap-3 text-xs sm:grid-cols-2">
+                                            {detailFields.map(({ label, value }) => (
+                                                <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                    <span className="mt-1 block font-bold text-slate-800">{String(value)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </section>
 
-                            {/* Description */}
+                            {/* Description shown in overview if long — keep separate block when present */}
                             {product.description && (
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-700 mb-1">Description</h3>
@@ -552,7 +548,7 @@ export default function MarketplaceProductDetail() {
                                 <div><span className="block text-slate-500">Supply Location</span><span className="font-bold text-slate-800">{location || 'Seller location available on enquiry'}</span></div>
                                 <div><span className="block text-slate-500">Buyer Action</span><span className="font-bold text-slate-800">Add to cart or request quote</span></div>
                                 {productAny.hsnCode && <div><span className="block text-slate-500">HSN Code</span><span className="font-bold text-slate-800">{productAny.hsnCode}</span></div>}
-                                {productAny.minimumOrderQuantity && <div><span className="block text-slate-500">Minimum Order</span><span className="font-bold text-slate-800">{productAny.minimumOrderQuantity} {product.unitOfMeasure || ''}</span></div>}
+                                {productAny.bulkMinQuantity && <div><span className="block text-slate-500">Minimum Bulk Order</span><span className="font-bold text-slate-800">{productAny.bulkMinQuantity} {product.unitOfMeasure || ''}</span></div>}
                             </div>
                         </section>
                         <section className="rounded-lg border border-slate-200 bg-white p-5">
@@ -579,10 +575,16 @@ export default function MarketplaceProductDetail() {
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate font-black text-slate-800">{cert.name || cert.fileAsset?.originalName || 'Seller document'}</span>
                                                 <span className="mt-1 block text-[10px] font-semibold text-slate-500">
-                                                    {cert.issuingAuthority || 'Authority not provided'} | {cert.verificationStatus || 'PENDING'}
+                                                    {cert.issuingAuthority ? `${cert.issuingAuthority} | ` : ''}{cert.verificationStatus || 'PENDING'}
                                                 </span>
                                                 {cert.certificateNumber && <span className="mt-1 block text-[10px] font-semibold text-slate-500">Certificate: {cert.certificateNumber}</span>}
-                                                <span className="mt-1 block text-[10px] font-semibold text-slate-500">Issued: {formatDate(cert.issuedAt)} | Expires: {formatDate(cert.expiresAt)}</span>
+                                                {(cert.issuedAt || cert.expiresAt) && (
+                                                    <span className="mt-1 block text-[10px] font-semibold text-slate-500">
+                                                        {cert.issuedAt ? `Issued: ${formatCatalogueDate(cert.issuedAt)}` : ''}
+                                                        {cert.issuedAt && cert.expiresAt ? ' | ' : ''}
+                                                        {cert.expiresAt ? `Expires: ${formatCatalogueDate(cert.expiresAt)}` : ''}
+                                                    </span>
+                                                )}
                                             </span>
                                         </>
                                     );

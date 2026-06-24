@@ -92,9 +92,13 @@ const getRedirectPathFromState = (state: string): string => {
     const parts = state.split('_');
     const encodedPath = parts[parts.length - 1];
     const decoded = Buffer.from(encodedPath, 'base64url').toString('utf8');
-    if (decoded.startsWith('/')) {
-      return decoded;
-    }
+   if (
+  decoded.startsWith('/') &&
+  !decoded.startsWith('//') &&
+  !decoded.includes('\\')
+) {
+  return decoded;
+}
   } catch (e) {
     console.error('[Aadhaar KYC] Error parsing redirect path from state:', e);
   }

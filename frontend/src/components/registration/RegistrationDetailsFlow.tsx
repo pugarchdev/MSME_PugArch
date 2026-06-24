@@ -514,10 +514,18 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           .then(status => {
             setAadhaarKycStatus(status.status);
             setIsAadhaarVerified(status.status === 'VERIFIED');
-            if (status.status === 'VERIFIED') {
-               toast.success('Aadhaar verification successful');
-               setFormData(prev => ({ ...prev, kycSessionToken: token }));
-            }
+           if (status.status === 'VERIFIED') {
+  toast.success('Aadhaar verification successful');
+
+  const parts = String(status.verifiedName || '').trim().split(/\s+/);
+
+  setFormData(prev => ({
+    ...prev,
+    kycSessionToken: token,
+    personalName: prev.personalName || parts[0] || '',
+    personalLastName: prev.personalLastName || parts.slice(1).join(' ') || '',
+  }));
+}
           })
           .catch(() => toast.error('Failed to verify Aadhaar status. Please try again.'))
           .finally(() => setIsFetchingAadhaarKyc(false));

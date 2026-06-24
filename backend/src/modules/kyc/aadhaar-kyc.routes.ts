@@ -68,9 +68,30 @@ router.get(['/kyc/aadhaar/callback', '/kyc/aadhar/callback'], rateLimit(30, 10 *
 
 router.post('/kyc/aadhaar/pre-register/start', rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
   try {
-    const { consent, mobile, aadhaarNumber, vid } = req.body;
-    if (!consent) return apiResponse.error(res, 400, 'Consent is required', 'CONSENT_REQUIRED');
-    const result = await aadhaarKycService.preRegisterStart({ consent, mobile, aadhaarNumber, vid }, requestMeta(req));
+    const { consent, mobile, aadhaarNumber, vid, redirectPath } = req.body;
+
+if (!consent) {
+  return apiResponse.error(res, 400, 'Consent is required', 'CONSENT_REQUIRED');
+}
+
+const safeRedirectPath =
+  typeof redirectPath === 'string' &&
+  redirectPath.startsWith('/') &&
+  !redirectPath.startsWith('//') &&
+  !redirectPath.includes('\\')
+    ? redirectPath
+    : undefined;
+
+const result = await aadhaarKycService.preRegisterStart(
+  {
+    consent,
+    mobile,
+    aadhaarNumber,
+    vid,
+    redirectPath: safeRedirectPath,
+  },
+  requestMeta(req)
+);
     return apiResponse.success(res, result);
   } catch (error: any) {
     console.error('[Aadhaar Pre-register Start Error]:', {

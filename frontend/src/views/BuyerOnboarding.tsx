@@ -1543,7 +1543,6 @@ export default function BuyerOnboarding() {
                           value=""
                           onChange={handleProcurementCategorySelect}
                           error={submitAttempted ? errors.procurementCategories : ''}
-                          required
                           className="h-10"
                         >
                           <option value="" disabled>Select a category</option>
@@ -1620,7 +1619,6 @@ export default function BuyerOnboarding() {
                             value=""
                             onChange={handleProcurementMethodSelect}
                             error={submitAttempted ? errors.preferredMethods : ''}
-                            required
                             className="h-10"
                           >
                             <option value="" disabled>Select a method</option>

@@ -2,6 +2,9 @@
 
 import { useAuth } from '../../../hooks/useAuth';
 import { useActiveCart, useAddToCart, useUpdateCartItem, useRemoveCartItem } from '../../cart/hooks';
+import { removeCartItem, addItemToCart, fetchActiveCart, type CartDto } from '../../cart/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '../../../lib/api';
 import { useGuestCart } from './useGuestCart';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
 import { marketplaceApi } from '../api';
@@ -28,6 +31,7 @@ export function useMarketplaceCart() {
 
     // 2. Authenticated cart hooks (React Query)
     const activeCartQuery = useActiveCart({ enabled: isBuyer });
+    const qc = useQueryClient();
     const addToCartMut = useAddToCart();
     const updateCartItemMut = useUpdateCartItem();
     const removeCartItemMut = useRemoveCartItem();
@@ -140,30 +144,46 @@ export function useMarketplaceCart() {
             item: Omit<UnifiedCartItem, 'quantity' | 'dbCartItemId'>,
             options?: { source?: string; showToast?: boolean }
         ) => {
+            // Cancel active cart queries to prevent concurrent refetches from overriding cache
+            await qc.cancelQueries({ queryKey: ['cart'] });
+
             const otherItems = mappedItems.filter(
                 (cartItem) => !(cartItem.id === item.id && cartItem.type === item.type)
             );
 
-            await Promise.all(
-                otherItems
-                    .filter((cartItem) => cartItem.dbCartItemId)
-                    .map((cartItem) => removeCartItemMut.mutateAsync(cartItem.dbCartItemId!))
-            );
+            // Sequentially remove all other items using raw API to avoid mutation race conditions
+            for (const cartItem of otherItems) {
+                if (cartItem.dbCartItemId) {
+                    try {
+                        await removeCartItem(cartItem.dbCartItemId);
+                    } catch (err) {
+                        console.error(`Failed to remove cart item ${cartItem.dbCartItemId}`, err);
+                    }
+                }
+            }
 
             const hasTarget = mappedItems.some(
                 (cartItem) => cartItem.id === item.id && cartItem.type === item.type
             );
 
+            let finalCart: CartDto;
             if (!hasTarget) {
-                await addToCartMut.mutateAsync({
+                // Add the target item using raw API to avoid mutation race conditions
+                finalCart = await addItemToCart({
                     productId: item.type === 'product' ? item.id : undefined,
                     serviceId: item.type === 'service' ? item.id : undefined,
                     quantity: 1,
-                    itemName: item.name,
-                    unitPrice: item.price,
-                    unitOfMeasure: item.unit,
                 });
+            } else {
+                finalCart = await fetchActiveCart();
             }
+
+            // Directly update the query cache with the final cart returned from the server (which has real positive IDs)
+            qc.setQueryData(['cart', 'active'], finalCart);
+            await qc.invalidateQueries({ queryKey: ['cart'] });
+
+            // Clear the custom API fetch cache so that page navigation doesn't fetch stale cached data
+            api.invalidate('/api/cart');
 
             marketplaceApi.trackInteraction({
                 itemId: item.id,

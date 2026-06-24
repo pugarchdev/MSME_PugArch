@@ -34,6 +34,7 @@ export default function Step5_BudgetSanction({
           <div key={field} className="space-y-1">
             <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}</label>
             <Input
+              type={field === 'sanctionDate' ? 'date' : 'text'}
               value={String(data[field] || '')}
               onChange={e => {
                 const val = field === 'sanctionAmount' ? e.target.value.replace(/-/g, '') : e.target.value;

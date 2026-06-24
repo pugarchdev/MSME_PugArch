@@ -104,7 +104,14 @@ function DocumentUploadZone({
             >
               <span className="inline-flex min-w-0 items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-slate-500" />
-                <span className="truncate">{doc.fileName}</span>
+                <a
+                  href={`/api/files/${doc.fileAssetId}/view`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-[#12335f] hover:underline"
+                >
+                  {doc.fileName}
+                </a>
                 <span className="shrink-0 text-slate-400">
                   ({(doc.fileSize / 1024).toFixed(0)} KB)
                 </span>

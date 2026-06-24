@@ -697,6 +697,64 @@ export default function PurchaseOrders() {
                 </div>
               </div>
 
+              {/* Terms & Documents section */}
+              {(() => {
+                const terms = (viewingOrder.metadata as any)?.termsDocuments || {};
+                const docs = (Array.isArray(terms.documents) ? terms.documents : []) as Array<{
+                  documentType: string;
+                  fileAssetId: number;
+                  fileName: string;
+                  fileSize: number;
+                }>;
+                
+                const hasTerms = terms.deliveryTerms || terms.paymentTerms || terms.warrantyTerms || terms.inspectionTerms || terms.delayPenaltyDetails || terms.additionalTerms;
+                const hasDocs = docs.length > 0;
+
+                if (!hasTerms && !hasDocs) return null;
+
+                return (
+                  <div className="space-y-3">
+                    <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Procurement Terms & Documents</h4>
+                    <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                      {hasTerms && (
+                        <div className="space-y-2">
+                          {terms.deliveryTerms && <div><p className="text-[9px] font-black uppercase text-slate-400">Delivery Terms</p><p className="font-semibold text-slate-700">{terms.deliveryTerms}</p></div>}
+                          {terms.paymentTerms && <div><p className="text-[9px] font-black uppercase text-slate-400">Payment Terms</p><p className="font-semibold text-slate-700">{terms.paymentTerms}</p></div>}
+                          {terms.warrantyTerms && <div><p className="text-[9px] font-black uppercase text-slate-400">Warranty Terms</p><p className="font-semibold text-slate-700">{terms.warrantyTerms}</p></div>}
+                          {terms.inspectionTerms && <div><p className="text-[9px] font-black uppercase text-slate-400">Inspection Terms</p><p className="font-semibold text-slate-700">{terms.inspectionTerms}</p></div>}
+                          {terms.delayPenaltyDetails && <div><p className="text-[9px] font-black uppercase text-slate-400">Delay Penalty Details</p><p className="font-semibold text-slate-700">{terms.delayPenaltyDetails}</p></div>}
+                          {terms.additionalTerms && <div><p className="text-[9px] font-black uppercase text-slate-400">Additional Terms</p><p className="font-semibold text-slate-700">{terms.additionalTerms}</p></div>}
+                        </div>
+                      )}
+                      {hasDocs && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black uppercase text-slate-400">Uploaded Procurement Documents</p>
+                          <div className="space-y-1.5">
+                            {docs.map((doc, dIdx) => (
+                              <div key={dIdx} className="flex items-center gap-2 rounded-md bg-slate-50 border border-slate-100 px-3 py-2">
+                                <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{doc.documentType}</p>
+                                  <a
+                                    href={`/api/files/${doc.fileAssetId}/view`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block truncate text-xs font-bold text-[#12335f] hover:underline"
+                                  >
+                                    {doc.fileName}
+                                  </a>
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-400 shrink-0">({(doc.fileSize / 1024).toFixed(0)} KB)</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2">
                 <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Line Items</h4>
                 <div className="overflow-hidden rounded-lg border border-slate-100 bg-slate-50/50">

@@ -39,6 +39,7 @@ export type PurchaseOrderDto = {
   createdAt?: string;
   updatedAt?: string;
   acceptedAt?: string;
+  metadata?: any;
   items?: Array<{ itemName?: string; quantity?: number; unitPrice?: number | string; totalAmount?: number | string }>;
   deliveryTrackings?: DeliveryTrackingDto[];
   invoices?: Array<{ id: number; invoiceNumber: string; status?: string; amount?: number | string }>;

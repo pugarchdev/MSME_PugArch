@@ -314,7 +314,7 @@ export default function CartPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleUpdate(item.id, Number(item.quantity) - 1)}
-                                                                disabled={Number(item.quantity) <= 1 || updateMut.isPending}
+                                                                disabled={updateMut.isPending || Number(item.quantity) <= 1 || item.id < 0}
                                                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                                                             >
                                                                 <Minus className="h-3 w-3" />
@@ -323,7 +323,7 @@ export default function CartPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleUpdate(item.id, Number(item.quantity) + 1)}
-                                                                disabled={updateMut.isPending}
+                                                                disabled={updateMut.isPending || item.id < 0}
                                                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                                                             >
                                                                 <Plus className="h-3 w-3" />
@@ -351,6 +351,7 @@ export default function CartPage() {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemove(item)}
+                                                            disabled={removeMut.isPending || item.id < 0}
                                                             className="flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-40"
                                                             title="Remove from cart"
                                                         >

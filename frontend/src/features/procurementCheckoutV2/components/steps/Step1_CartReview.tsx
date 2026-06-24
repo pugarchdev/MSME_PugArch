@@ -45,11 +45,11 @@ export default function Step1_CartReview({
                 <td className="p-3">
                   {cart.status === 'ACTIVE' ? (
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="outline" className="h-7 w-7" disabled={isUpdating} onClick={() => onUpdateQty(item.id, Math.max(1, Number(item.quantity) - 1))}>
+                      <Button size="icon" variant="outline" className="h-7 w-7" disabled={isUpdating || item.id < 0} onClick={() => onUpdateQty(item.id, Math.max(1, Number(item.quantity) - 1))}>
                         <Minus className="h-3 w-3" />
                       </Button>
                       <span className="w-8 text-center font-bold">{item.quantity}</span>
-                      <Button size="icon" variant="outline" className="h-7 w-7" disabled={isUpdating} onClick={() => onUpdateQty(item.id, Number(item.quantity) + 1)}>
+                      <Button size="icon" variant="outline" className="h-7 w-7" disabled={isUpdating || item.id < 0} onClick={() => onUpdateQty(item.id, Number(item.quantity) + 1)}>
                         <Plus className="h-3 w-3" />
                       </Button>
                     </div>
@@ -61,7 +61,7 @@ export default function Step1_CartReview({
                 <td className="p-3 font-bold">{formatCurrency(Number(item.quantity) * Number(item.unitPrice))}</td>
                 <td className="p-3">
                   {cart.status === 'ACTIVE' && (
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => onRemove(item.id)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" disabled={item.id < 0} onClick={() => onRemove(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   )}

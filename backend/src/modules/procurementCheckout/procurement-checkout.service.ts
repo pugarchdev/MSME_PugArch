@@ -265,6 +265,7 @@ export const finalizeDirectPurchaseFromCheckout = async (
             procurementRequestId: request.id,
             directPurchaseId: directPurchase.id,
             sellerAcceptance: 'PENDING',
+            termsDocuments: request.termsDocuments || null,
           },
         },
       });
@@ -344,6 +345,7 @@ export const convertCartToBidDraft = async (
         step5: request.deliveryDetails || {},
         estimatedValue: cartSnap?.totalValue,
         pacJustification: request.pacJustification,
+        step7: request.termsDocuments || {},
       },
       draftStatus: 'DRAFT',
     },

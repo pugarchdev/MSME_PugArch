@@ -203,7 +203,11 @@ export async function approveOnboardingAndEnsureOrganization(userId: number, upd
     if (user.role === 'buyer') {
       await tx.buyerProfile.updateMany({
         where: { userId },
-        data: { organizationId: organization.id, verificationStatusEnum: 'VERIFIED' as any }
+        data: {
+          organizationId: organization.id,
+          verificationStatusEnum: 'VERIFIED' as any,
+          verificationStatus: 'VERIFIED'
+        }
       });
     } else {
       await tx.sellerProfile.updateMany({

@@ -161,7 +161,7 @@ const createOrgWithoutGstSchema = z.object({
 });
 
 // ─── GET /api/org/status — org approval status for banner ────────────────────
-router.get('/org/status', authenticate, shortCache(30), asyncRoute(async (req, res) => {
+router.get('/org/status', authenticate, asyncRoute(async (req, res) => {
     const user = await prisma.user.findUnique({
         where: { id: userId(req) },
         select: {

@@ -2037,10 +2037,23 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
       where: { userId: id },
       data: {
         verificationStatus: showcaseStatus,
+        verificationStatusEnum: showcaseStatus as any,
         verifiedAt: showcaseStatus === 'VERIFIED' ? new Date() : null,
         verifiedBy: showcaseStatus === 'VERIFIED' ? adminName : null
       }
     }).catch((err: any) => console.error('[Showcase Status Update Failed]', err));
+
+    // Also update the Organization table verificationStatus if they are linked
+    const linkedProfile = await db.buyerProfile.findUnique({ where: { userId: id } });
+    if (linkedProfile?.organizationId) {
+      await db.organization.update({
+        where: { id: linkedProfile.organizationId },
+        data: {
+          verificationStatus: showcaseStatus as any,
+          organizationOnboardingStatus: showcaseStatus === 'VERIFIED' ? 'approved_for_procurement' : undefined
+        }
+      }).catch((err: any) => console.error('[Organization Status Sync Failed]', err));
+    }
   }
 
   if (approvalResult) {

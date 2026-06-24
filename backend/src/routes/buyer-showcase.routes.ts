@@ -793,10 +793,43 @@ router.post('/admin/organizations/:id/status', authenticate, authorize('admin'),
       where: { id },
       data: {
         verificationStatus: status,
+        verificationStatusEnum: status as any,
         verifiedAt: status === 'VERIFIED' ? new Date() : null,
         verifiedBy: status === 'VERIFIED' ? adminName : null
       }
     });
+
+    if (updated.organizationId) {
+      await db.organization.update({
+        where: { id: updated.organizationId },
+        data: {
+          verificationStatus: status as any,
+          organizationOnboardingStatus: status === 'VERIFIED' ? 'approved_for_procurement' : undefined
+        }
+      });
+    }
+
+    if (status === 'VERIFIED') {
+      const dbUser = await db.user.findUnique({ where: { id: updated.userId } });
+      if (dbUser) {
+        let sectionStatus = dbUser.sectionStatus ? { ...(dbUser.sectionStatus as object) } : {};
+        sectionStatus = {
+          org: 'approved',
+          rep: 'approved',
+          docs: 'approved',
+          address: 'approved',
+          procurement: 'approved',
+          ...sectionStatus
+        };
+        await db.user.update({
+          where: { id: updated.userId },
+          data: {
+            onboardingStatus: 'approved_for_procurement',
+            sectionStatus
+          }
+        });
+      }
+    }
 
     await notificationService.notify(updated.userId, {
       title: `Showcase Status Updated: ${status}`,

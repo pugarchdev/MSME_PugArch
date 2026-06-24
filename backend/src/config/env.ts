@@ -124,7 +124,7 @@ const envSchema = z.object({
   MERIPEHCHAAN_REDIRECT_URI: optionalUrl(),
   MERIPEHCHAAN_SCOPES: z.string().default('openid profile email'),
   MERIPEHCHAAN_ACR: optionalString(),
-  AADHAAR_KYC_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10)
+  AADHAAR_KYC_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(60)
 });
 const parsed = envSchema.safeParse(process.env);
 

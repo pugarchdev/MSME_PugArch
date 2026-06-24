@@ -25,7 +25,8 @@ export const validatePersonalVerification = (
 
   if (method === 'aadhaar') {
     const aadhaarValue = String(details?.aadhaarNumber || '').trim();
-    const validIdentity = /^\d{12}$/.test(aadhaarValue) || /^\d{16}$/.test(aadhaarValue);
+    const isMasked = /^[X\s-]+\d{4}$/i.test(aadhaarValue);
+    const validIdentity = /^\d{12}$/.test(aadhaarValue) || /^\d{16}$/.test(aadhaarValue) || (details?.isAadhaarVerified && isMasked);
     const validMobile = /^[6-9]\d{9}$/.test(mobileValue) && !/^(\d)\1{9}$/.test(mobileValue);
     if (!validIdentity) errors.aadhaarNumber = 'Aadhaar must be 12 digits or Virtual ID must be 16 digits';
     if (!validMobile) errors.mobile = 'Aadhaar-linked mobile must be a valid 10 digit Indian mobile number';

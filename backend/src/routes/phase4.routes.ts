@@ -6518,9 +6518,122 @@ router.post('/seller/settings/close-account', authenticate, asyncRoute(async (re
   ok(res, { success: true, message: 'Account closed successfully' });
 }));
 
-router.get('/seller/settings/branding', authenticate, authorize('seller', 'shg'), asyncRoute(async (req, res) => {
-  const orgId = req.user?.organizationId;
+async function ensureUserOrganizationId(req: any): Promise<number> {
+  let orgId = req.user?.organizationId;
+  if (!orgId && req.user?.id) {
+    const user = await db.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        sellerProfile: true,
+        buyerProfile: true
+      }
+    });
+
+    if (user) {
+      const membership = await db.orgMembership.findFirst({
+        where: { userId: user.id },
+        include: { organization: true }
+      });
+      if (membership?.organizationId) {
+        orgId = membership.organizationId;
+        await db.user.update({
+          where: { id: user.id },
+          data: { organizationId: orgId }
+        });
+        req.user.organizationId = orgId;
+      } else {
+        const regDetails = typeof user.registrationDetails === 'object' && user.registrationDetails ? user.registrationDetails as any : {};
+        const gstDetails = typeof regDetails.gstDetails === 'object' && regDetails.gstDetails ? regDetails.gstDetails as any : {};
+        
+        const orgName = regDetails.businessName || regDetails.organisation || gstDetails.legalName || gstDetails.tradeName || user.name || 'Default Organisation';
+        
+        let orgType = 'MSME';
+        if (user.role === 'buyer') {
+          orgType = 'GOVERNMENT';
+        } else {
+          const typeStr = String(regDetails.businessType || regDetails.organisationType || '').trim().toUpperCase();
+          if (typeStr.includes('PROPRIETORSHIP')) {
+            orgType = 'PROPRIETORSHIP';
+          } else if (typeStr.includes('PARTNERSHIP')) {
+            orgType = 'PARTNERSHIP';
+          } else if (typeStr.includes('LLP')) {
+            orgType = 'LLP';
+          } else if (typeStr.includes('STARTUP')) {
+            orgType = 'STARTUP';
+          } else if (typeStr.includes('PRIVATE_LIMITED') || typeStr.includes('PVT LTD') || typeStr.includes('PVT. LTD.')) {
+            orgType = 'PRIVATE_LIMITED';
+          } else if (typeStr.includes('PUBLIC_LIMITED') || typeStr.includes('PUBLIC LTD')) {
+            orgType = 'PUBLIC_LIMITED';
+          } else if (typeStr.includes('SHG')) {
+            orgType = 'SHG';
+          } else if (typeStr.includes('NGO')) {
+            orgType = 'NGO';
+          } else if (typeStr.includes('TRUST')) {
+            orgType = 'TRUST';
+          } else if (typeStr.includes('SOCIETY')) {
+            orgType = 'SOCIETY';
+          } else if (typeStr.includes('GOVERNMENT')) {
+            orgType = 'GOVERNMENT';
+          } else if (typeStr.includes('PSU')) {
+            orgType = 'PSU';
+          } else {
+            orgType = 'MSME';
+          }
+        }
+
+        const newOrg = await db.organization.create({
+          data: {
+            organizationName: orgName,
+            organizationType: orgType as any,
+            gstin: regDetails.gstin || null,
+            panNumber: regDetails.pan || regDetails.panNumber || gstDetails.pan || null,
+            state: regDetails.state || gstDetails.state || null,
+            district: regDetails.district || gstDetails.district || gstDetails.city || null,
+            city: gstDetails.city || regDetails.district || null,
+            pincode: gstDetails.pincode || null,
+            addressLine1: regDetails.officeZoneName || gstDetails.address || null,
+            verificationStatus: 'PENDING',
+            organizationOnboardingStatus: 'self_created'
+          }
+        });
+
+        orgId = newOrg.id;
+        await db.user.update({
+          where: { id: user.id },
+          data: { organizationId: orgId }
+        });
+        req.user.organizationId = orgId;
+
+        await db.orgMembership.create({
+          data: {
+            userId: user.id,
+            organizationId: orgId,
+            orgRole: 'ORG_ADMIN',
+            isActive: true
+          }
+        });
+        
+        if (user.sellerProfile) {
+          await db.sellerProfile.update({
+            where: { id: user.sellerProfile.id },
+            data: { organizationId: orgId }
+          });
+        } else if (user.buyerProfile) {
+          await db.buyerProfile.update({
+            where: { id: user.buyerProfile.id },
+            data: { organizationId: orgId }
+          });
+        }
+      }
+    }
+  }
+
   if (!orgId) throw new ApiError(400, 'User is not associated with an organization');
+  return orgId;
+}
+
+router.get('/seller/settings/branding', authenticate, authorize('seller', 'shg'), asyncRoute(async (req, res) => {
+  const orgId = await ensureUserOrganizationId(req);
 
   const profile = await db.organizationProfile.findUnique({
     where: { organizationId: orgId }
@@ -6532,8 +6645,7 @@ router.get('/seller/settings/branding', authenticate, authorize('seller', 'shg')
 }));
 
 router.put('/seller/settings/branding', authenticate, authorize('seller', 'shg'), asyncRoute(async (req, res) => {
-  const orgId = req.user?.organizationId;
-  if (!orgId) throw new ApiError(400, 'User is not associated with an organization');
+  const orgId = await ensureUserOrganizationId(req);
 
   const body = parse(z.object({
     logoUrl: z.string().trim().optional().nullable().refine(

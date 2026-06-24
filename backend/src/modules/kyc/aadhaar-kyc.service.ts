@@ -582,6 +582,9 @@ export const aadhaarKycService = {
     const state = `${randomUrlSafe(16)}_${Buffer.from(JSON.stringify(stateData)).toString('base64url')}`;
     const codeVerifier = randomUrlSafe(64);
     const challenge = codeChallenge(codeVerifier);
+    const rawNum = String(payload.aadhaarNumber || payload.vid || '').trim();
+    const aadhaarLast4 = rawNum.length >= 4 ? rawNum.slice(-4) : undefined;
+    const mobileHash = payload.mobile ? crypto.createHash('sha256').update(payload.mobile.trim()).digest('hex') : undefined;
     const expiresAt = new Date(Date.now() + config.ttlMinutes * 60_000);
     const kycSessionToken = randomUrlSafe(48);
     const kycSessionTokenHash = hashToken(kycSessionToken);
@@ -596,7 +599,9 @@ export const aadhaarKycService = {
         redirectUri: config.redirectUri,
         scopes: config.scopes,
         expiresAt,
-        status: 'PENDING'
+        status: 'PENDING',
+        aadhaarLast4,
+        mobileHash
       }
     });
 

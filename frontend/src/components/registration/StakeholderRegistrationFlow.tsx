@@ -39,7 +39,7 @@ export default function StakeholderRegistrationFlow({ role, variant = role, init
     if (typeof window !== 'undefined') {
       const isSessionActive = sessionStorage.getItem('registrationSessionActive');
       if (!isSessionActive) {
-        localStorage.removeItem('preRegisterKycSessionToken');
+        sessionStorage.removeItem('preRegisterKycSessionToken');
         localStorage.removeItem('preRegisterKycRedirectPath');
         localStorage.removeItem('preRegisterKycFormData');
         localStorage.removeItem('preRegisterKycSubStep');

@@ -35,7 +35,6 @@ import { onUserLinkedToOrganization } from '../../services/org-membership.servic
 const sanitizeRegistrationDetails = (details: any) => {
   const sanitized = { ...(details || {}) };
   delete sanitized.aadhaarNumber;
-  delete sanitized.isAadhaarVerified;
   return sanitized;
 };
 
@@ -419,21 +418,64 @@ export const authController = {
         if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
       }
 
-      const kycSessionToken = String(req.body.kycSessionToken || '').trim();
+      console.log("[DEBUG REGISTER] req.body keys:", Object.keys(req.body));
+      if (req.body.registrationDetails) {
+        console.log("[DEBUG REGISTER] req.body.registrationDetails keys:", Object.keys(req.body.registrationDetails));
+      }
+
+      const kycSessionToken = String(
+        req.body.registrationDetails?.aadhaarVerificationId ||
+        req.body.aadhaarVerificationId ||
+        req.body.kycSessionToken ||
+        ''
+      ).trim();
       let kycSession = null;
+
+      console.log("[DEBUG REGISTER] aadhaarVerificationId / kycSessionToken received:", kycSessionToken ? `PRESENT (length: ${kycSessionToken.length})` : "EMPTY");
+
+      if ((role === 'buyer' || role === 'seller') && registrationDetails?.verificationMethod === 'aadhaar') {
+        if (kycSessionToken) {
+          const kycSessionTokenHash = sha256(kycSessionToken);
+          kycSession = await prisma.preRegistrationKycSession.findUnique({ where: { kycSessionTokenHash } });
+          if (kycSession) {
+            console.log("[DEBUG REGISTER] DB KycSession record found:", {
+              id: kycSession.id,
+              status: kycSession.status,
+              used: kycSession.used,
+              expiresAt: kycSession.expiresAt,
+              isExpired: kycSession.expiresAt <= new Date()
+            });
+            if (kycSession.status === 'VERIFIED' && !kycSession.used && kycSession.expiresAt > new Date()) {
+              if (registrationDetails) {
+                registrationDetails.isAadhaarVerified = true;
+                if (!registrationDetails.aadhaarNumber && kycSession.aadhaarLast4) {
+                  registrationDetails.aadhaarNumber = `XXXX XXXX ${kycSession.aadhaarLast4}`;
+                }
+              }
+            }
+          } else {
+            console.log("[DEBUG REGISTER] DB KycSession record NOT found for hash:", kycSessionTokenHash);
+          }
+        }
+      }
 
       const personalValidation = validatePersonalVerification(role, registrationDetails, dob, mobile);
       if ((role === 'buyer' || role === 'seller') && registrationDetails?.verificationMethod === 'aadhaar') {
         if (!kycSessionToken) {
-          personalValidation.errors.aadhaarVerified = 'Aadhaar must be verified with DigiLocker / MeriPehchaan before registration';
+          personalValidation.errors.aadhaarVerified = 'Please verify Aadhaar before creating the account.';
           personalValidation.isValid = false;
-        } else {
-          const kycSessionTokenHash = sha256(kycSessionToken);
-          kycSession = await prisma.preRegistrationKycSession.findUnique({ where: { kycSessionTokenHash } });
-          if (!kycSession || kycSession.status !== 'VERIFIED' || kycSession.used || kycSession.expiresAt <= new Date()) {
-            personalValidation.errors.aadhaarVerified = 'Invalid or expired Aadhaar verification session. Please verify again.';
-            personalValidation.isValid = false;
-          }
+        } else if (!kycSession) {
+          personalValidation.errors.aadhaarVerified = 'Aadhaar verification could not be confirmed.';
+          personalValidation.isValid = false;
+        } else if (kycSession.status !== 'VERIFIED') {
+          personalValidation.errors.aadhaarVerified = 'Please verify Aadhaar before creating the account.';
+          personalValidation.isValid = false;
+        } else if (kycSession.expiresAt <= new Date()) {
+          personalValidation.errors.aadhaarVerified = 'Aadhaar verification expired. Please verify again.';
+          personalValidation.isValid = false;
+        } else if (kycSession.used) {
+          personalValidation.errors.aadhaarVerified = 'Aadhaar verification has already been used. Please verify again.';
+          personalValidation.isValid = false;
         }
       }
       if (!personalValidation.isValid) {

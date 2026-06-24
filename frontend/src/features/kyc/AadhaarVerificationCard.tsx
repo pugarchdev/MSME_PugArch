@@ -43,7 +43,7 @@ export function AadhaarVerificationCard({ compact = false }: { compact?: boolean
 
   const query = useQuery({
     queryKey: ['aadhaar-kyc-status'],
-    queryFn: aadhaarKycApi.status,
+    queryFn: () => aadhaarKycApi.status(),
     staleTime: 30_000,
   });
 

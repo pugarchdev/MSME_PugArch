@@ -371,7 +371,9 @@ export const catalogueImportService = {
     await assertApprovedSeller(actor);
     const batch = await db.catalogueImportBatch.findFirst({ where: { id: batchId, sellerId: actor.id } });
     if (!batch) throw new ApiError(404, 'Import batch not found', 'BATCH_NOT_FOUND');
-    if (batch.status !== 'PREVIEWED') throw new ApiError(400, 'Import batch already processed', 'BATCH_ALREADY_PROCESSED');
+    if (batch.status !== 'PREVIEWED' && batch.status !== 'FAILED') {
+      throw new ApiError(400, 'Import batch already processed', 'BATCH_ALREADY_PROCESSED');
+    }
 
     const rows = Array.isArray(batch.previewData) ? batch.previewData as Record<string, unknown>[] : [];
     if (rows.length === 0) {
@@ -406,6 +408,9 @@ export const catalogueImportService = {
           where: { id: batchId },
           data: { status: 'CONFIRMED', validRows: successCount }
         });
+      }, {
+        maxWait: 15000,
+        timeout: 90000
       });
     } catch (err) {
       await db.catalogueImportBatch.update({ where: { id: batchId }, data: { status: 'FAILED' } });

@@ -9,10 +9,15 @@ export type AadhaarKycStatus = {
   ageVerified?: boolean | null;
   isValid?: boolean;
   used?: boolean;
+  verified?: boolean;
+  verificationId?: string;
+  maskedAadhaar?: string;
+  firstName?: string;
+  lastName?: string;
 };
 
 export const aadhaarKycApi = {
-  status: () => getApi<AadhaarKycStatus>('/api/kyc/aadhaar/status', true),
+  status: (token?: string) => getApi<AadhaarKycStatus>(token ? `/api/kyc/aadhaar/status?token=${encodeURIComponent(token)}` : '/api/kyc/aadhaar/status', true),
   reset: () => postApi<AadhaarKycStatus>('/api/kyc/aadhaar/reset', {}),
   startUrl: (payload?: { redirectPath?: string; frontendOrigin?: string }) => postApi<{ authorizationUrl: string }>('/api/kyc/aadhaar/start-url', payload || {}),
   

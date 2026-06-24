@@ -4498,6 +4498,7 @@ router.post('/invoices', authenticate, authorize('seller', 'admin'), asyncRoute(
     purchaseOrderId: z.coerce.number().int().positive(),
     amount: z.coerce.number().positive().optional(),
     gstRate: z.coerce.number().min(0).max(100).optional(),
+    otherTaxRate: z.coerce.number().min(0).max(100).optional(),
     tdsRate: z.coerce.number().min(0).max(100).optional(),
     interstate: z.boolean().optional(),
     items: z.array(z.object({

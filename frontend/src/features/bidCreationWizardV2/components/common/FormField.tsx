@@ -44,7 +44,7 @@ export default function FormField({
   });
 
   return (
-    <label
+    <div
       id={fieldId}
       data-field-error={hasError ? 'true' : undefined}
       className={cn('block space-y-1.5', fieldContainerClass(hasError), className)}
@@ -59,6 +59,6 @@ export default function FormField({
           {error![0]}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }

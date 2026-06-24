@@ -14,19 +14,24 @@ const assertPOAccess = async (actor: WorkflowActor, purchaseOrderId: number) => 
   return po;
 };
 
-const taxBreakup = (amount: number, options?: { gstRate?: number; tdsRate?: number; interstate?: boolean }) => {
+const taxBreakup = (amount: number, options?: { gstRate?: number; tdsRate?: number; interstate?: boolean; otherTaxRate?: number }) => {
   const gstRate = options?.gstRate ?? 18;
   const tdsRate = options?.tdsRate ?? 0;
+  const otherTaxRate = options?.otherTaxRate ?? 0;
   const taxableAmount = roundMoney(amount);
-  const totalTaxAmount = roundMoney(taxableAmount * gstRate / 100);
+  const gstTaxAmount = roundMoney(taxableAmount * gstRate / 100);
+  const otherTaxAmount = roundMoney(taxableAmount * otherTaxRate / 100);
+  const totalTaxAmount = roundMoney(gstTaxAmount + otherTaxAmount);
   const tdsAmount = roundMoney(taxableAmount * tdsRate / 100);
   return {
     taxableAmount,
-    cgstAmount: options?.interstate ? 0 : roundMoney(totalTaxAmount / 2),
-    sgstAmount: options?.interstate ? 0 : roundMoney(totalTaxAmount / 2),
-    igstAmount: options?.interstate ? totalTaxAmount : 0,
+    cgstAmount: options?.interstate ? 0 : roundMoney(gstTaxAmount / 2),
+    sgstAmount: options?.interstate ? 0 : roundMoney(gstTaxAmount / 2),
+    igstAmount: options?.interstate ? gstTaxAmount : 0,
     totalTaxAmount,
     tdsAmount,
+    otherTaxRate,
+    otherTaxAmount,
     grossAmount: roundMoney(taxableAmount + totalTaxAmount - tdsAmount)
   };
 };
@@ -116,7 +121,7 @@ export const fulfillmentWorkflow = {
     return updated;
   },
 
-  async createInvoice(actor: WorkflowActor, input: { purchaseOrderId: number; amount?: number; gstRate?: number; tdsRate?: number; interstate?: boolean; items?: Array<Record<string, unknown>> }) {
+  async createInvoice(actor: WorkflowActor, input: { purchaseOrderId: number; amount?: number; gstRate?: number; tdsRate?: number; interstate?: boolean; otherTaxRate?: number; items?: Array<Record<string, unknown>> }) {
     const po = await assertPOAccess(actor, input.purchaseOrderId);
     if (actor.role !== 'admin' && po.sellerId !== actor.id) throw new ApiError(403, 'Seller access required', 'SELLER_REQUIRED');
     const baseAmount = input.amount ?? Number(po.amount);
@@ -137,6 +142,10 @@ export const fulfillmentWorkflow = {
           igstAmount: taxes.igstAmount,
           totalTaxAmount: taxes.totalTaxAmount,
           tdsAmount: taxes.tdsAmount,
+          metadata: {
+            otherTaxRate: taxes.otherTaxRate,
+            otherTaxAmount: taxes.otherTaxAmount
+          },
           items: input.items?.length ? { create: input.items } : undefined
         },
         include: { items: true }

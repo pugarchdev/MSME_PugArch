@@ -13,6 +13,7 @@ import { postApi, getApi } from '../../shared/apiClient';
 import { Pagination } from '../../shared/Pagination';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
+import { GST_STANDARD_RATES, formatTaxRate } from '../../shared/gstTax';
 
 type InvoiceRow = {
   id: number;
@@ -24,6 +25,9 @@ type InvoiceRow = {
   totalAmount?: string | number;
   taxableAmount?: string | number;
   totalTaxAmount?: string | number;
+  cgstAmount?: string | number;
+  sgstAmount?: string | number;
+  igstAmount?: string | number;
   tdsAmount?: string | number;
   status?: string;
   invoiceStatus?: string;
@@ -167,6 +171,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   const [invoiceGstRate, setInvoiceGstRate] = useState('18');
   const [invoiceTdsRate, setInvoiceTdsRate] = useState('0');
   const [invoiceInterstate, setInvoiceInterstate] = useState(false);
+  const [invoiceOtherTax, setInvoiceOtherTax] = useState('0');
 
   const toggleSort = (field: 'invoiceNumber' | 'poNumber' | 'party' | 'taxableAmount' | 'totalTaxAmount' | 'tdsAmount' | 'totalAmount' | 'dueDate' | 'status') => {
     if (sortField === field) {
@@ -213,9 +218,10 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         if (amount) {
           setInvoiceAmount(amount);
         }
-        setInvoiceGstRate('');
-        setInvoiceTdsRate('');
+        setInvoiceGstRate('18');
+        setInvoiceTdsRate('0');
         setInvoiceInterstate(false);
+        setInvoiceOtherTax('0');
         setCreateInvoiceModalOpen(true);
 
         const cleanUrl = window.location.pathname;
@@ -270,6 +276,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     setInvoiceGstRate('18');
     setInvoiceTdsRate('0');
     setInvoiceInterstate(false);
+    setInvoiceOtherTax('0');
     setCreateInvoiceModalOpen(true);
   };
 
@@ -305,6 +312,12 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       return;
     }
 
+    const otherTaxRate = Number(invoiceOtherTax || 0);
+    if (Number.isNaN(otherTaxRate) || otherTaxRate < 0 || otherTaxRate > 100) {
+      setCreateInvoiceError('Enter a valid Other Tax rate between 0 and 100.');
+      return;
+    }
+
     setCreateInvoiceSubmitting(true);
     setCreateInvoiceError(null);
     try {
@@ -312,6 +325,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
         purchaseOrderId: selectedPurchaseOrderId,
         amount,
         gstRate,
+        otherTaxRate,
         tdsRate,
         interstate: invoiceInterstate,
       });
@@ -766,7 +780,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 </div>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice Amount</label>
                   <input
@@ -780,12 +794,29 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">GST Rate (%)</label>
+                  <select
+                    value={invoiceGstRate}
+                    onChange={event => setInvoiceGstRate(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                  >
+                    <option value="">-Select-</option>
+                    {GST_STANDARD_RATES.map(rate => (
+                      <option key={`gst-${rate}`} value={String(rate)}>
+                        {formatTaxRate(rate)}%
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Other Tax (%)</label>
                   <input
                     type="number"
                     min={0}
                     max={100}
-                    value={invoiceGstRate}
-                    onChange={event => setInvoiceGstRate(event.target.value)}
+                    step="0.01"
+                    placeholder="0"
+                    value={invoiceOtherTax}
+                    onChange={event => setInvoiceOtherTax(event.target.value)}
                     className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
                   />
                 </div>
@@ -1140,27 +1171,51 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs space-y-2 h-max">
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1 font-extrabold text-slate-500">Taxation & Net Settlement Calculations</p>
                         <div className="space-y-1.5 font-bold text-slate-650">
-                          <div className="flex justify-between">
-                            <span>Gross Taxable Amount:</span>
-                            <span className="text-slate-800">{formatCurrency(selectedInvoice.taxableAmount || selectedInvoice.amount || 0)}</span>
-                          </div>
-                          {selectedInvoice.interstate ? (
-                            <div className="flex justify-between">
-                              <span>IGST Amount (18%):</span>
-                              <span className="text-slate-800">{formatCurrency(selectedInvoice.totalTaxAmount || 0)}</span>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex justify-between">
-                                <span>CGST Amount (9%):</span>
-                                <span className="text-slate-800">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>SGST Amount (9%):</span>
-                                <span className="text-slate-800">{formatCurrency(Number(selectedInvoice.totalTaxAmount || 0) / 2)}</span>
-                              </div>
-                            </>
-                          )}
+                          {(() => {
+                            const cgstVal = Number(selectedInvoice.cgstAmount || 0);
+                            const sgstVal = Number(selectedInvoice.sgstAmount || 0);
+                            const igstVal = Number(selectedInvoice.igstAmount || 0);
+                            const totalTaxVal = Number(selectedInvoice.totalTaxAmount || 0);
+                            const taxableVal = Number(selectedInvoice.taxableAmount || selectedInvoice.amount || 0);
+                            const otherTaxVal = Math.max(0, totalTaxVal - (cgstVal + sgstVal + igstVal));
+
+                            const cgstRate = taxableVal > 0 ? ((cgstVal / taxableVal) * 100).toFixed(2).replace(/\.00$/, '').replace(/\.0$/, '') : '';
+                            const sgstRate = taxableVal > 0 ? ((sgstVal / taxableVal) * 100).toFixed(2).replace(/\.00$/, '').replace(/\.0$/, '') : '';
+                            const igstRate = taxableVal > 0 ? ((igstVal / taxableVal) * 100).toFixed(2).replace(/\.00$/, '').replace(/\.0$/, '') : '';
+                            const otherTaxRate = taxableVal > 0 ? ((otherTaxVal / taxableVal) * 100).toFixed(2).replace(/\.00$/, '').replace(/\.0$/, '') : '';
+
+                            return (
+                              <>
+                                <div className="flex justify-between">
+                                  <span>Gross Taxable Amount:</span>
+                                  <span className="text-slate-800">{formatCurrency(taxableVal)}</span>
+                                </div>
+                                {selectedInvoice.interstate ? (
+                                  <div className="flex justify-between">
+                                    <span>IGST Amount ({igstRate || '0'}%):</span>
+                                    <span className="text-slate-800">{formatCurrency(igstVal)}</span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex justify-between">
+                                      <span>CGST Amount ({cgstRate || '0'}%):</span>
+                                      <span className="text-slate-800">{formatCurrency(cgstVal)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>SGST Amount ({sgstRate || '0'}%):</span>
+                                      <span className="text-slate-800">{formatCurrency(sgstVal)}</span>
+                                    </div>
+                                  </>
+                                )}
+                                {otherTaxVal > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Other Tax / Cess ({otherTaxRate || '0'}%):</span>
+                                    <span className="text-slate-800">{formatCurrency(otherTaxVal)}</span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                           <div className="flex justify-between text-red-650 border-b border-slate-200 pb-1.5">
                             <span>Government TDS Deduction (GST Section 51):</span>
                             <span>-{formatCurrency(selectedInvoice.tdsAmount || 0)}</span>

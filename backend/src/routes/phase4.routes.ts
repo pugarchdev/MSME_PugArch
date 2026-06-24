@@ -2803,7 +2803,7 @@ router.get('/seller/products', authenticate, authorize('seller'), asyncRoute(asy
   const [products, total] = await Promise.all([
     db.product.findMany({
       where,
-      include: { category: true, seller: { select: { id: true, name: true, email: true, onboardingStatus: true } }, ...catalogueAttachmentInclude },
+      include: { category: true, seller: { select: { id: true, name: true, email: true, onboardingStatus: true } }, specifications: true, ...catalogueAttachmentInclude },
       ...window,
       orderBy: { updatedAt: 'desc' }
     }),
@@ -2868,7 +2868,7 @@ router.get('/seller/services', authenticate, authorize('seller'), asyncRoute(asy
   const [services, total] = await Promise.all([
     db.service.findMany({
       where,
-      include: { category: true, seller: { select: { id: true, name: true, email: true, onboardingStatus: true } }, certifications: { include: { fileAsset: true } } },
+      include: { category: true, seller: { select: { id: true, name: true, email: true, onboardingStatus: true } }, specifications: true, certifications: { include: { fileAsset: true } } },
       ...window,
       orderBy: { updatedAt: 'desc' }
     }),

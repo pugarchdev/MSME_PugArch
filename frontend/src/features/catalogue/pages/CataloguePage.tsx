@@ -28,7 +28,6 @@ import { CompareToggleButton } from '../../marketplace/components/CompareToggleB
 import { CompareTray } from '../../marketplace/components/CompareTray';
 import { resolveMarketplaceImage } from '../../marketplace/utils/marketplaceImages';
 import { CatalogueImportModal } from '../components/CatalogueImportModal';
-import { marketplaceVisibilityLabel } from '../utils/catalogueDetailUtils';
 import type { ImportBatchDto } from '../api';
 
 type CatalogueMode = 'buyer' | 'seller' | 'admin';
@@ -1819,21 +1818,9 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
 
             {mode === 'seller' && onEdit && onDelete && (
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onEdit(item)}
-                  disabled={status === 'ARCHIVED'}
-                  className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(item)}
-                  className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  Delete
-                </button>
+                <button type="button" onClick={() => onViewDetails?.(item)} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50">View</button>
+                <button type="button" onClick={() => onEdit(item)} disabled={status === 'ARCHIVED'} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 hover:bg-emerald-50 disabled:opacity-50">Edit</button>
+                <button type="button" onClick={() => onDelete(item)} className="rounded px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-50">Delete</button>
               </div>
             )}
           </div>

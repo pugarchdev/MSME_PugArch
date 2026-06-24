@@ -73,6 +73,15 @@ const jsonOk = (res: Response, data: unknown, message = 'Operation successful', 
 const jsonError = (res: Response, status: number, message: string, errorCode: string) =>
   res.status(status).json({ success: false, message, errorCode });
 
+const checkNotMasterAdmin = async (id: number, res: Response): Promise<boolean> => {
+  const user = await prisma.user.findUnique({ where: { id }, select: { role: true, userId: true } });
+  if (user && (user.role === 'master_admin' || user.userId === 'MASTER_ADMIN')) {
+    jsonError(res, 403, 'Master Admin user cannot be modified or deleted.', 'MASTER_ADMIN_LOCKED');
+    return false;
+  }
+  return true;
+};
+
 const allowedRoles = new Set(['master_admin', 'admin', 'buyer', 'seller', 'financier']);
 const allowedUserStatuses = new Set(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']);
 const allowedVerificationStatuses = new Set(['PENDING', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED', 'SUSPENDED', 'FAILED', 'MANUAL_REVIEW_REQUIRED', 'EXPIRED']);
@@ -1339,12 +1348,15 @@ router.post('/master-admin/users', ...masterOnly, requirePermission(PERMISSIONS.
 router.get('/master-admin/users/:id', ...masterOnly, wrap(async (req, res) => {
   const id = Number(req.params.id);
   const user = await prisma.user.findUnique({ where: { id }, select: userSelect });
-  if (!user) return jsonError(res, 404, 'User not found.', 'USER_NOT_FOUND');
+  if (!user || user.role === 'master_admin' || user.userId === 'MASTER_ADMIN') {
+    return jsonError(res, 404, 'User not found.', 'USER_NOT_FOUND');
+  }
   jsonOk(res, user);
 }));
 
 router.put('/master-admin/users/:id', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'update user');
   if (!reason) return;
   try {
@@ -1369,6 +1381,7 @@ router.put('/master-admin/users/:id', ...masterOnly, requirePermission(PERMISSIO
 const userStatusAction = (action: 'activate' | 'inactivate' | 'suspend' | 'reactivate' | 'archive') =>
   wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (!(await checkNotMasterAdmin(id, res))) return;
     const reason = ensureReason(res, req.body, action);
     if (!reason) return;
     const accountStatus = action === 'activate' || action === 'reactivate' ? 'ACTIVE' : action === 'archive' ? 'DELETED' : action === 'suspend' ? 'SUSPENDED' : 'BLOCKED';
@@ -1385,6 +1398,7 @@ router.post('/master-admin/users/:id/archive', ...masterOnly, requirePermission(
 
 router.delete('/master-admin/users/:id', ...masterOnly, requirePermission(PERMISSIONS.USER_DELETE), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'archive user');
   if (!reason) return;
   const user = await archiveUserDeleteBlocked(req, id, reason, { requestedVia: 'DELETE' });
@@ -1393,6 +1407,7 @@ router.delete('/master-admin/users/:id', ...masterOnly, requirePermission(PERMIS
 
 router.post('/master-admin/users/:id/reset-password', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'reset user password');
   if (!reason) return;
   const temporaryPassword = textOrNull(req.body?.temporaryPassword) || `JsgSmile@${randomToken(8)}Aa1!`;
@@ -1407,6 +1422,7 @@ router.post('/master-admin/users/:id/reset-password', ...masterOnly, requirePerm
 
 router.post('/master-admin/users/:id/invite', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'invite user');
   if (!reason) return;
   const user = await prisma.user.update({ where: { id }, data: { accountStatus: 'PENDING' as any }, select: userSelect });
@@ -1416,10 +1432,15 @@ router.post('/master-admin/users/:id/invite', ...masterOnly, requirePermission(P
 
 router.post('/master-admin/users/:id/change-role', ...masterOnly, requirePermission(PERMISSIONS.ROLE_ASSIGN), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'change user role');
   if (!reason) return;
   const role = textOrNull(req.body?.role);
   if (!role || !allowedRoles.has(role)) return jsonError(res, 400, 'Invalid role selected.', 'INVALID_ROLE');
+  const requestedRole = role.trim().toLowerCase();
+  if (requestedRole === 'master_admin' || requestedRole === 'master admin') {
+    return jsonError(res, 403, 'Cannot assign Master Admin role.', 'MASTER_ADMIN_ASSIGNMENT_BLOCKED');
+  }
   const user = await prisma.user.update({ where: { id }, data: { role: role as any, sessionVersion: { increment: 1 } }, select: userSelect });
   await createAuditLog(req, { action: 'user.role.change', entityType: 'user', entityId: id, metadata: { role, reason } });
   jsonOk(res, user, 'User role changed successfully');
@@ -1427,6 +1448,7 @@ router.post('/master-admin/users/:id/change-role', ...masterOnly, requirePermiss
 
 router.post('/master-admin/users/:id/change-organization', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {
   const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
   const reason = ensureReason(res, req.body, 'change user organization');
   if (!reason) return;
   const organizationId = numberOrUndefined(req.body?.organizationId);

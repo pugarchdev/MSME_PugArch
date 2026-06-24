@@ -4764,6 +4764,8 @@ app.get('/api/messages/users/search', authenticate, authorize('admin', 'master_a
     const allowedRoles = ['buyer', 'seller', 'admin', 'financier', 'shg'];
     const where: any = {
       id: { not: Number(req.user?.id) },
+      role: { not: 'master_admin' },
+      userId: { not: 'MASTER_ADMIN' },
       accountStatus: 'ACTIVE'
     };
     if (allowedRoles.includes(role)) where.role = role;

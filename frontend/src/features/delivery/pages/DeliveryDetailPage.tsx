@@ -1072,13 +1072,24 @@ function DisputeActions({ delivery, accessRole }: { delivery: DeliveryDetailDto;
       <div className="space-y-3">
         {canRaise && (
           <div className="space-y-2">
-            <Select value={category} onChange={e => setCategory(e.target.value)}>
-              <option>Damaged Goods</option>
-              <option>Wrong Item</option>
-              <option>Missing Quantity</option>
-              <option>Delayed Payment</option>
-              <option>Other</option>
+            <Select
+              value={['Damaged Goods', 'Wrong Item', 'Missing Quantity', 'Delayed Payment'].includes(category) ? category : 'Other'}
+              onChange={e => setCategory(e.target.value)}
+            >
+              <option value="Damaged Goods">Damaged Goods</option>
+              <option value="Wrong Item">Wrong Item</option>
+              <option value="Missing Quantity">Missing Quantity</option>
+              <option value="Delayed Payment">Delayed Payment</option>
+              <option value="Other">Other</option>
             </Select>
+            {!['Damaged Goods', 'Wrong Item', 'Missing Quantity', 'Delayed Payment'].includes(category) && (
+              <Input
+                required
+                value={category === 'Other' ? '' : category}
+                onChange={e => setCategory(e.target.value)}
+                placeholder="Specify Custom Category"
+              />
+            )}
             <textarea className={textareaBase} placeholder="Describe the issue" value={reason} onChange={e => setReason(e.target.value)} />
             <Button
               variant="outline"

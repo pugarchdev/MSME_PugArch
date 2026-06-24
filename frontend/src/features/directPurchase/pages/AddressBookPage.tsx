@@ -499,7 +499,7 @@ export default function AddressBookPage() {
                                     </label>
                                     <select
                                         className="h-10 w-full rounded-lg border border-slate-250 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
-                                        value={addressType}
+                                        value={['OFFICE', 'WAREHOUSE', 'PROJECT_SITE', 'FACTORY'].includes(addressType) ? addressType : 'OTHER'}
                                         onChange={e => setAddressType(e.target.value)}
                                     >
                                         <option value="OFFICE">Office</option>
@@ -509,6 +509,20 @@ export default function AddressBookPage() {
                                         <option value="OTHER">Other</option>
                                     </select>
                                 </div>
+
+                                {!['OFFICE', 'WAREHOUSE', 'PROJECT_SITE', 'FACTORY'].includes(addressType) && (
+                                    <div className="space-y-1.5 mt-2 animate-in slide-in-from-top-1 duration-150">
+                                        <label className="text-xs font-black uppercase tracking-wider text-slate-750">
+                                            Specify Address Type *
+                                        </label>
+                                        <Input
+                                            required
+                                            placeholder="e.g. Temporary, SHG Center, Hub"
+                                            value={addressType === 'OTHER' ? '' : addressType}
+                                            onChange={e => setAddressType(e.target.value)}
+                                        />
+                                    </div>
+                                )}
 
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-black uppercase tracking-wider text-slate-750">
@@ -528,9 +542,14 @@ export default function AddressBookPage() {
                                     </label>
                                     <Input
                                         required
+                                        type="tel"
+                                        pattern="[0-9]{10,15}"
+                                        minLength={10}
+                                        maxLength={15}
+                                        title="Mobile number must be between 10 and 15 digits"
                                         placeholder="10-digit Mobile Number"
                                         value={mobileNumber}
-                                        onChange={e => setMobileNumber(e.target.value)}
+                                        onChange={e => setMobileNumber(e.target.value.replace(/\D/g, ''))}
                                     />
                                 </div>
 
@@ -539,9 +558,13 @@ export default function AddressBookPage() {
                                         Alternate Mobile
                                     </label>
                                     <Input
+                                        type="tel"
+                                        pattern="[0-9]{10,15}"
+                                        maxLength={15}
+                                        title="Alternate mobile number must be between 10 and 15 digits"
                                         placeholder="Optional Mobile"
                                         value={alternateMobileNumber}
-                                        onChange={e => setAlternateMobileNumber(e.target.value)}
+                                        onChange={e => setAlternateMobileNumber(e.target.value.replace(/\D/g, ''))}
                                     />
                                 </div>
 
@@ -635,9 +658,13 @@ export default function AddressBookPage() {
                                     </label>
                                     <Input
                                         required
+                                        pattern="[0-9]{6,10}"
+                                        minLength={6}
+                                        maxLength={10}
+                                        title="Pincode must be between 6 and 10 digits"
                                         placeholder="6 digits"
                                         value={pincode}
-                                        onChange={e => setPincode(e.target.value)}
+                                        onChange={e => setPincode(e.target.value.replace(/\D/g, ''))}
                                     />
                                 </div>
                             </div>

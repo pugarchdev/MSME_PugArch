@@ -467,7 +467,11 @@ function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCre
                         </Field>
                     </div>
                     <Field label="Category">
-                        <select value={category} onChange={e => setCategory(e.target.value)} className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold">
+                        <select
+                            value={['PAYMENT_DELAY', 'PAYMENT_MISMATCH', 'QUALITY_ISSUE', 'QUANTITY_MISMATCH', 'DELIVERY_DELAY', 'DAMAGED_GOODS', 'WRONG_ITEM', 'INVOICE_MISMATCH', 'GRN_REJECTION', 'ESCROW_RELEASE_ISSUE', 'ORDER_CANCELLATION'].includes(category) ? category : (category ? 'OTHER' : '')}
+                            onChange={e => setCategory(e.target.value)}
+                            className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-bold"
+                        >
                             <option value="">Select category...</option>
                             <option value="PAYMENT_DELAY">Payment delay</option>
                             <option value="PAYMENT_MISMATCH">Payment mismatch</option>
@@ -483,6 +487,17 @@ function CreateDisputeModal({ onClose, onCreated }: { onClose: () => void; onCre
                             <option value="OTHER">Other</option>
                         </select>
                     </Field>
+                    {!['PAYMENT_DELAY', 'PAYMENT_MISMATCH', 'QUALITY_ISSUE', 'QUANTITY_MISMATCH', 'DELIVERY_DELAY', 'DAMAGED_GOODS', 'WRONG_ITEM', 'INVOICE_MISMATCH', 'GRN_REJECTION', 'ESCROW_RELEASE_ISSUE', 'ORDER_CANCELLATION', ''].includes(category) && (
+                        <Field label="Specify Custom Category">
+                            <input
+                                required
+                                value={category === 'OTHER' ? '' : category}
+                                onChange={e => setCategory(e.target.value)}
+                                placeholder="Type custom category here..."
+                                className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-semibold"
+                            />
+                        </Field>
+                    )}
                     <Field label="Title">
                         <input value={title} onChange={e => setTitle(e.target.value)} maxLength={180} placeholder="Short dispute title" className="h-9 w-full rounded border border-slate-200 px-3 text-xs font-semibold" />
                     </Field>

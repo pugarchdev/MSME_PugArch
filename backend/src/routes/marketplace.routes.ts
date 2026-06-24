@@ -67,6 +67,9 @@ const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: Next
 const checkFeatureIfAuthenticated = (featureCode: string) => {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
         if (!req.user) return next();
+        // If user has no company context, allow through — marketplace pages are public
+        // and should not block authenticated users who lack a companyId.
+        if (!req.user.companyId) return next();
         return checkFeatureEnabled(featureCode)(req, res, next);
     };
 };

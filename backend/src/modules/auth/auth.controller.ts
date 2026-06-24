@@ -555,6 +555,9 @@ export const authController = {
         const pincodeVal = firstValue(gstDetails.pincode) || null;
         const addressLine1Val = firstValue(rDetails.officeZoneName, gstDetails.address) || null;
 
+        // Resolve default company so org & user are linked to it from the start
+        const defaultCompany = await (prisma as any).company.findFirst({ where: { isActive: true }, orderBy: { id: 'asc' }, select: { id: true } }).catch(() => null);
+
         const createdOrg = await prisma.organization.create({
           data: {
             organizationName: orgName,
@@ -570,13 +573,14 @@ export const authController = {
             pincode: pincodeVal,
             addressLine1: addressLine1Val,
             verificationStatus: 'PENDING',
-            organizationOnboardingStatus: 'self_created'
+            organizationOnboardingStatus: 'self_created',
+            companyId: defaultCompany?.id || null
           }
         });
 
         await prisma.user.update({
           where: { id: user.id },
-          data: { organizationId: createdOrg.id }
+          data: { organizationId: createdOrg.id, companyId: defaultCompany?.id || null }
         });
 
         await prisma.orgMembership.create({

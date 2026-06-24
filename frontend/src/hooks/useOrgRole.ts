@@ -5,7 +5,7 @@
  * OrgRole hierarchy (most → least privileged):
  *   ORG_ADMIN > PROCUREMENT_OFFICER > FINANCE_OFFICER > TECHNICAL_OFFICER > LOGISTICS_OFFICER > VIEWER
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './useAuth';
 import { getApi } from '../features/shared/apiClient';
 
@@ -63,18 +63,25 @@ export function useOrgRole(): UseOrgRoleReturn {
     const { user, token } = useAuth();
     const [orgStatus, setOrgStatus] = useState<OrgStatus | null>(null);
     const [loading, setLoading] = useState(false);
+    const isInitialLoad = useRef(true);
 
     const load = useCallback(async (skipCache = false) => {
         if (!token || !user) return;
         // Platform admins don't have org roles
         if (user.role === 'admin') return;
-        setLoading(true);
+        
+        // Only set loading true on initial load to avoid UI flicker during background polling
+        if (isInitialLoad.current) {
+            setLoading(true);
+        }
+        
         try {
             const endpoint = skipCache
                 ? `/api/org/status?_ts=${Date.now()}`
                 : '/api/org/status';
             const data = await getApi<OrgStatus>(endpoint, skipCache);
             setOrgStatus(data);
+            isInitialLoad.current = false;
         } catch {
             // Non-fatal — user may not have an org yet
         } finally {

@@ -5039,3 +5039,35 @@ model BuyerItemUploadBatch {
   @@index([buyerId])
   @@index([organizationProfileId])
 }
+
+model PreRegistrationKycSession {
+  id               Int       @id @default(autoincrement())
+  kycSessionToken  String    @unique // Token returned to frontend
+  provider         String
+  verificationType String
+  state            String    @unique
+  codeVerifier     String
+  status           String    @default("PENDING") // PENDING, VERIFIED, FAILED, EXPIRED
+  redirectUri      String
+  scopes           String
+  expiresAt        DateTime
+  verifiedAt       DateTime?
+  usedAt           DateTime?
+  used             Boolean   @default(false)
+  
+  // Safe verified details from provider
+  verifiedName     String?
+  verifiedDob      DateTime?
+  verifiedGender   String?
+  referenceKey     String?
+  idTokenSubject   String?
+  idTokenVerified  Boolean   @default(false)
+  aadhaarLast4     String?
+  mobileHash       String?
+  
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([kycSessionToken])
+  @@index([state])
+}

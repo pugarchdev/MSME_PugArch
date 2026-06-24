@@ -402,10 +402,21 @@ export const authController = {
         if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
       }
 
+      const kycSessionToken = String(req.body.kycSessionToken || '').trim();
+      let kycSession = null;
+
       const personalValidation = validatePersonalVerification(role, registrationDetails, dob, mobile);
       if (role === 'buyer' && registrationDetails?.verificationMethod === 'aadhaar') {
-        personalValidation.errors.aadhaarVerified = 'Aadhaar must be verified with DigiLocker / MeriPehchaan before registration';
-        personalValidation.isValid = false;
+        if (!kycSessionToken) {
+          personalValidation.errors.aadhaarVerified = 'Aadhaar must be verified with DigiLocker / MeriPehchaan before registration';
+          personalValidation.isValid = false;
+        } else {
+          kycSession = await prisma.preRegistrationKycSession.findUnique({ where: { kycSessionToken } });
+          if (!kycSession || kycSession.status !== 'VERIFIED' || kycSession.used) {
+            personalValidation.errors.aadhaarVerified = 'Invalid or expired Aadhaar verification session. Please verify again.';
+            personalValidation.isValid = false;
+          }
+        }
       }
       if (!personalValidation.isValid) {
         return res.status(400).json({
@@ -429,6 +440,38 @@ export const authController = {
           registrationDetails: sanitizeRegistrationDetails(registrationDetails)
         }
       });
+
+      if (kycSession) {
+        await prisma.$transaction([
+          prisma.preRegistrationKycSession.update({ where: { id: kycSession.id }, data: { used: true, usedAt: new Date() } }),
+          prisma.userKycVerification.upsert({
+            where: { userId_provider_verificationType: { userId: user.id, provider: 'MERIPEHCHAAN', verificationType: 'AADHAAR' } },
+            create: {
+              userId: user.id,
+              provider: 'MERIPEHCHAAN',
+              verificationType: 'AADHAAR',
+              status: 'VERIFIED',
+              verifiedName: kycSession.verifiedName,
+              verifiedDob: kycSession.verifiedDob,
+              verifiedGender: kycSession.verifiedGender,
+              referenceKey: kycSession.referenceKey,
+              idTokenSubject: kycSession.idTokenSubject,
+              idTokenVerified: kycSession.idTokenVerified,
+              verifiedAt: kycSession.verifiedAt || new Date()
+            },
+            update: {
+              status: 'VERIFIED',
+              verifiedName: kycSession.verifiedName,
+              verifiedDob: kycSession.verifiedDob,
+              verifiedGender: kycSession.verifiedGender,
+              referenceKey: kycSession.referenceKey,
+              idTokenSubject: kycSession.idTokenSubject,
+              idTokenVerified: kycSession.idTokenVerified,
+              verifiedAt: kycSession.verifiedAt || new Date()
+            }
+          })
+        ]);
+      }
 
 
       if (emailOtpRecord.ok) await consumeEmailOtp(email).catch(() => undefined);

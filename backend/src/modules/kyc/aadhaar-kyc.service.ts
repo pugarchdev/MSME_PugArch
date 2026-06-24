@@ -462,5 +462,151 @@ export const aadhaarKycService = {
       })
     ]);
     return this.status(user);
+  },
+
+  async preRegisterStart(payload: { consent: boolean; mobile: string; aadhaarNumber?: string; vid?: string }, meta: RequestMeta) {
+    const config = requiredConfig();
+    
+    const state = randomUrlSafe(32);
+    const codeVerifier = randomUrlSafe(64);
+    const challenge = codeChallenge(codeVerifier);
+    const expiresAt = new Date(Date.now() + config.ttlMinutes * 60_000);
+    const kycSessionToken = randomUrlSafe(48);
+
+    await prisma.preRegistrationKycSession.create({
+      data: {
+        kycSessionToken,
+        provider: PROVIDER,
+        verificationType: VERIFICATION_TYPE,
+        state,
+        codeVerifier,
+        redirectUri: config.redirectUri,
+        scopes: config.scopes,
+        expiresAt,
+        status: 'PENDING'
+      }
+    });
+
+    const authUrl = new URL(config.authUrl);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('client_id', config.clientId);
+    authUrl.searchParams.set('redirect_uri', config.redirectUri);
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('scope', config.scopes);
+    authUrl.searchParams.set('code_challenge', challenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
+    if (config.acr) authUrl.searchParams.set('acr', config.acr);
+
+    return { authorizationUrl: authUrl.toString(), kycSessionToken };
+  },
+
+  async preRegisterCallback(query: Record<string, unknown>, meta: RequestMeta) {
+    const config = requiredConfig();
+    const state = typeof query.state === 'string' ? query.state : '';
+    const code = typeof query.code === 'string' ? query.code : '';
+    const providerError = typeof query.error === 'string' ? query.error : '';
+
+    const session = state
+      ? await prisma.preRegistrationKycSession.findUnique({ where: { state } })
+      : null;
+
+    if (providerError) {
+      if (session) {
+        await prisma.preRegistrationKycSession.update({
+          where: { id: session.id },
+          data: { status: 'FAILED' }
+        });
+      }
+      return redirectUrl('failed', 'Verification was declined or failed.');
+    }
+
+    if (!state || !code || !session || session.used || session.expiresAt <= new Date()) {
+      if (session) {
+        await prisma.preRegistrationKycSession.update({
+          where: { id: session.id },
+          data: { used: true, status: 'EXPIRED' }
+        });
+      }
+      return redirectUrl('expired', 'Verification session expired. Please start again.');
+    }
+
+    if (session.redirectUri !== config.redirectUri) {
+      return redirectUrl('failed', 'Invalid redirect URI.');
+    }
+
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: config.redirectUri,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code_verifier: session.codeVerifier,
+      });
+
+      const tokenResponse = await fetch(config.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body
+      });
+
+      const tokenBody = await tokenResponse.json().catch(() => null) as any;
+      if (!tokenResponse.ok || !tokenBody?.access_token) {
+        throw new Error('MeriPehchaan token exchange failed');
+      }
+
+      let idPayload: any = null;
+      let idTokenVerified = false;
+
+      if (tokenBody.id_token) {
+        if (config.jwksUrl) {
+          idPayload = await verifyIdToken(tokenBody.id_token, config);
+          idTokenVerified = true;
+        } else {
+          idPayload = jwt.decode(tokenBody.id_token);
+        }
+      }
+
+      const userInfo = await fetchUserInfo(config.userInfoUrl, tokenBody.access_token);
+      const profile = extractSafeProfile(userInfo, idPayload);
+
+      await prisma.preRegistrationKycSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'VERIFIED',
+          verifiedName: profile.name,
+          verifiedDob: profile.dob,
+          verifiedGender: profile.gender,
+          referenceKey: profile.referenceKey,
+          idTokenSubject: profile.subject,
+          idTokenVerified,
+          verifiedAt: new Date()
+        }
+      });
+
+      return redirectUrl('verified', 'Aadhaar verification successful.');
+    } catch (error: any) {
+      await prisma.preRegistrationKycSession.update({
+        where: { id: session.id },
+        data: { used: true, status: 'FAILED' }
+      });
+      return redirectUrl('failed', 'Failed to retrieve Aadhaar details.');
+    }
+  },
+
+  async preRegisterStatus(kycSessionToken: string) {
+    const session = await prisma.preRegistrationKycSession.findUnique({
+      where: { kycSessionToken }
+    });
+    
+    if (!session) {
+      return { status: 'NOT_FOUND' };
+    }
+    
+    return {
+      status: session.status,
+      verifiedName: session.verifiedName,
+      verifiedAt: session.verifiedAt
+    };
   }
 };

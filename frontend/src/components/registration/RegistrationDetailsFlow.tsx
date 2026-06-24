@@ -161,6 +161,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     personalLastName: '',
     dob: '',
     mobile: '',
+    kycSessionToken: '',
     roleInOrg: '',
     email: '',
     verifyEmail: '',
@@ -461,12 +462,48 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   useEffect(() => {
     if (user && currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar') {
       void refreshAadhaarKycStatus();
+    } else if (!user && currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar') {
+      const token = sessionStorage.getItem('preRegisterKycSessionToken');
+      if (token && !isAadhaarVerified) {
+        setIsFetchingAadhaarKyc(true);
+        aadhaarKycApi.preRegisterStatus(token)
+          .then(status => {
+            setAadhaarKycStatus(status.status);
+            setIsAadhaarVerified(status.status === 'VERIFIED');
+            if (status.status === 'VERIFIED') {
+               toast.success('Aadhaar verification successful');
+               setFormData(prev => ({ ...prev, kycSessionToken: token }));
+            }
+          })
+          .catch(() => toast.error('Failed to verify Aadhaar status. Please try again.'))
+          .finally(() => setIsFetchingAadhaarKyc(false));
+      }
     }
-  }, [user?.id, currentSubStep, formData.personalVerificationMethod]);
+  }, [user?.id, currentSubStep, formData.personalVerificationMethod, isAadhaarVerified]);
 
   const handleStartAadhaarKyc = async () => {
-    if (!user) return toast.error('Please sign in before starting DigiLocker / MeriPehchaan verification.');
     if (!aadhaarConsent) return toast.error('Consent is required before Aadhaar verification.');
+    
+    if (!user) {
+      setIsStartingAadhaarKyc(true);
+      try {
+        const payload = {
+          consent: aadhaarConsent,
+          mobile: formData.mobile || formData.email || '',
+          aadhaarNumber: formData.aadhaarNumber,
+        };
+        const { authorizationUrl, kycSessionToken } = await aadhaarKycApi.preRegisterStart(payload);
+        if (!authorizationUrl) throw new Error('Missing authorization URL');
+        sessionStorage.setItem('preRegisterKycSessionToken', kycSessionToken);
+        window.location.assign(authorizationUrl);
+      } catch {
+        toast.error('Unable to start Aadhaar verification. Please try again.');
+      } finally {
+        setIsStartingAadhaarKyc(false);
+      }
+      return;
+    }
+
     setIsStartingAadhaarKyc(true);
     try {
       const { authorizationUrl } = await aadhaarKycApi.startUrl();
@@ -691,6 +728,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           password: formData.password,
           role,
           dob: formData.dob,
+          kycSessionToken: formData.kycSessionToken,
           registrationDetails: {
           businessType,
           shgType: shgType || null,
@@ -1234,7 +1272,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                               onClick={handleStartAadhaarKyc}
                               disabled={!isBuyerAadhaarReady}
                               className={cn(
-                                "h-11 w-full sm:w-64 rounded-lg font-bold  tracking-wide",
+                                "h-auto min-h-[44px] py-2.5 px-4 w-full sm:w-72 rounded-lg font-bold tracking-wide text-xs leading-normal text-center whitespace-normal",
                                 isBuyerAadhaarReady ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"
                               )}
                             >
@@ -1423,7 +1461,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                   onClick={handleStartAadhaarKyc}
                                   disabled={!isAadhaarReady || mobileAlreadyRegistered || mobileAvailability === 'checking'}
                                   className={cn(
-                                    "h-11 w-full rounded font-bold uppercase tracking-wide sm:w-52",
+                                    "h-auto min-h-[44px] py-2.5 px-4 w-full rounded font-bold uppercase tracking-wide sm:w-72 text-xs leading-normal text-center whitespace-normal",
                                     isAadhaarReady && !mobileAlreadyRegistered && mobileAvailability !== 'checking' ? "bg-[#12335f] text-white hover:bg-slate-800" : "bg-slate-200 text-slate-500 cursor-not-allowed"
                                   )}
                                 >

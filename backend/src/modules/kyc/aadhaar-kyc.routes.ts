@@ -65,6 +65,37 @@ router.get('/kyc/aadhaar/callback', rateLimit(30, 10 * 60_000), asyncRoute(async
   }
 }));
 
+router.post('/kyc/aadhaar/pre-register/start', rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
+  try {
+    const { consent, mobile, aadhaarNumber, vid } = req.body;
+    if (!consent) return apiResponse.error(res, 400, 'Consent is required', 'CONSENT_REQUIRED');
+    const result = await aadhaarKycService.preRegisterStart({ consent, mobile, aadhaarNumber, vid }, requestMeta(req));
+    return apiResponse.success(res, result);
+  } catch (error: any) {
+    return apiResponse.error(res, error?.statusCode || 500, error?.message || 'Unable to start Aadhaar verification', error?.code || 'AADHAAR_KYC_START_FAILED');
+  }
+}));
+
+router.get('/kyc/aadhaar/pre-register/callback', rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
+  try {
+    const url = await aadhaarKycService.preRegisterCallback(req.query as Record<string, unknown>, requestMeta(req));
+    return res.redirect(url);
+  } catch {
+    return res.redirect(aadhaarKycService.redirectUrl('failed'));
+  }
+}));
+
+router.get('/kyc/aadhaar/pre-register/status', rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
+  try {
+    const kycSessionToken = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!kycSessionToken) return apiResponse.error(res, 400, 'KYC session token is required', 'TOKEN_REQUIRED');
+    const result = await aadhaarKycService.preRegisterStatus(kycSessionToken);
+    return apiResponse.success(res, result);
+  } catch (error: any) {
+    return apiResponse.error(res, error?.statusCode || 500, error?.message || 'Unable to fetch status', error?.code || 'AADHAAR_KYC_STATUS_FAILED');
+  }
+}));
+
 router.get('/kyc/aadhaar/status', authenticate, asyncRoute(async (req, res) => {
   if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
   const status = await aadhaarKycService.status(req.user);

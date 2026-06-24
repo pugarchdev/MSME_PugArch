@@ -8,19 +8,30 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  Eye,
   FileText,
   Filter,
   Gavel,
   Loader2,
+  MapPin,
   Package,
   RefreshCw,
   Search,
   ShoppingCart,
   TrendingUp,
+  X,
   XCircle,
   ClipboardCheck,
   ClipboardList,
   AlertTriangle,
+  CalendarDays,
+  IndianRupee,
+  Tag,
+  Hash,
+  Info,
+  Layers,
+  Building2,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -49,6 +60,13 @@ interface NormalizedProcurement {
   createdAt: string;
   updatedAt: string;
   actionUrl: string;
+  description?: string;
+  deliveryLocation?: string;
+  startDate?: string;
+  endDate?: string;
+  quantity?: string;
+  unit?: string;
+  organizationName?: string;
 }
 
 interface KpiData {
@@ -237,6 +255,18 @@ export default function MyProcurementsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [viewMode, setViewMode] = useResponsiveViewMode('my-procurements:view-mode');
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedProcurement, setSelectedProcurement] = useState<NormalizedProcurement | null>(null);
+
+  const openDetail = (p: NormalizedProcurement, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedProcurement(p);
+    setDetailOpen(true);
+  };
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setSelectedProcurement(null);
+  };
 
   /* ── Data Loading ── */
   const loadData = useCallback(async () => {
@@ -551,13 +581,13 @@ export default function MyProcurementsPage() {
                       <tr
                         key={`${p.type}-${p.id}`}
                         className="cursor-pointer transition-colors hover:bg-slate-50/80"
-                        onClick={() => router.push(p.actionUrl)}
+                        onClick={() => openDetail(p)}
                       >
                         <td className="px-4 py-3 text-center text-xs font-bold text-slate-400">
                           {idx + 1}
                         </td>
-                        <td className="max-w-[220px] truncate px-4 py-3 font-bold text-slate-900">
-                          {p.title}
+                        <td className="max-w-[280px] px-4 py-3 font-bold text-slate-900">
+                          <span className="line-clamp-2 break-words whitespace-normal">{p.title}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -590,24 +620,21 @@ export default function MyProcurementsPage() {
                         <td className="px-4 py-3 font-bold text-slate-900 tabular-nums">
                           {formatCurrency(p.estimatedValue)}
                         </td>
-                        <td className="max-w-[140px] truncate px-4 py-3 text-xs text-slate-600">
-                          {p.category || '—'}
+                        <td className="max-w-[180px] px-4 py-3 text-xs text-slate-600">
+                          <span className="line-clamp-2 break-words whitespace-normal">{p.category || '—'}</span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                           {formatDateTime(p.updatedAt)}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-end">
+                          <div className="flex items-center justify-end gap-1.5">
                             <Button
                               type="button"
                               size="sm"
-                              onClick={e => {
-                                e.stopPropagation();
-                                router.push(p.actionUrl);
-                              }}
+                              onClick={e => openDetail(p, e)}
                               className="h-7 rounded bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
                             >
-                              View <ArrowRight className="ml-1 h-3 w-3" />
+                              <Eye className="mr-1 h-3 w-3" /> View
                             </Button>
                           </div>
                         </td>
@@ -631,7 +658,7 @@ export default function MyProcurementsPage() {
               {displayData.map(p => (
                 <button
                   key={`${p.type}-${p.id}`}
-                  onClick={() => router.push(p.actionUrl)}
+                  onClick={() => openDetail(p)}
                   className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-md"
                 >
                   {/* Top row: type badge + ref number */}
@@ -726,6 +753,132 @@ export default function MyProcurementsPage() {
           </div>
         </section>
       )}
+
+      {/* ═══ PROCUREMENT DETAIL DIALOG ═══ */}
+      {detailOpen && selectedProcurement && (
+        <ProcurementDetailDialog
+          procurement={selectedProcurement}
+          onClose={closeDetail}
+          onGoTo={() => {
+            closeDetail();
+            router.push(selectedProcurement.actionUrl);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   PROCUREMENT DETAIL DIALOG
+   ═══════════════════════════════════════════════ */
+
+function ProcurementDetailDialog({
+  procurement: p,
+  onClose,
+  onGoTo,
+}: {
+  procurement: NormalizedProcurement;
+  onClose: () => void;
+  onGoTo: () => void;
+}) {
+  // Close on Escape key
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const DetailRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value?: string | number | null }) => {
+    if (!value && value !== 0) return null;
+    return (
+      <div className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-b-0">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+          <p className="mt-0.5 text-sm font-semibold text-slate-800 break-words whitespace-pre-wrap">{value}</p>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <span
+                className={cn(
+                  'inline-flex rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide',
+                  TYPE_BADGE_STYLES[p.type] || 'border-slate-200 bg-slate-50 text-slate-700'
+                )}
+              >
+                {p.typeLabel}
+              </span>
+              <span
+                className={cn(
+                  'inline-flex rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide',
+                  STATUS_BADGE_STYLES[p.statusGroup] || 'border-slate-200 bg-slate-50 text-slate-700'
+                )}
+              >
+                {p.statusLabel}
+              </span>
+            </div>
+            <h2 className="text-lg font-black text-slate-950 leading-snug break-words">{p.title}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto px-6 py-4" style={{ maxHeight: 'calc(85vh - 140px)' }}>
+          <DetailRow icon={Hash} label="Reference Number" value={p.referenceNumber} />
+          <DetailRow icon={Layers} label="Procurement Method" value={p.methodLabel} />
+          <DetailRow icon={Tag} label="Category" value={p.category} />
+          <DetailRow icon={IndianRupee} label="Estimated Value" value={p.estimatedValue ? formatCurrency(p.estimatedValue) : undefined} />
+          <DetailRow icon={Building2} label="Organization" value={p.organizationName} />
+          <DetailRow icon={MapPin} label="Delivery Location" value={p.deliveryLocation} />
+          <DetailRow icon={Info} label="Description" value={p.description} />
+          <DetailRow icon={Package} label="Quantity" value={p.quantity && p.unit ? `${p.quantity} ${p.unit}` : p.quantity} />
+          <DetailRow icon={CalendarDays} label="Start Date" value={p.startDate ? formatDateTime(p.startDate) : undefined} />
+          <DetailRow icon={CalendarDays} label="End Date" value={p.endDate ? formatDateTime(p.endDate) : undefined} />
+          <DetailRow icon={CalendarDays} label="Created" value={formatDateTime(p.createdAt)} />
+          <DetailRow icon={CalendarDays} label="Last Updated" value={formatDateTime(p.updatedAt)} />
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="h-9 rounded-lg text-xs font-black uppercase"
+          >
+            Close
+          </Button>
+          <Button
+            type="button"
+            onClick={onGoTo}
+            className="h-9 rounded-lg bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
+          >
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Go to Procurement
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

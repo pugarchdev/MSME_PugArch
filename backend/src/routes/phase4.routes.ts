@@ -6853,6 +6853,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     db.directPurchase.findMany({
       where: { buyerId },
       orderBy: { createdAt: 'desc' },
+      include: { requirement: { include: { category: { select: { name: true } } } } },
     }),
     db.requirement.findMany({
       where: { buyerId },
@@ -6875,6 +6876,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     methodLabel: string;
     estimatedValue: number;
     category: string;
+    description: string;
+    deliveryLocation: string;
+    startDate: string;
+    endDate: string;
+    quantity: string;
+    unit: string;
+    organizationName: string;
     createdAt: string;
     updatedAt: string;
     actionUrl: string;
@@ -6899,6 +6907,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       methodLabel: METHOD_LABEL_MAP[bidTypeSlug] || bidTypeSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       estimatedValue: Number(fd?.basicDetails?.estimatedValue || fd?.estimatedValue || 0),
       category: fd?.basicDetails?.category || fd?.category || '',
+      description: fd?.basicDetails?.description || fd?.description || '',
+      deliveryLocation: fd?.basicDetails?.deliveryLocation || fd?.deliveryLocation || '',
+      startDate: fd?.basicDetails?.startDate || fd?.startDate || '',
+      endDate: fd?.basicDetails?.endDate || fd?.endDate || '',
+      quantity: String(fd?.basicDetails?.quantity || fd?.quantity || ''),
+      unit: fd?.basicDetails?.unit || fd?.unit || '',
+      organizationName: fd?.basicDetails?.buyerOrganizationName || fd?.buyerOrganizationName || '',
       createdAt: d.createdAt?.toISOString?.() || '',
       updatedAt: d.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/create-bid?draft=${d.id}`,
@@ -6921,6 +6936,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       methodLabel: METHOD_LABEL_MAP[methodSlug] || METHOD_LABEL_MAP[String(b.bidType || '')] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       estimatedValue: Number(b.estimatedValue || 0),
       category: b.category || '',
+      description: b.description || '',
+      deliveryLocation: b.deliveryLocation || '',
+      startDate: b.startDate?.toISOString?.() || '',
+      endDate: b.endDate?.toISOString?.() || '',
+      quantity: String(b.quantity || ''),
+      unit: b.unit || '',
+      organizationName: b.buyerOrganizationName || '',
       createdAt: b.createdAt?.toISOString?.() || '',
       updatedAt: b.updatedAt?.toISOString?.() || '',
       actionUrl: `/bids/${b.id}`,
@@ -6930,6 +6952,10 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   // 3) ProcurementRequest (cart checkout flows)
   for (const pr of procurementRequests) {
     const selectedMethod = pr.selectedMethod || pr.recommendedMethod || 'direct-purchase';
+    // Extract category from cartSnapshot JSON
+    const snap = pr.cartSnapshot as any;
+    const categoryNames = (snap?.items || snap || []).map((item: any) => item?.product?.category?.name || item?.categoryName || item?.category || '').filter(Boolean);
+    const prCategory = [...new Set(categoryNames)].join(', ') || '';
     all.push({
       id: pr.id,
       type: 'procurement_request',
@@ -6942,7 +6968,14 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       method: selectedMethod,
       methodLabel: METHOD_LABEL_MAP[selectedMethod] || selectedMethod.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       estimatedValue: 0, // cart value embedded in snapshot
-      category: '',
+      category: prCategory,
+      description: '',
+      deliveryLocation: (pr as any).deliveryLocation || '',
+      startDate: '',
+      endDate: '',
+      quantity: '',
+      unit: '',
+      organizationName: '',
       createdAt: pr.createdAt?.toISOString?.() || '',
       updatedAt: pr.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/procurement/checkout?id=${pr.id}`,
@@ -6963,7 +6996,14 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       method: 'direct-purchase',
       methodLabel: 'Direct Purchase',
       estimatedValue: Number(dp.totalAmount || 0),
-      category: '',
+      category: (dp as any).requirement?.category?.name || dp.department || '',
+      description: '',
+      deliveryLocation: dp.deliveryAddressText || '',
+      startDate: '',
+      endDate: '',
+      quantity: '',
+      unit: '',
+      organizationName: '',
       createdAt: dp.createdAt?.toISOString?.() || '',
       updatedAt: dp.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/direct-purchase/orders`,
@@ -6986,6 +7026,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       methodLabel: METHOD_LABEL_MAP[methodSlug] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       estimatedValue: Number(r.estimatedValue || 0),
       category: (r as any).category?.name || '',
+      description: r.description || '',
+      deliveryLocation: (r as any).deliveryLocation || '',
+      startDate: '',
+      endDate: '',
+      quantity: String((r as any).quantity || ''),
+      unit: (r as any).unit || '',
+      organizationName: '',
       createdAt: r.createdAt?.toISOString?.() || '',
       updatedAt: r.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/requirements`,

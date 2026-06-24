@@ -18,7 +18,7 @@ import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
 
 const readableStatus = (value?: string) => String(value || 'generated').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'invoice_submitted'];
+const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'invoice_submitted', 'order_placed', 'issued'];
 const purchaseOrderStatusParam = (tab: 'Open' | 'Delivered' | 'Cancelled' | 'All') => {
   if (tab === 'Delivered') return 'delivered';
   if (tab === 'Cancelled') return 'cancelled';

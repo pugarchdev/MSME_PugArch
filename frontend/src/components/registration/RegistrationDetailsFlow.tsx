@@ -521,6 +521,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       localStorage.removeItem('preRegisterKycBusinessType');
       localStorage.removeItem('preRegisterKycShgType');
       localStorage.removeItem('preRegisterKycSelectedDocs');
+      sessionStorage.removeItem('registrationSessionActive');
       
       try {
         const url = new URL(window.location.href);
@@ -909,6 +910,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           localStorage.removeItem('preRegisterKycBusinessType');
           localStorage.removeItem('preRegisterKycShgType');
           localStorage.removeItem('preRegisterKycSelectedDocs');
+          sessionStorage.removeItem('registrationSessionActive');
           setIsSuccess(true);
         }
       } else {

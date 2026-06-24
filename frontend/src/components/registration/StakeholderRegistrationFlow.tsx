@@ -37,10 +37,22 @@ const steps = [
 export default function StakeholderRegistrationFlow({ role, variant = role, initialBusinessType = '' }: StakeholderRegistrationFlowProps) {
   const [step, setStep] = useState(() => {
     if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const hasAadhaar = params.has('aadhaar');
+      if (!hasAadhaar) {
+        localStorage.removeItem('preRegisterKycSessionToken');
+        localStorage.removeItem('preRegisterKycRedirectPath');
+        localStorage.removeItem('preRegisterKycFormData');
+        localStorage.removeItem('preRegisterKycSubStep');
+        localStorage.removeItem('preRegisterKycStep');
+        localStorage.removeItem('preRegisterKycBusinessType');
+        localStorage.removeItem('preRegisterKycShgType');
+        localStorage.removeItem('preRegisterKycSelectedDocs');
+        return 1;
+      }
       const saved = localStorage.getItem('preRegisterKycStep');
       if (saved) return Number(saved);
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('aadhaar')) return 3;
+      return 3;
     }
     return 1;
   });

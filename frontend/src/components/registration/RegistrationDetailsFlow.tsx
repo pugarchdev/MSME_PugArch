@@ -500,11 +500,39 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   };
 
   const handleEditAadhaarDetails = () => {
-    setFormData({ ...formData, aadhaarNumber: '', mobile: '' });
+    setFormData(prev => ({
+      ...prev,
+      aadhaarNumber: '',
+      mobile: '',
+      personalName: '',
+      personalLastName: '',
+      kycSessionToken: ''
+    }));
     setAadhaarConsent(false);
     setIsAadhaarVerified(false);
     setAadhaarKycStatus('NOT_STARTED');
     setMobileAvailability('idle');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('preRegisterKycSessionToken');
+      localStorage.removeItem('preRegisterKycRedirectPath');
+      localStorage.removeItem('preRegisterKycFormData');
+      localStorage.removeItem('preRegisterKycSubStep');
+      localStorage.removeItem('preRegisterKycStep');
+      localStorage.removeItem('preRegisterKycBusinessType');
+      localStorage.removeItem('preRegisterKycShgType');
+      localStorage.removeItem('preRegisterKycSelectedDocs');
+      
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('aadhaar') || url.searchParams.has('reason')) {
+          url.searchParams.delete('aadhaar');
+          url.searchParams.delete('reason');
+          window.history.replaceState({}, '', url.pathname + url.search);
+        }
+      } catch (e) {
+        console.error('Error clearing URL params:', e);
+      }
+    }
   };
 
   const refreshAadhaarKycStatus = async () => {
@@ -533,8 +561,8 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         aadhaarKycApi.preRegisterStatus(token)
           .then(status => {
             setAadhaarKycStatus(status.status);
-            const verified = status.status === 'VERIFIED';
-            setIsAadhaarVerified(verified);
+            const verified = status.status === 'VERIFIED' && status.isValid;
+            setIsAadhaarVerified(Boolean(verified));
             if (verified) {
               if (currentSubStep === 2) {
                 toast.success('Aadhaar verification successful');
@@ -546,9 +574,20 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                 personalName: prev.personalName || parts[0] || '',
                 personalLastName: prev.personalLastName || parts.slice(1).join(' ') || '',
               }));
+            } else {
+              localStorage.removeItem('preRegisterKycSessionToken');
+              setFormData(prev => ({
+                ...prev,
+                kycSessionToken: '',
+              }));
             }
           })
           .catch(() => {
+            localStorage.removeItem('preRegisterKycSessionToken');
+            setFormData(prev => ({
+              ...prev,
+              kycSessionToken: '',
+            }));
             if (currentSubStep === 2) {
               toast.error('Failed to verify Aadhaar status. Please try again.');
             }
@@ -1445,9 +1484,18 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 />
                               </div>
 
-                              <div className="flex items-center gap-3 text-slate-800">
-                                <CheckCircle2 className="h-5 w-5 rounded-full fill-green-600 text-green-600" />
-                                <p className="text-xs font-bold">Aadhaar Details Verified Successfully.</p>
+                              <div className="flex items-center justify-between gap-3 text-slate-800">
+                                <div className="flex items-center gap-3">
+                                  <CheckCircle2 className="h-5 w-5 rounded-full fill-green-600 text-green-600" />
+                                  <p className="text-xs font-bold">Aadhaar Details Verified Successfully.</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleEditAadhaarDetails}
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-red-700 hover:underline"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" /> Edit Aadhaar Details
+                                </button>
                               </div>
 
                               <div className="flex justify-end">
@@ -1733,9 +1781,18 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
 
                           {isAadhaarVerified && (
                             <div className="space-y-5">
-                              <div className="flex items-center gap-3 text-green-700">
-                                <CheckCircle2 className="h-5 w-5 fill-green-600 text-green-600" />
-                                <p className="text-sm font-bold">Identity verified through DigiLocker/MeriPehchaan</p>
+                              <div className="flex items-center justify-between gap-3 text-green-700">
+                                <div className="flex items-center gap-3">
+                                  <CheckCircle2 className="h-5 w-5 fill-green-600 text-green-600" />
+                                  <p className="text-sm font-bold">Identity verified through DigiLocker/MeriPehchaan</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleEditAadhaarDetails}
+                                  className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-red-700 hover:underline"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" /> Edit Aadhaar Details
+                                </button>
                               </div>
                               <SellerRoleDetails
                                 firstName={formData.personalName}

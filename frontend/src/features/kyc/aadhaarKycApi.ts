@@ -7,6 +7,8 @@ export type AadhaarKycStatus = {
   verifiedName?: string | null;
   verifiedAt?: string | null;
   ageVerified?: boolean | null;
+  isValid?: boolean;
+  used?: boolean;
 };
 
 export const aadhaarKycApi = {

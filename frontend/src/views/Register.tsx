@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -26,6 +26,23 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.get('/api/auth/features')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.enabledFeatures) {
+          setEnabledFeatures(data.enabledFeatures);
+          if (!data.enabledFeatures.includes('sms')) {
+            setVerificationMethod('email');
+          }
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const isSmsEnabled = enabledFeatures.includes('sms');
 
   const { login } = useAuth();
   const router = useRouter();
@@ -221,29 +238,31 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
             />
 
             {/* Verification Method Toggle */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Verification Method</label>
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-                {(['email', 'mobile'] as const).map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    disabled={otpSent}
-                    onClick={() => {
-                      setVerificationMethod(method);
-                      setOtp('');
-                    }}
-                    className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      verificationMethod === method
-                        ? 'bg-white text-indigo-600 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {method === 'email' ? 'Email OTP' : 'Mobile OTP'}
-                  </button>
-                ))}
+            {isSmsEnabled && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Verification Method</label>
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                  {(['email', 'mobile'] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      disabled={otpSent}
+                      onClick={() => {
+                        setVerificationMethod(method);
+                        setOtp('');
+                      }}
+                      className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                        verificationMethod === method
+                          ? 'bg-white text-indigo-600 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {method === 'email' ? 'Email OTP' : 'Mobile OTP'}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {verificationMethod === 'email' ? (
               <div className="space-y-1.5">

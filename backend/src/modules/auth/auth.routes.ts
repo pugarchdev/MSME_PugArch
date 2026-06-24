@@ -37,13 +37,13 @@ authRoutes.post('/register', validate({ body: registerSchema }), authController.
 authRoutes.post('/login', authLoginRateLimit, validate({ body: loginSchema }), authController.login);
 authRoutes.post('/2fa/verify', validate({ body: otpSchema }), authController.verify2fa);
 authRoutes.post('/refresh', authController.refresh);
+authRoutes.get('/features', authController.getPublicFeatures);
 
 // Password Recovery
 authRoutes.post('/forgot-password', forgotPasswordRateLimit, validate({ body: forgotPasswordSchema }), authController.forgotPassword);
 authRoutes.post('/forgot-password/send-otp', forgotPasswordRateLimit, validate({ body: forgotPasswordSchema }), authController.forgotPassword);
 authRoutes.post('/forgot-password/verify-otp', forgotPasswordRateLimit, validate({ body: verifyUnifiedOtpSchema }), authController.verifyForgotPasswordOtp);
 authRoutes.post('/reset-password', forgotPasswordRateLimit, validate({ body: resetPasswordSchema }), authController.resetPassword);
-
 // Authenticated Routes
 authRoutes.post('/logout', authenticate, authController.logout);
 authRoutes.get('/me', authenticate, authController.me);

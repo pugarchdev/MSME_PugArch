@@ -53,6 +53,18 @@ const hasVerifiedAadhaarKyc = async (userId: number) => {
   return row?.status === 'VERIFIED';
 };
 
+const isSmsFeatureEnabledForCompany = async (companyId: number | null) => {
+  const targetCompanyId = companyId || 1;
+  const companyFeature = await prisma.companyFeature.findFirst({
+    where: {
+      companyId: targetCompanyId,
+      feature: { code: 'sms' }
+    }
+  });
+  return !!companyFeature?.enabled;
+};
+
+
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
   try {
     await notificationService.notifyWithEmail(payload.userId, {
@@ -269,6 +281,11 @@ export const authController = {
 
   sendMobileOtp: async (req: Request, res: Response) => {
     try {
+      const isSmsEnabled = await isSmsFeatureEnabledForCompany(null);
+      if (!isSmsEnabled) {
+        return res.status(403).json({ message: 'SMS verification is currently disabled.' });
+      }
+
       const mobile = toLocalIndianMobile(req.body.mobile);
       if (!mobile) return res.status(400).json({ message: 'Valid Indian mobile number is required' });
 
@@ -429,6 +446,7 @@ export const authController = {
       const hashedPassword = await hashPassword(password);
       const user = await prisma.user.create({
         data: {
+          userId: email,
           name, email, password: hashedPassword,
           role: role as Role,
           mobile,
@@ -620,7 +638,8 @@ export const authController = {
         const otp = generateOtp();
         const clientRequestedChannel = req.body.channel ? normalizeChannel(req.body.channel) : null;
         const configuredChannel = clientRequestedChannel || normalizeChannel((user as any).twoFactorChannel || (user as any).preferredOtpChannel);
-        const hasMobileVerified = user.mobileVerified && user.mobile && smsService.isEnabled();
+        const isSmsEnabled = await isSmsFeatureEnabledForCompany(user.companyId);
+        const hasMobileVerified = user.mobileVerified && user.mobile && smsService.isEnabled() && isSmsEnabled;
         const channel: OtpChannel = (configuredChannel === 'sms' && hasMobileVerified) ? 'sms' : 'email';
         const otpIdentity = channel === 'sms' ? String(user.mobile) : email;
         await storeOtp('two_factor_login', otpIdentity, otp, { userId: user.id, channel }, channel);
@@ -760,6 +779,12 @@ export const authController = {
   forgotPassword: async (req: Request, res: Response) => {
     try {
       const channel = channelFromBody(req.body);
+      if (channel === 'sms') {
+        const isSmsEnabled = await isSmsFeatureEnabledForCompany(null);
+        if (!isSmsEnabled) {
+          return res.status(403).json({ message: 'SMS verification is currently disabled.' });
+        }
+      }
       const identifier = identityFromBody(req.body, channel);
       if (!identifier) return res.status(400).json({ message: channel === 'sms' ? 'Valid Indian mobile number is required' : 'Valid email is required' });
       const user = await prisma.user.findFirst({ where: userLookupForIdentity(identifier, channel) });
@@ -1296,6 +1321,29 @@ export const authController = {
         redirectUrl: createdProfile ? onboardingPath(roleToActivate) : roleHome(roleToActivate),
         user: toSafeUser(safeUser || updatedUser)
       });
+    } catch (err: any) {
+      handleSecureRouteError(res, err);
+    }
+  },
+
+  getPublicFeatures: async (req: Request, res: Response) => {
+    try {
+      const company = await (prisma as any).company.findFirst({
+        where: { isActive: true },
+        select: { id: true }
+      });
+      let activeCodes: string[] = [];
+      if (company) {
+        const features = await (prisma as any).companyFeature.findMany({
+          where: { companyId: company.id, enabled: true },
+          include: { feature: true }
+        });
+        activeCodes = features.map((row: any) => row.feature.code);
+      } else {
+        const allFeatures = await prisma.feature.findMany({ select: { code: true } });
+        activeCodes = allFeatures.map(f => f.code);
+      }
+      res.json({ enabledFeatures: activeCodes });
     } catch (err: any) {
       handleSecureRouteError(res, err);
     }

@@ -129,14 +129,26 @@ export const notificationService = {
 
   async sendSmsNotificationForUser(userId: number, opts: SmsOpts) {
     try {
-      const pref = await db.notificationPreference.findUnique({ where: { userId } });
-      if (pref && !pref.smsNotifications) return null;
-
       const user = await db.user.findUnique({
         where: { id: userId },
-        select: { mobile: true, mobileVerified: true }
+        select: { mobile: true, mobileVerified: true, companyId: true }
       });
       if (!user?.mobile || !user.mobileVerified) return null;
+
+      if (user.companyId) {
+        const companyFeature = await db.companyFeature.findFirst({
+          where: {
+            companyId: user.companyId,
+            feature: { code: 'sms' }
+          }
+        });
+        if (!companyFeature || !companyFeature.enabled) {
+          return null;
+        }
+      }
+
+      const pref = await db.notificationPreference.findUnique({ where: { userId } });
+      if (pref && !pref.smsNotifications) return null;
 
       const result = await this.sendSmsNotification(user.mobile, opts.message, opts.templateId, opts.purpose || 'notification');
       await db.notificationLog.create({

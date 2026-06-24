@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../../hooks/useAuth';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { InlineError, LoadingState } from '../../shared/FeatureStates';
@@ -95,6 +96,7 @@ interface PreferenceConfig {
 }
 
 export default function NotificationPrefsPage() {
+    const { user } = useAuth();
     const qc = useQueryClient();
     const { data, isLoading, error, refetch, isFetching } = useQuery({
         queryKey: ['notification-preferences'] as const,
@@ -111,7 +113,15 @@ export default function NotificationPrefsPage() {
     const current: NotificationPreferenceDto | undefined = data ? { ...data, ...draft } : undefined;
     const hasChanges = Object.keys(draft).length > 0;
 
-    const activeDeliveryCount = useMemo(() => current ? deliveryMethods.filter(item => current[item.key]).length : 0, [current]);
+    const isSmsEnabled = !!user?.enabledFeatures?.includes('sms');
+
+    const filteredDeliveryMethods = useMemo(() => {
+        return isSmsEnabled
+            ? deliveryMethods
+            : deliveryMethods.filter(item => item.key !== 'smsNotifications');
+    }, [isSmsEnabled]);
+
+    const activeDeliveryCount = useMemo(() => current ? filteredDeliveryMethods.filter(item => current[item.key]).length : 0, [current, filteredDeliveryMethods]);
     const activeCategoryCount = useMemo(() => current ? eventCategories.filter(item => current[item.key]).length : 0, [current]);
     const activeTotal = activeDeliveryCount + activeCategoryCount;
 
@@ -180,7 +190,7 @@ export default function NotificationPrefsPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-                <MetricCard icon={MonitorSmartphone} label="Active channels" value={`${activeDeliveryCount}/3`} description="Delivery methods enabled" />
+                <MetricCard icon={MonitorSmartphone} label="Active channels" value={`${activeDeliveryCount}/${filteredDeliveryMethods.length}`} description="Delivery methods enabled" />
                 <MetricCard icon={ClipboardList} label="Active categories" value={`${activeCategoryCount}/2`} description="Event groups enabled" />
                 <MetricCard icon={CheckCircle2} label="Preference state" value={hasChanges ? 'Draft' : 'Synced'} description={hasChanges ? `${Object.keys(draft).length} pending change${Object.keys(draft).length === 1 ? '' : 's'}` : 'Current settings saved'} />
             </div>
@@ -191,7 +201,7 @@ export default function NotificationPrefsPage() {
                         eyebrow="Delivery methods"
                         title="Channel routing"
                         description="Choose where the platform sends alerts. Keep at least one channel active for critical workflow visibility."
-                        items={deliveryMethods}
+                        items={filteredDeliveryMethods}
                         current={current}
                         onChange={set}
                         smsLocked={!current.mobileVerified}

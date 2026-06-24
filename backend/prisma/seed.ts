@@ -235,6 +235,25 @@ async function main() {
     });
   }
 
+  const companies = await prisma.company.findMany({ select: { id: true } });
+  const allFeatures = await prisma.feature.findMany({ select: { id: true } });
+  if (companies.length > 0 && allFeatures.length > 0) {
+    const companyFeatureData = [];
+    for (const company of companies) {
+      for (const feature of allFeatures) {
+        companyFeatureData.push({
+          companyId: company.id,
+          featureId: feature.id,
+          enabled: true
+        });
+      }
+    }
+    await prisma.companyFeature.createMany({
+      data: companyFeatureData,
+      skipDuplicates: true
+    });
+  }
+
   for (const category of marketplaceCategories) {
     await prisma.category.upsert({
       where: { slug: slugFor(category.name) },

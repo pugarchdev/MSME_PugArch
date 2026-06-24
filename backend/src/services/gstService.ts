@@ -185,14 +185,19 @@ const apiSetuCa = () => {
   return configured || APISETU_ROOT_CA;
 };
 
+const apiSetuAllowInsecureTls = () =>
+  cleanEnv(process.env.APISETU_ALLOW_INSECURE_TLS).toLowerCase() === 'true' ||
+  process.env.NODE_ENV !== 'production';
+
 const requestJson = async (url: string, init: RequestInit, headers: Record<string, string>) => {
   if (isApiSetuHost(url)) {
     return new Promise<{ ok: boolean; status: number; body: any; text: string }>((resolve, reject) => {
+      const allowInsecure = apiSetuAllowInsecureTls();
       const request = https.request(url, {
         method: init.method || 'GET',
         headers,
         ca: apiSetuCa(),
-        rejectUnauthorized: true
+        rejectUnauthorized: !allowInsecure
       }, response => {
         let text = '';
         response.setEncoding('utf8');

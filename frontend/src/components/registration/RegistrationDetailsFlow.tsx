@@ -124,6 +124,20 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   const { user, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.get('/api/auth/features')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.enabledFeatures) {
+          setEnabledFeatures(data.enabledFeatures);
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const isSmsEnabled = enabledFeatures.includes('sms');
 
   useEffect(() => {
     const aadhaarParam = searchParams?.get('aadhaar');
@@ -625,10 +639,9 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       return;
     }
 
-    if (currentSubStep === 3 && isEmailVerified && role === 'seller') {
+    if (currentSubStep === 3 && isEmailVerified) {
       if (!formData.userId && formData.email) {
-        const prefix = formData.email.split('@')[0];
-        setFormData(prev => ({ ...prev, userId: prefix }));
+        setFormData(prev => ({ ...prev, userId: formData.email }));
       }
     }
 
@@ -718,7 +731,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       return toast.error(gstError);
     }
     if (!user) {
-      if (role === 'buyer' && !formData.userId) {
+      if (!formData.userId) {
         return toast.error('Please enter user id');
       }
       if (formData.password !== formData.confirmPassword) {
@@ -1778,7 +1791,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                     </div>
                   )}
 
-                  {formData.mobile && /^[6-9]\d{9}$/.test(formData.mobile.trim()) && (
+                  {isSmsEnabled && formData.mobile && /^[6-9]\d{9}$/.test(formData.mobile.trim()) && (
                     <div className="rounded-lg border border-slate-200 bg-white p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>

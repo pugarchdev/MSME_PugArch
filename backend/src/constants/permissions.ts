@@ -175,6 +175,7 @@ export const MASTER_FEATURES = [
   ['razorpay-payment', 'Razorpay Payment', 'finance'],
   ['grievance-module', 'Grievance Module', 'support'],
   ['notifications', 'Notifications', 'communication'],
+  ['sms', 'SMS', 'communication'],
   ['email-otp', 'Email OTP', 'communication'],
   ['mobile-otp', 'Mobile OTP', 'communication'],
   ['reports-mis', 'Reports & MIS', 'reports'],

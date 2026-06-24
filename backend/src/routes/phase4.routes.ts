@@ -6258,9 +6258,20 @@ router.put('/notifications/preferences', authenticate, asyncRoute(async (req, re
   }).partial(), req.body);
   const currentUserId = userId(req);
   if (body.smsNotifications === true) {
-    const user = await db.user.findUnique({ where: { id: currentUserId }, select: { mobile: true, mobileVerified: true } });
+    const user = await db.user.findUnique({ where: { id: currentUserId }, select: { mobile: true, mobileVerified: true, companyId: true } });
     if (!user?.mobile || !user.mobileVerified) {
       throw new ApiError(400, 'Verify your mobile number to enable SMS notifications.', 'MOBILE_NOT_VERIFIED');
+    }
+    if (user.companyId) {
+      const companyFeature = await db.companyFeature.findFirst({
+        where: {
+          companyId: user.companyId,
+          feature: { code: 'sms' }
+        }
+      });
+      if (!companyFeature || !companyFeature.enabled) {
+        throw new ApiError(400, 'SMS notifications are disabled by the platform administrator.', 'FEATURE_DISABLED');
+      }
     }
   }
 

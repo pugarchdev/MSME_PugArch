@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
@@ -11,6 +11,23 @@ export default function ForgotPassword() {
   const [newPassword, setNewPassword] = useState('');
   const [sent, setSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.get('/api/auth/features')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.enabledFeatures) {
+          setEnabledFeatures(data.enabledFeatures);
+          if (!data.enabledFeatures.includes('sms')) {
+            setChannel('email');
+          }
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const isSmsEnabled = enabledFeatures.includes('sms');
   const isMobile = channel === 'sms';
   const normalizedMobile = identifier.replace(/\D/g, '').slice(-10);
   const canSubmitIdentifier = isMobile ? /^[6-9]\d{9}$/.test(normalizedMobile) : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
@@ -67,23 +84,25 @@ export default function ForgotPassword() {
         <p className="mt-1 text-sm font-medium text-slate-500">Use your registered email or mobile number to receive a secure reset code.</p>
 
         <form onSubmit={sent ? resetPassword : requestReset} className="mt-6 space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-            {(['email', 'sms'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                disabled={sent}
-                onClick={() => {
-                  setChannel(item);
-                  setIdentifier('');
-                  setOtp('');
-                }}
-                className={`h-10 rounded-lg text-xs font-black uppercase tracking-widest ${channel === item ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}
-              >
-                {item === 'email' ? 'Email OTP' : 'Mobile OTP'}
-              </button>
-            ))}
-          </div>
+          {isSmsEnabled && (
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+              {(['email', 'sms'] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  disabled={sent}
+                  onClick={() => {
+                    setChannel(item);
+                    setIdentifier('');
+                    setOtp('');
+                  }}
+                  className={`h-10 rounded-lg text-xs font-black uppercase tracking-widest ${channel === item ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}
+                >
+                  {item === 'email' ? 'Email OTP' : 'Mobile OTP'}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between">

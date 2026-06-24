@@ -184,22 +184,20 @@ function DeliveryCard({ delivery, onAction }: { delivery: DeliveryDto; onAction:
                             <Package className="mr-1 h-3.5 w-3.5" /> Mark Packed
                         </Button>
                     )}
-                    {(status === 'PACKED' || status === 'READY_FOR_PICKUP') && (
-                        <>
-                            <Button size="sm" variant="outline" onClick={() => onAction('dispatch-details')}>
-                                <Truck className="mr-1 h-3.5 w-3.5" /> Tracking & Carrier
-                            </Button>
-                            {status === 'PACKED' && (
-                                <Button size="sm" onClick={() => onAction('ready')} className="bg-purple-600 text-white">
-                                    Ready for Pickup
-                                </Button>
-                            )}
-                            {status === 'READY_FOR_PICKUP' && (
-                                <Button size="sm" onClick={() => onAction('dispatched')} className="bg-cyan-600 text-white">
-                                    <Send className="mr-1 h-3.5 w-3.5" /> Mark Dispatched
-                                </Button>
-                            )}
-                        </>
+                    {['SELLER_ACCEPTED', 'PACKED', 'READY_FOR_PICKUP'].includes(status) && (
+                        <Button size="sm" variant="outline" onClick={() => onAction('dispatch-details')}>
+                            <Truck className="mr-1 h-3.5 w-3.5" /> Tracking & Carrier
+                        </Button>
+                    )}
+                    {status === 'PACKED' && (
+                        <Button size="sm" onClick={() => onAction('ready')} className="bg-purple-600 text-white">
+                            Ready for Pickup
+                        </Button>
+                    )}
+                    {status === 'READY_FOR_PICKUP' && (
+                        <Button size="sm" onClick={() => onAction('dispatched')} className="bg-cyan-600 text-white">
+                            <Send className="mr-1 h-3.5 w-3.5" /> Mark Dispatched
+                        </Button>
                     )}
                     {['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(status) && (
                         <Button size="sm" onClick={() => onAction('status')} className="bg-blue-600 text-white">

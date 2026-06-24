@@ -484,8 +484,9 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'My Bids', path: '/bids', icon: ClipboardCheck, roles: ['seller'] },
     ] },
     { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
-    { label: 'Orders', icon: Truck, roles: ['seller'], children: [
+    { label: 'Orders & Deliveries', icon: Truck, roles: ['seller'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
+      { label: 'Delivery Management', path: '/seller/delivery-management', icon: ClipboardList, roles: ['seller'] },
       { label: 'Delivery Updates', path: '/orders/tracking', icon: Truck, roles: ['seller'] },
     ] },
     { label: 'Payments', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module', children: [

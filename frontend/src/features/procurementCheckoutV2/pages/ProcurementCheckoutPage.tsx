@@ -74,6 +74,7 @@ export default function ProcurementCheckoutPage() {
     <CheckoutWizardLayout
       currentStep={wizard.currentStep}
       isSubmitting={wizard.isSubmitting}
+      isSavingDraft={wizard.isSavingDraft}
       onStepClick={wizard.setCurrentStep}
       onPrevious={() => wizard.setCurrentStep(s => Math.max(1, s - 1))}
       onNext={handleNext}

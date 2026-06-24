@@ -26,6 +26,7 @@ export function useProcurementCheckout() {
   const [evaluation, setEvaluation] = useState<CartEvaluation | null>(null);
   const [requestId, setRequestId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -132,12 +133,15 @@ export function useProcurementCheckout() {
   };
 
   const saveDraft = async () => {
+    setIsSavingDraft(true);
     try {
       const id = await ensureRequest();
       await saveProcurementCheckout(id, formData);
       toast.success('Draft saved');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save draft');
+    } finally {
+      setIsSavingDraft(false);
     }
   };
 
@@ -200,6 +204,7 @@ export function useProcurementCheckout() {
     errors,
     setErrors,
     saveDraft,
+    isSavingDraft,
     submitForApproval,
     placeOrder,
     convertToBid,

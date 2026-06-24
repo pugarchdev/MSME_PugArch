@@ -246,25 +246,35 @@ export default function DirectPurchasePage({ listOnly = false }: { listOnly?: bo
                                                     >
                                                         <Eye className="h-3.5 w-3.5" />
                                                     </button>
-                                                    {isBuyer && dp.status === 'APPROVED' && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                runWithToast(() => generatePoMut.mutateAsync(dp.id), {
-                                                                    loading: 'Generating PO...',
-                                                                    success: 'Purchase Order generated',
-                                                                    error: 'PO generation failed'
-                                                                });
-                                                            }}
-                                                            disabled={generatePoMut.isPending}
-                                                            title="Generate Purchase Order"
-                                                            className="flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-                                                        >
-                                                            {generatePoMut.isPending && generatePoMut.variables === dp.id
-                                                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                : <Truck className="h-3.5 w-3.5" />}
-                                                        </button>
-                                                    )}
+                                                    {isBuyer && (dp.status === 'APPROVED' || dp.status === 'ORDERED') && (
+                                                         <button
+                                                             type="button"
+                                                             onClick={() => {
+                                                                 if (dp.status === 'ORDERED') return;
+                                                                 runWithToast(() => generatePoMut.mutateAsync(dp.id), {
+                                                                     loading: 'Generating PO...',
+                                                                     success: 'Purchase Order generated',
+                                                                     error: 'PO generation failed'
+                                                                 });
+                                                             }}
+                                                             disabled={dp.status === 'ORDERED' || generatePoMut.isPending}
+                                                             title={dp.status === 'ORDERED' ? "Purchase Order Generated" : "Generate Purchase Order"}
+                                                             className={cn(
+                                                                 "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
+                                                                 dp.status === 'ORDERED'
+                                                                     ? "border-emerald-100 bg-emerald-50/50 text-emerald-600 cursor-default"
+                                                                     : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                                                             )}
+                                                         >
+                                                             {generatePoMut.isPending && generatePoMut.variables === dp.id ? (
+                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                             ) : dp.status === 'ORDERED' ? (
+                                                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                                             ) : (
+                                                                 <Truck className="h-3.5 w-3.5" />
+                                                             )}
+                                                         </button>
+                                                     )}
                                                     {isBuyer && ['DRAFT', 'REQUESTED', 'REJECTED'].includes(String(dp.status)) && (
                                                         <button
                                                             type="button"

@@ -642,7 +642,7 @@ export default function App() {
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 
   return (
-    <div className="flex min-h-dvh bg-neutral-50 font-sans text-neutral-900">
+    <div className={cn("flex bg-neutral-50 font-sans text-neutral-900", showDashboardLayout ? "h-dvh overflow-hidden" : "min-h-dvh")}>
       {showDashboardLayout && (
         <Sidebar
           isOpen={isSidebarOpen}

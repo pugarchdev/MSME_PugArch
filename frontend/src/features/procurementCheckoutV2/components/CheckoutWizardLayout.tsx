@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, ArrowRight, Save, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Send, Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { STEP_TITLES } from '../constants';
@@ -9,6 +9,7 @@ import { STEP_TITLES } from '../constants';
 export default function CheckoutWizardLayout({
   currentStep,
   isSubmitting,
+  isSavingDraft = false,
   onStepClick,
   onPrevious,
   onNext,
@@ -22,6 +23,7 @@ export default function CheckoutWizardLayout({
 }: {
   currentStep: number;
   isSubmitting: boolean;
+  isSavingDraft?: boolean;
   onStepClick: (step: number) => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -71,8 +73,9 @@ export default function CheckoutWizardLayout({
               <ArrowLeft className="mr-2 h-4 w-4" /> Previous
             </Button>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={onSave} disabled={isSubmitting}>
-                <Save className="mr-2 h-4 w-4" /> Save Draft
+              <Button type="button" variant="outline" onClick={onSave} disabled={isSubmitting || isSavingDraft}>
+                {isSavingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-slate-500" /> : <Save className="mr-2 h-4 w-4" />}
+                {isSavingDraft ? 'Saving...' : 'Save Draft'}
               </Button>
               {currentStep < 8 ? (
                 <Button type="button" onClick={onNext} className="bg-[#12335f] hover:bg-[#0e2a4f]">

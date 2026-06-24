@@ -314,7 +314,7 @@ export default function CartPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleUpdate(item.id, Number(item.quantity) - 1)}
-                                                                disabled={updateMut.isPending || Number(item.quantity) <= 1 || item.id < 0}
+                                                                disabled={Number(item.quantity) <= 1 || item.id < 0}
                                                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                                                             >
                                                                 <Minus className="h-3 w-3" />
@@ -323,7 +323,7 @@ export default function CartPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleUpdate(item.id, Number(item.quantity) + 1)}
-                                                                disabled={updateMut.isPending || item.id < 0}
+                                                                disabled={item.id < 0}
                                                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                                                             >
                                                                 <Plus className="h-3 w-3" />

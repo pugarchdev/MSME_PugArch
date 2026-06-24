@@ -9,6 +9,7 @@
  *      tells the user they have read-only access until approved.
  *   3. Org VERIFIED → banner hidden.
  */
+import { useEffect } from 'react';
 import { AlertTriangle, Clock, XCircle } from 'lucide-react';
 import { useOrgRole } from '../hooks/useOrgRole';
 import { useAuth } from '../hooks/useAuth';
@@ -16,7 +17,20 @@ import { getSellerPortalPath } from '../lib/shg';
 
 export function OrgApprovalBanner() {
     const { user } = useAuth();
-    const { orgStatus, isApproved, loading } = useOrgRole();
+    const { orgStatus, isApproved, loading, reload } = useOrgRole();
+
+    // Poll status while not approved and organization exists
+    useEffect(() => {
+        if (!user || user.role === 'admin' || isApproved || !orgStatus?.organization) {
+            return;
+        }
+
+        const interval = setInterval(() => {
+            reload();
+        }, 15000); // Poll every 15 seconds
+
+        return () => clearInterval(interval);
+    }, [user, isApproved, orgStatus?.organization, reload]);
 
     // Platform admins and unloaded states don't show the banner
     if (!user || user.role === 'admin' || loading) return null;

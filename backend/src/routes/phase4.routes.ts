@@ -2001,14 +2001,68 @@ router.post('/admin/onboarding/:id/section-status', authenticate, authorizeAdmin
     newOnboardingStatus = 'under_compliance_review';
   }
 
-  const user = await db.user.update({
+  const updateData = {
+    sectionStatus: cleanSectionStatus,
+    sectionRejectionReasons: body.sectionRejectionReasons || {},
+    onboardingStatus: newOnboardingStatus
+  };
+
+  const approvalResult = newOnboardingStatus === 'approved_for_procurement'
+    ? await approveOnboardingAndEnsureOrganization(id, updateData)
+    : null;
+
+  const user = approvalResult?.user || await db.user.update({
     where: { id },
-    data: {
-      sectionStatus: cleanSectionStatus,
-      sectionRejectionReasons: body.sectionRejectionReasons || {},
-      onboardingStatus: newOnboardingStatus
-    }
+    data: updateData
   });
+
+  if (existing.role === 'buyer') {
+    let showcaseStatus = 'PENDING';
+    if (newOnboardingStatus === 'approved_for_procurement') {
+      showcaseStatus = 'VERIFIED';
+    } else if (newOnboardingStatus === 'rejected') {
+      showcaseStatus = 'REJECTED';
+    }
+    const adminUser = req.user?.id ? await db.user.findUnique({ where: { id: req.user.id } }) : null;
+    const adminName = adminUser?.name || 'Admin';
+    await db.buyerProfile.updateMany({
+      where: { userId: id },
+      data: {
+        verificationStatus: showcaseStatus,
+        verifiedAt: showcaseStatus === 'VERIFIED' ? new Date() : null,
+        verifiedBy: showcaseStatus === 'VERIFIED' ? adminName : null
+      }
+    }).catch((err: any) => console.error('[Showcase Status Update Failed]', err));
+  }
+
+  if (approvalResult) {
+    await auditWrite(req, 'onboarding.approved', 'user', id, {
+      organizationId: approvalResult.organization.id
+    });
+    if (approvalResult.createdOrganization) {
+      await auditWrite(req, 'organization.auto_created_from_onboarding', 'organization', approvalResult.organization.id, {
+        userId: id,
+        role: user.role
+      });
+    }
+    if (approvalResult.createdMembership) {
+      await auditWrite(req, 'org_membership.auto_created_admin', 'orgMembership', approvalResult.membership.id, {
+        userId: id,
+        organizationId: approvalResult.organization.id,
+        orgRole: approvalResult.membership.orgRole
+      });
+    }
+    await auditWrite(req, 'organization.verified_from_onboarding', 'organization', approvalResult.organization.id, {
+      userId: id
+    });
+    deleteCache('/api/auth/me').catch(() => undefined);
+    deleteCache('/api/org/status').catch(() => undefined);
+    deleteCache('marketplace:home:v2').catch(() => undefined);
+    deleteCache(redisKeys.cacheMarketplaceHome()).catch(() => undefined);
+    invalidateByPattern('cache:marketplace:*').catch(() => undefined);
+    invalidateByPattern('cache:*dashboard*').catch(() => undefined);
+  }
+
 
   // Propagate document status to individual SellerDocument records if documents section status changes
   if (existing.role === 'seller' && body.sectionStatus && 'documents' in body.sectionStatus) {
@@ -2191,6 +2245,7 @@ router.post('/admin/onboarding/:id/status', authenticate, authorizeAdmin, asyncR
       userId: id
     });
     deleteCache('/api/auth/me').catch(() => undefined);
+    deleteCache('/api/org/status').catch(() => undefined);
     deleteCache('marketplace:home:v2').catch(() => undefined);
     deleteCache(redisKeys.cacheMarketplaceHome()).catch(() => undefined);
     invalidateByPattern('cache:marketplace:*').catch(() => undefined);

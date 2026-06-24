@@ -64,13 +64,16 @@ export function useOrgRole(): UseOrgRoleReturn {
     const [orgStatus, setOrgStatus] = useState<OrgStatus | null>(null);
     const [loading, setLoading] = useState(false);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (skipCache = false) => {
         if (!token || !user) return;
         // Platform admins don't have org roles
         if (user.role === 'admin') return;
         setLoading(true);
         try {
-            const data = await getApi<OrgStatus>('/api/org/status');
+            const endpoint = skipCache
+                ? `/api/org/status?_ts=${Date.now()}`
+                : '/api/org/status';
+            const data = await getApi<OrgStatus>(endpoint, skipCache);
             setOrgStatus(data);
         } catch {
             // Non-fatal — user may not have an org yet
@@ -104,6 +107,6 @@ export function useOrgRole(): UseOrgRoleReturn {
         canTransact: isApproved && orgRole !== null && orgRole !== 'VIEWER',
         hasMinRole,
         loading,
-        reload: load
+        reload: () => load(true)
     };
 }

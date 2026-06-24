@@ -1,7 +1,77 @@
 import * as XLSX from 'xlsx';
+import path from 'path';
 import { ApiError } from '../../utils/ApiError.js';
 import { auditWorkflow, db, type WorkflowActor } from './workflow-common.js';
 import { catalogueWorkflow } from './catalogue-workflow.service.js';
+import { uploadFile } from '../storage/storage.service.js';
+
+const parseUrls = (value: unknown): string[] => {
+  const str = String(value ?? '').trim();
+  if (!str) return [];
+  const splitChar = str.includes(',') ? ',' : (str.includes(';') ? ';' : ' ');
+  return str
+    .split(splitChar)
+    .map(u => u.trim())
+    .filter(u => u && (u.startsWith('http://') || u.startsWith('https://')));
+};
+
+async function downloadAndUploadUrl(
+  url: string,
+  userId: number,
+  role: string,
+  entityType: 'catalogue_product' | 'catalogue_service'
+) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[Catalogue Import] Failed to fetch URL: ${url}, status: ${res.status}`);
+      return null;
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    if (buffer.length === 0) {
+      console.warn(`[Catalogue Import] Empty file downloaded from URL: ${url}`);
+      return null;
+    }
+
+    const contentType = res.headers.get('content-type') || 'application/octet-stream';
+    let originalName = 'imported_file';
+    try {
+      originalName = path.basename(new URL(url).pathname) || 'imported_file';
+    } catch (e) {
+      // Ignore
+    }
+    if (!path.extname(originalName)) {
+      const ext = contentType.includes('jpeg') ? '.jpg' : (contentType.includes('png') ? '.png' : (contentType.includes('pdf') ? '.pdf' : '.bin'));
+      originalName += ext;
+    }
+
+    const mockFile: Express.Multer.File = {
+      buffer,
+      originalname: originalName,
+      mimetype: contentType,
+      size: buffer.length,
+      fieldname: 'file',
+      encoding: '7bit',
+      destination: '',
+      filename: '',
+      path: '',
+      stream: null as any
+    };
+
+    const asset = await uploadFile(mockFile, {
+      ownerId: userId,
+      ownerRole: role,
+      entityType
+    });
+
+    return asset.id;
+  } catch (err: any) {
+    console.error(`[Catalogue Import] Error downloading/uploading file from URL ${url}:`, err);
+    return null;
+  }
+}
+
 
 const MAX_ROWS = 1000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -285,6 +355,25 @@ export const catalogueImportService = {
         unit: sanitizeText(col(s, 'Unit'), 40)
       })).filter(s => s.name && s.value);
 
+      const imageUrls = parseUrls(col(row, 'Image URLs'));
+      const docUrls = parseUrls(col(row, 'Document URLs'));
+
+      const imageIds: number[] = [];
+      const imageResults = await Promise.all(
+        imageUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, 'catalogue_product'))
+      );
+      for (const id of imageResults) {
+        if (id) imageIds.push(id);
+      }
+
+      const documentIds: number[] = [];
+      const docResults = await Promise.all(
+        docUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, type === 'PRODUCT' ? 'catalogue_product' : 'catalogue_service'))
+      );
+      for (const id of docResults) {
+        if (id) documentIds.push(id);
+      }
+
       validRows.push({
         rowNumber,
         name,
@@ -294,6 +383,8 @@ export const catalogueImportService = {
         currency: 'INR',
         taxRate: gst ?? 0,
         specifications: specs,
+        imageIds,
+        documentIds,
         ...(type === 'PRODUCT'
           ? {
             price,

@@ -89,10 +89,10 @@ export function SellerStrip({ sellers }: Props) {
                                 <Link
                                     key={seller.id}
                                     href={`/vendors/${seller.id}`}
-                                    className="group flex w-[210px] shrink-0 snap-start flex-col items-center gap-3 rounded-2xl border border-slate-200/60 bg-white/85 backdrop-blur-md px-4 py-5 text-center shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md"
+                                    className="group flex w-[200px] shrink-0 snap-start flex-col items-center gap-3 rounded-2xl border border-slate-200/60 bg-white/85 backdrop-blur-md px-4 py-5 text-center shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:border-[#0b2447]/30 hover:bg-white hover:shadow-md"
                                 >
                                     {logo ? (
-                                        <div className="w-14 h-14 overflow-hidden rounded-full bg-slate-50 border-2 border-slate-100 flex items-center justify-center group-hover:border-[#0b2447]/30 transition-all duration-300 shadow-inner group-hover:scale-105">
+                                        <div className="w-16 h-16 overflow-hidden rounded-full bg-slate-50 border-2 border-slate-100 flex items-center justify-center group-hover:border-[#0b2447]/30 transition-all duration-300 shadow-inner group-hover:scale-105">
                                             <img src={logo} alt={`${seller.organizationName} logo`} className="h-full w-full object-contain p-1" loading="lazy" />
                                         </div>
                                     ) : (
@@ -114,16 +114,16 @@ export function SellerStrip({ sellers }: Props) {
                                         <div className="h-[15px]" />
                                     )}
 
-                                    <div className="flex items-center gap-1.5 justify-center">
+                                    {/* <div className="flex items-center gap-1.5 justify-center">
                                         <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wider uppercase text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 shadow-sm">
                                             <BadgeCheck className="h-2.5 w-2.5" /> GST
                                         </span>
                                         <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wider uppercase text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/60 shadow-sm">
                                             <BadgeCheck className="h-2.5 w-2.5" /> UDYAM
                                         </span>
-                                    </div>
+                                    </div> */}
 
-                                    <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500/95 border-t border-slate-100 w-full pt-3 justify-center">
+                                    <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500/95 border-t border-slate-100 w-full pt-1 justify-center">
                                         {products > 0 || services > 0 ? (
                                             <>
                                                 {products > 0 && (

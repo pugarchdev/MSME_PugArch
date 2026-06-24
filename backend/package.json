@@ -56,5 +56,8 @@
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.0",
     "prisma": "^6.19.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

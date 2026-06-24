@@ -38,14 +38,20 @@ dotenv.config({
   override: true
 });
 
+const isEnvValueEmpty = (val: unknown): boolean => {
+  if (val === undefined || val === null) return true;
+  const str = String(val).trim();
+  return str === '' || str === 'undefined' || str === 'null';
+};
+
 const withFallback = <T extends z.ZodTypeAny>(fallbackKeys: string[], schema: T): T => {
   return z.preprocess(val => {
-    if (val !== undefined && val !== null && String(val).trim() !== '') {
+    if (!isEnvValueEmpty(val)) {
       return val;
     }
     for (const key of fallbackKeys) {
       const fb = process.env[key];
-      if (fb !== undefined && fb !== null && String(fb).trim() !== '') {
+      if (!isEnvValueEmpty(fb)) {
         return fb;
       }
     }
@@ -56,7 +62,7 @@ const withFallback = <T extends z.ZodTypeAny>(fallbackKeys: string[], schema: T)
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(5001),
-  DATABASE_URL: z.string().min(1).optional(),
+  DATABASE_URL: withFallback(['POSTGRES_PRISMA_URL', 'POSTGRES_URL'], z.string().min(1).optional()),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters').optional(),
   JWT_EXPIRES_IN: z.string().default('2h'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('2h'),

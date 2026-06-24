@@ -217,10 +217,19 @@ const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typ
     console.warn('[MeriPehchaan] MERIPEHCHAAN_ISSUER is not set. ID token issuer (iss) claim will not be validated. Set it to the value from the API Setu OIDC discovery document for full security.');
   }
 
+  const validIssuers: [string, ...string[]] = [
+    'https://digilocker.meripehchaan.gov.in',
+    'https://api.digitallocker.gov.in',
+    'https://api.digitallocker.gov.in/'
+  ];
+  if (config.issuer && !validIssuers.includes(config.issuer)) {
+    validIssuers.push(config.issuer);
+  }
+
   const verified = jwt.verify(idToken, pem, {
     algorithms: [decoded.header.alg as jwt.Algorithm],
     audience: config.clientId,
-    ...(config.issuer ? { issuer: config.issuer } : {}),
+    issuer: validIssuers,
   });
   return verified && typeof verified === 'object' ? verified : null;
 };
@@ -620,6 +629,7 @@ export const aadhaarKycService = {
 
       return redirectUrl('verified', 'Aadhaar verification successful.', redirectPath);
     } catch (error: any) {
+      console.error('[Aadhaar KYC PreRegister Callback Error]:', error);
       await prisma.preRegistrationKycSession.update({
         where: { id: session.id },
         data: { used: true, status: 'FAILED' }

@@ -235,6 +235,42 @@ const publicInfoRoutes = [
   '/caution-notices',
 ];
 
+const isPublicRoute = (route: string) => {
+  const publicPaths = [
+    '/',
+    '/login',
+    '/shg/login',
+    '/forgot-password',
+    '/register',
+    '/seller/register',
+    '/buyer/register',
+    '/hershg/register',
+    '/admin/register',
+    '/invite/accept',
+    '/invite/signup',
+    '/cart',
+    '/tenders',
+    '/help',
+    '/user-guide',
+    '/marketplace/products',
+    '/marketplace/services',
+    '/marketplace/sellers',
+    '/marketplace/cart',
+    '/marketplace/requirements',
+    '/marketplace/compare',
+    '/bids',
+  ];
+
+  if (publicPaths.includes(route)) return true;
+  if (publicInfoRoutes.includes(route)) return true;
+  if (route.startsWith('/marketplace')) return true;
+  if (route.startsWith('/bids')) return true;
+  if (route.startsWith('/admin/bids')) return true;
+  if (/^\/vendors\/\d+$/.test(route)) return true;
+  if (/^\/buyer-requirements\/\d+$/.test(route)) return true;
+  return false;
+};
+
 /**
  * Imperative redirect component. Guards against firing when we're already on
  * the target path (which can happen in dev under React Strict Mode when
@@ -342,7 +378,7 @@ export default function App() {
             ? rolePreloaders.admin
             : [];
 
-    let cancelBatches = () => {};
+    let cancelBatches = () => { };
     const cancelIdle = scheduleIdle(() => {
       cancelBatches = preloadInBatches(loaders);
     });
@@ -353,6 +389,9 @@ export default function App() {
   }, [mounted, user]);
 
   if (!mounted) {
+    if (isPublicRoute(pathname)) {
+      return <Suspense fallback={<PremiumLoader />}><MarketplaceSellersPage /></Suspense>;
+    }
     return <PremiumLoader />;
   }
 
@@ -360,10 +399,10 @@ export default function App() {
     const isCurrentShg = isShgUser(user);
     const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : isCurrentShg ? '/shg/onboarding' : '/dashboard';
 
-    // Only show the full-screen "loading" splash when we genuinely have no
-    // user data yet AND no cached user from a previous session. After that,
-    // background refreshes should never blank the UI.
-    if (loading && !user) return <PremiumLoader />;
+    // Public marketplace and info pages must render immediately even while
+    // auth is still being checked, otherwise users see the splash loader on
+    // routes such as /marketplace/sellers.
+    if (loading && !user && !isPublicRoute(pathname)) return <PremiumLoader />;
     if (pathname === '/') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
     if (pathname === '/login') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <Login />;
     if (pathname === '/shg/login') return <Redirect to="/login" />;

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Eye, FileText, ImageIcon, Plus, Trash2, Upload, FileUp, Loader2, ArrowLeft } from 'lucide-react';
+import { Eye, FileText, ImageIcon, Plus, Trash2, Upload, FileUp, Loader2, ArrowLeft, Sparkles, Package, Wrench, ShieldCheck, BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -439,18 +439,43 @@ export default function CatalogueFormPage() {
 
   return (
     <div className="space-y-4 min-w-0">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="group flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-emerald-700 transition-colors mb-2"
-          >
-            <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
-            Back to Marketplace
-          </button>
-          <h1 className="text-2xl font-black text-slate-950 font-sans tracking-tight">{title}</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{descriptionText}</p>
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0b2447] via-[#12335f] to-[#2f6db4] p-5 text-white shadow-sm sm:p-6">
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="group flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/80 transition-colors hover:text-white"
+        >
+          <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
+          Back to Marketplace
+        </button>
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/85">
+              <Sparkles className="h-3.5 w-3.5" /> {kind === 'product' ? 'product onboarding' : 'service onboarding'}
+            </div>
+            <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{title}</h1>
+            <p className="mt-2 text-sm font-medium text-white/80">{descriptionText}</p>
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-white/15 bg-white/10 p-3 text-sm backdrop-blur sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+                <Package className="h-3.5 w-3.5" /> {kind === 'product' ? 'SKU' : 'Scope'}
+              </div>
+              <p className="mt-1 text-sm font-bold text-white">Ready to publish</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+                <ShieldCheck className="h-3.5 w-3.5" /> Verification
+              </div>
+              <p className="mt-1 text-sm font-bold text-white">Fast review</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+                <BadgeCheck className="h-3.5 w-3.5" /> Buyer ready
+              </div>
+              <p className="mt-1 text-sm font-bold text-white">RFQ enabled</p>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { Loader2 } from '../ui/loader';
 import { useAuth } from '../../hooks/useAuth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { indiaStates, indiaStatesDistricts } from '../../data/indiaStatesDistricts';
 import { aadhaarKycApi, type AadhaarKycStatus } from '../../features/kyc/aadhaarKycApi';
@@ -123,6 +123,17 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   });
   const { user, login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const aadhaarParam = searchParams?.get('aadhaar');
+    if (!aadhaarParam) return;
+    if (aadhaarParam === 'failed') {
+      toast.error('Aadhaar verification failed. Please try again.');
+    } else if (aadhaarParam === 'expired') {
+      toast.error('Aadhaar verification session expired. Please try again.');
+    }
+  }, [searchParams]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingGst, setIsFetchingGst] = useState(false);
   const [showOptionalDetails, setShowOptionalDetails] = useState(false);
@@ -510,6 +521,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           consent: aadhaarConsent,
           mobile: formData.mobile || formData.email || '',
           aadhaarNumber: formData.aadhaarNumber,
+          redirectPath: window.location.pathname,
         };
         const { authorizationUrl, kycSessionToken } = await aadhaarKycApi.preRegisterStart(payload);
         if (!authorizationUrl) throw new Error('Missing authorization URL');

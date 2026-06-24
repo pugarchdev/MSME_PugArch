@@ -89,6 +89,7 @@ const PaymentsReportPage = lazy(() => import('./features/reports/pages/PaymentsR
 const SuppliersReportPage = lazy(() => import('./features/reports/pages/SuppliersReportPage'));
 const VendorStorefrontPage = lazy(() => import('./features/vendors/pages/VendorStorefrontPage'));
 const MarketplaceSellerStore = lazy(() => import('./features/marketplace/pages/MarketplaceSellerStore'));
+const MarketplaceSellersPage = lazy(() => import('./features/marketplace/pages/MarketplaceSellersPage'));
 const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
 const GlobalSearch = lazy(() => import('./features/search/GlobalSearch'));
 const PortalDocumentation = lazy(() => import('./views/PortalDocumentation'));
@@ -383,7 +384,7 @@ export default function App() {
     // Public marketplace routes (accessible without login)
     if (pathname === '/marketplace/products') return <MarketplaceProductList />;
     if (pathname === '/marketplace/services') return <MarketplaceProductList />;
-    if (pathname === '/marketplace/sellers') return <MarketplaceHome />;
+    if (pathname === '/marketplace/sellers') return <MarketplaceSellersPage />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
     if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
     if (pathname === '/marketplace/compare') return <MarketplaceComparePage />;

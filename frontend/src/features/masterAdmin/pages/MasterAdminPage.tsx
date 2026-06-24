@@ -1697,6 +1697,8 @@ export default function MasterAdminPage() {
                 ['name', 'Name'],
                 ['email', 'Email'],
                 ['role', 'Role'],
+                ['company.name', 'Company'],
+                ['organization.organizationName', 'Organization'],
                 ['accountStatus', 'Account'],
                 ['onboardingStatus', 'Verification'],
                 ['createdAt', 'Created']
@@ -3246,7 +3248,7 @@ function EntityEditor({
     district: record.district || '',
     pincode: record.pincode || '',
     verificationStatus: record.verificationStatus || 'PENDING',
-    companyId: record.companyId || companies[0]?.id || '',
+    companyId: record.companyId || (editor.type === 'organization' ? companies[0]?.id : '') || '',
     name: record.name || '',
     role: record.role || 'buyer',
     accountStatus: record.accountStatus || 'ACTIVE',
@@ -3323,6 +3325,7 @@ function EntityEditor({
             <SelectField label="Role" value={values.role} onChange={value => set('role', value)} options={['buyer', 'seller', 'admin', 'master_admin']} />
             <SelectField label="Status" value={values.accountStatus} onChange={value => set('accountStatus', value)} options={['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']} />
             <OrganizationSelectField organizations={organizations} value={values.organizationId} onChange={value => set('organizationId', value)} />
+            <CompanySelectField companies={companies} value={values.companyId} onChange={value => set('companyId', value)} />
             {editor.mode === 'create' && <FormField label="Temporary password" value={values.password} onChange={value => set('password', value)} placeholder="Auto-generated if blank" />}
           </>
         )}

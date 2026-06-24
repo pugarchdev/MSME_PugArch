@@ -104,6 +104,16 @@ const getRedirectPathFromState = (state: string): string => {
 const safeMessage = (value: unknown) =>
   String(value || 'Aadhaar verification could not be completed').slice(0, 240);
 
+const normalizeRedirectUri = (uri: string): string => {
+  if (!uri) return '';
+  return uri
+    .trim()
+    .toLowerCase()
+    .replace(/\/$/, '')
+    .replace(/\/aadhar\//g, '/aadhaar/')
+    .replace(/\/aadhar$/, '/aadhaar');
+};
+
 const getOrgId = (user: AuthenticatedUser) =>
   user.organizationId || user.companyId || null;
 
@@ -371,8 +381,8 @@ export const aadhaarKycService = {
       return redirectUrl('expired');
     }
 
-    if (session.redirectUri !== config.redirectUri) {
-      await audit(session.userId, session.organizationId, 'FAILED', 'FAILED', meta, 'Redirect URI mismatch');
+    if (normalizeRedirectUri(session.redirectUri) !== normalizeRedirectUri(config.redirectUri)) {
+      await audit(session.userId, session.organizationId, 'FAILED', 'FAILED', meta, `Redirect URI mismatch (session: ${session.redirectUri}, config: ${config.redirectUri})`);
       return redirectUrl('failed');
     }
 
@@ -591,8 +601,8 @@ export const aadhaarKycService = {
       return redirectUrl('expired', 'Verification session expired. Please start again.', redirectPath);
     }
 
-    if (session.redirectUri !== config.redirectUri) {
-      return redirectUrl('failed', 'Invalid redirect URI.', redirectPath);
+    if (normalizeRedirectUri(session.redirectUri) !== normalizeRedirectUri(config.redirectUri)) {
+      return redirectUrl('failed', `Invalid redirect URI (session: ${session.redirectUri}, config: ${config.redirectUri}).`, redirectPath);
     }
 
     try {

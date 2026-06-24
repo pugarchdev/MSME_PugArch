@@ -57,7 +57,7 @@ router.post('/kyc/aadhaar/start-url', authenticate, rateLimit(5, 10 * 60_000), a
   }
 }));
 
-router.get('/kyc/aadhaar/callback', rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
+router.get(['/kyc/aadhaar/callback', '/kyc/aadhar/callback'], rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
   try {
     const url = await aadhaarKycService.callback(req.query as Record<string, unknown>, requestMeta(req));
     return res.redirect(url);
@@ -88,7 +88,7 @@ router.post('/kyc/aadhaar/pre-register/start', rateLimit(5, 10 * 60_000), asyncR
   }
 }));
 
-router.get('/kyc/aadhaar/pre-register/callback', rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
+router.get(['/kyc/aadhaar/pre-register/callback', '/kyc/aadhar/pre-register/callback'], rateLimit(30, 10 * 60_000), asyncRoute(async (req, res) => {
   try {
     const url = await aadhaarKycService.preRegisterCallback(req.query as Record<string, unknown>, requestMeta(req));
     return res.redirect(url);

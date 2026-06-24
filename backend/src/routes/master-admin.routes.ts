@@ -56,8 +56,15 @@ const companyListSelect = {
 
 const textOrNull = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null;
 const numberOrUndefined = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return undefined;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
+};
+const numberOrNullOrUndefined = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 const jsonOk = (res: Response, data: unknown, message = 'Operation successful', status = 200) =>
   res.status(status).json({ success: true, message, data });
@@ -296,7 +303,7 @@ const organizationPayload = (body: Record<string, unknown>, partial = false) => 
     state: textOrNull(body.state),
     pincode: textOrNull(body.pincode),
     website: textOrNull(body.website),
-    companyId: numberOrUndefined(body.companyId),
+    companyId: numberOrNullOrUndefined(body.companyId),
     verificationStatus: verificationStatus || undefined,
     isBlacklisted: typeof body.isBlacklisted === 'boolean' ? body.isBlacklisted : undefined,
     blacklistReason: textOrNull(body.blacklistReason)
@@ -317,8 +324,8 @@ const userPayload = async (body: Record<string, unknown>, partial = false) => {
     email: textOrNull(body.email)?.toLowerCase(),
     mobile: textOrNull(body.mobile),
     role: role || undefined,
-    companyId: numberOrUndefined(body.companyId),
-    organizationId: numberOrUndefined(body.organizationId),
+    companyId: numberOrNullOrUndefined(body.companyId),
+    organizationId: numberOrNullOrUndefined(body.organizationId),
     accountStatus: status || undefined
   };
   if (password) data.password = await hashPassword(password);
@@ -1299,7 +1306,10 @@ router.post('/master-admin/users', ...masterOnly, requirePermission(PERMISSIONS.
     const code = String(error?.message || '');
     if (code === 'INVALID_ROLE') return jsonError(res, 400, 'Invalid role selected.', 'INVALID_ROLE');
     if (code === 'INVALID_STATUS') return jsonError(res, 400, 'Invalid user status selected.', 'INVALID_STATUS');
-    return jsonError(res, 400, 'Name, email, and role are required.', 'VALIDATION_ERROR');
+    if (code === 'USER_NAME_REQUIRED') return jsonError(res, 400, 'Name is required.', 'VALIDATION_ERROR');
+    if (code === 'USER_EMAIL_REQUIRED') return jsonError(res, 400, 'Email is required.', 'VALIDATION_ERROR');
+    console.error('Error creating user:', error);
+    return jsonError(res, 500, error.message || 'Failed to create user due to an internal error.', 'INTERNAL_SERVER_ERROR');
   }
 }));
 
@@ -1328,7 +1338,8 @@ router.put('/master-admin/users/:id', ...masterOnly, requirePermission(PERMISSIO
     const code = String(error?.message || '');
     if (code === 'INVALID_ROLE') return jsonError(res, 400, 'Invalid role selected.', 'INVALID_ROLE');
     if (code === 'INVALID_STATUS') return jsonError(res, 400, 'Invalid user status selected.', 'INVALID_STATUS');
-    return jsonError(res, 404, 'User not found or update is invalid.', 'USER_NOT_FOUND');
+    console.error('Error updating user:', error);
+    return jsonError(res, 500, error.message || 'Failed to update user due to an internal error.', 'INTERNAL_SERVER_ERROR');
   }
 }));
 

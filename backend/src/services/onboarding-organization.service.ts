@@ -236,3 +236,115 @@ export async function approveOnboardingAndEnsureOrganization(userId: number, upd
     };
   }, { timeout: 20_000 });
 }
+
+export async function createOrUpdatePendingOrganization(userId: number): Promise<any> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.user.findUnique({
+      where: { id: userId },
+      include: {
+        buyerProfile: true,
+        sellerProfile: {
+          include: {
+            offices: true,
+          }
+        },
+        organization: { select: selectSafeOrganization }
+      }
+    });
+
+    if (!existing) throw new Error('User not found');
+    if (!['buyer', 'seller'].includes(String(existing.role))) {
+      return null;
+    }
+
+    const orgData = organizationDataFor(existing);
+    if (!orgData.organizationName) {
+      return null;
+    }
+
+    let organization = existing.organization;
+
+    if (organization) {
+      if (organization.verificationStatus !== 'VERIFIED') {
+        organization = await tx.organization.update({
+          where: { id: organization.id },
+          data: {
+            organizationName: organization.organizationName || orgData.organizationName,
+            organizationType: organization.organizationType || orgData.organizationType,
+            addressLine1: orgData.addressLine1,
+            city: orgData.city,
+            district: orgData.district,
+            state: orgData.state,
+            pincode: orgData.pincode,
+            website: orgData.website,
+            verificationStatus: 'PENDING' as any,
+            organizationOnboardingStatus: 'under_compliance_review'
+          },
+          select: selectSafeOrganization
+        });
+      }
+    } else {
+      const duplicate = await tx.organization.findFirst({
+        where: {
+          deletedAt: null,
+          organizationName: { equals: orgData.organizationName, mode: 'insensitive' }
+        },
+        select: selectSafeOrganization
+      });
+
+      if (duplicate) {
+        organization = await tx.organization.update({
+          where: { id: duplicate.id },
+          data: {
+            verificationStatus: 'PENDING' as any,
+            organizationOnboardingStatus: 'under_compliance_review'
+          },
+          select: selectSafeOrganization
+        });
+      } else {
+        organization = await tx.organization.create({
+          data: {
+            organizationName: orgData.organizationName,
+            organizationType: orgData.organizationType,
+            addressLine1: orgData.addressLine1,
+            city: orgData.city,
+            district: orgData.district,
+            state: orgData.state,
+            pincode: orgData.pincode,
+            website: orgData.website,
+            verificationStatus: 'PENDING' as any,
+            organizationOnboardingStatus: 'under_compliance_review'
+          },
+          select: selectSafeOrganization
+        });
+      }
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { organizationId: organization.id }
+      });
+
+      if (existing.role === 'buyer') {
+        await tx.buyerProfile.updateMany({
+          where: { userId },
+          data: { organizationId: organization.id }
+        });
+      } else {
+        await tx.sellerProfile.updateMany({
+          where: { userId },
+          data: { organizationId: organization.id }
+        });
+      }
+    }
+
+    await ensureOrgMembership({
+      userId,
+      organizationId: organization.id,
+      desiredRole: OrgRole.ORG_ADMIN,
+      upgrade: true,
+      client: tx as any
+    });
+
+    return organization;
+  }, { timeout: 20_000 });
+}

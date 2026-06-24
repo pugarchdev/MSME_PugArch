@@ -9,7 +9,7 @@ import { verifyAccessToken } from '../services/token.service.js';
 import { upload } from '../config/storage.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { onUserLinkedToOrganization } from '../services/org-membership.service.js';
-import { approveOnboardingAndEnsureOrganization } from '../services/onboarding-organization.service.js';
+import { approveOnboardingAndEnsureOrganization, createOrUpdatePendingOrganization } from '../services/onboarding-organization.service.js';
 import { createComplianceFlag } from '../modules/compliance/compliance.service.js';
 import { paymentRateLimit, verificationRateLimit } from '../middleware/rateLimit.js';
 import { getOrSetCache, deleteCache, invalidateByPattern } from '../services/cache.service.js';
@@ -1430,6 +1430,14 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
       }
     }
   });
+
+  // Ensure organization record is created/linked as PENDING upon onboarding submission
+  await createOrUpdatePendingOrganization(updated.id).catch((err: any) => {
+    console.error('[Onboarding Submit] Failed to create pending organization:', err);
+  });
+
+  deleteCache('/api/auth/me').catch(() => undefined);
+  deleteCache('/api/org/status').catch(() => undefined);
 
   await auditWrite(req, 'onboarding.submitted', 'user', updated.id);
 
@@ -4661,8 +4669,18 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
     registrationStatus: z.string().trim().optional(),
     organizationId: z.coerce.number().int().positive().optional()
   }), req.query);
-  const where: any = {};
-  if (query.role) where.role = query.role;
+  const where: any = {
+    userId: { not: 'MASTER_ADMIN' }
+  };
+  if (query.role) {
+    const r = query.role.trim().toLowerCase();
+    if (r === 'master_admin' || r === 'master admin') {
+      return ok(res, { records: [], total: 0, filters: query });
+    }
+    where.role = query.role;
+  } else {
+    where.role = { not: 'master_admin' };
+  }
   if (query.onboardingStatus) where.onboardingStatus = query.onboardingStatus;
   if (query.accountStatus) where.accountStatus = query.accountStatus;
   if (query.registrationStatus) where.registrationStatus = query.registrationStatus;
@@ -4799,6 +4817,15 @@ router.get('/admin/users', authenticate, authorizeAdmin, asyncRoute(async (req, 
 
 router.put('/admin/users/:id/status', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+
+  const userToUpdate = await db.user.findUnique({ where: { id } });
+  if (!userToUpdate) {
+    throw new ApiError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  if (userToUpdate.role === 'master_admin' || userToUpdate.userId === 'MASTER_ADMIN') {
+    throw new ApiError(403, 'Master Admin user status cannot be changed.', 'MASTER_ADMIN_LOCKED');
+  }
+
   const body = parse(z.object({ accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']) }), req.body);
 
   if (id === userId(req) && body.accountStatus !== 'ACTIVE') {
@@ -4815,6 +4842,15 @@ router.put('/admin/users/:id/status', authenticate, authorizeAdmin, asyncRoute(a
 
 router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+
+  const userToUpdate = await db.user.findUnique({ where: { id } });
+  if (!userToUpdate) {
+    throw new ApiError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  if (userToUpdate.role === 'master_admin' || userToUpdate.userId === 'MASTER_ADMIN') {
+    throw new ApiError(403, 'Master Admin user cannot be edited or modified.', 'MASTER_ADMIN_LOCKED');
+  }
+
   const body = parse(z.object({
     name: z.string().trim().min(2).max(100).optional(),
     email: z.string().trim().email().optional(),
@@ -4822,6 +4858,13 @@ router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (r
     role: z.string().trim().optional(),
     accountStatus: z.enum(['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']).optional()
   }), req.body);
+
+  if (body.role) {
+    const requestedRole = body.role.trim().toLowerCase();
+    if (requestedRole === 'master_admin' || requestedRole === 'master admin') {
+      throw new ApiError(403, 'Cannot assign Master Admin role.', 'MASTER_ADMIN_ASSIGNMENT_BLOCKED');
+    }
+  }
 
   if (id === userId(req) && body.accountStatus && body.accountStatus !== 'ACTIVE') {
     throw new ApiError(400, 'You cannot deactivate your own account', 'ADMIN_SELF_DEACTIVATION_BLOCKED');
@@ -4843,6 +4886,15 @@ router.put('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (r
 
 router.delete('/admin/users/:id', authenticate, authorizeAdmin, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
+
+  const userToDelete = await db.user.findUnique({ where: { id } });
+  if (!userToDelete) {
+    throw new ApiError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  if (userToDelete.role === 'master_admin' || userToDelete.userId === 'MASTER_ADMIN') {
+    throw new ApiError(403, 'Master Admin user cannot be deleted.', 'MASTER_ADMIN_LOCKED');
+  }
+
   if (id === userId(req)) throw new ApiError(400, 'You cannot delete your own account', 'ADMIN_SELF_DELETE_BLOCKED');
 
   await db.userSession.deleteMany({ where: { userId: id } });

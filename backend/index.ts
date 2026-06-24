@@ -5404,6 +5404,11 @@ app.post('/api/admin/users/:id/unlock', authenticate, authorizeAdmin, async (req
     const userId = Number(req.params.id);
     if (!userId) return res.status(400).json({ message: 'Invalid user id' });
 
+    const userToUnlock = await prisma.user.findUnique({ where: { id: userId } });
+    if (userToUnlock?.role === 'master_admin' || userToUnlock?.userId === 'MASTER_ADMIN') {
+      return res.status(403).json({ message: 'Master Admin account cannot be unlocked or modified by regular admins.' });
+    }
+
     const user = await prisma.user.update({
       where: { id: userId },
       data: { failedLoginCount: 0, lockedUntil: null }

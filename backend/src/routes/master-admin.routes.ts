@@ -8,6 +8,8 @@ import { PERMISSIONS } from '../constants/permissions.js';
 import { hashPassword } from '../services/password.service.js';
 import { randomToken } from '../utils/crypto.js';
 
+import { createOrUpdatePendingOrganization } from '../services/onboarding-organization.service.js';
+
 const router = Router();
 
 const wrap = (handler: (req: AuthRequest, res: Response) => Promise<unknown>) =>
@@ -675,7 +677,8 @@ router.get('/master-admin/users', ...masterOnly, wrap(async (req, res) => {
   const status = textOrNull(req.query.status);
   const where: any = {
     ...(companyId ? { companyId } : {}),
-    ...(role ? { role } : {}),
+    ...(role ? (role === 'master_admin' ? { id: -1 } : { role }) : { role: { not: 'master_admin' } }),
+    userId: { not: 'MASTER_ADMIN' },
     accountStatus: status ? (status as any) : { not: 'DELETED' },
     ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { userId: { contains: q, mode: 'insensitive' } }] } : {})
   };
@@ -719,6 +722,26 @@ router.post('/master-admin/users/:id/roles', ...masterOnly, requirePermission(PE
 }));
 
 router.get('/master-admin/organizations', ...masterOnly, wrap(async (req, res) => {
+  // Dynamically backfill/ensure organizations for registered users who are in review but don't have organization linked yet
+  const pendingUsers = await prisma.user.findMany({
+    where: {
+      role: { in: ['buyer', 'seller'] },
+      onboardingStatus: 'under_compliance_review',
+      organizationId: null
+    },
+    select: { id: true }
+  });
+
+  if (pendingUsers.length > 0) {
+    for (const pendingUser of pendingUsers) {
+      try {
+        await createOrUpdatePendingOrganization(pendingUser.id);
+      } catch (err) {
+        console.error(`[Organizations API] Dynamic pending organization backfill failed for user ${pendingUser.id}:`, err);
+      }
+    }
+  }
+
   const { skip, take, page, pageSize } = getPagination(req.query as Record<string, unknown>);
   const q = textOrNull(req.query.q) || textOrNull(req.query.search);
   const companyId = numberOrUndefined(req.query.companyId);

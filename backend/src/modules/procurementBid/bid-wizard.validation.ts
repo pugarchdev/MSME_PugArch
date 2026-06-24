@@ -58,7 +58,7 @@ export const submitDraftSchema = z.object({
 
 export const step1Schema = z.object({
   bidType: bidTypeSchema,
-  procurementMethod: z.enum(['DIRECT_PURCHASE', 'L1_PURCHASE', 'E_BID', 'E_BID_WITH_RA', 'REVERSE_AUCTION', 'PAC_PROCUREMENT']),
+  procurementMethod: z.enum(['DIRECT_PURCHASE', 'L1_PURCHASE', 'E_BID', 'E_BID_WITH_RA', 'REVERSE_AUCTION', 'PAC_PROCUREMENT', 'LIMITED_TENDER', 'RFQ']),
   packetType: packetTypeSchema,
   isReverseAuctionRequired: yesNoBoolean,
   isPacRequired: yesNoBoolean,

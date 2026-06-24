@@ -32,8 +32,12 @@ export const getDocumentPreviewMode = (url: string, contentType = '', extension 
 };
 
 export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): Promise<DocumentPreview> => {
-  let fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
-  const fallbackUrl = fileAsset?.url || fileAsset?.signedUrl || fileAsset?.documentUrl;
+  let fileId = typeof fileAsset === 'number'
+    ? fileAsset
+    : (typeof fileAsset === 'string' && /^\d+$/.test(fileAsset))
+      ? Number(fileAsset)
+      : Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
+  const fallbackUrl = typeof fileAsset === 'object' ? (fileAsset?.url || fileAsset?.signedUrl || fileAsset?.documentUrl) : null;
   const absoluteFallbackUrl = fallbackUrl ? getAbsoluteApiUrl(fallbackUrl) : '';
 
   if (!fileId && fallbackUrl) {
@@ -118,8 +122,12 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
 };
 
 export const openFileAsset = async (fileAsset: any, label = 'Document') => {
-  let fileId = Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
-  const fallbackUrl = fileAsset?.url || fileAsset?.signedUrl;
+  let fileId = typeof fileAsset === 'number'
+    ? fileAsset
+    : (typeof fileAsset === 'string' && /^\d+$/.test(fileAsset))
+      ? Number(fileAsset)
+      : Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
+  const fallbackUrl = typeof fileAsset === 'object' ? (fileAsset?.url || fileAsset?.signedUrl) : null;
   const absoluteFallbackUrl = fallbackUrl ? getAbsoluteApiUrl(fallbackUrl) : '';
 
   if (!fileId && fallbackUrl) {

@@ -106,6 +106,7 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/seller/messages': () => import('../../features/messages/pages/MessagesPage'),
   '/buyer/requirements': () => import('../../features/requirements/pages/RequirementsPage'),
   '/buyer/procurement': () => import('../../features/procurement/pages/BuyerProcurementHub'),
+  '/buyer/my-procurements': () => import('../../features/procurement/pages/MyProcurementsPage'),
   '/buyer/procurement/checkout': () => import('../../features/procurementCheckoutV2/pages/ProcurementCheckoutPage'),
   '/buyer/direct-purchase/orders': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/address-book': () => import('../../features/directPurchase/pages/AddressBookPage'),
@@ -442,6 +443,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
       { label: 'Buying Dashboard', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
+      { label: 'My Procurements', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
       // { label: 'Buy from Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
       // { label: 'My Cart / Checkout', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
       // { label: 'Create Bid / Tender', path: '/buyer/create-bid', icon: Gavel, roles: ['buyer'] },

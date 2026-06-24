@@ -13,12 +13,14 @@ export const BID_TYPE_LABELS: Record<BidType, string> = {
 export const BID_TYPE_OPTIONS = Object.entries(BID_TYPE_LABELS).map(([value, label]) => ({ value, label })) as Array<{ value: BidType; label: string }>;
 
 export const PROCUREMENT_METHOD_OPTIONS = [
+  { value: 'E_BID', label: 'Open Tender / Public Bid (e-Bid)' },
+  { value: 'LIMITED_TENDER', label: 'Limited Tender / Restricted Bid' },
+  { value: 'PAC_PROCUREMENT', label: 'Single Tender / Proprietary (PAC)' },
+  { value: 'RFQ', label: 'Request for Quote (RFQ)' },
   { value: 'DIRECT_PURCHASE', label: 'Direct Purchase' },
-  { value: 'L1_PURCHASE', label: 'L1 Purchase' },
-  { value: 'E_BID', label: 'e-Bid' },
-  { value: 'E_BID_WITH_RA', label: 'e-Bid with Reverse Auction' },
+  { value: 'L1_PURCHASE', label: 'L1 Purchase / Comparison Sourcing' },
+  { value: 'E_BID_WITH_RA', label: 'e-Bid / Open Tender with Reverse Auction' },
   { value: 'REVERSE_AUCTION', label: 'Reverse Auction' },
-  { value: 'PAC_PROCUREMENT', label: 'PAC Procurement' },
 ] as const;
 
 export const PACKET_TYPE_OPTIONS: Array<{ value: PacketType; label: string }> = [

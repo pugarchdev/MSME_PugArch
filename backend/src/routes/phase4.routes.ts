@@ -6496,4 +6496,239 @@ router.put('/seller/settings/branding', authenticate, authorize('seller', 'shg')
   });
 }));
 
+// ═══════════════════════════════════════════
+// Unified My Procurements Endpoint
+// ═══════════════════════════════════════════
+
+const STATUS_GROUP = {
+  draft: new Set(['DRAFT']),
+  pending_approval: new Set(['PENDING_ADMIN_APPROVAL', 'PENDING_APPROVAL', 'SUBMITTED', 'SUBMITTED_FOR_APPROVAL']),
+  active: new Set(['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'REQUESTED', 'SOURCING', 'PROCUREMENT_METHOD_SELECTED']),
+  completed: new Set(['AWARDED', 'ORDERED', 'FULFILLED', 'CONVERTED_TO_ORDER', 'CONVERTED_TO_BID', 'PUBLISHED', 'CLOSED']),
+  cancelled: new Set(['CANCELLED', 'REJECTED', 'EXPIRED', 'SENT_BACK_FOR_CORRECTION']),
+};
+
+const statusGroupFor = (rawStatus: string): string => {
+  const s = rawStatus?.toUpperCase() || 'DRAFT';
+  for (const [group, set] of Object.entries(STATUS_GROUP)) {
+    if (set.has(s)) return group;
+  }
+  return 'draft';
+};
+
+const statusLabel = (raw: string): string =>
+  (raw || 'DRAFT').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+const METHOD_LABEL_MAP: Record<string, string> = {};
+for (const m of procurementMethodDefinitions) {
+  METHOD_LABEL_MAP[m.slug] = m.name;
+  METHOD_LABEL_MAP[m.code] = m.name;
+}
+
+router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const buyerId = userId(req);
+  const { type, status, method, search, sortBy, sortDir } = req.query as Record<string, string | undefined>;
+
+  // ── Parallel data fetch ──
+  const [bidDrafts, procurementBids, procurementRequests, directPurchases, requirements] = await Promise.all([
+    db.bidWizardDraft.findMany({
+      where: { buyerId },
+      orderBy: { updatedAt: 'desc' },
+    }),
+    db.procurementBid.findMany({
+      where: { buyerId },
+      orderBy: { createdAt: 'desc' },
+      include: { documents: { take: 1 } },
+    }),
+    db.procurementRequest.findMany({
+      where: { buyerId },
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.directPurchase.findMany({
+      where: { buyerId },
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.requirement.findMany({
+      where: { buyerId },
+      orderBy: { createdAt: 'desc' },
+      include: { category: { select: { name: true } } },
+    }),
+  ]);
+
+  // ── Normalize into unified shape ──
+  type NormalizedProcurement = {
+    id: number;
+    type: string;
+    typeLabel: string;
+    title: string;
+    referenceNumber: string;
+    status: string;
+    statusLabel: string;
+    statusGroup: string;
+    method: string;
+    methodLabel: string;
+    estimatedValue: number;
+    category: string;
+    createdAt: string;
+    updatedAt: string;
+    actionUrl: string;
+  };
+
+  const all: NormalizedProcurement[] = [];
+
+  // 1) Bid Wizard Drafts
+  for (const d of bidDrafts) {
+    const fd = d.formData as any || {};
+    const bidTypeSlug = String(d.bidType || 'PRODUCT_BID').toLowerCase().replace(/_/g, '-');
+    all.push({
+      id: d.id,
+      type: 'bid_draft',
+      typeLabel: 'Bid Draft',
+      title: fd?.basicDetails?.title || fd?.title || `Draft #${d.id}`,
+      referenceNumber: `BWD-${d.id}`,
+      status: String(d.draftStatus || 'DRAFT'),
+      statusLabel: statusLabel(String(d.draftStatus || 'DRAFT')),
+      statusGroup: statusGroupFor(String(d.draftStatus || 'DRAFT')),
+      method: bidTypeSlug,
+      methodLabel: METHOD_LABEL_MAP[bidTypeSlug] || bidTypeSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      estimatedValue: Number(fd?.basicDetails?.estimatedValue || fd?.estimatedValue || 0),
+      category: fd?.basicDetails?.category || fd?.category || '',
+      createdAt: d.createdAt?.toISOString?.() || '',
+      updatedAt: d.updatedAt?.toISOString?.() || '',
+      actionUrl: `/buyer/create-bid?draft=${d.id}`,
+    });
+  }
+
+  // 2) ProcurementBid (published bids / tenders)
+  for (const b of procurementBids) {
+    const methodSlug = String(b.bidType || b.procurementType || 'tender').toLowerCase().replace(/_/g, '-');
+    all.push({
+      id: b.id,
+      type: 'bid_tender',
+      typeLabel: 'Bid / Tender',
+      title: b.title || `Bid #${b.bidNumber}`,
+      referenceNumber: b.bidNumber || `PB-${b.id}`,
+      status: String(b.status || 'DRAFT'),
+      statusLabel: statusLabel(String(b.status || 'DRAFT')),
+      statusGroup: statusGroupFor(String(b.status || 'DRAFT')),
+      method: methodSlug,
+      methodLabel: METHOD_LABEL_MAP[methodSlug] || METHOD_LABEL_MAP[String(b.bidType || '')] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      estimatedValue: Number(b.estimatedValue || 0),
+      category: b.category || '',
+      createdAt: b.createdAt?.toISOString?.() || '',
+      updatedAt: b.updatedAt?.toISOString?.() || '',
+      actionUrl: `/bids/${b.id}`,
+    });
+  }
+
+  // 3) ProcurementRequest (cart checkout flows)
+  for (const pr of procurementRequests) {
+    const selectedMethod = pr.selectedMethod || pr.recommendedMethod || 'direct-purchase';
+    all.push({
+      id: pr.id,
+      type: 'procurement_request',
+      typeLabel: 'Cart Checkout',
+      title: `Procurement Request ${pr.requestNumber}`,
+      referenceNumber: pr.requestNumber || `PR-${pr.id}`,
+      status: String(pr.status || 'DRAFT'),
+      statusLabel: statusLabel(String(pr.status || 'DRAFT')),
+      statusGroup: statusGroupFor(String(pr.status || 'DRAFT')),
+      method: selectedMethod,
+      methodLabel: METHOD_LABEL_MAP[selectedMethod] || selectedMethod.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      estimatedValue: 0, // cart value embedded in snapshot
+      category: '',
+      createdAt: pr.createdAt?.toISOString?.() || '',
+      updatedAt: pr.updatedAt?.toISOString?.() || '',
+      actionUrl: `/buyer/procurement/checkout?id=${pr.id}`,
+    });
+  }
+
+  // 4) DirectPurchase
+  for (const dp of directPurchases) {
+    all.push({
+      id: dp.id,
+      type: 'direct_purchase',
+      typeLabel: 'Direct Purchase',
+      title: `Direct Purchase ${dp.purchaseNumber}`,
+      referenceNumber: dp.purchaseNumber || `DP-${dp.id}`,
+      status: String(dp.status || 'DRAFT'),
+      statusLabel: statusLabel(String(dp.status || 'DRAFT')),
+      statusGroup: statusGroupFor(String(dp.status || 'DRAFT')),
+      method: 'direct-purchase',
+      methodLabel: 'Direct Purchase',
+      estimatedValue: Number(dp.totalAmount || 0),
+      category: '',
+      createdAt: dp.createdAt?.toISOString?.() || '',
+      updatedAt: dp.updatedAt?.toISOString?.() || '',
+      actionUrl: `/buyer/direct-purchase/orders`,
+    });
+  }
+
+  // 5) Requirement
+  for (const r of requirements) {
+    const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
+    all.push({
+      id: r.id,
+      type: 'requirement',
+      typeLabel: 'Requirement',
+      title: r.title || `Requirement ${r.requirementNumber}`,
+      referenceNumber: r.requirementNumber || `REQ-${r.id}`,
+      status: String(r.status || 'DRAFT'),
+      statusLabel: statusLabel(String(r.status || 'DRAFT')),
+      statusGroup: statusGroupFor(String(r.status || 'DRAFT')),
+      method: methodSlug,
+      methodLabel: METHOD_LABEL_MAP[methodSlug] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      estimatedValue: Number(r.estimatedValue || 0),
+      category: (r as any).category?.name || '',
+      createdAt: r.createdAt?.toISOString?.() || '',
+      updatedAt: r.updatedAt?.toISOString?.() || '',
+      actionUrl: `/buyer/requirements`,
+    });
+  }
+
+  // ── Apply filters ──
+  let filtered = all;
+  if (type) {
+    filtered = filtered.filter(p => p.type === type);
+  }
+  if (status) {
+    filtered = filtered.filter(p => p.statusGroup === status || p.status === status);
+  }
+  if (method) {
+    filtered = filtered.filter(p => p.method === method || p.methodLabel.toLowerCase().includes(method.toLowerCase()));
+  }
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.referenceNumber.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      p.typeLabel.toLowerCase().includes(q)
+    );
+  }
+
+  // ── Sort ──
+  const dir = sortDir === 'asc' ? 1 : -1;
+  const key = sortBy || 'updatedAt';
+  filtered.sort((a: any, b: any) => {
+    const va = a[key] ?? '';
+    const vb = b[key] ?? '';
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+
+  // ── KPIs (computed from unfiltered data) ──
+  const kpis = {
+    totalProcurements: all.length,
+    drafts: all.filter(p => p.statusGroup === 'draft').length,
+    pendingApproval: all.filter(p => p.statusGroup === 'pending_approval').length,
+    active: all.filter(p => p.statusGroup === 'active').length,
+    completed: all.filter(p => p.statusGroup === 'completed').length,
+    cancelled: all.filter(p => p.statusGroup === 'cancelled').length,
+    totalValue: all.reduce((sum, p) => sum + (p.estimatedValue || 0), 0),
+  };
+
+  ok(res, { kpis, procurements: filtered });
+}));
+
 export default router;

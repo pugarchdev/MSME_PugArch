@@ -67,11 +67,27 @@ function tryParseJson(value: any): any {
 }
 
 // Detect if value is a list of uploaded files
-const isFileList = (val: any): boolean => {
+const isFileList = (val: any, key: string): boolean => {
   if (!Array.isArray(val)) return false;
-  if (val.length === 0) return false;
+  
+  // Explicitly ignore string lists that represent required metadata/eligibility
+  const ignoredKeys = ['bidderDocuments', 'certifications', 'technicalEligibilityCriteria', 'pastWorkDocuments'];
+  if (ignoredKeys.includes(key)) return false;
+
+  if (val.length === 0) return isKeyLikelyFileList(key);
+  
   const first = val[0];
-  return typeof first === 'object' && first !== null && ('fileAssetId' in first || 'url' in first || 'fileName' in first);
+  if (typeof first === 'string') {
+    // If it's a string, it must be a URL or path to be a file
+    return first.startsWith('/') || first.startsWith('http') || first.startsWith('data:');
+  }
+  
+  // Numbers are treated as file asset IDs
+  if (typeof first === 'number') {
+    return true;
+  }
+  
+  return typeof first === 'object' && first !== null;
 };
 
 // Check if a key is likely to represent a file list (for empty lists)
@@ -97,7 +113,7 @@ const formatFileSize = (size?: number) => {
 // Determine if field should span the full row width
 const isFullWidthField = (key: string, value: any): boolean => {
   const parsedValue = tryParseJson(value);
-  if (isFileList(parsedValue)) return true;
+  if (isFileList(parsedValue, key)) return true;
   if (Array.isArray(parsedValue) && isKeyLikelyFileList(key)) return true;
   if (typeof parsedValue === 'string' && parsedValue.length > 80) return true;
   if (['officeAddress', 'description', 'paymentTerms', 'financialPacket', 'lineItems'].includes(key)) return true;
@@ -197,7 +213,7 @@ export default function PreviewSection({ title, data, onEdit }: { title: string;
 
           if (typeof v === 'object') {
             const parsed = tryParseJson(v);
-            if (isFileList(parsed)) {
+            if (isFileList(parsed, k)) {
               return (
                 <div key={k} className="mt-1.5">
                   <span className="font-bold text-slate-500">{formattedKey}:</span>
@@ -248,7 +264,7 @@ export default function PreviewSection({ title, data, onEdit }: { title: string;
       <dl className="grid gap-3 md:grid-cols-2">
         {renderableEntries.map(([key, value]) => {
           const parsedValue = tryParseJson(value);
-          const isFile = isFileList(parsedValue) || (Array.isArray(parsedValue) && isKeyLikelyFileList(key));
+          const isFile = isFileList(parsedValue, key);
           const fullWidth = isFullWidthField(key, value);
           const formattedKey = formatKey(key);
 

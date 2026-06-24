@@ -117,6 +117,7 @@ const CreateProcurementPage = lazy(() => import('./features/procurementWizard/pa
 const ProcurementDraftsPage = lazy(() => import('./features/procurementWizard/pages/ProcurementDraftsPage'));
 const CreateBidPage = lazy(() => import('./features/bidCreationWizardV2/pages/CreateBidPage'));
 const BuyerProcurementHub = lazy(() => import('./features/procurement/pages/BuyerProcurementHub'));
+const MyProcurementsPage = lazy(() => import('./features/procurement/pages/MyProcurementsPage'));
 const ProcurementCheckoutPage = lazy(() => import('./features/procurementCheckoutV2/pages/ProcurementCheckoutPage'));
 const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
 const FactoringDashboard = lazy(() => import('./views/FactoringDashboard'));
@@ -175,6 +176,7 @@ const rolePreloaders = {
     () => import('./features/payments/pages/PaymentHistoryPage'),
   ],
   buyer: [
+    () => import('./features/procurement/pages/MyProcurementsPage'),
     () => import('./features/procurementWizard/pages/CreateProcurementPage'),
     () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
     () => import('./features/bidCreationWizardV2/pages/CreateBidPage'),
@@ -457,6 +459,7 @@ export default function App() {
     if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/procurement' && roleOk(user.role, ['buyer'])) return <BuyerProcurementHub />;
+    if (pathname === '/buyer/my-procurements' && roleOk(user.role, ['buyer'])) return <MyProcurementsPage />;
     if (pathname === '/buyer/procurement/checkout' && roleOk(user.role, ['buyer'])) return <ProcurementCheckoutPage />;
     if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) return <Redirect to="/buyer/procurement?from=legacy-direct-purchase" />;
     if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage listOnly />;

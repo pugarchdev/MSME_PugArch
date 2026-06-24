@@ -42,9 +42,13 @@ export default function SearchableSelect({
       nv = value.dropdownValue || '';
       ov = value.otherValue || '';
     } else if (typeof value === 'string' && value !== '') {
-      const exists = options.some(opt => getValue(opt) === value) || (allowNA && value === 'N/A') || (allowOther && value === 'Other');
-      if (exists) {
-        nv = value;
+      const matchedOpt = options.find(opt => getValue(opt).toUpperCase() === value.toUpperCase());
+      if (matchedOpt) {
+        nv = getValue(matchedOpt);
+      } else if (allowNA && value.toUpperCase() === 'N/A') {
+        nv = 'N/A';
+      } else if (allowOther && value === 'Other') {
+        nv = 'Other';
       } else if (allowOther) {
         nv = 'Other';
         ov = value;

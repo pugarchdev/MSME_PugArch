@@ -33,7 +33,12 @@ export default function CreateBidPage() {
   }, [searchParams]);
 
   React.useEffect(() => {
-    if (!user || wizard.formData.step2.buyerName) return;
+    if (!user) return;
+
+    // Load defaults if organization name or buyer name is missing in step 2
+    const step2 = wizard.formData.step2;
+    const isStep2MissingData = !step2.organizationName || !step2.buyerName;
+    if (!isStep2MissingData) return;
 
     const loadDefaultDetails = async () => {
       let defaultAddress: any = null;
@@ -48,10 +53,10 @@ export default function CreateBidPage() {
       const organization = (user as any).organization || {};
 
       let officeAddress = profile.registeredAddress || profile.corporateAddress || '';
-      let state = profile.state || 'Maharashtra';
+      let state = profile.state || 'MAHARASHTRA';
       let district = profile.district || '';
       let taluka = '';
-      let villageOrCity = '';
+      let villageOrCity = profile.city || '';
 
       if (defaultAddress) {
         const parts = [
@@ -70,6 +75,10 @@ export default function CreateBidPage() {
         villageOrCity = defaultAddress.city || '';
       }
 
+      if (state) {
+        state = state.toUpperCase();
+      }
+
       wizard.updateStepData(2, {
         organizationName: profile.organizationName || organization.organizationName || organization.name || (user as any).company?.name || '',
         ministry: profile.ministry || profile.department || '',
@@ -86,7 +95,7 @@ export default function CreateBidPage() {
     };
 
     loadDefaultDetails();
-  }, [user, wizard.formData.step2.buyerName, wizard.updateStepData]);
+  }, [user, wizard.formData.step2.buyerName, wizard.formData.step2.organizationName, wizard.updateStepData]);
 
   const StepComponent = steps[wizard.currentStep - 1];
   const stepKey = `step${wizard.currentStep}` as keyof typeof wizard.formData;

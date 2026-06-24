@@ -10,7 +10,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { cn } from '../../../lib/utils';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { getApi, normalizeList, postApi } from '../../shared/apiClient';
-import { formatCurrency } from '../../shared/format';
+import { formatCurrency, formatDateTime } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { EntityIdLink } from '../../shared/EntityIdLink';
@@ -248,7 +248,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
   // Layout and modal states
   const [viewMode, setViewMode] = useResponsiveViewMode();
-  const [sortKey, setSortKey] = useState<'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status'>('sr');
+  const [sortKey, setSortKey] = useState<'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status' | 'hsn' | 'createdAt'>('sr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedDetailsItem, setSelectedDetailsItem] = useState<CatalogueRecord | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
@@ -463,6 +463,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       if (sortKey === 'seller') return (item.seller?.name || '').toLowerCase();
       if (sortKey === 'price') return cataloguePrice(item);
       if (sortKey === 'status') return (item.status || '').toLowerCase();
+      if (sortKey === 'hsn') return (item.hsnCode || '').toLowerCase();
+      if (sortKey === 'createdAt') return item.createdAt ? new Date(item.createdAt).getTime() : 0;
       return Number(item.id || 0);
     };
     return [...filtered].sort((a, b) => {
@@ -819,7 +821,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           ) : (
             <div className="rounded-lg border border-slate-200 bg-white">
               <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[900px] table-fixed text-left">
+                <table className={cn("w-full table-fixed text-left", mode === 'seller' ? "min-w-[1040px]" : "min-w-[900px]")}>
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500">
                       <th className="px-2 py-3 w-10 text-center">
@@ -847,6 +849,11 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                       <th className="px-2 py-3 w-24 whitespace-nowrap">
                         <CatalogueSortHead label="Status" field="status" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
+                      {mode === 'seller' && (
+                        <th className="px-2 py-3 w-36 whitespace-nowrap">
+                          <CatalogueSortHead label="Date & Time" field="createdAt" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                        </th>
+                      )}
                       <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
                     </tr>
                   </thead>
@@ -958,6 +965,11 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               <p className="mt-1 text-[9px] font-black uppercase tracking-wide text-emerald-700">{buyerStatusLabel}</p>
                             )}
                           </td>
+                          {mode === 'seller' && (
+                            <td className="px-3 py-3 align-top text-xs text-slate-500 font-semibold whitespace-nowrap tabular-nums">
+                              {formatDateTime(item.createdAt)}
+                            </td>
+                          )}
                           <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
                             <div className="inline-flex items-center justify-end gap-1">
                               {mode === 'seller' && (
@@ -1779,7 +1791,7 @@ function CatalogueSortHead({
   align = 'left'
 }: {
   label: string;
-  field: 'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status' | 'hsn';
+  field: 'sr' | 'name' | 'kind' | 'category' | 'seller' | 'price' | 'status' | 'hsn' | 'createdAt';
   sortKey: string;
   sortDirection: 'asc' | 'desc';
   onToggle: (field: any) => void;

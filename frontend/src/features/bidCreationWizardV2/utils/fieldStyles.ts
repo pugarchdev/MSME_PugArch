@@ -18,7 +18,7 @@ export const fieldTextareaClass = (hasError?: boolean) =>
 
 export const fieldContainerClass = (hasError?: boolean) =>
   cn(
-    hasError && 'rounded-lg ring-2 ring-red-500/20'
+    // No outer outline ring on container
   );
 
 export function scrollToFirstFieldError(container?: HTMLElement | null) {

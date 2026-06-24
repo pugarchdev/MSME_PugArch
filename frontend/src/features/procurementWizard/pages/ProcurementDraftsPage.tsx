@@ -9,6 +9,14 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Search,
+  Filter,
+  XCircle,
+  Database,
+  Monitor,
+  Gavel,
+  ShoppingCart,
+  ClipboardList,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -39,6 +47,7 @@ const METHOD_CONFIGS_MAP: Record<string, { title: string; accent: string }> = {
 /* ─── Types ─── */
 interface DisplayDraft {
   id?: number;
+  uniqueKey: string;
   title: string;
   methodSlug: string;
   estimatedValue: number;
@@ -70,6 +79,11 @@ const formatDateTime = (value?: string) => {
 
 const formatCurrency = (v: number) => v ? `₹${v.toLocaleString('en-IN')}` : '-';
 
+const cleanTitle = (rawTitle: string): string => {
+  if (!rawTitle) return '';
+  return rawTitle.replace(/\s+#\d+$/, '');
+};
+
 const mapLocalDraftToDisplay = (local: any): DisplayDraft | null => {
   if (!local) return null;
   const item = local.items?.[0];
@@ -84,7 +98,8 @@ const mapLocalDraftToDisplay = (local: any): DisplayDraft | null => {
   if (!hasContent) return null;
   return {
     id: undefined,
-    title: local.basics?.title || 'Untitled Local Draft',
+    uniqueKey: 'local',
+    title: cleanTitle(local.basics?.title || 'Untitled Local Draft'),
     methodSlug: local.type || 'rfq',
     estimatedValue: Number(local.basics?.estimatedValue || 0),
     updatedAt: local.updatedAt,
@@ -108,7 +123,8 @@ const mapServerDraftToDisplay = (server: any): DisplayDraft => {
   const payloadDoc = payload.documents?.[0];
   return {
     id: server.id,
-    title: server.title || payload.basics?.title || 'Untitled Draft',
+    uniqueKey: server.payload?.isV2 ? `v2-${server.id}` : `v1-${server.id}`,
+    title: cleanTitle(server.title || payload.basics?.title || 'Untitled Draft'),
     methodSlug: server.methodSlug || payload.type || 'rfq',
     estimatedValue: Number(server.estimatedValue || payload.basics?.estimatedValue || 0),
     updatedAt: server.updatedAt,
@@ -134,10 +150,16 @@ export default function ProcurementDraftsPage() {
   const [localDraft, setLocalDraft] = useState<any | null>(null);
   const [serverDrafts, setServerDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedDraftId, setSelectedDraftId] = useState<string | number | undefined>(undefined);
+  const [selectedDraftKey, setSelectedDraftKey] = useState<string | undefined>(undefined);
   const [viewMode, setViewMode] = useResponsiveViewMode('procurement-drafts:view-mode');
   const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [methodFilter, setMethodFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [activeKpi, setActiveKpi] = useState<string | null>(null);
 
   /* ── Data Loading ── */
   const loadAllDrafts = async () => {
@@ -168,8 +190,90 @@ export default function ProcurementDraftsPage() {
     return list;
   }, [mappedLocal, mappedServers]);
 
+  const kpiData = useMemo(() => {
+    let local = 0;
+    let server = 0;
+    let directPurchase = 0;
+    let l1Rfq = 0;
+    let tenderBid = 0;
+    let totalValue = 0;
+
+    for (const d of allDrafts) {
+      if (d.isLocal) local++;
+      else server++;
+
+      const slug = d.methodSlug?.toLowerCase() || '';
+      if (slug === 'direct-purchase') {
+        directPurchase++;
+      } else if (slug === 'rfq' || slug === 'l1-comparison') {
+        l1Rfq++;
+      } else if (['tender', 'pac', 'boq', 'reverse-auction', 'custom-product', 'custom-service'].includes(slug)) {
+        tenderBid++;
+      }
+
+      totalValue += d.estimatedValue || 0;
+    }
+
+    return {
+      total: allDrafts.length,
+      local,
+      server,
+      directPurchase,
+      l1Rfq,
+      tenderBid,
+      totalValue,
+    };
+  }, [allDrafts]);
+
+  const filteredDrafts = useMemo(() => {
+    let list = [...allDrafts];
+
+    if (activeKpi) {
+      if (activeKpi === 'local') {
+        list = list.filter(d => d.isLocal);
+      } else if (activeKpi === 'server') {
+        list = list.filter(d => !d.isLocal);
+      } else if (activeKpi === 'direct-purchase') {
+        list = list.filter(d => d.methodSlug === 'direct-purchase');
+      } else if (activeKpi === 'l1-rfq') {
+        list = list.filter(d => d.methodSlug === 'rfq' || d.methodSlug === 'l1-comparison');
+      } else if (activeKpi === 'tender-bid') {
+        list = list.filter(d => ['tender', 'pac', 'boq', 'reverse-auction', 'custom-product', 'custom-service'].includes(d.methodSlug));
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(d =>
+        d.title.toLowerCase().includes(q) ||
+        (d.productOrService || '').toLowerCase().includes(q) ||
+        (d.categoryName || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (methodFilter) {
+      if (methodFilter === 'tender-bid') {
+        list = list.filter(d => ['tender', 'pac', 'boq', 'reverse-auction', 'custom-product', 'custom-service'].includes(d.methodSlug));
+      } else if (methodFilter === 'l1-rfq') {
+        list = list.filter(d => d.methodSlug === 'rfq' || d.methodSlug === 'l1-comparison');
+      } else {
+        list = list.filter(d => d.methodSlug === methodFilter);
+      }
+    }
+
+    if (sourceFilter) {
+      if (sourceFilter === 'local') {
+        list = list.filter(d => d.isLocal);
+      } else if (sourceFilter === 'server') {
+        list = list.filter(d => !d.isLocal);
+      }
+    }
+
+    return list;
+  }, [allDrafts, activeKpi, searchQuery, methodFilter, sourceFilter]);
+
   const sortedDrafts = useMemo(() => {
-    const sorted = [...allDrafts];
+    const sorted = [...filteredDrafts];
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
@@ -182,21 +286,24 @@ export default function ProcurementDraftsPage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [allDrafts, sortKey, sortDir]);
+  }, [filteredDrafts, sortKey, sortDir]);
 
   /* ── Selection ── */
   useEffect(() => {
-    if (allDrafts.length > 0 && selectedDraftId === undefined) {
-      const d = allDrafts[0];
-      setSelectedDraftId(d.isLocal ? 'local' : d.id);
-    } else if (allDrafts.length === 0) {
-      setSelectedDraftId(undefined);
+    if (sortedDrafts.length > 0) {
+      const exists = sortedDrafts.some(d => selectedDraftKey === d.uniqueKey);
+      if (!exists) {
+        const d = sortedDrafts[0];
+        setSelectedDraftKey(d.uniqueKey);
+      }
+    } else {
+      setSelectedDraftKey(undefined);
     }
-  }, [allDrafts, selectedDraftId]);
+  }, [sortedDrafts, selectedDraftKey]);
 
   const selectedDraft = useMemo(
-    () => allDrafts.find(d => d.isLocal ? selectedDraftId === 'local' : selectedDraftId === d.id),
-    [allDrafts, selectedDraftId]
+    () => allDrafts.find(d => selectedDraftKey === d.uniqueKey),
+    [allDrafts, selectedDraftKey]
   );
 
   /* ── Actions ── */
@@ -204,7 +311,7 @@ export default function ProcurementDraftsPage() {
     if (!window.confirm('Discard the unsaved local procurement draft from this browser?')) return;
     procurementWizardApi.clearLocalDraft();
     setLocalDraft(null);
-    setSelectedDraftId(undefined);
+    setSelectedDraftKey(undefined);
     toast.success('Local procurement draft discarded');
   };
 
@@ -217,7 +324,7 @@ export default function ProcurementDraftsPage() {
         await deleteProcurementDraft(d.id!);
       }
       toast.success('Procurement draft deleted successfully');
-      setSelectedDraftId(undefined);
+      setSelectedDraftKey(undefined);
       loadAllDrafts();
     } catch (err) {
       toast.error('Failed to delete draft: ' + (err instanceof Error ? err.message : String(err)));
@@ -285,6 +392,141 @@ export default function ProcurementDraftsPage() {
         </div>
       </section>
 
+      {/* ── KPI Cards ── */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <KpiCard
+          icon={ClipboardList}
+          label="Total"
+          value={kpiData.total}
+          gradient="bg-gradient-to-br from-[#12335f] to-blue-600"
+          isActive={activeKpi === null}
+          onClick={() => setActiveKpi(null)}
+        />
+        <KpiCard
+          icon={ShoppingCart}
+          label="Direct Purchase"
+          value={kpiData.directPurchase}
+          gradient="bg-gradient-to-br from-emerald-500 to-green-600"
+          isActive={activeKpi === 'direct-purchase'}
+          onClick={() => setActiveKpi('direct-purchase')}
+        />
+        <KpiCard
+          icon={FileText}
+          label="L1 / RFQ"
+          value={kpiData.l1Rfq}
+          gradient="bg-gradient-to-br from-cyan-500 to-blue-600"
+          isActive={activeKpi === 'l1-rfq'}
+          onClick={() => setActiveKpi('l1-rfq')}
+        />
+        <KpiCard
+          icon={Gavel}
+          label="Tender / Bid"
+          value={kpiData.tenderBid}
+          gradient="bg-gradient-to-br from-violet-500 to-indigo-600"
+          isActive={activeKpi === 'tender-bid'}
+          onClick={() => setActiveKpi('tender-bid')}
+        />
+        <KpiCard
+          icon={ClipboardList}
+          label="Est. Value"
+          value={formatCurrency(kpiData.totalValue)}
+          gradient="bg-gradient-to-br from-[#12335f] to-indigo-650"
+          isActive={false}
+          onClick={() => {}}
+        />
+      </section>
+
+      {/* ── Filters Bar ── */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search drafts by title, category, item/service..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs font-semibold text-slate-900 outline-none transition-colors focus:border-[#12335f] focus:bg-white focus:ring-1 focus:ring-[#12335f]/20"
+            />
+          </div>
+
+          {/* Method Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 shrink-0 text-slate-400" />
+            <select
+              value={methodFilter}
+              onChange={e => setMethodFilter(e.target.value)}
+              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+            >
+              <option value="">All Procurement Methods</option>
+              <option value="direct-purchase">Direct Purchase</option>
+              <option value="l1-rfq">L1 / RFQ</option>
+              <option value="tender-bid">Tender / Bid / PAC</option>
+            </select>
+          </div>
+
+          {/* Source Filter */}
+          <select
+            value={sourceFilter}
+            onChange={e => setSourceFilter(e.target.value)}
+            className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+          >
+            <option value="">All Sources</option>
+            <option value="local">Local Drafts</option>
+            <option value="server">Server Drafts</option>
+          </select>
+
+          {/* Clear Filters */}
+          {(searchQuery || methodFilter || sourceFilter || activeKpi) && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSearchQuery('');
+                setMethodFilter('');
+                setSourceFilter('');
+                setActiveKpi(null);
+              }}
+              className="h-10 rounded-md border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
+            >
+              <XCircle className="mr-1.5 h-4 w-4" /> Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Active chips */}
+        {(searchQuery || methodFilter || sourceFilter || activeKpi) && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">Active:</span>
+            {activeKpi && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#12335f]/20 bg-[#12335f]/5 px-2.5 py-0.5 text-[10px] font-bold text-[#12335f]">
+                KPI: {activeKpi.replace('-', ' ')}
+                <button onClick={() => setActiveKpi(null)} className="ml-0.5 hover:text-red-600">×</button>
+              </span>
+            )}
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#12335f]/20 bg-[#12335f]/5 px-2.5 py-0.5 text-[10px] font-bold text-[#12335f]">
+                Search: "{searchQuery}"
+                <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-red-600">×</button>
+              </span>
+            )}
+            {methodFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#12335f]/20 bg-[#12335f]/5 px-2.5 py-0.5 text-[10px] font-bold text-[#12335f]">
+                Method: {methodFilter === 'l1-rfq' ? 'L1 / RFQ' : methodFilter === 'tender-bid' ? 'Tender / Bid' : methodFilter}
+                <button onClick={() => setMethodFilter('')} className="ml-0.5 hover:text-red-600">×</button>
+              </span>
+            )}
+            {sourceFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#12335f]/20 bg-[#12335f]/5 px-2.5 py-0.5 text-[10px] font-bold text-[#12335f]">
+                Source: {sourceFilter}
+                <button onClick={() => setSourceFilter('')} className="ml-0.5 hover:text-red-600">×</button>
+              </span>
+            )}
+          </div>
+        )}
+      </section>
+
       {/* ── Content ── */}
       {loading ? (
         <section className="flex h-[400px] items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -305,7 +547,6 @@ export default function ProcurementDraftsPage() {
                       <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500 w-[60px]">Sr. No</th>
                       <ThCell sortKey="title" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Title</ThCell>
                       <ThCell sortKey="methodSlug" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Method</ThCell>
-                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500">Source</th>
                       <ThCell sortKey="categoryName" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Category</ThCell>
                       <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500">Item / Service</th>
                       <ThCell sortKey="estimatedValue" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Est. Value</ThCell>
@@ -316,22 +557,18 @@ export default function ProcurementDraftsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {sortedDrafts.map((d, idx) => {
-                      const key = d.isLocal ? 'local' : d.id;
+                      const key = d.uniqueKey;
                       return (
                         <tr
                           key={key}
                           className="cursor-pointer transition-colors hover:bg-slate-50/80"
-                          onClick={() => setSelectedDraftId(d.isLocal ? 'local' : d.id)}
+                          onClick={() => setSelectedDraftKey(d.uniqueKey)}
                         >
                           <td className="px-4 py-3 text-center text-xs font-bold text-slate-500">{idx + 1}</td>
-                          <td className="max-w-[200px] truncate px-4 py-3 font-bold text-slate-900">
+                          <td className="w-[240px] min-w-[200px] whitespace-normal break-words px-4 py-3 font-bold text-slate-900">
                             {d.title}
-                            {!d.isLocal && (
-                              <span className="ml-2 text-[10px] font-semibold text-slate-400">#{d.id}</span>
-                            )}
                           </td>
                           <td className="px-4 py-3">{methodBadge(d.methodSlug)}</td>
-                          <td className="px-4 py-3">{sourceBadge(d.isLocal)}</td>
                           <td className="px-4 py-3 text-slate-600">{d.categoryName || '-'}</td>
                           <td className="max-w-[140px] truncate px-4 py-3 text-slate-600">{d.productOrService || '-'}</td>
                           <td className="px-4 py-3 font-bold text-slate-900 tabular-nums">{formatCurrency(d.estimatedValue)}</td>
@@ -379,12 +616,12 @@ export default function ProcurementDraftsPage() {
               {/* Left: Drafts Cards */}
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                 {sortedDrafts.map((d) => {
-                  const isSelected = d.isLocal ? selectedDraftId === 'local' : selectedDraftId === d.id;
+                  const isSelected = selectedDraftKey === d.uniqueKey;
                   const method = METHOD_CONFIGS_MAP[d.methodSlug] || { title: d.methodSlug, accent: 'border-slate-200 bg-slate-50 text-slate-700' };
                   return (
                     <button
-                      key={d.isLocal ? 'local' : d.id}
-                      onClick={() => setSelectedDraftId(d.isLocal ? 'local' : d.id)}
+                      key={d.uniqueKey}
+                      onClick={() => setSelectedDraftKey(d.uniqueKey)}
                       className={cn(
                         'w-full text-left rounded-lg border p-4 transition-all duration-200 shadow-sm hover:translate-y-[-1px]',
                         isSelected
@@ -510,6 +747,52 @@ export default function ProcurementDraftsPage() {
 }
 
 /* ── Sub-components ── */
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  gradient,
+  isActive,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  gradient: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'group relative flex flex-col items-start gap-1 overflow-hidden rounded-xl border p-4 text-left transition-all duration-300 w-full',
+        'hover:shadow-lg hover:-translate-y-0.5',
+        isActive
+          ? 'border-[#12335f] bg-[#12335f]/5 ring-2 ring-[#12335f]/20 shadow-md'
+          : 'border-slate-200 bg-white hover:border-[#12335f]/30 shadow-sm'
+      )}
+    >
+      <div className={cn('absolute inset-0 opacity-[0.04] transition-opacity group-hover:opacity-[0.07]', gradient)} />
+      <div className="relative z-10 flex w-full items-center justify-between">
+        <div className={cn(
+          'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+          isActive ? 'bg-[#12335f] text-white' : 'bg-[#12335f]/10 text-[#12335f] group-hover:bg-[#12335f]/15'
+        )}>
+          <Icon className="h-4 w-4" />
+        </div>
+        {isActive && (
+          <span className="inline-flex h-2 w-2 rounded-full bg-[#12335f] animate-pulse" />
+        )}
+      </div>
+      <div className="relative z-10 mt-2">
+        <p className="text-base font-black tracking-tight text-slate-950 tabular-nums">{value}</p>
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      </div>
+    </button>
+  );
+}
 
 function DraftMetric({ label, value }: { label: string; value: string }) {
   return (

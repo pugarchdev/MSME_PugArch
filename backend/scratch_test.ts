@@ -2,24 +2,17 @@ import './src/config/env.js';
 import prisma from './src/config/prisma.js';
 
 async function main() {
-  const verifications = await prisma.userKycVerification.findMany({
-    where: { status: 'FAILED' },
-    orderBy: { updatedAt: 'desc' },
-    take: 10
-  });
-  console.log(`Found ${verifications.length} failed UserKycVerification records:`);
-  for (const v of verifications) {
-    console.log(`UserId: ${v.userId}, status: ${v.status}, code: ${v.lastErrorCode}, message: ${v.lastErrorMessage}, updatedAt: ${v.updatedAt}`);
-  }
-
-  const logs = await prisma.kycAuditLog.findMany({
-    where: { status: 'FAILED' },
+  const sessions = await prisma.preRegistrationKycSession.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 10
+    take: 15
   });
-  console.log(`\nFound ${logs.length} failed KycAuditLog records:`);
-  for (const l of logs) {
-    console.log(`UserId: ${l.userId}, action: ${l.action}, message: ${l.message}, createdAt: ${l.createdAt}`);
+  console.log(`Found ${sessions.length} pre-registration sessions:`);
+  for (const s of sessions) {
+    console.log(`ID: ${s.id}`);
+    console.log(`  Status: ${s.status}`);
+    console.log(`  State: ${s.state}`);
+    console.log(`  Verified Name: ${s.verifiedName}`);
+    console.log(`  Created At: ${s.createdAt}`);
   }
 }
 

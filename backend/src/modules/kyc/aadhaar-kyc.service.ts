@@ -201,7 +201,7 @@ const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typ
   }
 
   const decoded = jwt.decode(idToken, { complete: true });
-  if (!decoded || typeof decoded !== 'object' || !decoded.header?.kid || !decoded.header?.alg) {
+  if (!decoded || typeof decoded !== 'object' || !decoded.header?.alg) {
     console.error('[verifyIdToken] Invalid JWT decoded structure:', decoded);
     throw Object.assign(new Error('MeriPehchaan ID token header is invalid'), { statusCode: 502, code: 'ID_TOKEN_INVALID' });
   }
@@ -215,7 +215,8 @@ const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typ
   }
 
   const jwks = await jwksResponse.json() as { keys?: Array<crypto.JsonWebKey & { kid?: string }> };
-  const jwk = jwks.keys?.find((key) => key.kid === decoded.header.kid);
+  const kid = decoded.header.kid;
+  const jwk = jwks.keys?.find((key) => kid ? key.kid === kid : false) || jwks.keys?.[0];
   if (!jwk) {
     throw Object.assign(new Error('MeriPehchaan signing key was not found'), { statusCode: 502, code: 'JWKS_KEY_NOT_FOUND' });
   }

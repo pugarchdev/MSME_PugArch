@@ -37,26 +37,28 @@ const steps = [
 export default function StakeholderRegistrationFlow({ role, variant = role, initialBusinessType = '' }: StakeholderRegistrationFlowProps) {
   const [step, setStep] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('preRegisterKycStep');
+      const saved = localStorage.getItem('preRegisterKycStep');
       if (saved) return Number(saved);
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('aadhaar')) return 3;
     }
     return 1;
   });
   const [businessType, setBusinessType] = useState(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('preRegisterKycBusinessType') || initialBusinessType;
+      return localStorage.getItem('preRegisterKycBusinessType') || initialBusinessType;
     }
     return initialBusinessType;
   });
   const [shgType, setShgType] = useState(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('preRegisterKycShgType') || '';
+      return localStorage.getItem('preRegisterKycShgType') || '';
     }
     return '';
   });
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('preRegisterKycSelectedDocs');
+      const saved = localStorage.getItem('preRegisterKycSelectedDocs');
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -73,6 +75,12 @@ export default function StakeholderRegistrationFlow({ role, variant = role, init
     setBusinessType(type);
     setShgType(selectedShgType);
     setSelectedDocuments(documents);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('preRegisterKycBusinessType', type);
+      localStorage.setItem('preRegisterKycShgType', selectedShgType);
+      localStorage.setItem('preRegisterKycSelectedDocs', JSON.stringify(documents));
+      localStorage.setItem('preRegisterKycStep', '2');
+    }
     setStep(2);
   };
 
@@ -92,12 +100,33 @@ export default function StakeholderRegistrationFlow({ role, variant = role, init
 
         <div className="min-h-0 flex-1 animate-in fade-in duration-700">
           {step === 1 && <Prerequisites onProceed={handlePrerequisitesProceed} role={role} variant={variant} />}
-          {step === 2 && <TermsConditions onAccept={() => setStep(3)} onBack={() => setStep(1)} role={role} />}
+          {step === 2 && (
+            <TermsConditions
+              onAccept={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('preRegisterKycStep', '3');
+                }
+                setStep(3);
+              }}
+              onBack={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('preRegisterKycStep', '1');
+                }
+                setStep(1);
+              }}
+              role={role}
+            />
+          )}
           {step === 3 && (
             <RegistrationDetailsFlow
               businessType={businessType}
               shgType={shgType}
-              onBack={() => setStep(2)}
+              onBack={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('preRegisterKycStep', '2');
+                }
+                setStep(2);
+              }}
               role={role}
               variant={variant}
               prereqSelectedDocuments={selectedDocuments}

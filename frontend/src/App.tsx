@@ -331,7 +331,7 @@ export default function App() {
   React.useEffect(() => {
     if (mounted && !loading && !user) {
       if (pathname === '/onboarding/kyc') {
-        const savedRedirect = sessionStorage.getItem('preRegisterKycRedirectPath');
+        const savedRedirect = localStorage.getItem('preRegisterKycRedirectPath');
         if (savedRedirect) {
           const search = window.location.search;
           router.replace(`${savedRedirect}${search}`);

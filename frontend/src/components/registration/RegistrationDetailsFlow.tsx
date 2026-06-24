@@ -116,7 +116,7 @@ const validateCin = (value: string) => {
 export default function RegistrationDetailsFlow({ businessType, shgType = '', onBack, role, variant, prereqSelectedDocuments = [] }: RegistrationDetailsFlowProps) {
   const [currentSubStep, setCurrentSubStep] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('preRegisterKycSubStep');
+      const saved = localStorage.getItem('preRegisterKycSubStep');
       if (saved) return Number(saved);
     }
     return 1;
@@ -148,33 +148,6 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       toast.error('Aadhaar verification session expired. Please try again.');
     }
   }, [searchParams]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingGst, setIsFetchingGst] = useState(false);
-  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
-  const [selectedDocs, setSelectedDocs] = useState<string[]>(['panCard', 'regCert', 'addressProof']);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(5);
-
-  useEffect(() => {
-    if (!isSuccess) return;
-    if (secondsLeft <= 0) {
-      router.push('/login');
-    }
-  }, [secondsLeft, isSuccess, router]);
-
-  useEffect(() => {
-    if (!isSuccess) return;
-    const interval = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isSuccess]);
 
   // Form State
   const [formData, setFormData] = useState(() => {
@@ -207,7 +180,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       officeZoneName: ''
     };
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('preRegisterKycFormData');
+      const saved = localStorage.getItem('preRegisterKycFormData');
       if (saved) {
         try {
           return { ...initial, ...JSON.parse(saved) };
@@ -218,6 +191,47 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     }
     return initial;
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { password, confirmPassword, ...safeFormData } = formData;
+      localStorage.setItem('preRegisterKycFormData', JSON.stringify(safeFormData));
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('preRegisterKycSubStep', String(currentSubStep));
+    }
+  }, [currentSubStep]);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingGst, setIsFetchingGst] = useState(false);
+  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
+  const [selectedDocs, setSelectedDocs] = useState<string[]>(['panCard', 'regCert', 'addressProof']);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(5);
+
+  useEffect(() => {
+    if (!isSuccess) return;
+    if (secondsLeft <= 0) {
+      router.push('/login');
+    }
+  }, [secondsLeft, isSuccess, router]);
+
+  useEffect(() => {
+    if (!isSuccess) return;
+    const interval = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSuccess]);
 
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [gstError, setGstError] = useState<string>('');
@@ -507,7 +521,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     if (user && currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar') {
       void refreshAadhaarKycStatus();
     } else if (!user && currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar') {
-      const token = sessionStorage.getItem('preRegisterKycSessionToken');
+      const token = localStorage.getItem('preRegisterKycSessionToken');
       if (token && !isAadhaarVerified) {
         setIsFetchingAadhaarKyc(true);
         aadhaarKycApi.preRegisterStatus(token)
@@ -547,14 +561,14 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         };
         const { authorizationUrl, kycSessionToken } = await aadhaarKycApi.preRegisterStart(payload);
         if (!authorizationUrl) throw new Error('Missing authorization URL');
-        sessionStorage.setItem('preRegisterKycSessionToken', kycSessionToken);
-        sessionStorage.setItem('preRegisterKycRedirectPath', window.location.pathname);
-        sessionStorage.setItem('preRegisterKycFormData', JSON.stringify(formData));
-        sessionStorage.setItem('preRegisterKycSubStep', String(currentSubStep));
-        sessionStorage.setItem('preRegisterKycStep', '3');
-        sessionStorage.setItem('preRegisterKycBusinessType', businessType);
-        sessionStorage.setItem('preRegisterKycShgType', shgType);
-        sessionStorage.setItem('preRegisterKycSelectedDocs', JSON.stringify(prereqSelectedDocuments));
+        localStorage.setItem('preRegisterKycSessionToken', kycSessionToken);
+        localStorage.setItem('preRegisterKycRedirectPath', window.location.pathname);
+        localStorage.setItem('preRegisterKycFormData', JSON.stringify(formData));
+        localStorage.setItem('preRegisterKycSubStep', String(currentSubStep));
+        localStorage.setItem('preRegisterKycStep', '3');
+        localStorage.setItem('preRegisterKycBusinessType', businessType);
+        localStorage.setItem('preRegisterKycShgType', shgType);
+        localStorage.setItem('preRegisterKycSelectedDocs', JSON.stringify(prereqSelectedDocuments));
         window.location.assign(authorizationUrl);
       } catch {
         toast.error('Unable to start Aadhaar verification. Please try again.');
@@ -826,14 +840,14 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           router.push('/dashboard');
         } else {
           toast.success('Registration completed successfully!');
-          sessionStorage.removeItem('preRegisterKycSessionToken');
-          sessionStorage.removeItem('preRegisterKycRedirectPath');
-          sessionStorage.removeItem('preRegisterKycFormData');
-          sessionStorage.removeItem('preRegisterKycSubStep');
-          sessionStorage.removeItem('preRegisterKycStep');
-          sessionStorage.removeItem('preRegisterKycBusinessType');
-          sessionStorage.removeItem('preRegisterKycShgType');
-          sessionStorage.removeItem('preRegisterKycSelectedDocs');
+          localStorage.removeItem('preRegisterKycSessionToken');
+          localStorage.removeItem('preRegisterKycRedirectPath');
+          localStorage.removeItem('preRegisterKycFormData');
+          localStorage.removeItem('preRegisterKycSubStep');
+          localStorage.removeItem('preRegisterKycStep');
+          localStorage.removeItem('preRegisterKycBusinessType');
+          localStorage.removeItem('preRegisterKycShgType');
+          localStorage.removeItem('preRegisterKycSelectedDocs');
           setIsSuccess(true);
         }
       } else {

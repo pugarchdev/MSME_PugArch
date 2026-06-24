@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.js';
 import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
+import { handleSecureRouteError } from '../utils/routeHelpers.js';
 
 const router = Router();
 
@@ -18,9 +19,7 @@ const asyncRoute = (
         try {
             await handler(req, res);
         } catch (err: any) {
-            const status = err?.statusCode || 500;
-            const message = status < 500 ? err.message : 'Unable to complete request';
-            return apiResponse.error(res, status, message, err?.code || 'REQUEST_FAILED');
+            return handleSecureRouteError(res, err);
         }
     };
 

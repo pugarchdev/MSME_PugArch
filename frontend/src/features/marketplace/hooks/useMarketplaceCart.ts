@@ -27,7 +27,7 @@ export function useMarketplaceCart() {
     const guestCart = useGuestCart();
 
     // 2. Authenticated cart hooks (React Query)
-    const activeCartQuery = useActiveCart();
+    const activeCartQuery = useActiveCart({ enabled: isBuyer });
     const addToCartMut = useAddToCart();
     const updateCartItemMut = useUpdateCartItem();
     const removeCartItemMut = useRemoveCartItem();

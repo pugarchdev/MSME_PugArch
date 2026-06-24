@@ -29,41 +29,55 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
     qc.invalidateQueries({ queryKey: KEY });
 };
 
-export const useActiveCart = () =>
-    useQuery({
+export const useActiveCart = (options?: { enabled?: boolean }) => {
+    const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('token') : false;
+    return useQuery({
         queryKey: [...KEY, 'active'] as const,
         queryFn: fetchActiveCart,
+        enabled: options?.enabled !== undefined ? options.enabled : hasToken,
         placeholderData: (previous) => previous ?? peekApi<CartDto>('/api/cart') ?? undefined
     });
+};
 
-export const useCartHistory = () =>
-    useQuery({
+export const useCartHistory = (options?: { enabled?: boolean }) => {
+    const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('token') : false;
+    return useQuery({
         queryKey: [...KEY, 'history'] as const,
         queryFn: fetchCartHistory,
+        enabled: options?.enabled !== undefined ? options.enabled : hasToken,
         placeholderData: (previous) => previous ?? peekApi<CartDto[]>('/api/cart/history') ?? undefined
     });
+};
 
-export const useCartDetail = (id: number | undefined) =>
-    useQuery({
+export const useCartDetail = (id: number | undefined, options?: { enabled?: boolean }) => {
+    const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('token') : false;
+    return useQuery({
         queryKey: [...KEY, 'detail', id || 0] as const,
         queryFn: () => fetchCartById(id as number),
-        enabled: !!id && id > 0,
+        enabled: (options?.enabled !== undefined ? options.enabled : true) && !!id && id > 0 && hasToken,
         placeholderData: (previous) => previous ?? (id ? peekApi<CartDto>(`/api/cart/${id}`) : null) ?? undefined
     });
+};
 
-export const usePendingApprovals = () =>
-    useQuery({
+export const usePendingApprovals = (options?: { enabled?: boolean }) => {
+    const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('token') : false;
+    return useQuery({
         queryKey: APPROVAL_KEY,
         queryFn: fetchPendingApprovals,
+        enabled: options?.enabled !== undefined ? options.enabled : hasToken,
         placeholderData: (previous) => previous ?? peekApi<CartDto[]>('/api/cart/pending-approval') ?? undefined
     });
+};
 
-export const usePendingTechReview = () =>
-    useQuery({
+export const usePendingTechReview = (options?: { enabled?: boolean }) => {
+    const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('token') : false;
+    return useQuery({
         queryKey: TECH_KEY,
         queryFn: fetchPendingTechReview,
+        enabled: options?.enabled !== undefined ? options.enabled : hasToken,
         placeholderData: (previous) => previous ?? peekApi<CartItemDto[]>('/api/cart/pending-tech-review') ?? undefined
     });
+};
 
 export const useAddToCart = () => {
     const qc = useQueryClient();

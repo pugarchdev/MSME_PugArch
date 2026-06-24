@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown, Download, Copy, ToggleLeft } from 'lucide-react';
+import { Boxes, IndianRupee, PackagePlus, PackageSearch, Plus, RefreshCw, Search, Settings2, Store, Wrench, Grid, List, Eye, ShoppingCart, X, Globe, Tag, Barcode, Info, FileText, Mail, MapPin, ShieldCheck, CalendarDays, Building2, Upload, Trash2, FileUp, ImageIcon, Paperclip, ArrowUp, ArrowDown, ArrowUpDown, Download, Copy, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -1075,8 +1075,22 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                                   <button type="button" onClick={() => duplicateItem(item)} title="Duplicate" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0">
                                     <Copy className="h-3.5 w-3.5" />
                                   </button>
-                                  <button type="button" onClick={() => togglePublish(item)} title={status === 'ACTIVE' ? 'Deactivate' : 'Publish'} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-[#12335f] hover:bg-blue-50 shrink-0">
-                                    <ToggleLeft className="h-3.5 w-3.5" />
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePublish(item)}
+                                    title={status === 'ACTIVE' ? 'Deactivate' : 'Publish'}
+                                    className={cn(
+                                      "inline-flex h-8 w-8 items-center justify-center rounded-md border shrink-0 transition-colors",
+                                      status === 'ACTIVE'
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                        : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                                    )}
+                                  >
+                                    {status === 'ACTIVE' ? (
+                                      <ToggleRight className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <ToggleLeft className="h-3.5 w-3.5" />
+                                    )}
                                   </button>
                                   <button type="button" onClick={() => deleteItem(item)} title="Delete" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 shrink-0">
                                     <Trash2 className="h-3.5 w-3.5" />

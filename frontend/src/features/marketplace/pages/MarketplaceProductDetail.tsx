@@ -256,28 +256,30 @@ export default function MarketplaceProductDetail() {
                             )}
                             <span className="text-slate-700 font-medium truncate max-w-[200px]">{product.name}</span>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={handleOpenCart}
-                                className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                                aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
-                            >
-                                <ShoppingCart className="h-4 w-4" />
-                                {cartCount > 0 && (
-                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white">
-                                        {cartCount > 99 ? '99+' : cartCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCheckout}
-                                className="inline-flex h-9 items-center rounded-lg bg-[#0b2447] px-4 text-[11px] font-black uppercase tracking-wide text-white transition hover:bg-[#12335f]"
-                            >
-                                Checkout
-                            </button>
-                        </div>
+                        {user?.role !== 'seller' && (
+                            <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenCart}
+                                    className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                    aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                                >
+                                    <ShoppingCart className="h-4 w-4" />
+                                    {cartCount > 0 && (
+                                        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white">
+                                            {cartCount > 99 ? '99+' : cartCount}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCheckout}
+                                    className="inline-flex h-9 items-center rounded-lg bg-[#0b2447] px-4 text-[11px] font-black uppercase tracking-wide text-white transition hover:bg-[#12335f]"
+                                >
+                                    Checkout
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -287,7 +289,7 @@ export default function MarketplaceProductDetail() {
                         <ArrowLeft className="h-3.5 w-3.5" /> Back to results
                     </button>
 
-                    <div className="grid gap-8 lg:grid-cols-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)_320px]">
+                    <div className={user?.role === 'seller' ? "grid gap-8 lg:grid-cols-2" : "grid gap-8 lg:grid-cols-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)_320px]"}>
                         {/* Image Gallery */}
                         <div>
                             <div className="flex aspect-[4/3] max-h-[440px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white mb-3">
@@ -430,94 +432,96 @@ export default function MarketplaceProductDetail() {
                         </div>
 
                         {/* Sidebar - Buyer Actions */}
-                        <aside className="lg:col-span-2 xl:col-span-1">
-                            <div className="sticky top-28 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                                <div className="space-y-1">
-                                    <h2 className="text-sm font-bold text-[#0b2447]">Procurement actions</h2>
-                                    <p className="text-[11px] font-semibold leading-relaxed text-slate-500">
-                                        Add this listing to cart, compare suppliers, or request a quote from the seller.
+                        {user?.role !== 'seller' && (
+                            <aside className="lg:col-span-2 xl:col-span-1">
+                                <div className="sticky top-28 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                    <div className="space-y-1">
+                                        <h2 className="text-sm font-bold text-[#0b2447]">Procurement actions</h2>
+                                        <p className="text-[11px] font-semibold leading-relaxed text-slate-500">
+                                            Add this listing to cart, compare suppliers, or request a quote from the seller.
+                                        </p>
+                                    </div>
+
+                                    <div className="my-4 border-y border-slate-100 py-4">
+                                        {displayPrice > 0 ? (
+                                            <div>
+                                                <div className="flex flex-wrap items-end gap-2">
+                                                    <p className="text-2xl font-bold text-[#0b2447]">Rs. {displayPrice.toLocaleString('en-IN')}</p>
+                                                    {hasOffer && <p className="pb-0.5 text-xs font-bold text-slate-400 line-through">Rs. {price.toLocaleString('en-IN')}</p>}
+                                                </div>
+                                                <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                                                    Per {product.unitOfMeasure || 'unit'}
+                                                    {product.taxRate ? ` | GST ${product.taxRate}% extra` : ''}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-700">
+                                                Price on Request
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {cartQuantity > 0 ? (
+                                            <div className="inline-flex h-11 w-full items-center justify-between overflow-hidden rounded-lg border-2 border-[#0b2447] bg-white shadow-sm">
+                                                <button
+                                                    onClick={() => handleQuantityChange(-1)}
+                                                    className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
+                                                >
+                                                    <span className="text-xl font-bold leading-none select-none">−</span>
+                                                </button>
+                                                <div className="flex-1 flex items-center justify-center text-[#0b2447] font-bold select-none">
+                                                    {cartQuantity}
+                                                </div>
+                                                <button
+                                                    onClick={() => handleQuantityChange(1)}
+                                                    className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
+                                                >
+                                                    <span className="text-xl font-bold leading-none select-none">+</span>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={handleAddToCart}
+                                                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0b2447] text-sm font-bold text-white shadow-sm transition hover:bg-[#12335f] active:scale-[0.97]"
+                                            >
+                                                <ShoppingCart className="h-4 w-4" /> Add to Cart
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleRequestQuote}
+                                            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#0b2447] text-sm font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white active:scale-[0.97]"
+                                        >
+                                            <FileText className="h-4 w-4" /> Request Quote
+                                        </button>
+                                        <CompareToggleButton
+                                            item={{ type: 'product', id: product.id, categoryId: product.category?.id }}
+                                            className="h-11 w-full border-[#0b2447]/20 text-[#0b2447]"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveSupplier}
+                                            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.97]"
+                                        >
+                                            <BookmarkPlus className="h-4 w-4" /> Save Supplier
+                                        </button>
+                                    </div>
+
+                                    <div className="mt-4 rounded-md border border-slate-100 bg-slate-50 p-3">
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Seller</p>
+                                        <p className="mt-1 text-xs font-bold text-slate-800">{product.organization?.organizationName || product.seller?.name || 'Verified supplier'}</p>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {isVerified && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">Verified</span>}
+                                            {location && <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600">{location}</span>}
+                                        </div>
+                                    </div>
+
+                                    <p className="mt-3 text-center text-[10px] font-semibold text-slate-400">
+                                        {user ? 'You are logged in and can submit requests.' : 'Login required to submit quote requests.'}
                                     </p>
                                 </div>
-
-                                <div className="my-4 border-y border-slate-100 py-4">
-                                    {displayPrice > 0 ? (
-                                        <div>
-                                            <div className="flex flex-wrap items-end gap-2">
-                                                <p className="text-2xl font-bold text-[#0b2447]">Rs. {displayPrice.toLocaleString('en-IN')}</p>
-                                                {hasOffer && <p className="pb-0.5 text-xs font-bold text-slate-400 line-through">Rs. {price.toLocaleString('en-IN')}</p>}
-                                            </div>
-                                            <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
-                                                Per {product.unitOfMeasure || 'unit'}
-                                                {product.taxRate ? ` | GST ${product.taxRate}% extra` : ''}
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-700">
-                                            Price on Request
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="space-y-3">
-                                    {cartQuantity > 0 ? (
-                                        <div className="inline-flex h-11 w-full items-center justify-between overflow-hidden rounded-lg border-2 border-[#0b2447] bg-white shadow-sm">
-                                            <button
-                                                onClick={() => handleQuantityChange(-1)}
-                                                className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
-                                            >
-                                                <span className="text-xl font-bold leading-none select-none">−</span>
-                                            </button>
-                                            <div className="flex-1 flex items-center justify-center text-[#0b2447] font-bold select-none">
-                                                {cartQuantity}
-                                            </div>
-                                            <button
-                                                onClick={() => handleQuantityChange(1)}
-                                                className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
-                                            >
-                                                <span className="text-xl font-bold leading-none select-none">+</span>
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <button
-                                            onClick={handleAddToCart}
-                                            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0b2447] text-sm font-bold text-white shadow-sm transition hover:bg-[#12335f] active:scale-[0.97]"
-                                        >
-                                            <ShoppingCart className="h-4 w-4" /> Add to Cart
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={handleRequestQuote}
-                                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#0b2447] text-sm font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white active:scale-[0.97]"
-                                    >
-                                        <FileText className="h-4 w-4" /> Request Quote
-                                    </button>
-                                    <CompareToggleButton
-                                        item={{ type: 'product', id: product.id, categoryId: product.category?.id }}
-                                        className="h-11 w-full border-[#0b2447]/20 text-[#0b2447]"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveSupplier}
-                                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.97]"
-                                    >
-                                        <BookmarkPlus className="h-4 w-4" /> Save Supplier
-                                    </button>
-                                </div>
-
-                                <div className="mt-4 rounded-md border border-slate-100 bg-slate-50 p-3">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Seller</p>
-                                    <p className="mt-1 text-xs font-bold text-slate-800">{product.organization?.organizationName || product.seller?.name || 'Verified supplier'}</p>
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {isVerified && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">Verified</span>}
-                                        {location && <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600">{location}</span>}
-                                    </div>
-                                </div>
-
-                                <p className="mt-3 text-center text-[10px] font-semibold text-slate-400">
-                                    {user ? 'You are logged in and can submit requests.' : 'Login required to submit quote requests.'}
-                                </p>
-                            </div>
-                        </aside>
+                            </aside>
+                        )}
                     </div>
 
                     {/* Specifications */}

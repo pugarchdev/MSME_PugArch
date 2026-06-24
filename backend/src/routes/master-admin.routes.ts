@@ -1,6 +1,7 @@
 import { Router, type Response, type NextFunction } from 'express';
 import prisma from '../config/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
+import { invalidateByPattern } from '../services/cache.service.js';
 import { authorize, requirePermission, createAuditLog } from '../middleware/authorize.js';
 import { getPagination } from '../utils/pagination.js';
 import { PERMISSIONS } from '../constants/permissions.js';
@@ -2692,6 +2693,7 @@ const marketplaceStatusAction = (delegateName: 'product' | 'service', entityType
     entityId: id,
     metadata: { reason, name: previous.name, oldValue: { status: previous.status }, newValue: { status } }
   });
+  invalidateByPattern('cache:marketplace:*').catch(() => {});
   jsonOk(res, item, 'Marketplace listing status updated successfully');
 });
 

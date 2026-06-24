@@ -27,7 +27,9 @@ const assertApprovedSeller = async (actor: WorkflowActor) => {
 const invalidateCatalogueSearchCaches = async () => {
   await Promise.all([
     invalidateByPattern('cache:product_search:*'),
-    invalidateByPattern('cache:vendor_search:*')
+    invalidateByPattern('cache:vendor_search:*'),
+    deleteCache('marketplace:home:v2').catch(() => undefined),
+    invalidateByPattern('cache:marketplace:*').catch(() => undefined)
   ]);
 };
 

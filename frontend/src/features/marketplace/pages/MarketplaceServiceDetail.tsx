@@ -252,28 +252,30 @@ export default function MarketplaceServiceDetail() {
                             )}
                             <span className="text-slate-700 font-medium truncate max-w-[200px]">{service.name}</span>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={handleOpenCart}
-                                className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                                aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
-                            >
-                                <ShoppingCart className="h-4 w-4" />
-                                {cartCount > 0 && (
-                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white">
-                                        {cartCount > 99 ? '99+' : cartCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCheckout}
-                                className="inline-flex h-9 items-center rounded-lg bg-[#0b2447] px-4 text-[11px] font-black uppercase tracking-wide text-white transition hover:bg-[#12335f]"
-                            >
-                                Checkout
-                            </button>
-                        </div>
+                        {user?.role !== 'seller' && (
+                            <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenCart}
+                                    className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                    aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                                >
+                                    <ShoppingCart className="h-4 w-4" />
+                                    {cartCount > 0 && (
+                                        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[9px] font-black text-white">
+                                            {cartCount > 99 ? '99+' : cartCount}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCheckout}
+                                    className="inline-flex h-9 items-center rounded-lg bg-[#0b2447] px-4 text-[11px] font-black uppercase tracking-wide text-white transition hover:bg-[#12335f]"
+                                >
+                                    Checkout
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -282,7 +284,7 @@ export default function MarketplaceServiceDetail() {
                         <ArrowLeft className="h-3.5 w-3.5" /> Back to results
                     </button>
 
-                    <div className="grid lg:grid-cols-3 gap-8">
+                    <div className={user?.role === 'seller' ? "grid lg:grid-cols-2 gap-8" : "grid lg:grid-cols-3 gap-8"}>
                         {/* Service Details */}
                         <div className="lg:col-span-2 space-y-5">
                             <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
@@ -468,70 +470,72 @@ export default function MarketplaceServiceDetail() {
                         </div>
 
                         {/* Sidebar - Actions */}
-                        <div className="lg:col-span-1">
-                            <div className="sticky top-28 bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-sm">
-                                <h3 className="text-sm font-bold text-[#0b2447]">Interested in this service?</h3>
+                        {user?.role !== 'seller' && (
+                            <div className="lg:col-span-1">
+                                <div className="sticky top-28 bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-sm">
+                                    <h3 className="text-sm font-bold text-[#0b2447]">Interested in this service?</h3>
 
-                                {service.basePrice ? (
-                                    <div className="py-3 border-y border-slate-100">
-                                        <p className="text-2xl font-bold text-[#0b2447]">₹{Number(service.basePrice).toLocaleString('en-IN')}</p>
-                                        <p className="text-[10px] text-slate-500 mt-0.5">{pricingLabels[service.pricingModel] || 'Per engagement'}</p>
-                                    </div>
-                                ) : (
-                                    <div className="py-3 border-y border-slate-100">
-                                        <p className="text-sm font-semibold text-amber-700 bg-amber-50 px-3 py-2 rounded border border-amber-200 text-center">
-                                            Contact for Pricing
-                                        </p>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleRequestQuote}
-                                    className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-[#0b2447] text-white text-sm font-bold hover:bg-[#12335f] active:scale-[0.97] transition"
-                                >
-                                    <FileText className="h-4 w-4" /> Request Quote
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={handleSaveSupplier}
-                                    className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 active:scale-[0.97] transition"
-                                >
-                                    <BookmarkPlus className="h-4 w-4" /> Save Supplier
-                                </button>
-
-                                {cartQuantity > 0 ? (
-                                    <div className="w-full inline-flex items-center justify-between h-11 rounded-lg border-2 border-[#0b2447] bg-white overflow-hidden shadow-sm">
-                                        <button 
-                                            onClick={() => handleQuantityChange(-1)} 
-                                            className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
-                                        >
-                                            <span className="text-xl font-bold leading-none select-none">−</span>
-                                        </button>
-                                        <div className="flex-1 flex items-center justify-center text-[#0b2447] font-bold select-none">
-                                            {cartQuantity}
+                                    {service.basePrice ? (
+                                        <div className="py-3 border-y border-slate-100">
+                                            <p className="text-2xl font-bold text-[#0b2447]">₹{Number(service.basePrice).toLocaleString('en-IN')}</p>
+                                            <p className="text-[10px] text-slate-500 mt-0.5">{pricingLabels[service.pricingModel] || 'Per engagement'}</p>
                                         </div>
-                                        <button 
-                                            onClick={() => handleQuantityChange(1)} 
-                                            className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
-                                        >
-                                            <span className="text-xl font-bold leading-none select-none">+</span>
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={handleAddToCart}
-                                        className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg border-2 border-[#0b2447] text-[#0b2447] text-sm font-bold hover:bg-[#0b2447] hover:text-white active:scale-[0.97] transition"
-                                    >
-                                        <ShoppingCart className="h-4 w-4" /> Add to Requirements
-                                    </button>
-                                )}
+                                    ) : (
+                                        <div className="py-3 border-y border-slate-100">
+                                            <p className="text-sm font-semibold text-amber-700 bg-amber-50 px-3 py-2 rounded border border-amber-200 text-center">
+                                                Contact for Pricing
+                                            </p>
+                                        </div>
+                                    )}
 
-                                <p className="text-[10px] text-slate-400 text-center">
-                                    {user ? 'You are logged in and can submit requests.' : 'Login required to submit requests.'}
-                                </p>
+                                    <button
+                                        onClick={handleRequestQuote}
+                                        className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-[#0b2447] text-white text-sm font-bold hover:bg-[#12335f] active:scale-[0.97] transition"
+                                    >
+                                        <FileText className="h-4 w-4" /> Request Quote
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveSupplier}
+                                        className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 active:scale-[0.97] transition"
+                                    >
+                                        <BookmarkPlus className="h-4 w-4" /> Save Supplier
+                                    </button>
+
+                                    {cartQuantity > 0 ? (
+                                        <div className="w-full inline-flex items-center justify-between h-11 rounded-lg border-2 border-[#0b2447] bg-white overflow-hidden shadow-sm">
+                                            <button 
+                                                onClick={() => handleQuantityChange(-1)} 
+                                                className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
+                                            >
+                                                <span className="text-xl font-bold leading-none select-none">−</span>
+                                            </button>
+                                            <div className="flex-1 flex items-center justify-center text-[#0b2447] font-bold select-none">
+                                                {cartQuantity}
+                                            </div>
+                                            <button 
+                                                onClick={() => handleQuantityChange(1)} 
+                                                className="w-12 h-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-[#0b2447] transition"
+                                            >
+                                                <span className="text-xl font-bold leading-none select-none">+</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={handleAddToCart}
+                                            className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg border-2 border-[#0b2447] text-[#0b2447] text-sm font-bold hover:bg-[#0b2447] hover:text-white active:scale-[0.97] transition"
+                                        >
+                                            <ShoppingCart className="h-4 w-4" /> Add to Requirements
+                                        </button>
+                                    )}
+
+                                    <p className="text-[10px] text-slate-400 text-center">
+                                        {user ? 'You are logged in and can submit requests.' : 'Login required to submit requests.'}
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Related Services */}

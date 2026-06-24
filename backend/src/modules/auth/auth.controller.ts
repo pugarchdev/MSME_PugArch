@@ -31,6 +31,28 @@ import { notificationService } from '../../services/notification.service.js';
 import { onUserLinkedToOrganization } from '../../services/org-membership.service.js';
 
 // CreateNotificationSafe mock for backward compatibility if not globally service-ified yet
+
+const sanitizeRegistrationDetails = (details: any) => {
+  const sanitized = { ...(details || {}) };
+  delete sanitized.aadhaarNumber;
+  delete sanitized.isAadhaarVerified;
+  return sanitized;
+};
+
+const hasVerifiedAadhaarKyc = async (userId: number) => {
+  const row = await prisma.userKycVerification.findUnique({
+    where: {
+      userId_provider_verificationType: {
+        userId,
+        provider: 'MERIPEHCHAAN',
+        verificationType: 'AADHAAR'
+      }
+    },
+    select: { status: true }
+  });
+  return row?.status === 'VERIFIED';
+};
+
 const createNotificationSafe = async (payload: { userId: number; title: string; message: string; type: string }) => {
   try {
     await notificationService.notifyWithEmail(payload.userId, {
@@ -381,6 +403,10 @@ export const authController = {
       }
 
       const personalValidation = validatePersonalVerification(role, registrationDetails, dob, mobile);
+      if (role === 'buyer' && registrationDetails?.verificationMethod === 'aadhaar') {
+        personalValidation.errors.aadhaarVerified = 'Aadhaar must be verified with DigiLocker / MeriPehchaan before registration';
+        personalValidation.isValid = false;
+      }
       if (!personalValidation.isValid) {
         return res.status(400).json({
           message: 'Invalid personal verification details',
@@ -400,7 +426,7 @@ export const authController = {
           lastPasswordChangeAt: new Date(),
           registrationStatus: RegistrationStatus.completed,
           accountStatus: 'ACTIVE',
-          registrationDetails: registrationDetails || {}
+          registrationDetails: sanitizeRegistrationDetails(registrationDetails)
         }
       });
 
@@ -1107,6 +1133,10 @@ export const authController = {
       let createdProfile = false;
 
       if (roleToActivate === 'buyer') {
+        const requestedVerificationMethod = String(req.body.profileData?.verificationMethod || registration.verificationMethod || '').trim();
+        if (requestedVerificationMethod === 'aadhaar' && !(await hasVerifiedAadhaarKyc(userId))) {
+          return res.status(400).json({ message: 'Aadhaar must be verified with DigiLocker / MeriPehchaan before activating buyer registration.' });
+        }
         if (!user.buyerProfile) {
           await prisma.buyerProfile.create({
             data: {
@@ -1186,7 +1216,7 @@ export const authController = {
       const currentRegistrationDetails = asObject(user.registrationDetails);
       const updatedRegistrationDetails = {
         ...currentRegistrationDetails,
-        ...(req.body.profileData || {})
+        ...sanitizeRegistrationDetails(req.body.profileData || {})
       };
 
       const updatedUser = await prisma.user.update({

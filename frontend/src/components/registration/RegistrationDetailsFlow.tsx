@@ -25,6 +25,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { indiaStates, indiaStatesDistricts } from '../../data/indiaStatesDistricts';
+import { aadhaarKycApi, type AadhaarKycStatus } from '../../features/kyc/aadhaarKycApi';
 
 interface RegistrationDetailsFlowProps {
   businessType: string;
@@ -153,7 +154,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     udyamNumber: '',
     website: '',
     orgPan: '',
-    personalVerificationMethod: role === 'buyer' ? 'aadhaar' : 'pan', // PAN/Aadhaar live APIs are deferred except GST
+    personalVerificationMethod: role === 'buyer' ? 'aadhaar' : 'pan',
     aadhaarNumber: '',
     panNumber: '',
     personalName: '',
@@ -244,10 +245,10 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     }
   };
 
-  const [aadhaarOtp, setAadhaarOtp] = useState('');
   const [isAadhaarVerified, setIsAadhaarVerified] = useState(false);
-  const [aadhaarOtpSent, setAadhaarOtpSent] = useState(false);
-  const [simulatedAadhaarOtp, setSimulatedAadhaarOtp] = useState('');
+  const [aadhaarKycStatus, setAadhaarKycStatus] = useState<AadhaarKycStatus['status']>('NOT_STARTED');
+  const [isStartingAadhaarKyc, setIsStartingAadhaarKyc] = useState(false);
+  const [isFetchingAadhaarKyc, setIsFetchingAadhaarKyc] = useState(false);
   const [aadhaarConsent, setAadhaarConsent] = useState(false);
   const [isPanVerified, setIsPanVerified] = useState(false);
   const [mobileAvailability, setMobileAvailability] = useState<'idle' | 'checking' | 'available' | 'exists'>('idle');
@@ -385,7 +386,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         ? 'Date of birth cannot be future and age must be at least 18 years.'
         : ''
   };
-  const isAadhaarReady = isAadhaarOrVidValid && isMobileValid && aadhaarConsent;
+  const isAadhaarReady = aadhaarConsent && !isFetchingAadhaarKyc && !isStartingAadhaarKyc;
   const isPanReady = panNumberValid && panNameValid && dobValid;
   const maskedAadhaar = isAadhaarOrVidValid ? `${'X'.repeat(aadhaarValue.length - 4).replace(/(.{4})/g, '$1 ').trim()} ${aadhaarValue.slice(-4)}` : '';
   const mobileAlreadyRegistered = mobileAvailability === 'exists';
@@ -432,39 +433,49 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       });
     }
     setIsAadhaarVerified(false);
-    setAadhaarOtpSent(false);
-    setAadhaarOtp('');
-    setSimulatedAadhaarOtp('');
+    setAadhaarKycStatus('NOT_STARTED');
   };
 
   const handleEditAadhaarDetails = () => {
     setFormData({ ...formData, aadhaarNumber: '', mobile: '' });
     setAadhaarConsent(false);
     setIsAadhaarVerified(false);
-    setAadhaarOtpSent(false);
-    setAadhaarOtp('');
-    setSimulatedAadhaarOtp('');
+    setAadhaarKycStatus('NOT_STARTED');
     setMobileAvailability('idle');
   };
 
-  const handleSendAadhaarOtp = () => {
-    setAadhaarTouched(true);
-    setMobileTouched(true);
-    if (!isAadhaarReady) return toast.error('Please complete valid Aadhaar details and consent');
-    if (mobileAlreadyRegistered) return toast.error('This Aadhaar-linked mobile number is already registered. Please edit Aadhaar details.');
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    setSimulatedAadhaarOtp(otp);
-    setAadhaarOtpSent(true);
-    toast.success('Simulation: Aadhaar OTP Generated');
+  const refreshAadhaarKycStatus = async () => {
+    if (!user) return;
+    setIsFetchingAadhaarKyc(true);
+    try {
+      const status = await aadhaarKycApi.status();
+      setAadhaarKycStatus(status.status);
+      setIsAadhaarVerified(status.status === 'VERIFIED');
+    } catch {
+      toast.error('Unable to fetch Aadhaar verification status. Please try again.');
+    } finally {
+      setIsFetchingAadhaarKyc(false);
+    }
   };
 
-  const handleVerifyAadhaarOtp = () => {
-    if (aadhaarOtp === simulatedAadhaarOtp) {
-      setIsAadhaarVerified(true);
-      toast.success('Aadhaar Verified Successfully');
-    } else {
-      toast.error('Invalid OTP');
+  useEffect(() => {
+    if (user && currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar') {
+      void refreshAadhaarKycStatus();
+    }
+  }, [user?.id, currentSubStep, formData.personalVerificationMethod]);
+
+  const handleStartAadhaarKyc = async () => {
+    if (!user) return toast.error('Please sign in before starting DigiLocker / MeriPehchaan verification.');
+    if (!aadhaarConsent) return toast.error('Consent is required before Aadhaar verification.');
+    setIsStartingAadhaarKyc(true);
+    try {
+      const { authorizationUrl } = await aadhaarKycApi.startUrl();
+      if (!authorizationUrl) throw new Error('Missing authorization URL');
+      window.location.assign(authorizationUrl);
+    } catch {
+      toast.error('Unable to start Aadhaar verification. Please try again.');
+    } finally {
+      setIsStartingAadhaarKyc(false);
     }
   };
 
@@ -635,13 +646,6 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       if (role === 'buyer' && !formData.userId) {
         return toast.error('Please enter user id');
       }
-      if (role !== 'seller' && formData.personalVerificationMethod === 'aadhaar' && !isMobileValid) {
-        const message = getFriendlyFieldError('mobile');
-        setSubmitErrors(prev => ({ ...prev, mobile: message }));
-        setCurrentSubStep(2);
-        toast.error(message);
-        return;
-      }
       if (formData.password !== formData.confirmPassword) {
         setSubmitErrors(prev => ({ ...prev, confirmPassword: 'Passwords do not match.' }));
         return toast.error('Passwords do not match');
@@ -671,6 +675,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           mobile: formData.mobile || user.mobile || '',
           email: user.email,
           gst: formData.gstin || null,
+          verificationMethod: formData.personalVerificationMethod,
           documents: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments()
         };
         res = await api.post('/api/auth/activate-dual-role', {
@@ -697,8 +702,9 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
             state: formData.state,
             district: formData.district,
             officeZoneName: formData.officeZoneName,
-            aadhaarNumber: formData.aadhaarNumber,
-            isAadhaarVerified: isAadhaarVerified,
+            aadhaarMasked: maskedAadhaar || undefined,
+            aadhaarKycProvider: 'MERIPEHCHAAN',
+            aadhaarKycStatus: isAadhaarVerified ? 'VERIFIED' : aadhaarKycStatus,
             pan: formData.panNumber,
             roleInOrg: formData.roleInOrg,
             udyamNumber: formData.udyamNumber,
@@ -740,7 +746,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       /[A-Z]/.test(pw) && /[a-z]/.test(pw) &&
       /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
   };
-  const isBuyerAadhaarReady = isAadhaarOrVidValid && formData.mobile.length === 10 && isMobileValid && aadhaarConsent && !mobileAlreadyRegistered && mobileAvailability !== 'checking';
+  const isBuyerAadhaarReady = isAadhaarReady;
   const isBuyerEmailReady = Boolean(formData.email && formData.verifyEmail && formData.email === formData.verifyEmail);
   if (isSuccess) {
     return (
@@ -1145,7 +1151,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                               value={formData.aadhaarNumber}
                               onChange={(e) => handleAadhaarFieldChange({ aadhaarNumber: e.target.value.replace(/\D/g, '').slice(0, 16) })}
                               onBlur={() => setAadhaarTouched(true)}
-                              disabled={isAadhaarVerified || aadhaarOtpSent}
+                              disabled={isAadhaarVerified}
                               className={cn(
                                 "h-11 w-full rounded-lg border bg-white px-4 pr-11 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60",
                                 aadhaarErrors.aadhaarNumber ? "border-red-400 focus:ring-red-500" : "border-slate-200 focus:ring-indigo-500"
@@ -1170,28 +1176,14 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                             maxLength={10}
                             value={formData.mobile}
                             onChange={(e) => handleAadhaarFieldChange({ mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                            disabled={isAadhaarVerified || aadhaarOtpSent}
+                            disabled={isAadhaarVerified}
                             error={submitErrors.mobile || aadhaarErrors.mobile || (mobileAlreadyRegistered ? 'This mobile number is already registered.' : undefined)}
                             className={cn(
                               "h-11 rounded-lg bg-white",
                               submitErrors.mobile || aadhaarErrors.mobile || mobileAlreadyRegistered ? "border-red-400" : "border-slate-200"
                             )}
                           />
-                          {aadhaarOtpSent && !isAadhaarVerified && (
-                            <div className="flex justify-end pr-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAadhaarOtpSent(false);
-                                  setAadhaarOtp('');
-                                  setSimulatedAadhaarOtp('');
-                                }}
-                                className="text-[11px] font-semibold text-slate-600 hover:text-slate-950 hover:underline flex items-center gap-1"
-                              >
-                                <Pencil className="h-3 w-3 text-slate-500" /> Edit number
-                              </button>
-                            </div>
-                          )}
+
                         </div>
                       </div>
 
@@ -1212,7 +1204,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                         </div>
                       )}
 
-                      {!aadhaarOtpSent && !isAadhaarVerified && (
+                      {!isAadhaarVerified && (
                         <>
                           <div className="space-y-5">
                             <label className="flex items-start gap-3 text-xs leading-relaxed text-slate-700">
@@ -1239,50 +1231,20 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
 
                           <div className="flex justify-end">
                             <Button
-                              onClick={handleSendAadhaarOtp}
+                              onClick={handleStartAadhaarKyc}
                               disabled={!isBuyerAadhaarReady}
                               className={cn(
                                 "h-11 w-full sm:w-64 rounded-lg font-bold  tracking-wide",
                                 isBuyerAadhaarReady ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"
                               )}
                             >
-                              {mobileAvailability === 'checking' ? 'Checking...' : 'Verify Aadhaar'}
+                              {mobileAvailability === 'checking' ? 'Checking...' : 'Verify with DigiLocker / MeriPehchaan'}
                             </Button>
                           </div>
                         </>
                       )}
 
-                      {aadhaarOtpSent && !isAadhaarVerified && (
-                        <div className="space-y-4 rounded border border-indigo-100 bg-white p-4 shadow-sm sm:p-6">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-[10px] font-bold text-indigo-600  ">Enter OTP sent to your Aadhaar-linked mobile</h4>
-                            <div className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-bold animate-pulse">
-                              {simulatedAadhaarOtp}
-                            </div>
-                          </div>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                              placeholder="6 Digit OTP"
-                              maxLength={6}
-                              value={aadhaarOtp}
-                              onChange={(e) => setAadhaarOtp(e.target.value.replace(/\D/g, ''))}
-                              className="flex-1 h-12 px-4 rounded border border-slate-200 text-center font-bold "
-                            />
-                            <Button
-                              onClick={() => setAadhaarOtp(simulatedAadhaarOtp)}
-                              className="h-12 px-4 rounded border border-indigo-200 text-indigo-600 font-bold  text-[10px] "
-                            >
-                              Auto-fill
-                            </Button>
-                          </div>
-                          <Button
-                            onClick={handleVerifyAadhaarOtp}
-                            className="w-full h-12 rounded bg-slate-900 text-white font-bold   text-[10px]"
-                          >
-                            Validate Aadhaar
-                          </Button>
-                        </div>
-                      )}
+
 
                       {isAadhaarVerified && (
                         <div className="space-y-6">
@@ -1386,7 +1348,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                   value={formData.aadhaarNumber}
                                   onChange={(event) => handleAadhaarFieldChange({ aadhaarNumber: event.target.value.replace(/\D/g, '').slice(0, 16) })}
                                   onBlur={() => setAadhaarTouched(true)}
-                                  disabled={isAadhaarVerified || aadhaarOtpSent}
+                                  disabled={isAadhaarVerified}
                                   className={cn(
                                     "h-11 w-full rounded border bg-white px-4 pr-11 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60",
                                     aadhaarErrors.aadhaarNumber ? "border-red-400 focus:ring-red-500" : "border-slate-300 focus:ring-[#12335f]"
@@ -1409,7 +1371,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 maxLength={10}
                                 value={formData.mobile}
                                 onChange={(event) => handleAadhaarFieldChange({ mobile: event.target.value.replace(/\D/g, '').slice(0, 10) })}
-                                disabled={isAadhaarVerified || aadhaarOtpSent}
+                                disabled={isAadhaarVerified}
                                 className={cn(
                                   "h-11 w-full rounded border bg-white px-4 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60",
                                   submitErrors.mobile || aadhaarErrors.mobile || mobileAlreadyRegistered ? "border-red-400 focus:ring-red-500" : "border-slate-300 focus:ring-[#12335f]"
@@ -1418,21 +1380,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                               {(submitErrors.mobile || aadhaarErrors.mobile) && <p className="text-xs font-medium text-red-600">{submitErrors.mobile || aadhaarErrors.mobile}</p>}
                               {isMobileValid && mobileAvailability === 'checking' && <p className="text-xs font-medium text-slate-500">Checking mobile number...</p>}
                               {mobileAlreadyRegistered && <p className="text-xs font-medium text-red-600">This mobile number is already registered.</p>}
-                              {aadhaarOtpSent && !isAadhaarVerified && (
-                                <div className="flex justify-end pr-1 mt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setAadhaarOtpSent(false);
-                                      setAadhaarOtp('');
-                                      setSimulatedAadhaarOtp('');
-                                    }}
-                                    className="text-xs font-semibold text-slate-600 hover:text-[#12335f] hover:underline flex items-center gap-1"
-                                  >
-                                    <Pencil className="h-3 w-3 text-slate-500" /> Edit number
-                                  </button>
-                                </div>
-                              )}
+
                             </div>
                           </div>
 
@@ -1449,7 +1397,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                             </div>
                           )}
 
-                          {!aadhaarOtpSent && !isAadhaarVerified && (
+                          {!isAadhaarVerified && (
                             <>
                               <label className="flex items-start gap-3 text-sm leading-relaxed text-slate-700">
                                 <input
@@ -1472,44 +1420,20 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                             </div> */}
                               <div className="flex justify-end">
                                 <Button
-                                  onClick={handleSendAadhaarOtp}
+                                  onClick={handleStartAadhaarKyc}
                                   disabled={!isAadhaarReady || mobileAlreadyRegistered || mobileAvailability === 'checking'}
                                   className={cn(
                                     "h-11 w-full rounded font-bold uppercase tracking-wide sm:w-52",
                                     isAadhaarReady && !mobileAlreadyRegistered && mobileAvailability !== 'checking' ? "bg-[#12335f] text-white hover:bg-slate-800" : "bg-slate-200 text-slate-500 cursor-not-allowed"
                                   )}
                                 >
-                                  {mobileAvailability === 'checking' ? 'Checking...' : 'Verify Aadhaar'}
+                                  {mobileAvailability === 'checking' ? 'Checking...' : 'Verify with DigiLocker / MeriPehchaan'}
                                 </Button>
                               </div>
                             </>
                           )}
 
-                          {aadhaarOtpSent && !isAadhaarVerified && (
-                            <div className="space-y-4 rounded border border-indigo-100 bg-white p-4 shadow-sm sm:p-6">
-                              <div className="flex items-center justify-between">
-                                <h4 className="text-xs font-bold text-indigo-600">Enter OTP sent to your Aadhaar-linked mobile</h4>
-                                <div className="rounded bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-600 animate-pulse">
-                                  {simulatedAadhaarOtp}
-                                </div>
-                              </div>
-                              <div className="flex flex-col gap-2 sm:flex-row">
-                                <input
-                                  placeholder="6 Digit OTP"
-                                  maxLength={6}
-                                  value={aadhaarOtp}
-                                  onChange={(event) => setAadhaarOtp(event.target.value.replace(/\D/g, ''))}
-                                  className="h-12 flex-1 rounded border border-slate-200 px-4 text-center font-bold"
-                                />
-                                <Button onClick={() => setAadhaarOtp(simulatedAadhaarOtp)} className="h-12 rounded border border-indigo-200 px-4 text-xs font-bold text-indigo-600">
-                                  Auto-fill
-                                </Button>
-                              </div>
-                              <Button onClick={handleVerifyAadhaarOtp} className="h-12 w-full rounded bg-slate-900 text-xs font-bold text-white">
-                                Validate Aadhaar
-                              </Button>
-                            </div>
-                          )}
+
 
                           {isAadhaarVerified && (
                             <div className="space-y-5">

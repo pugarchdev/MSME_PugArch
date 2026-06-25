@@ -3749,42 +3749,76 @@ router.post('/tenders', authenticate, authorize('buyer'), asyncRoute(async (req,
   ok(res, tender, 201);
 }));
 
+const mapProcurementBidStatusToTenderStatus = (status: string): string => {
+  const s = String(status || 'DRAFT').toUpperCase();
+  if (['DRAFT', 'PENDING_ADMIN_APPROVAL', 'REJECTED'].includes(s)) return 'draft';
+  if (['OPEN', 'APPROVED'].includes(s)) return 'published';
+  if (['CLOSED', 'EXPIRED', 'CANCELLED'].includes(s)) return 'closed';
+  if (['TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED'].includes(s)) return 'tech_evaluation';
+  if (['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED'].includes(s)) return 'financial_evaluation';
+  if (s === 'AWARDED') return 'awarded';
+  return 'published';
+};
+
 router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  const baseWhere: any = isAdmin(req)
+  const isBuyerRole = req.user?.role === 'buyer';
+
+  const baseWhereTender: any = isAdmin(req)
     ? {}
-    : req.user?.role === 'buyer'
+    : isBuyerRole
       ? { buyerId: userId(req) }
       : { status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] } };
 
-  const where: any = { ...baseWhere };
+  const baseWherePB: any = isAdmin(req)
+    ? {}
+    : isBuyerRole
+      ? { buyerId: userId(req) }
+      : { status: { in: ['OPEN', 'APPROVED', 'CLOSED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED'] } };
+
+  const whereTender: any = { ...baseWhereTender };
+  const wherePB: any = { ...baseWherePB };
 
   // Status/Tab filter
   if (query.status) {
     if (query.status === 'published') {
-      where.status = { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] };
+      whereTender.status = { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] };
+      wherePB.status = { in: ['OPEN', 'APPROVED'] };
     } else if (query.status === 'closed') {
-      where.status = { in: ['closed', 'awarded', 'po_generated'] };
+      whereTender.status = { in: ['closed', 'awarded', 'po_generated'] };
+      wherePB.status = { in: ['CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED'] };
+    } else if (query.status === 'draft') {
+      whereTender.status = 'draft';
+      wherePB.status = { in: ['DRAFT', 'PENDING_ADMIN_APPROVAL'] };
     } else {
-      where.status = query.status;
+      whereTender.status = query.status;
+      if (query.status === 'draft') {
+        wherePB.status = { in: ['DRAFT', 'PENDING_ADMIN_APPROVAL'] };
+      } else {
+        wherePB.status = query.status;
+      }
     }
   }
 
   // Category filter
   const category = req.query.category as string;
   if (category && category !== 'All') {
-    where.category = category;
+    whereTender.category = category;
+    wherePB.category = category;
   }
 
   // Budget filter
   const budget = req.query.budget as string;
   if (budget && budget !== 'All') {
     if (budget === 'under_10l') {
-      where.budget = { lt: 1000000 };
+      whereTender.budget = { lt: 1000000 };
+      wherePB.estimatedValue = { lt: 1000000 };
     } else if (budget === '10l_50l') {
-      where.budget = { gte: 1000000, lte: 5000000 };
+      whereTender.budget = { gte: 1000000, lte: 5000000 };
+      wherePB.estimatedValue = { gte: 1000000, lte: 5000000 };
     } else if (budget === 'above_50l') {
-      where.budget = { gt: 5000000 };
+      whereTender.budget = { gt: 5000000 };
+      wherePB.estimatedValue = { gt: 5000000 };
     }
   }
 
@@ -3792,87 +3826,156 @@ router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
   const search = (req.query.search || query.q) as string;
   if (search && search.trim()) {
     const term = search.trim();
-    where.OR = [
+    whereTender.OR = [
       { tenderId: { contains: term, mode: 'insensitive' } },
+      { title: { contains: term, mode: 'insensitive' } },
+      { category: { contains: term, mode: 'insensitive' } },
+      { description: { contains: term, mode: 'insensitive' } }
+    ];
+    wherePB.OR = [
+      { bidNumber: { contains: term, mode: 'insensitive' } },
       { title: { contains: term, mode: 'insensitive' } },
       { category: { contains: term, mode: 'insensitive' } },
       { description: { contains: term, mode: 'insensitive' } }
     ];
   }
 
-  // Sorting
-  let orderBy: any = { createdAt: 'desc' };
-  const sortBy = req.query.sortBy as string;
-  const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc';
-
-  if (sortBy === 'tenderId') {
-    orderBy = { tenderId: sortOrder };
-  } else if (sortBy === 'title') {
-    orderBy = { title: sortOrder };
-  } else if (sortBy === 'category') {
-    orderBy = { category: sortOrder };
-  } else if (sortBy === 'budget') {
-    orderBy = { budget: sortOrder };
-  } else if (sortBy === 'closes' || sortBy === 'closesAt') {
-    orderBy = { closesAt: sortOrder };
-  } else if (sortBy === 'status') {
-    orderBy = { status: sortOrder };
-  } else if (sortBy === 'created' || sortBy === 'createdAt') {
-    orderBy = { createdAt: sortOrder };
-  }
-
-  const window = listWindow(query);
-  const [tenders, total] = await Promise.all([
+  // Fetch both sets
+  const [tenders, procurementBids] = await Promise.all([
     db.tender.findMany({
-      where,
-      include: { _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } } },
-      orderBy,
-      ...window
+      where: whereTender,
+      include: { _count: { select: { bids: { where: { status: { not: 'withdrawn' } } } } } }
     }),
-    db.tender.count({ where })
+    db.procurementBid.findMany({
+      where: wherePB,
+      include: {
+        _count: { select: { participations: { where: { status: { not: 'withdrawn' } } } } },
+        documents: {
+          include: { fileAsset: true }
+        }
+      }
+    })
   ]);
 
-  ok(res, paged(
-    tenders.map((t: any) => ({
-      ...t,
+  // Normalize into a single structure
+  const merged = [
+    ...tenders.map((t: any) => ({
+      id: t.id,
+      tenderId: t.tenderId,
+      title: t.title,
+      category: t.category,
+      budget: Number(t.budget || 0),
       bidsCount: t._count?.bids ?? t.bidsCount ?? 0,
-      _count: undefined
+      closesAt: t.closesAt ? t.closesAt.toISOString() : null,
+      status: t.status,
+      description: t.description || '',
+      createdAt: t.createdAt ? t.createdAt.toISOString() : null,
+      updatedAt: t.updatedAt ? t.updatedAt.toISOString() : null,
+      documentUrl: t.documentUrl || null,
+      quantityUnit: t.quantityUnit || null,
+      paymentTerms: t.paymentTerms || null,
+      deliveryType: t.deliveryType || null,
+      isV2: false
     })),
-    total,
+    ...procurementBids.map((b: any) => {
+      const doc = b.documents?.[0];
+      const docUrl = doc ? `/api/files/${doc.fileAssetId}/view` : null;
+
+      return {
+        id: b.id,
+        tenderId: b.bidNumber,
+        title: b.title,
+        category: b.category,
+        budget: Number(b.estimatedValue || 0),
+        bidsCount: b._count?.participations ?? 0,
+        closesAt: b.endDate ? b.endDate.toISOString() : null,
+        status: mapProcurementBidStatusToTenderStatus(b.status),
+        description: b.description || '',
+        createdAt: b.createdAt ? b.createdAt.toISOString() : null,
+        updatedAt: b.updatedAt ? b.updatedAt.toISOString() : null,
+        documentUrl: docUrl,
+        quantityUnit: b.unit || null,
+        paymentTerms: b.termsAndConditions?.join(', ') || null,
+        deliveryType: b.deliveryLocation || null,
+        isV2: true,
+        v2Status: b.status,
+        documents: (b.documents || []).map((doc: any) => ({
+          fileAssetId: doc.fileAssetId,
+          fileName: doc.fileAsset?.originalName || 'Document',
+          documentType: doc.documentType || 'Bid Document'
+        }))
+      };
+    })
+  ];
+
+  // Sorting
+  const sortBy = req.query.sortBy as string || 'createdAt';
+  const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc';
+  const dir = sortOrder === 'asc' ? 1 : -1;
+
+  merged.sort((a: any, b: any) => {
+    let va = a[sortBy] ?? '';
+    let vb = b[sortBy] ?? '';
+    if (sortBy === 'closes' || sortBy === 'closesAt') {
+      va = a.closesAt ?? '';
+      vb = b.closesAt ?? '';
+    } else if (sortBy === 'created' || sortBy === 'createdAt') {
+      va = a.createdAt ?? '';
+      vb = b.createdAt ?? '';
+    } else if (sortBy === 'budget') {
+      return (Number(a.budget) - Number(b.budget)) * dir;
+    } else if (sortBy === 'bids' || sortBy === 'bidsCount') {
+      return (Number(a.bidsCount) - Number(b.bidsCount)) * dir;
+    }
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return (va - vb) * dir;
+    }
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+
+  const { skip, take } = listWindow(query);
+  const pagedRecords = merged.slice(skip, skip + take);
+
+  ok(res, paged(
+    pagedRecords,
+    merged.length,
     query,
     'tenders'
   ));
 }));
 
 router.get('/tenders/summary', authenticate, asyncRoute(async (req, res) => {
-  const baseWhere: any = isAdmin(req)
+  const isBuyerRole = req.user?.role === 'buyer';
+
+  const baseWhereTender: any = isAdmin(req)
     ? {}
-    : req.user?.role === 'buyer'
+    : isBuyerRole
       ? { buyerId: userId(req) }
       : { status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] } };
 
-  const [draftCount, activeCount, closedCount] = await Promise.all([
-    db.tender.count({
-      where: {
-        ...baseWhere,
-        status: 'draft'
-      }
-    }),
-    db.tender.count({
-      where: {
-        ...baseWhere,
-        status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] }
-      }
-    }),
-    db.tender.count({
-      where: {
-        ...baseWhere,
-        status: { in: ['closed', 'awarded', 'po_generated'] }
-      }
-    })
+  const baseWherePB: any = isAdmin(req)
+    ? {}
+    : isBuyerRole
+      ? { buyerId: userId(req) }
+      : { status: { in: ['OPEN', 'APPROVED', 'CLOSED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED'] } };
+
+  const [
+    draftTenders, activeTenders, closedTenders,
+    draftPBs, activePBs, closedPBs
+  ] = await Promise.all([
+    db.tender.count({ where: { ...baseWhereTender, status: 'draft' } }),
+    db.tender.count({ where: { ...baseWhereTender, status: { in: ['published', 'bid_submission', 'tech_bid_opening', 'tech_evaluation', 'financial_bid_opening', 'financial_opening', 'financial_evaluation'] } } }),
+    db.tender.count({ where: { ...baseWhereTender, status: { in: ['closed', 'awarded', 'po_generated'] } } }),
+    db.procurementBid.count({ where: { ...baseWherePB, status: { in: ['DRAFT', 'PENDING_ADMIN_APPROVAL'] } } }),
+    db.procurementBid.count({ where: { ...baseWherePB, status: { in: ['OPEN', 'APPROVED'] } } }),
+    db.procurementBid.count({ where: { ...baseWherePB, status: { in: ['CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED'] } } })
   ]);
 
-  ok(res, { draftCount, activeCount, closedCount });
+  ok(res, {
+    draftCount: draftTenders + draftPBs,
+    activeCount: activeTenders + activePBs,
+    closedCount: closedTenders + closedPBs
+  });
 }));
 
 router.get('/tenders/public', asyncRoute(async (req, res) => {
@@ -6839,13 +6942,19 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   // ── Parallel data fetch ──
   const [bidDrafts, procurementBids, procurementRequests, directPurchases, requirements] = await Promise.all([
     db.bidWizardDraft.findMany({
-      where: { buyerId },
+      where: { buyerId, draftStatus: 'DRAFT' },
       orderBy: { updatedAt: 'desc' },
     }),
     db.procurementBid.findMany({
       where: { buyerId },
       orderBy: { createdAt: 'desc' },
-      include: { documents: { take: 1 } },
+      include: {
+        documents: {
+          include: {
+            fileAsset: true
+          }
+        }
+      },
     }),
     db.procurementRequest.findMany({
       where: { buyerId },
@@ -6854,12 +6963,22 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     db.directPurchase.findMany({
       where: { buyerId },
       orderBy: { createdAt: 'desc' },
-      include: { requirement: { include: { category: { select: { name: true } } } } },
+      include: {
+        requirement: {
+          include: {
+            category: { select: { name: true } },
+            items: true
+          }
+        }
+      },
     }),
     db.requirement.findMany({
       where: { buyerId },
       orderBy: { createdAt: 'desc' },
-      include: { category: { select: { name: true } } },
+      include: {
+        category: { select: { name: true } },
+        items: true
+      },
     }),
   ]);
 
@@ -6887,43 +7006,156 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     createdAt: string;
     updatedAt: string;
     actionUrl: string;
+    documents?: any[];
+    items?: any[];
+    paymentTerms?: string;
+    eligibilityCriteria?: string[];
+    termsAndConditions?: string[];
   };
 
   const all: NormalizedProcurement[] = [];
 
+  // Special conditions labels helper
+  const SPECIAL_CONDITIONS_LABELS: Record<string, string> = {
+    corrigendumAllowed: 'Corrigendum Allowed?',
+    cancellationAllowedBeforeClosing: 'Bid Cancellation Allowed Before Closing?',
+    clarificationWindowRequired: 'Clarification Window Required?',
+    sellerQueryAllowed: 'Seller Query Allowed?',
+    documentResubmissionAllowed: 'Document Resubmission Allowed?',
+    splittingQuantityAllowed: 'Splitting Quantity Allowed?',
+    multipleAwardAllowed: 'Multiple Award Allowed?',
+    rateContractRequired: 'Rate Contract Required?',
+  };
+
   // 1) Bid Wizard Drafts
   for (const d of bidDrafts) {
     const fd = d.formData as any || {};
+    const step4 = fd?.step4 || {};
+    const step5 = fd?.step5 || {};
+    const step6 = fd?.step6 || {};
+    const step7 = fd?.step7 || {};
+    const step8 = fd?.step8 || {};
+    const step3 = fd?.step3 || {};
+    const step2 = fd?.step2 || {};
+
     const bidTypeSlug = String(d.bidType || 'PRODUCT_BID').toLowerCase().replace(/_/g, '-');
+
+    // Extract documents
+    const documents: any[] = [];
+    const docFields = [
+      'technicalSpecificationDocumentIds',
+      'budgetSanctionDocumentIds',
+      'administrativeApprovalDocumentIds',
+      'scopeOfWorkDocumentIds',
+      'boqDocumentIds',
+      'pacCertificateDocumentIds',
+      'drawingDocumentIds',
+      'additionalTermDocumentIds'
+    ];
+    for (const field of docFields) {
+      const arr = step7[field];
+      if (Array.isArray(arr)) {
+        for (const doc of arr) {
+          if (doc && (doc.fileAssetId || doc.id)) {
+            documents.push({
+              fileAssetId: Number(doc.fileAssetId || doc.id),
+              fileName: doc.fileName || doc.originalName || `${field.replace('DocumentIds', '')}`,
+              documentType: doc.documentType || field.replace('DocumentIds', '').replace(/([A-Z])/g, ' $1').trim()
+            });
+          }
+        }
+      }
+    }
+
+    // Extract items
+    const items = [];
+    if (step4.productName || step4.serviceCategory) {
+      const isProduct = d.bidType === 'PRODUCT_BID' || step4.productName;
+      items.push({
+        itemName: isProduct ? step4.productName : step4.serviceCategory,
+        quantity: String(step4.quantity || ''),
+        unitOfMeasure: step4.unitOfMeasurement || '',
+        description: isProduct ? step4.productDescription : step4.scopeOfWork
+      });
+    }
+
+    // Extract eligibility criteria
+    const eligibilityCriteria: string[] = [];
+    if (step6.minimumExperienceRequired) eligibilityCriteria.push(`Minimum Experience: ${step6.minimumExperience || 'N/A'}`);
+    if (step6.minimumTurnoverRequired) eligibilityCriteria.push(`Minimum Turnover: ${step6.minimumTurnover || 'N/A'}`);
+    if (step6.similarWorkExperienceRequired) eligibilityCriteria.push("Similar Work Experience Required");
+    if (step6.msePreference) eligibilityCriteria.push("MSE Preference Allowed");
+    if (step6.makeInIndiaPreference) eligibilityCriteria.push("Make in India Preference Allowed");
+    if (Array.isArray(step6.bidderDocuments)) {
+      eligibilityCriteria.push(`Required Bidder Documents: ${step6.bidderDocuments.join(', ')}`);
+    }
+
+    // Extract terms
+    const termsAndConditions: string[] = [];
+    if (step7.paymentTerms) termsAndConditions.push(`Payment Terms: ${step7.paymentTerms}`);
+    if (step7.advancePaymentAllowed) termsAndConditions.push("Advance Payment Allowed");
+    if (step7.partPaymentAllowed) termsAndConditions.push("Part Payment Allowed");
+    if (step7.ewayBillRequired) termsAndConditions.push("e-Way Bill Required");
+
+    // Add special conditions
+    for (const [key, label] of Object.entries(SPECIAL_CONDITIONS_LABELS)) {
+      if (step8[key]) termsAndConditions.push(label);
+    }
+
     all.push({
       id: d.id,
       type: 'bid_draft',
       typeLabel: 'Bid Draft',
-      title: fd?.basicDetails?.title || fd?.title || `Draft #${d.id}`,
+      title: fd?.basicDetails?.title || fd?.title || step3.title || `Draft #${d.id}`,
       referenceNumber: `BWD-${d.id}`,
       status: String(d.draftStatus || 'DRAFT'),
       statusLabel: statusLabel(String(d.draftStatus || 'DRAFT')),
       statusGroup: statusGroupFor(String(d.draftStatus || 'DRAFT')),
       method: bidTypeSlug,
       methodLabel: METHOD_LABEL_MAP[bidTypeSlug] || bidTypeSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      estimatedValue: Number(fd?.basicDetails?.estimatedValue || fd?.estimatedValue || 0),
-      category: fd?.basicDetails?.category || fd?.category || '',
-      description: fd?.basicDetails?.description || fd?.description || '',
-      deliveryLocation: fd?.basicDetails?.deliveryLocation || fd?.deliveryLocation || '',
+      estimatedValue: Number(fd?.basicDetails?.estimatedValue || fd?.estimatedValue || step3.estimatedValue || 0),
+      category: fd?.basicDetails?.category || fd?.category || step4.productCategory || step4.serviceCategory || '',
+      description: fd?.basicDetails?.description || fd?.description || step4.productDescription || step4.scopeOfWork || '',
+      deliveryLocation: fd?.basicDetails?.deliveryLocation || fd?.deliveryLocation || step5.singleConsignee?.location || '',
       startDate: fd?.basicDetails?.startDate || fd?.startDate || '',
       endDate: fd?.basicDetails?.endDate || fd?.endDate || '',
-      quantity: String(fd?.basicDetails?.quantity || fd?.quantity || ''),
-      unit: fd?.basicDetails?.unit || fd?.unit || '',
-      organizationName: fd?.basicDetails?.buyerOrganizationName || fd?.buyerOrganizationName || '',
+      quantity: String(fd?.basicDetails?.quantity || fd?.quantity || step4.quantity || ''),
+      unit: fd?.basicDetails?.unit || fd?.unit || step4.unitOfMeasurement || '',
+      organizationName: fd?.basicDetails?.buyerOrganizationName || fd?.buyerOrganizationName || step2.organizationName || '',
       createdAt: d.createdAt?.toISOString?.() || '',
       updatedAt: d.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/create-bid?draft=${d.id}`,
+      documents,
+      items,
+      paymentTerms: step7.paymentTerms || '',
+      eligibilityCriteria,
+      termsAndConditions
     });
   }
 
   // 2) ProcurementBid (published bids / tenders)
   for (const b of procurementBids) {
     const methodSlug = String(b.bidType || b.procurementType || 'tender').toLowerCase().replace(/_/g, '-');
+
+    const documents = (b.documents || []).map((doc: any) => ({
+      fileAssetId: doc.fileAssetId,
+      fileName: doc.fileAsset?.originalName || 'Document',
+      documentType: doc.documentType || 'Bid Document'
+    }));
+
+    const items = [{
+      itemName: b.title,
+      quantity: String(b.quantity || ''),
+      unitOfMeasure: b.unit || '',
+      description: b.description || ''
+    }];
+
+    const eligibilityCriteria = b.eligibilityCriteria || [];
+    const termsAndConditions = b.termsAndConditions || [];
+    if (b.evaluationMethod) {
+      termsAndConditions.push(`Evaluation Method: ${b.evaluationMethod}`);
+    }
+
     all.push({
       id: b.id,
       type: 'bid_tender',
@@ -6947,16 +7179,58 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       createdAt: b.createdAt?.toISOString?.() || '',
       updatedAt: b.updatedAt?.toISOString?.() || '',
       actionUrl: `/bids/${b.id}`,
+      documents,
+      items,
+      paymentTerms: '',
+      eligibilityCriteria,
+      termsAndConditions
     });
   }
 
   // 3) ProcurementRequest (cart checkout flows)
   for (const pr of procurementRequests) {
     const selectedMethod = pr.selectedMethod || pr.recommendedMethod || 'direct-purchase';
-    // Extract category from cartSnapshot JSON
     const snap = pr.cartSnapshot as any;
     const categoryNames = (snap?.items || snap || []).map((item: any) => item?.product?.category?.name || item?.categoryName || item?.category || '').filter(Boolean);
     const prCategory = [...new Set(categoryNames)].join(', ') || '';
+
+    const td = pr.termsDocuments as any || {};
+    const documents: any[] = [];
+    const docFields = [
+      'technicalSpecificationDocumentIds',
+      'budgetSanctionDocumentIds',
+      'administrativeApprovalDocumentIds',
+      'scopeOfWorkDocumentIds',
+      'boqDocumentIds',
+      'pacCertificateDocumentIds',
+      'drawingDocumentIds',
+      'additionalTermDocumentIds'
+    ];
+    for (const field of docFields) {
+      const arr = td[field];
+      if (Array.isArray(arr)) {
+        for (const doc of arr) {
+          if (doc && (doc.fileAssetId || doc.id)) {
+            documents.push({
+              fileAssetId: Number(doc.fileAssetId || doc.id),
+              fileName: doc.fileName || doc.originalName || `${field.replace('DocumentIds', '')}`,
+              documentType: doc.documentType || field.replace('DocumentIds', '').replace(/([A-Z])/g, ' $1').trim()
+            });
+          }
+        }
+      }
+    }
+
+    const items = (snap?.items || snap || []).map((item: any) => ({
+      itemName: item?.product?.name || item?.service?.name || item?.itemName || 'Product/Service',
+      quantity: String(item?.quantity || ''),
+      unitOfMeasure: item?.product?.unit || item?.unit || 'Nos',
+      description: item?.product?.description || item?.service?.description || ''
+    }));
+
+    const termsAndConditions: string[] = [];
+    if (td.paymentTerms) termsAndConditions.push(`Payment Terms: ${td.paymentTerms}`);
+
     all.push({
       id: pr.id,
       type: 'procurement_request',
@@ -6968,7 +7242,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       statusGroup: statusGroupFor(String(pr.status || 'DRAFT')),
       method: selectedMethod,
       methodLabel: METHOD_LABEL_MAP[selectedMethod] || selectedMethod.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      estimatedValue: 0, // cart value embedded in snapshot
+      estimatedValue: 0, 
       category: prCategory,
       description: '',
       deliveryLocation: (pr as any).deliveryLocation || '',
@@ -6980,11 +7254,24 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       createdAt: pr.createdAt?.toISOString?.() || '',
       updatedAt: pr.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/procurement/checkout?id=${pr.id}`,
+      documents,
+      items,
+      paymentTerms: td.paymentTerms || '',
+      eligibilityCriteria: [],
+      termsAndConditions
     });
   }
 
   // 4) DirectPurchase
   for (const dp of directPurchases) {
+    const req = dp.requirement || {};
+    const items = (req.items || []).map((item: any) => ({
+      itemName: item.itemName || item.name || '',
+      quantity: String(item.quantity || ''),
+      unitOfMeasure: item.unitOfMeasure || item.unit || '',
+      description: item.description || ''
+    }));
+
     all.push({
       id: dp.id,
       type: 'direct_purchase',
@@ -7008,12 +7295,39 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       createdAt: dp.createdAt?.toISOString?.() || '',
       updatedAt: dp.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/direct-purchase/orders`,
+      documents: [],
+      items,
+      paymentTerms: '',
+      eligibilityCriteria: [],
+      termsAndConditions: []
     });
   }
 
   // 5) Requirement
   for (const r of requirements) {
     const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
+    const payload = (r as any).payload || {};
+    
+    const items = (r.items || []).map((item: any) => ({
+      itemName: item.itemName || item.name || '',
+      quantity: String(item.quantity || ''),
+      unitOfMeasure: item.unitOfMeasure || item.unit || '',
+      description: item.description || ''
+    }));
+
+    const documents: any[] = [];
+    if (Array.isArray(payload.documents)) {
+      for (const doc of payload.documents) {
+        if (doc && doc.fileAssetId) {
+          documents.push({
+            fileAssetId: doc.fileAssetId,
+            fileName: doc.fileName || 'Document',
+            documentType: doc.documentType || 'Requirement Document'
+          });
+        }
+      }
+    }
+
     all.push({
       id: r.id,
       type: 'requirement',
@@ -7037,6 +7351,11 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       createdAt: r.createdAt?.toISOString?.() || '',
       updatedAt: r.updatedAt?.toISOString?.() || '',
       actionUrl: `/buyer/requirements`,
+      documents,
+      items,
+      paymentTerms: '',
+      eligibilityCriteria: [],
+      termsAndConditions: []
     });
   }
 

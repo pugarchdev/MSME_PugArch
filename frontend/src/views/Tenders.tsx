@@ -69,6 +69,8 @@ interface Tender {
   deliveryType?: string;
   createdAt?: string;
   updatedAt?: string;
+  isV2?: boolean;
+  documents?: Array<{ fileAssetId: number; fileName: string; documentType?: string }>;
 }
 
 const TENDER_STAGES = [
@@ -998,7 +1000,7 @@ export default function Tenders() {
         <Button
           variant="outline"
           className="bg-white border border-[#dadce0] text-slate-900 text-xs font-bold h-9 px-3 rounded-md hover:bg-slate-50 flex items-center gap-1.5"
-          onClick={() => router.push('/quotations')}
+          onClick={() => router.push(`/buyer/tenders/${tender.id}/evaluate`)}
         >
           Bids
           <ChevronRight className="h-3.5 w-3.5" />
@@ -1023,7 +1025,7 @@ export default function Tenders() {
             </p>
           </div>
           <Button
-            onClick={() => router.push('/buyer/create-procurement/tender')}
+            onClick={() => router.push('/buyer/create-bid  ')}
             className="h-10 shrink-0 rounded-md bg-[#12335f] px-5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-all hover:bg-[#0b2445]"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
@@ -1329,7 +1331,7 @@ export default function Tenders() {
               setEditingTender(selectedTender);
             }}
             onDelete={() => handleDeleteTender(selectedTender)}
-            onViewBids={() => router.push('/quotations')}
+            onViewBids={() => router.push(`/buyer/tenders/${selectedTender.id}/evaluate`)}
             onPreviewDocument={handlePreviewDocument}
           />
         )}
@@ -2172,8 +2174,27 @@ function TenderDetailsModal({
               </section>
 
               <section className="rounded-lg border border-slate-200 bg-white p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Document</p>
-                {tender.documentUrl ? (
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specification Documents</p>
+                {tender.isV2 && tender.documents && tender.documents.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {tender.documents.map((doc, idx) => (
+                      <div key={idx} className="rounded-md border border-slate-200 bg-slate-50 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-slate-900">{doc.fileName}</p>
+                          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">{doc.documentType || 'Document'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onPreviewDocument(`/api/files/${doc.fileAssetId}/view`, doc.fileName)}
+                          className="shrink-0 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-[#12335f] hover:bg-slate-50"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          Open
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : tender.documentUrl ? (
                   <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
                     <p className="truncate text-sm font-black text-slate-900">{documentName}</p>
                     <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Attached to tender</p>

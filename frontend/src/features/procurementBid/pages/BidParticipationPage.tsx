@@ -211,9 +211,12 @@ export default function BidParticipationPage() {
     if (!user) return { tone: 'amber', message: 'Please login as a verified seller/vendor to participate in this bid.', action: 'Login to Participate' };
     if (user.role !== 'seller') return { tone: 'red', message: 'Only verified sellers/vendors can participate in bids.' };
     if (!verifiedSeller) return { tone: 'amber', message: 'Complete your seller verification before participating in bids.' };
+    if (bid?.approvalStatus === 'PENDING' || bid?.approvalStatus === 'DRAFT') {
+      return { tone: 'amber', message: 'This bid is pending admin approval and is not yet open for participation.' };
+    }
     if (closed) return { tone: 'red', message: 'This bid is closed. Participation is no longer allowed.' };
     return null;
-  }, [closed, user, verifiedSeller]);
+  }, [closed, user, verifiedSeller, bid]);
 
   const openPreview = (item: PendingFile) => {
     setPreviewDocument({

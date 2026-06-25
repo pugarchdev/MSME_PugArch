@@ -32,6 +32,8 @@ import {
   Layers,
   Building2,
   ExternalLink,
+  Paperclip,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -67,6 +69,11 @@ interface NormalizedProcurement {
   quantity?: string;
   unit?: string;
   organizationName?: string;
+  documents?: Array<{ fileAssetId: number; fileName: string; documentType?: string }>;
+  items?: Array<{ itemName: string; quantity: string; unitOfMeasure: string; description?: string }>;
+  paymentTerms?: string;
+  eligibilityCriteria?: string[];
+  termsAndConditions?: string[];
 }
 
 interface KpiData {
@@ -557,6 +564,9 @@ export default function MyProcurementsPage() {
                         Ref. No.
                       </ThSort>
                       <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Linked ID
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500">
                         Method
                       </th>
                       <ThSort sortKey="status" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>
@@ -601,6 +611,9 @@ export default function MyProcurementsPage() {
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-slate-500 tabular-nums">
                           {p.referenceNumber}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs font-bold text-[#12335f] tabular-nums">
+                          {p.id}
                         </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex whitespace-nowrap rounded-md border border-[#12335f]/15 bg-[#12335f]/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#12335f]">
@@ -671,9 +684,14 @@ export default function MyProcurementsPage() {
                     >
                       {p.typeLabel}
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-400 tabular-nums">
-                      {p.referenceNumber}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-[10px] font-semibold text-slate-400 tabular-nums block">
+                        Ref: {p.referenceNumber}
+                      </span>
+                      <span className="text-[9px] font-bold text-[#12335f] block">
+                        Linked ID: {p.id}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Title */}
@@ -789,16 +807,16 @@ function ProcurementDetailDialog({
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const DetailRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value?: string | number | null }) => {
+  const DetailItem = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value?: string | number | null }) => {
     if (!value && value !== 0) return null;
     return (
-      <div className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-b-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
-          <Icon className="h-4 w-4" />
+      <div className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#12335f]">
+          <Icon className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
-          <p className="mt-0.5 text-sm font-semibold text-slate-800 break-words whitespace-pre-wrap">{value}</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</p>
+          <p className="mt-0.5 text-xs font-bold text-slate-800 break-words whitespace-pre-wrap leading-relaxed">{value}</p>
         </div>
       </div>
     );
@@ -806,17 +824,17 @@ function ProcurementDetailDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-3xl my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-5 shrink-0">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <span
                 className={cn(
                   'inline-flex rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide',
@@ -834,34 +852,159 @@ function ProcurementDetailDialog({
                 {p.statusLabel}
               </span>
             </div>
-            <h2 className="text-lg font-black text-slate-950 leading-snug break-words">{p.title}</h2>
+            <h2 className="text-xl font-black text-slate-950 leading-snug break-words">{p.title}</h2>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors border border-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto px-6 py-4" style={{ maxHeight: 'calc(85vh - 140px)' }}>
-          <DetailRow icon={Hash} label="Reference Number" value={p.referenceNumber} />
-          <DetailRow icon={Layers} label="Procurement Method" value={p.methodLabel} />
-          <DetailRow icon={Tag} label="Category" value={p.category} />
-          <DetailRow icon={IndianRupee} label="Estimated Value" value={p.estimatedValue ? formatCurrency(p.estimatedValue) : undefined} />
-          <DetailRow icon={Building2} label="Organization" value={p.organizationName} />
-          <DetailRow icon={MapPin} label="Delivery Location" value={p.deliveryLocation} />
-          <DetailRow icon={Info} label="Description" value={p.description} />
-          <DetailRow icon={Package} label="Quantity" value={p.quantity && p.unit ? `${p.quantity} ${p.unit}` : p.quantity} />
-          <DetailRow icon={CalendarDays} label="Start Date" value={p.startDate ? formatDateTime(p.startDate) : undefined} />
-          <DetailRow icon={CalendarDays} label="End Date" value={p.endDate ? formatDateTime(p.endDate) : undefined} />
-          <DetailRow icon={CalendarDays} label="Created" value={formatDateTime(p.createdAt)} />
-          <DetailRow icon={CalendarDays} label="Last Updated" value={formatDateTime(p.updatedAt)} />
+        <div className="overflow-y-auto p-6 space-y-6 flex-1">
+          
+          {/* Section 1: Overview Grid */}
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 text-slate-400" />
+              General Details
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <DetailItem icon={Hash} label="Reference Number" value={p.referenceNumber} />
+              <DetailItem icon={Layers} label="Procurement Method" value={p.methodLabel} />
+              <DetailItem icon={Tag} label="Category" value={p.category} />
+              <DetailItem icon={IndianRupee} label="Estimated Value" value={p.estimatedValue ? formatCurrency(p.estimatedValue) : undefined} />
+              <DetailItem icon={Building2} label="Organization" value={p.organizationName} />
+              <DetailItem icon={MapPin} label="Delivery Location" value={p.deliveryLocation} />
+              <DetailItem icon={Package} label="Total Quantity" value={p.quantity && p.unit ? `${p.quantity} ${p.unit}` : p.quantity} />
+              <DetailItem icon={CalendarDays} label="Start Date" value={p.startDate ? formatDateTime(p.startDate) : undefined} />
+              <DetailItem icon={CalendarDays} label="End / Closing Date" value={p.endDate ? formatDateTime(p.endDate) : undefined} />
+              <DetailItem icon={CalendarDays} label="Created On" value={formatDateTime(p.createdAt)} />
+              <DetailItem icon={CalendarDays} label="Last Updated" value={formatDateTime(p.updatedAt)} />
+            </div>
+            {p.description && (
+              <div className="mt-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Detailed Scope / Description</p>
+                <p className="mt-1 text-xs font-semibold text-slate-700 leading-relaxed break-words whitespace-pre-wrap">{p.description}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Items Requested Table */}
+          {p.items && p.items.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <Package className="h-3.5 w-3.5 text-slate-400" />
+                Items & Specifications
+              </h3>
+              <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500">Item Name</th>
+                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-24 text-right">Quantity</th>
+                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-24">Unit</th>
+                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {p.items.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
+                        <td className="px-4 py-3 text-xs font-bold text-slate-900">{item.itemName}</td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-900 text-right">{item.quantity}</td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-500">{item.unitOfMeasure || 'Nos'}</td>
+                        <td className="px-4 py-3 text-xs font-medium text-slate-500 break-words max-w-xs">{item.description || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Section 3: Terms & Special Conditions */}
+          {((p.paymentTerms) || (p.eligibilityCriteria && p.eligibilityCriteria.length > 0) || (p.termsAndConditions && p.termsAndConditions.length > 0)) && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <ClipboardCheck className="h-3.5 w-3.5 text-slate-400" />
+                Terms & Conditions
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Eligibility Criteria */}
+                {p.eligibilityCriteria && p.eligibilityCriteria.length > 0 && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-2">Eligibility Criteria</p>
+                    <ul className="list-disc pl-4 space-y-1.5">
+                      {p.eligibilityCriteria.map((c, idx) => (
+                        <li key={idx} className="text-xs font-medium text-slate-600 leading-normal">{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Terms and Conditions / Special terms */}
+                {((p.paymentTerms) || (p.termsAndConditions && p.termsAndConditions.length > 0)) && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
+                    {p.paymentTerms && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f]">Payment Terms</p>
+                        <p className="mt-1 text-xs font-bold text-slate-700 leading-normal">{p.paymentTerms}</p>
+                      </div>
+                    )}
+                    {p.termsAndConditions && p.termsAndConditions.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-1.5">Special Terms</p>
+                        <ul className="list-disc pl-4 space-y-1.5">
+                          {p.termsAndConditions.map((t, idx) => (
+                            <li key={idx} className="text-xs font-medium text-slate-600 leading-normal">{t}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Section 4: Attachments */}
+          {p.documents && p.documents.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5 text-slate-400" />
+                Attachments & Documents
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {p.documents.map((doc, idx) => (
+                  <a
+                    key={idx}
+                    href={`/api/files/${doc.fileAssetId}/view`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-xs font-bold text-[#12335f] group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#12335f] group-hover:bg-[#12335f] group-hover:text-white transition-all">
+                        <FileText className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-slate-700 font-bold">{doc.fileName}</p>
+                        <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">{doc.documentType || 'General Document'}</p>
+                      </div>
+                    </div>
+                    <Download className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-[#12335f] transition-colors ml-2" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 shrink-0">
           <Button
             type="button"
             variant="outline"

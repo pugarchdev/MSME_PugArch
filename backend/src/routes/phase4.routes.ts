@@ -3870,7 +3870,7 @@ router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
     db.procurementBid.findMany({
       where: wherePB,
       include: {
-        _count: { select: { participations: { where: { status: { not: 'withdrawn' } } } } },
+        _count: { select: { participations: { where: { isWithdrawn: false } } } },
         documents: true
       }
     })

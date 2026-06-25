@@ -554,7 +554,7 @@ export default function App() {
       const deliveryDetailMatch = pathname.match(/^\/delivery\/(\d+)$/);
       if (deliveryDetailMatch) {
         const id = Number(deliveryDetailMatch[1]);
-        if (Number.isFinite(id) && id > 0) return <DeliveryDetailPage deliveryId={id} />;
+        if (Number.isFinite(id) && id > 0) return <DeliveryDetailPage deliveryId={id} onClose={() => router.back()} />;
       }
     }
     if (pathname === '/profile') return <Profile />;

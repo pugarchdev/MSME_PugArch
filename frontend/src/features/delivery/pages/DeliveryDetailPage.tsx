@@ -218,11 +218,9 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {onClose && (
-            <Button variant="outline" onClick={onClose} className="h-10 rounded-lg text-xs font-black uppercase">
-              Back
-            </Button>
-          )}
+          <Button variant="outline" onClick={onClose || (() => window.history.back())} className="h-10 rounded-lg text-xs font-black uppercase">
+            Back
+          </Button>
           <Button
             variant="outline"
             onClick={() => detailQuery.refetch()}

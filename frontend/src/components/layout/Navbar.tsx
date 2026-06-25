@@ -487,7 +487,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Orders & Deliveries', icon: Truck, roles: ['seller'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
       { label: 'Delivery Management', path: '/seller/delivery-management', icon: ClipboardList, roles: ['seller'] },
-      { label: 'Delivery Updates', path: '/orders/tracking', icon: Truck, roles: ['seller'] },
+      { label: 'Delivery Updates', path: '/seller/delivery', icon: Truck, roles: ['seller'] },
     ] },
     { label: 'Payments', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module', children: [
       { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['seller'], featureCode: 'payment-module' },

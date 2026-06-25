@@ -138,9 +138,9 @@ function DeliveryCard({ delivery, onAction }: { delivery: DeliveryDto; onAction:
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                                <EntityIdLink label={`DLV-${delivery.id}`} id={delivery.id} size="sm" onClick={() => { }} />
+                                <EntityIdLink label={`DLV-${delivery.id}`} id={delivery.id} size="sm" to={`/delivery/${delivery.id}`} />
                                 {delivery.purchaseOrder?.poNumber && (
-                                    <EntityIdLink label={delivery.purchaseOrder.poNumber} id={delivery.purchaseOrder.id} size="sm" onClick={() => { }} />
+                                    <EntityIdLink label={delivery.purchaseOrder.poNumber} id={delivery.purchaseOrder.id} size="sm" to="/orders" />
                                 )}
                                 <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_TONE[status] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                                     {status.replace(/_/g, ' ')}

@@ -16,6 +16,7 @@ import { EntityIdLink } from '../features/shared/EntityIdLink';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { useAuth } from '../hooks/useAuth';
 import type { PurchaseOrderDto } from '../features/shared/types';
+import { useDeliveryByPO } from '../features/delivery/hooks';
 
 const readableStatus = (value?: string) => String(value || 'generated').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 const openStatuses = ['generated', 'accepted', 'in_fulfillment', 'invoice_submitted', 'order_placed', 'issued'];
@@ -40,6 +41,7 @@ export default function PurchaseOrders() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
+  const { data: activeDelivery } = useDeliveryByPO(viewingOrder?.id);
   const viewerScope = `${user?.role || 'guest'}-${user?.id || 'none'}`;
 
   useEffect(() => {
@@ -223,6 +225,18 @@ export default function PurchaseOrders() {
     return (
       <div className="flex flex-wrap justify-end gap-2 items-center">
         <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1.5 h-3.5 w-3.5" />View</Button>
+        {order.deliveryTrackings && order.deliveryTrackings.length > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              const trackId = order.deliveryTrackings?.[0]?.id;
+              if (trackId) router.push(`/delivery/${trackId}`);
+            }}
+            className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"
+          >
+            <Truck className="mr-1.5 h-3.5 w-3.5" /> Track
+          </Button>
+        )}
         <Button variant="outline" onClick={() => exportInvoicePdf(order, 'download')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />Invoice PDF</Button>
         <Button variant="outline" onClick={() => exportInvoicePdf(order, 'print')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Printer className="mr-1.5 h-3.5 w-3.5" />Print</Button>
         {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-200 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel</Button>}
@@ -644,9 +658,59 @@ export default function PurchaseOrders() {
                         <p className="text-xs font-bold text-slate-600 line-clamp-2">{viewingOrder.deliveryAddress}</p>
                       </div>
                     )}
+                    {viewingOrder.deliveryTrackings && viewingOrder.deliveryTrackings.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-slate-400">Delivery Status / Tracking</p>
+                        <div className="mt-1 flex flex-col gap-1.5">
+                          {viewingOrder.deliveryTrackings.map((dt: any) => (
+                            <div key={dt.id} className="flex items-center gap-2">
+                              <EntityIdLink
+                                label={dt.trackingNumber || `DLV-${dt.id}`}
+                                id={dt.id}
+                                size="sm"
+                                onClick={() => {
+                                  setViewingOrder(null);
+                                  router.push(`/delivery/${dt.id}`);
+                                }}
+                              />
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">({dt.status.replace(/_/g, ' ')})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
+              {activeDelivery && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Truck className="h-4 w-4 text-[#12335f]" />
+                      <span className="text-xs font-black text-[#12335f]">Shipment Tracking</span>
+                    </div>
+                    <span className="text-[9px] font-black uppercase bg-[#12335f]/10 text-[#12335f] px-2 py-0.5 rounded border border-[#12335f]/20">
+                      {activeDelivery.status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-600 space-y-0.5">
+                    {activeDelivery.carrierName && <p>Carrier: <span className="font-bold text-slate-800">{activeDelivery.carrierName}</span></p>}
+                    {activeDelivery.trackingNumber && <p>Tracking No: <span className="font-bold text-slate-800">{activeDelivery.trackingNumber}</span></p>}
+                    {activeDelivery.expectedDelivery && <p>Expected Delivery: <span className="font-bold text-slate-800">{formatDate(activeDelivery.expectedDelivery)}</span></p>}
+                  </div>
+                  <Button 
+                    size="sm"
+                    className="w-full bg-[#12335f] text-white hover:bg-[#0b2445] text-[10px] font-black uppercase tracking-wider h-8 mt-1"
+                    onClick={() => {
+                      setViewingOrder(null);
+                      router.push(`/delivery/${activeDelivery.id}`);
+                    }}
+                  >
+                    Track Shipment Details
+                  </Button>
+                </div>
+              )}
 
               <div className="space-y-3">
                 <h4 className="text-[11px] font-black uppercase tracking-widest text-[#12335f] border-b border-slate-100 pb-1">Workflow Tracking & Timestamps</h4>

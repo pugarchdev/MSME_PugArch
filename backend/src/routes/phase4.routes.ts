@@ -4202,7 +4202,7 @@ router.get('/bids/my', authenticate, authorize('seller', 'buyer', 'admin'), asyn
   res.json(maskSensitive(enriched));
 }));
 
-router.get('/bids/:id', authenticate, asyncRoute(async (req, res) => {
+router.get('/bids/:id(\\d+)', authenticate, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   await assertBidAccess(req, id);
   const bid = await db.bid.findUnique({
@@ -4293,7 +4293,7 @@ router.get('/tenders/:id/bids', authenticate, authorize('buyer', 'seller', 'admi
   res.json(maskSensitive((await attachBidFileAssets(bids)).map((bid: any) => ({ ...bid, isOwnBid: bid.sellerId === requesterId }))));
 }));
 
-router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+router.put('/bids/:id(\\d+)', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const bid = await assertBidAccess(req, id);
   if (bid.sellerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
@@ -4303,7 +4303,7 @@ router.put('/bids/:id', authenticate, authorize('seller'), asyncRoute(async (req
   ok(res, updated);
 }));
 
-router.post('/bids/:id/withdraw', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
+router.post('/bids/:id(\\d+)/withdraw', authenticate, authorize('seller'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const bid = await assertBidAccess(req, id);
   if (bid.sellerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
@@ -4313,7 +4313,7 @@ router.post('/bids/:id/withdraw', authenticate, authorize('seller'), asyncRoute(
   ok(res, updated);
 }));
 
-router.post('/bids/:id/status', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
+router.post('/bids/:id(\\d+)/status', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   await assertBuyerProcurementApproved(req);
   const bid = await assertBidAccess(req, id);
@@ -4380,7 +4380,7 @@ router.post('/tenders/:id/technical-criteria', authenticate, authorize('buyer', 
   ok(res, criteria, 201);
 }));
 
-router.post('/bids/:id/technical-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
+router.post('/bids/:id(\\d+)/technical-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   await assertBuyerProcurementApproved(req);
   await assertBidAccess(req, id);
@@ -4390,7 +4390,7 @@ router.post('/bids/:id/technical-evaluation', authenticate, authorize('buyer', '
   ok(res, result);
 }));
 
-router.post('/bids/:id/financial-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
+router.post('/bids/:id(\\d+)/financial-evaluation', authenticate, authorize('buyer', 'admin'), asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   await assertBuyerProcurementApproved(req);
   await assertBidAccess(req, id);

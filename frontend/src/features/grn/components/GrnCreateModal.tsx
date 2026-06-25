@@ -21,9 +21,11 @@ interface PurchaseOrderOption {
     items: Array<{
         id: number;
         productId?: number | null;
+        itemName?: string;
         product?: { name: string; unitOfMeasure?: string } | null;
         quantity: string | number;
         unitPrice: string | number;
+        unitOfMeasure?: string;
     }>;
 }
 
@@ -49,7 +51,7 @@ export function GrnCreateModal({ onClose, onCreated }: Props) {
                 const list = Array.isArray(data) ? data : data?.data || data?.records || [];
                 // Only show POs in active states
                 const active = list.filter((po: any) =>
-                    ['accepted', 'in_transit', 'delivered', 'partial', 'generated'].includes(String(po.status || '').toLowerCase())
+                    ['accepted', 'in_fulfillment', 'delivered', 'generated', 'inspection_accepted'].includes(String(po.status || '').toLowerCase())
                 );
                 setPos(active);
             } catch {
@@ -67,13 +69,13 @@ export function GrnCreateModal({ onClose, onCreated }: Props) {
         // Pre-populate items from PO
         const newItems = (po.items || []).map(item => ({
             purchaseOrderItemId: item.id,
-            itemName: item.product?.name || `Item ${item.id}`,
+            itemName: item.itemName || item.product?.name || `Item ${item.id}`,
             orderedQty: Number(item.quantity),
             receivedQty: Number(item.quantity),
             acceptedQty: Number(item.quantity),
             rejectedQty: 0,
             rejectionReason: '',
-            unitOfMeasure: item.product?.unitOfMeasure || 'Nos'
+            unitOfMeasure: item.unitOfMeasure || item.product?.unitOfMeasure || 'Nos'
         }));
         setItems(newItems);
     };
@@ -120,25 +122,29 @@ export function GrnCreateModal({ onClose, onCreated }: Props) {
         const err = validate();
         if (err) { toast.error(err); return; }
 
-        const result = await runWithToast(
-            () => createMut.mutateAsync({
-                purchaseOrderId: selectedPoId!,
-                remarks: remarks.trim() || undefined,
-                inspectionNote: inspectionNote.trim() || undefined,
-                items: items.map(it => ({
-                    purchaseOrderItemId: it.purchaseOrderItemId,
-                    itemName: it.itemName.trim(),
-                    orderedQty: Number(it.orderedQty),
-                    receivedQty: Number(it.receivedQty),
-                    acceptedQty: Number(it.acceptedQty),
-                    rejectedQty: Number(it.rejectedQty),
-                    rejectionReason: it.rejectionReason?.trim() || undefined,
-                    unitOfMeasure: it.unitOfMeasure
-                }))
-            }),
-            { loading: 'Creating GRN...', success: 'GRN created', error: 'Failed to create GRN' }
-        );
-        if (result) onCreated(result);
+        try {
+            const result = await runWithToast(
+                () => createMut.mutateAsync({
+                    purchaseOrderId: selectedPoId!,
+                    remarks: remarks.trim() || undefined,
+                    inspectionNote: inspectionNote.trim() || undefined,
+                    items: items.map(it => ({
+                        purchaseOrderItemId: it.purchaseOrderItemId,
+                        itemName: it.itemName.trim(),
+                        orderedQty: Number(it.orderedQty),
+                        receivedQty: Number(it.receivedQty),
+                        acceptedQty: Number(it.acceptedQty),
+                        rejectedQty: Number(it.rejectedQty),
+                        rejectionReason: it.rejectionReason?.trim() || undefined,
+                        unitOfMeasure: it.unitOfMeasure
+                    }))
+                }),
+                { loading: 'Creating GRN...', success: 'GRN created', error: 'Failed to create GRN' }
+            );
+            if (result) onCreated(result);
+        } catch {
+            // Error already shown via toast by runWithToast
+        }
     };
 
     return (

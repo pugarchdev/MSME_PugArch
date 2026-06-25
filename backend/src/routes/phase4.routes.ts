@@ -4495,6 +4495,7 @@ router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
       include: {
         buyer: { select: { id: true, name: true, email: true } },
         seller: { select: { id: true, name: true, email: true } },
+        items: { include: { product: { select: { name: true, unitOfMeasure: true } } } },
         deliveryTrackings: { include: { events: { orderBy: { occurredAt: 'desc' }, take: 8 } } },
         invoices: { orderBy: { createdAt: 'desc' }, take: 5 }
       },
@@ -4508,7 +4509,7 @@ router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
 
 router.get('/purchase-orders/:id', authenticate, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
-  const po = await db.purchaseOrder.findUnique({ where: { id }, include: { items: true, invoices: true, deliveryTrackings: true, inspectionReports: true } });
+  const po = await db.purchaseOrder.findUnique({ where: { id }, include: { items: { include: { product: { select: { name: true, unitOfMeasure: true } } } }, invoices: true, deliveryTrackings: true, inspectionReports: true } });
   if (!po || (!isAdmin(req) && po.buyerId !== userId(req) && po.sellerId !== userId(req))) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
   ok(res, po);
 }));

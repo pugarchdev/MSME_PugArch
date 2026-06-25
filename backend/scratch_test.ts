@@ -1,18 +1,14 @@
 import './src/config/env.js';
-import prisma from './src/config/prisma.js';
+import prisma from './src/lib/prisma.js';
 
 async function main() {
-  const sessions = await prisma.preRegistrationKycSession.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 15
+  const users = await prisma.user.findMany({
+    where: { id: { in: [6, 10] } },
+    select: { id: true, email: true, role: true, sessionVersion: true, accountStatus: true }
   });
-  console.log(`Found ${sessions.length} pre-registration sessions:`);
-  for (const s of sessions) {
-    console.log(`ID: ${s.id}`);
-    console.log(`  Status: ${s.status}`);
-    console.log(`  State: ${s.state}`);
-    console.log(`  Verified Name: ${s.verifiedName}`);
-    console.log(`  Created At: ${s.createdAt}`);
+  console.log('USERS IN DATABASE:');
+  for (const u of users) {
+    console.log(`ID: ${u.id}, Email: ${u.email}, Role: ${u.role}, sessionVersion: ${u.sessionVersion}, Status: ${u.accountStatus}`);
   }
 }
 

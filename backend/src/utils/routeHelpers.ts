@@ -1,6 +1,16 @@
 import type { Response } from 'express';
 import { maskSensitive } from './maskSensitive.js';
 
+const isDatabaseUnavailableError = (err: any) => {
+  const message = String(err?.message || '');
+  return (
+    err?.code === 'P1001' ||
+    err?.code === 'P2024' ||
+    message.includes("Can't reach database server") ||
+    message.toLowerCase().includes('timed out fetching a new connection')
+  );
+};
+
 const logServerRouteError = (err: any, fallback: string) => {
   const statusCode = err?.statusCode || 500;
   if (statusCode < 500) return;
@@ -19,7 +29,7 @@ export const safeRouteMessage = (err: any, fallback = 'Unable to complete reques
   if (statusCode < 500) return err?.message || fallback;
 
   const message = String(err?.message || '');
-  if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+  if (isDatabaseUnavailableError(err)) {
     return 'Database is temporarily unavailable. Please try again in a few minutes.';
   }
   if (
@@ -38,16 +48,14 @@ export const safeRouteMessage = (err: any, fallback = 'Unable to complete reques
 };
 
 const routeStatusCode = (err: any) => {
-  const message = String(err?.message || '');
-  if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+  if (isDatabaseUnavailableError(err)) {
     return 503;
   }
   return err?.statusCode || 500;
 };
 
 const routeErrorCode = (err: any, fallbackCode: string) => {
-  const message = String(err?.message || '');
-  if (err?.code === 'P1001' || message.includes("Can't reach database server")) {
+  if (isDatabaseUnavailableError(err)) {
     return 'DATABASE_UNAVAILABLE';
   }
   return err?.code || fallbackCode;

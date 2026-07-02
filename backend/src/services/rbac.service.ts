@@ -22,6 +22,9 @@ const accountTypeCode = (accountType: unknown) => {
 };
 
 export const getAccountTypeForUser = (user: { role?: string; accountType?: unknown; accountTypeId?: number | null }) => {
+  if (user.role && ['seller', 'shg', 'buyer', 'admin', 'master_admin', 'financier'].includes(user.role)) {
+    return legacyRoleToAccountType(user.role);
+  }
   const code = accountTypeCode(user.accountType);
   if (code && typeof user.accountTypeId === 'number') {
     return { accountType: code, accountTypeId: user.accountTypeId };
@@ -68,10 +71,86 @@ export const getCurrentUserPermissions = async (userId: number, scope?: RbacScop
     }
   });
 
-  return Array.from(new Set<string>(assignments.flatMap((assignment: any) => {
+  const assigned = assignments.flatMap((assignment: any) => {
     if (!assignment.role || assignment.role.status !== 'ACTIVE') return [];
     return assignment.role.permissions.map((rp: any) => rp.permission?.code).filter(Boolean);
-  })));
+  });
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true }
+  });
+
+  const defaults: string[] = [];
+  if (user) {
+    if (user.role === 'seller' || user.role === 'shg') {
+      defaults.push(
+        'dashboard.view',
+        'catalogue.product.view',
+        'catalogue.product.create',
+        'catalogue.product.update',
+        'catalogue.product.delete',
+        'catalogue.service.view',
+        'catalogue.service.create',
+        'catalogue.service.update',
+        'catalogue.service.delete',
+        'marketplace.view',
+        'bid.submit',
+        'delivery.view',
+        'delivery.create',
+        'delivery.update',
+        'delivery.dispatch',
+        'grn.view',
+        'invoice.view',
+        'invoice.approve',
+        'payment.view',
+        'escrow.view',
+        'dispute.view'
+      );
+    } else if (user.role === 'buyer') {
+      defaults.push(
+        'dashboard.view',
+        'marketplace.view',
+        'requirement.view',
+        'requirement.create',
+        'requirement.publish',
+        'tender.view',
+        'tender.create',
+        'tender.update',
+        'tender.publish',
+        'bid.technical.evaluate',
+        'bid.financial.evaluate',
+        'award.recommend',
+        'purchase_order.view',
+        'purchase_order.create',
+        'purchase_order.approve',
+        'cart.view',
+        'cart.add',
+        'cart.submit_for_approval',
+        'checkout.initiate',
+        'checkout.approve',
+        'delivery.view',
+        'delivery.confirm',
+        'grn.view',
+        'grn.create',
+        'grn.approve',
+        'inspection.view',
+        'inspection.create',
+        'inspection.approve',
+        'invoice.view',
+        'invoice.approve',
+        'payment.view',
+        'payment.initiate',
+        'escrow.release',
+        'dispute.view',
+        'dispute.manage'
+      );
+    } else if (user.role === 'admin' || user.role === 'master_admin') {
+      defaults.push('*');
+    }
+  }
+
+  return Array.from(new Set<string>([...assigned, ...defaults]));
 };
 
 export const getActivePermissionCodes = getCurrentUserPermissions;

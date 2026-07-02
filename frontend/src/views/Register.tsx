@@ -4,11 +4,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
-import { Input, Select } from '../components/ui/input';
+import { Input } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { toast } from 'sonner';
-import { Store, Building2, ShieldCheck, Mail, Key, Phone } from 'lucide-react';
-import { getSellerPortalPath } from '../lib/shg';
+import { Store, Building2, ShieldCheck, Mail, Key, Phone, Clock, ArrowRight } from 'lucide-react';
+import { getSellerPortalPath, getSellerPortalLabel } from '../lib/shg';
 
 export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' }) {
   const [formData, setFormData] = useState({
@@ -18,15 +18,24 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     password: '',
   });
   const [passwordError, setPasswordError] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [verificationMethod, setVerificationMethod] = useState<'email' | 'mobile'>('email');
+
+  const [emailOtp, setEmailOtp] = useState('');
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
+
+  const [mobileOtp, setMobileOtp] = useState('');
+  const [mobileOtpSent, setMobileOtpSent] = useState(false);
+  const [isSendingMobileOtp, setIsSendingMobileOtp] = useState(false);
+  const [isVerifyingMobileOtp, setIsVerifyingMobileOtp] = useState(false);
+
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isMobileVerified, setIsMobileVerified] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [redirectPath, setRedirectPath] = useState('');
+  const [redirectLabel, setRedirectLabel] = useState('');
 
   useEffect(() => {
     api.get('/api/auth/features')
@@ -34,9 +43,6 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
       .then(data => {
         if (data?.enabledFeatures) {
           setEnabledFeatures(data.enabledFeatures);
-          if (!data.enabledFeatures.includes('sms')) {
-            setVerificationMethod('email');
-          }
         }
       })
       .catch(err => console.error(err));
@@ -67,98 +73,143 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     return data?.message || 'Registration failed';
   };
 
-  const getOtpSentMessage = (data: any) => {
-    const medium = verificationMethod === 'email' ? 'email' : 'mobile';
-    if (typeof data?.sendsRemaining !== 'number') return `Verification code sent to your ${medium}`;
-    if (data.sendsRemaining <= 0) return 'Verification code sent. No resends remaining.';
-    if (data.sendsRemaining === 1) return 'Verification code sent. Last resend is remaining.';
-    return `Verification code sent. ${data.sendsRemaining} resends are remaining.`;
-  };
-
-  const handleSendOtp = async () => {
-    if (verificationMethod === 'email') {
-      if (!formData.email) {
-        toast.error('Please enter an email address first');
-        return;
-      }
-      setIsSendingOtp(true);
-      try {
-        const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
-        const data = await res.json();
-        if (res.ok) {
-          setOtpSent(true);
-          toast.success(getOtpSentMessage(data));
-        } else {
-          toast.error(data.message || 'Failed to send OTP');
-        }
-      } catch (err: any) {
-        toast.error(err?.message || 'Network error. Check your connection.');
-      } finally {
-        setIsSendingOtp(false);
-      }
-    } else {
-      const cleanedMobile = formData.mobile.replace(/\D/g, '');
-      if (!cleanedMobile || cleanedMobile.length !== 10) {
-        toast.error('Please enter a valid 10-digit mobile number first');
-        return;
-      }
-      setIsSendingOtp(true);
-      try {
-        const res = await api.post('/api/auth/send-mobile-otp', { mobile: cleanedMobile });
-        const data = await res.json();
-        if (res.ok) {
-          setOtpSent(true);
-          toast.success(data.smsEnabled === false ? 'Mobile OTP saved (SMS is disabled)' : getOtpSentMessage(data));
-        } else {
-          toast.error(data.message || 'Failed to send OTP');
-        }
-      } catch (err: any) {
-        toast.error(err?.message || 'Network error. Check your connection.');
-      } finally {
-        setIsSendingOtp(false);
-      }
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otp) {
-      toast.error('Please enter the verification code');
+  const handleSendEmailOtp = async () => {
+    if (!formData.email) {
+      toast.error('Please enter an email address first');
       return;
     }
-    setIsVerifyingOtp(true);
+    setIsSendingEmailOtp(true);
     try {
-      if (verificationMethod === 'email') {
-        const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp });
-        const data = await res.json();
-        if (res.ok) {
-          setIsEmailVerified(true);
-          toast.success('Email verified successfully!');
-        } else {
-          toast.error(data.message || 'Invalid code');
-        }
+      const res = await api.post('/api/auth/send-email-otp', { email: formData.email });
+      const data = await res.json();
+      if (res.ok) {
+        setEmailOtpSent(true);
+        toast.success(data.deliveryConfigured === false ? 'Email OTP saved (SMTP is disabled)' : 'Verification code sent to your email.');
       } else {
-        const cleanedMobile = formData.mobile.replace(/\D/g, '');
-        const res = await api.post('/api/auth/verify-mobile-otp', { mobile: cleanedMobile, otp });
-        const data = await res.json();
-        if (res.ok) {
-          setIsMobileVerified(true);
-          toast.success('Mobile number verified successfully!');
-        } else {
-          toast.error(data.message || 'Invalid code');
-        }
+        toast.error(data.message || 'Failed to send email OTP');
       }
     } catch (err: any) {
-      toast.error(err?.message || 'Verification failed');
+      toast.error(err?.message || 'Network error.');
     } finally {
-      setIsVerifyingOtp(false);
+      setIsSendingEmailOtp(false);
     }
   };
+
+  const handleVerifyEmailOtp = async () => {
+    if (!emailOtp) {
+      toast.error('Please enter the email verification code');
+      return;
+    }
+    setIsVerifyingEmailOtp(true);
+    try {
+      const res = await api.post('/api/auth/verify-email-otp', { email: formData.email, otp: emailOtp });
+      const data = await res.json();
+      if (res.ok) {
+        setIsEmailVerified(true);
+        toast.success('Email verified successfully!');
+      } else {
+        toast.error(data.message || 'Invalid email OTP');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Email verification failed');
+    } finally {
+      setIsVerifyingEmailOtp(false);
+    }
+  };
+
+  const handleSendMobileOtp = async () => {
+    const cleanedMobile = formData.mobile.replace(/\D/g, '');
+    if (!cleanedMobile || cleanedMobile.length !== 10) {
+      toast.error('Please enter a valid 10-digit mobile number first');
+      return;
+    }
+    setIsSendingMobileOtp(true);
+    try {
+      const res = await api.post('/api/auth/send-mobile-otp', { mobile: cleanedMobile });
+      const data = await res.json();
+      if (res.ok) {
+        setMobileOtpSent(true);
+        toast.success(data.smsEnabled === false ? 'Mobile OTP saved (SMS is disabled)' : 'Verification code sent to your mobile.');
+      } else {
+        toast.error(data.message || 'Failed to send mobile OTP');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Network error.');
+    } finally {
+      setIsSendingMobileOtp(false);
+    }
+  };
+
+  const handleVerifyMobileOtp = async () => {
+    if (!mobileOtp) {
+      toast.error('Please enter the mobile verification code');
+      return;
+    }
+    setIsVerifyingMobileOtp(true);
+    try {
+      const cleanedMobile = formData.mobile.replace(/\D/g, '');
+      const res = await api.post('/api/auth/verify-mobile-otp', { mobile: cleanedMobile, otp: mobileOtp });
+      const data = await res.json();
+      if (res.ok) {
+        setIsMobileVerified(true);
+        toast.success('Mobile number verified successfully!');
+      } else {
+        toast.error(data.message || 'Invalid mobile OTP');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Mobile verification failed');
+    } finally {
+      setIsVerifyingMobileOtp(false);
+    }
+  };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, email: e.target.value });
+    setIsEmailVerified(false);
+    setEmailOtpSent(false);
+    setEmailOtp('');
+  };
+
+  const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) });
+    setIsMobileVerified(false);
+    setMobileOtpSent(false);
+    setMobileOtp('');
+  };
+
+  const getTitle = () => {
+    if (type === 'seller') return 'Seller Account';
+    if (type === 'buyer') return 'Buyer Account';
+    return 'Admin Account';
+  };
+
+  const getNameLabel = () => {
+    if (type === 'seller') return 'Authorized Representative Name';
+    if (type === 'buyer') return 'Procurement Officer Name';
+    return 'Admin Name';
+  };
+
+  const isVerified = isEmailVerified && (isSmsEnabled ? isMobileVerified : (formData.mobile.replace(/\D/g, '').length === 0 || isMobileVerified));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isVerified = verificationMethod === 'email' ? isEmailVerified : isMobileVerified;
-    if (!isVerified) {
-      toast.error(`Please verify your ${verificationMethod === 'email' ? 'email address' : 'mobile number'} to continue`);
+    if (!isEmailVerified) {
+      toast.error('Please verify your email address to continue');
+      return;
+    }
+    if (isSmsEnabled) {
+      if (!formData.mobile.replace(/\D/g, '')) {
+        toast.error('Please enter and verify your mobile number to continue');
+        return;
+      }
+      if (!isMobileVerified) {
+        toast.error('Please verify your mobile number to continue');
+        return;
+      }
+    }
+    const hasMobile = !!formData.mobile.replace(/\D/g, '');
+    if (hasMobile && !isMobileVerified) {
+      toast.error('Please verify your mobile number to continue');
       return;
     }
     const nextPasswordError = getPasswordError(formData.password);
@@ -180,51 +231,45 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
       if (res.ok) {
         login(data.accessToken || data.token, data.user, data.refreshToken);
-        toast.success(type === 'admin' ? 'Admin account created!' : `Account created! Let's complete your onboarding.`);
+        toast.success(type === 'admin' ? 'Admin account created!' : `Account created!`);
 
-        // If there's a returnUrl (e.g., from invite), go there after onboarding
-        if (returnUrl) {
-          if (type === 'seller') router.push(`${getSellerPortalPath(data.user)}?returnUrl=${encodeURIComponent(returnUrl)}`);
-          else if (type === 'buyer') router.push(`/buyer/onboarding?returnUrl=${encodeURIComponent(returnUrl)}`);
-          else router.push(decodeURIComponent(returnUrl));
+        let targetPath = '/dashboard';
+        let targetLabel = 'Dashboard';
+
+        if (type === 'seller') {
+          targetPath = getSellerPortalPath(data.user);
+          targetLabel = getSellerPortalLabel(data.user);
+        } else if (type === 'buyer') {
+          targetPath = '/buyer/onboarding';
+          targetLabel = 'Buyer Onboarding';
+        }
+
+        if (data.user?.onboardingStatus === 'pending') {
+          setRedirectPath(targetPath);
+          setRedirectLabel(targetLabel);
+          setShowPendingModal(true);
         } else {
-          if (type === 'seller') router.push(getSellerPortalPath(data.user));
-          else if (type === 'buyer') router.push('/buyer/onboarding');
-          else router.push('/dashboard');
+          router.push(returnUrl || targetPath);
         }
       } else {
         toast.error(getApiErrorMessage(data));
       }
     } catch (err: any) {
-      toast.error(err?.message || 'Something went wrong');
+      toast.error(err?.message || 'Registration failed due to server error');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getTitle = () => {
-    if (type === 'seller') return 'Seller Account';
-    if (type === 'buyer') return 'Buyer Account';
-    return 'Admin Account';
-  };
-
-  const getNameLabel = () => {
-    if (type === 'seller') return 'Full Name';
-    if (type === 'buyer') return 'Authorized Representative Name';
-    return 'Administrator Name';
-  };
-
-  const isVerified = verificationMethod === 'email' ? isEmailVerified : isMobileVerified;
-
   return (
-    <div className="flex min-h-dvh items-center justify-center px-3 py-6 sm:px-4">
-      <Card className="animate-in w-full max-w-md overflow-hidden rounded-2xl border-none shadow-xl shadow-indigo-100 fade-in slide-in-from-bottom-4 duration-500 sm:rounded-3xl sm:shadow-2xl">
+    <div className="flex min-h-dvh items-center justify-center px-3 py-6 sm:px-4 bg-slate-50">
+      <Card className="animate-in w-full max-w-md overflow-hidden rounded-2xl border-none shadow-xl shadow-indigo-100 fade-in slide-in-from-bottom-4 duration-500 sm:rounded-3xl sm:shadow-2xl bg-white">
         <CardHeader className="bg-indigo-50/50 pb-6 pt-7 text-center">
           <div className="mx-auto w-14 h-14 bg-white shadow-xl rounded-2xl flex items-center justify-center mb-4 animate-in zoom-in-50 duration-500">
             {type === 'seller' ? <Store className="h-8 w-8 text-indigo-600" /> : <Building2 className="h-8 w-8 text-indigo-600" />}
           </div>
-          <CardTitle className="text-2xl md:text-3xl font-black  tracking-tight text-slate-900 uppercase">Create {getTitle()}</CardTitle>
-          <p className="text-sm font-medium text-slate-500 mt-2 ">Start your journey with JsgSmile Portal - Jharsuguda Synergy for MSME and Industry Linkage Ecosystem</p>
+          <CardTitle className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 uppercase">Create {getTitle()}</CardTitle>
+          <p className="text-sm font-medium text-slate-500 mt-2">Start your journey with JsgSmile Portal</p>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -237,71 +282,79 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               className="rounded-xl border-slate-200 focus:border-indigo-500"
             />
 
-            {/* Verification Method Toggle */}
-            {isSmsEnabled && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Verification Method</label>
-                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-                  {(['email', 'mobile'] as const).map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      disabled={otpSent}
-                      onClick={() => {
-                        setVerificationMethod(method);
-                        setOtp('');
-                      }}
-                      className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                        verificationMethod === method
-                          ? 'bg-white text-indigo-600 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      {method === 'email' ? 'Email OTP' : 'Mobile OTP'}
-                    </button>
-                  ))}
+            {/* Email Field with inline verification */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Official Email</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    placeholder="name@company.com"
+                    value={formData.email}
+                    onChange={handleEmailChange}
+                    disabled={isEmailVerified || emailOtpSent}
+                    required
+                    className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium"
+                  />
                 </div>
+                {!isEmailVerified && !emailOtpSent && (
+                  <Button
+                    type="button"
+                    onClick={handleSendEmailOtp}
+                    disabled={isSendingEmailOtp}
+                    variant="outline"
+                    className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px] border-indigo-100 text-indigo-600 hover:bg-indigo-50"
+                  >
+                    {isSendingEmailOtp ? 'Sending...' : 'Verify'}
+                  </Button>
+                )}
+                {isEmailVerified && (
+                  <div className="flex items-center justify-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 h-11 rounded-xl border border-green-100">
+                    <ShieldCheck className="h-4 w-4" />
+                    Verified
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Email OTP Verification Box */}
+            {emailOtpSent && !isEmailVerified && (
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl animate-in slide-in-from-top-4 duration-500">
+                <label className="text-xs font-black uppercase text-indigo-600 tracking-widest ml-1">Enter Email OTP</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-indigo-400" />
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={emailOtp}
+                      onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
+                      className="h-11 w-full rounded-xl border-2 border-indigo-100 pl-10 pr-4 text-center text-lg font-black tracking-[0.25em] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleVerifyEmailOtp}
+                    disabled={isVerifyingEmailOtp}
+                    className="w-full sm:w-auto h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] px-6"
+                  >
+                    {isVerifyingEmailOtp ? 'Verifying...' : 'Verify'}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-slate-400 font-bold ml-1">
+                  Code valid for 10 min. No code?{' '}
+                  <button type="button" onClick={handleSendEmailOtp} disabled={isSendingEmailOtp} className="text-indigo-600 underline disabled:text-slate-400">
+                    Resend
+                  </button>
+                </p>
               </div>
             )}
 
-            {verificationMethod === 'email' ? (
+            {isSmsEnabled && (
               <div className="space-y-1.5">
-                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Official Email</label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                      type="email"
-                      placeholder="name@company.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      disabled={isEmailVerified || otpSent}
-                      required={verificationMethod === 'email'}
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium "
-                    />
-                  </div>
-                  {!isEmailVerified && !otpSent && (
-                    <Button
-                      type="button"
-                      onClick={handleSendOtp}
-                      disabled={isSendingOtp}
-                      variant="outline"
-                      className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px] border-indigo-100 text-indigo-600 hover:bg-indigo-50"
-                    >
-                      {isSendingOtp ? 'Sending...' : 'Verify'}
-                    </Button>
-                  )}
-                  {isEmailVerified && (
-                    <div className="flex items-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 rounded-xl border border-green-100">
-                      <ShieldCheck className="h-4 w-4" />
-                      Verified
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Mobile Number</label>
+                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Mobile Number *</label>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -310,25 +363,24 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                       placeholder="10-digit mobile number"
                       maxLength={10}
                       value={formData.mobile}
-                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
-                      disabled={isMobileVerified || otpSent}
-                      required={verificationMethod === 'mobile'}
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium "
+                      onChange={handleMobileChange}
+                      disabled={isMobileVerified || mobileOtpSent}
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-500 font-medium"
                     />
                   </div>
-                  {!isMobileVerified && !otpSent && (
+                  {formData.mobile.length === 10 && !isMobileVerified && !mobileOtpSent && (
                     <Button
                       type="button"
-                      onClick={handleSendOtp}
-                      disabled={isSendingOtp}
+                      onClick={handleSendMobileOtp}
+                      disabled={isSendingMobileOtp}
                       variant="outline"
                       className="w-full sm:w-auto h-11 rounded-xl px-4 font-black uppercase text-[10px] border-indigo-100 text-indigo-600 hover:bg-indigo-50"
                     >
-                      {isSendingOtp ? 'Sending...' : 'Verify'}
+                      {isSendingMobileOtp ? 'Sending...' : 'Verify'}
                     </Button>
                   )}
                   {isMobileVerified && (
-                    <div className="flex items-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 rounded-xl border border-green-100">
+                    <div className="flex items-center justify-center gap-1.5 text-green-600 font-black text-[10px] uppercase bg-green-50 px-3 h-11 rounded-xl border border-green-100">
                       <ShieldCheck className="h-4 w-4" />
                       Verified
                     </div>
@@ -337,54 +389,37 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               </div>
             )}
 
-            {verificationMethod === 'email' ? (
-              <Input
-                label="Mobile Number (Optional)"
-                placeholder="10-digit mobile number"
-                maxLength={10}
-                value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
-                className="rounded-xl border-slate-200"
-              />
-            ) : (
-              <Input
-                label="Official Email"
-                placeholder="name@company.com"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-                className="rounded-xl border-slate-200"
-              />
-            )}
-
-            {otpSent && !isVerified && (
-              <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black uppercase text-indigo-600 tracking-widest  ml-1">Enter 6-Digit OTP</label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-indigo-400" />
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="000000"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                        className="h-11 w-full rounded-xl border-2 border-indigo-100 pl-10 pr-4 text-center text-lg font-black tracking-[0.25em] transition-all placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:tracking-[0.5em]"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={handleVerifyOtp}
-                      disabled={isVerifyingOtp}
-                      className="w-full sm:w-auto h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] px-6 "
-                    >
-                      {isVerifyingOtp ? 'Checking...' : 'Apply Code'}
-                    </Button>
+            {/* Mobile OTP Verification Box */}
+            {mobileOtpSent && !isMobileVerified && (
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl animate-in slide-in-from-top-4 duration-500">
+                <label className="text-xs font-black uppercase text-indigo-600 tracking-widest ml-1">Enter Mobile OTP</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-indigo-400" />
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={mobileOtp}
+                      onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, ''))}
+                      className="h-11 w-full rounded-xl border-2 border-indigo-100 pl-10 pr-4 text-center text-lg font-black tracking-[0.25em] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold  ml-1">Code expires in 10 minutes. No code? <button type="button" onClick={handleSendOtp} disabled={isSendingOtp} className="text-indigo-600 underline disabled:text-slate-400 disabled:no-underline">{isSendingOtp ? 'Sending...' : 'Resend'}</button></p>
+                  <Button
+                    type="button"
+                    onClick={handleVerifyMobileOtp}
+                    disabled={isVerifyingMobileOtp}
+                    className="w-full sm:w-auto h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] px-6"
+                  >
+                    {isVerifyingMobileOtp ? 'Verifying...' : 'Verify'}
+                  </Button>
                 </div>
+                <p className="text-[10px] text-slate-400 font-bold ml-1">
+                  Code valid for 10 min. No code?{' '}
+                  <button type="button" onClick={handleSendMobileOtp} disabled={isSendingMobileOtp} className="text-indigo-600 underline disabled:text-slate-400">
+                    Resend
+                  </button>
+                </p>
               </div>
             )}
 
@@ -406,14 +441,14 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
             <Button
               type="submit"
-              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-[0.2em]  shadow-xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50"
+              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-[0.2em] shadow-xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading || !isVerified}
             >
               {isLoading ? 'Creating Account...' : 'Finish Registration'}
             </Button>
 
             <div className="text-center mt-4">
-              <p className="text-sm font-medium text-slate-500 ">
+              <p className="text-sm font-medium text-slate-500">
                 Already have an account?{' '}
                 <Link href="/login" className="text-indigo-600 font-black uppercase text-[10px] hover:underline underline-offset-4 tracking-widest">Sign in</Link>
               </p>
@@ -421,8 +456,8 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
             {type !== 'admin' && (
               <div className="pt-4 mt-1 border-t border-slate-100 text-center">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ">
-                  Registering as the wrong role? {' '}
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Registering as the wrong role?{' '}
                   <Link href={type === 'seller' ? '/buyer/register' : '/seller/register'} className="text-indigo-600 underline decoration-indigo-200 underline-offset-4">
                     Switch to {type === 'seller' ? 'Buyer' : 'Seller'}
                   </Link>
@@ -432,6 +467,30 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
           </form>
         </CardContent>
       </Card>
+
+      {showPendingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+            <div className="h-14 w-14 rounded-full bg-amber-50 border border-amber-250 flex items-center justify-center text-amber-500 mb-4 animate-bounce">
+              <Clock className="h-7 w-7" />
+            </div>
+            <h3 className="text-lg font-black uppercase text-[#12335f] tracking-tight">Organization Onboarding Pending</h3>
+            <p className="mt-2 text-xs font-semibold text-slate-500 leading-relaxed">
+              Your registration is complete. However, your organization onboarding is pending. Please verify/complete it to access all the portal features.
+            </p>
+            <Button
+              onClick={() => {
+                setShowPendingModal(false);
+                router.push(redirectPath);
+              }}
+              className="mt-6 w-full h-10 bg-[#12335f] hover:bg-[#0b2445] text-white font-bold uppercase tracking-wide text-xs rounded-xl flex items-center justify-center gap-1.5"
+            >
+              <span>Verify & Complete in {redirectLabel}</span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

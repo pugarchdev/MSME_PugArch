@@ -1024,12 +1024,23 @@ export default function Tenders() {
               Monitor tender drafts, active bid windows, supplier participation, budget exposure, and upcoming closure risk from one register.
             </p>
           </div>
+          {/* LEGACY PROCUREMENT UI - hidden because unified Create Procurement flow is now active. */}
+          {/* Do not delete. Restore only if required. */}
+          {/*
           <Button
             onClick={() => router.push('/buyer/create-bid  ')}
             className="h-10 shrink-0 rounded-md bg-[#12335f] px-5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-all hover:bg-[#0b2445]"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create Tender
+          </Button>
+          */}
+          <Button
+            onClick={() => router.push('/buyer/procurement/create')}
+            className="h-10 shrink-0 rounded-md bg-[#12335f] px-5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-all hover:bg-[#0b2445]"
+          >
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Create Procurement
           </Button>
         </div>
       </div>

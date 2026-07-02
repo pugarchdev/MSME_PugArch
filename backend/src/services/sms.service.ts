@@ -21,12 +21,23 @@ type SmsResult = {
 
 const digitsOnly = (value: string) => value.replace(/\D/g, '');
 
-export const normalizeIndianMobile = (value: unknown) => {
+const maskMobile = (mobile: string | null | undefined): string => {
+  if (!mobile) return '';
+  const str = String(mobile);
+  return str.slice(-4).padStart(str.length, '*');
+};
+
+export const normalizeIndianMobile = (value: unknown): string | null => {
   const raw = String(value || '').trim();
   if (!raw) return null;
   let digits = digitsOnly(raw);
-  if (digits.startsWith('0091')) digits = digits.slice(2);
-  if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
+  if (digits.startsWith('0091')) {
+    digits = digits.slice(4);
+  } else if (digits.startsWith('91') && digits.length === 12) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('0') && digits.length === 11) {
+    digits = digits.slice(1);
+  }
   if (digits.length !== 10 || !/^[6-9]\d{9}$/.test(digits) || /^(\d)\1{9}$/.test(digits)) {
     return null;
   }
@@ -83,31 +94,32 @@ export const smsService = {
 
     const readiness = canSend();
     if (!readiness.ok) {
-      logger.info({ mobile: normalized, reason: readiness.reason, purpose }, '[SMS] OTP SMS skipped');
+      logger.info({ mobileMasked: maskMobile(normalized), reason: readiness.reason, purpose }, '[SMS] OTP SMS skipped');
       return { success: false, skipped: true, mobile: normalized, reason: readiness.reason };
     }
 
-    // Always use the common OTP template ID as per instructions
     const selectedTemplateId = env.MSG91_COMMON_OTP_TEMPLATE_ID;
     if (!selectedTemplateId) {
-      logger.warn({ mobile: normalized, purpose }, '[SMS] OTP template missing');
+      logger.warn({ mobileMasked: maskMobile(normalized), purpose }, '[SMS] OTP template missing');
       return { success: false, skipped: true, mobile: normalized, reason: 'MSG91 common OTP template ID missing' };
     }
 
     try {
-      // Pass the OTP value under the "number" key for the Jio DLT template parameter: ##number##
-      const response = await postMsg91('/api/v5/otp', {
+      const response = await postMsg91('/api/v5/flow', {
         template_id: selectedTemplateId,
-        mobile: normalized,
-        authkey: env.MSG91_AUTH_KEY,
-        otp,
-        sender: env.MSG91_SENDER_ID,
-        number: otp
+        short_url: '0',
+        recipients: [
+          {
+            mobiles: normalized,
+            var: env.MSG91_OTP_BRAND_NAME || 'JsgSMILE Portal',
+            var1: otp
+          }
+        ]
       });
-      logger.info({ mobile: normalized, purpose }, '[SMS] OTP SMS sent');
+      logger.info({ mobileMasked: maskMobile(normalized), purpose, status: 'sent' }, '[SMS] OTP SMS sent');
       return { success: true, mobile: normalized, provider: 'msg91', response };
-    } catch (error) {
-      logger.error({ err: error, mobile: normalized, purpose }, '[SMS] OTP SMS failed');
+    } catch (error: any) {
+      logger.error({ err: error?.message || error, mobileMasked: maskMobile(normalized), purpose, status: 'failed' }, '[SMS] OTP SMS failed');
       return { success: false, mobile: normalized, provider: 'msg91', reason: 'MSG91 send failed' };
     }
   },
@@ -116,8 +128,7 @@ export const smsService = {
     const normalized = normalizeIndianMobile(mobile);
     if (!normalized) return { success: false, skipped: true, reason: 'Invalid mobile number' };
 
-    // Do not use the OTP template for general notifications (restricted by Jio DLT rules)
-    logger.info({ mobile: normalized, purpose }, '[SMS] Non-OTP SMS skipped (only OTP flows supported)');
+    logger.info({ mobileMasked: maskMobile(normalized), purpose }, '[SMS] Non-OTP SMS skipped (only OTP flows supported)');
     return { success: false, skipped: true, mobile: normalized, reason: 'Notification templates not supported' };
   }
 };

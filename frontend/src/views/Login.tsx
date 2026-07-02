@@ -291,12 +291,12 @@ export default function Login() {
               <>
                 {/* Email Field */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Official Email</label>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-1">Official Email or Mobile</label>
                   <div className="group relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#12335f] transition-colors" />
                     <input
-                      type="email"
-                      placeholder="name@company.com"
+                      type="text"
+                      placeholder="email@company.com or 10-digit mobile"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required

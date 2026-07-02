@@ -34,6 +34,10 @@ export type ReverseAuction = {
   allowCompetitorNames?: boolean | null;
   remarks?: string | null;
   buyerOrgId?: number | null;
+  linkedBidId?: number | null;
+  tenderId?: number | null;
+  category?: string | null;
+  currency?: string | null;
 };
 
 export type ReverseAuctionParticipant = {
@@ -45,6 +49,8 @@ export type ReverseAuctionParticipant = {
   currentRank?: number | null;
   lastBidAmount?: number | string | null;
   invitedAt?: string | null;
+  sellerOrgName?: string | null;
+  disqualificationReason?: string | null;
 };
 
 export type ReverseAuctionBid = {

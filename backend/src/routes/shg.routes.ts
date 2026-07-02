@@ -674,17 +674,34 @@ router.patch('/shg/documents/:id', authenticate, authorize('shg'), async (req: A
 router.post('/shg/final-otp/send', authenticate, authorize('shg'), async (req: AuthRequest, res) => {
   const profile = await getOwnedShgProfile(req);
   if (!profile) return apiResponse.error(res, 404, 'SHG profile not found', 'SHG_NOT_FOUND');
-  const email = normalizeEmail(profile.representativeEmail);
+  const { smsService } = await import('../services/sms.service.js');
+  const mobile = profile.representativeMobile;
+  const channel = req.body?.channel === 'sms' && mobile && smsService.isEnabled() ? 'sms' : 'email';
+  const identity = channel === 'sms' ? mobile : normalizeEmail(profile.representativeEmail);
+  if (!identity) return apiResponse.error(res, 400, 'Recipient identity not configured', 'VALIDATION_ERROR');
+
   const otp = generateOtp();
-  await storeOtp('ownership_submission', email, otp, { shgProfileId: profile.id });
-  await sendOtpEmail(email, otp, '[JsgSmile] SHG final submission OTP');
-  return apiResponse.success(res, { sent: true, expiresInMinutes: 10, resendCooldownSeconds: 60 });
+  await storeOtp('ownership_submission', identity, otp, { shgProfileId: profile.id, channel }, channel);
+  
+  let deliveryConfigured = false;
+  if (channel === 'sms') {
+    const smsResult = await smsService.sendOtpSms(identity, otp, 'common_otp');
+    deliveryConfigured = smsResult.success;
+  } else {
+    deliveryConfigured = await sendOtpEmail(identity, otp, '[JsgSmile] SHG final submission OTP');
+  }
+  return apiResponse.success(res, { sent: true, expiresInMinutes: 10, resendCooldownSeconds: 60, channel, deliveryConfigured });
 });
 
 router.post('/shg/final-otp/verify', authenticate, authorize('shg'), async (req: AuthRequest, res) => {
   const profile = await getOwnedShgProfile(req);
   if (!profile) return apiResponse.error(res, 404, 'SHG profile not found', 'SHG_NOT_FOUND');
-  const result = await verifyOtp('ownership_submission', normalizeEmail(profile.representativeEmail), clean(req.body?.otp));
+  const mobile = profile.representativeMobile;
+  const channel = req.body?.channel === 'sms' && mobile ? 'sms' : 'email';
+  const identity = channel === 'sms' ? mobile : normalizeEmail(profile.representativeEmail);
+  if (!identity) return apiResponse.error(res, 400, 'Recipient identity not configured', 'VALIDATION_ERROR');
+
+  const result = await verifyOtp('ownership_submission', identity, clean(req.body?.otp));
   if (!result.ok) return apiResponse.error(res, 400, result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP', 'OTP_INVALID');
   return apiResponse.success(res, { verified: true });
 });
@@ -693,7 +710,12 @@ router.post('/shg/submit', authenticate, authorize('shg'), async (req: AuthReque
   const profile = await getOwnedShgProfile(req);
   if (!profile) return apiResponse.error(res, 404, 'SHG profile not found', 'SHG_NOT_FOUND');
   if (!req.body?.declarationAccepted) return apiResponse.error(res, 400, 'Declaration is required before submission', 'DECLARATION_REQUIRED');
-  const otpRecord = await assertOtpVerified('ownership_submission', normalizeEmail(profile.representativeEmail));
+  const mobile = profile.representativeMobile;
+  const channel = req.body?.channel === 'sms' && mobile ? 'sms' : 'email';
+  const identity = channel === 'sms' ? mobile : normalizeEmail(profile.representativeEmail);
+  if (!identity) return apiResponse.error(res, 400, 'Recipient identity not configured', 'VALIDATION_ERROR');
+
+  const otpRecord = await assertOtpVerified('ownership_submission', identity);
   if (!otpRecord.ok) return apiResponse.error(res, 400, 'Final submission OTP must be verified', 'FINAL_OTP_REQUIRED');
   const missingDocuments = requiredDocumentTypes(profile.registrationStatus).filter(type =>
     !(profile.documents || []).some((doc: any) => doc.documentType === type && ['UPLOADED', 'UNDER_REVIEW', 'VERIFIED'].includes(doc.status))
@@ -708,7 +730,7 @@ router.post('/shg/submit', authenticate, authorize('shg'), async (req: AuthReque
     data: { applicationStatus: 'PENDING_REVIEW', applicationNumber, submittedAt: new Date() },
     include: safeShgInclude
   });
-  await consumeOtp('ownership_submission', normalizeEmail(profile.representativeEmail));
+  await consumeOtp('ownership_submission', identity);
   await addShgAudit(profile.id, req, 'shg.application.submitted', { applicationNumber });
   return apiResponse.success(res, updated, 200, 'SHG application submitted');
 });

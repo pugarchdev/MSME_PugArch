@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Trophy,
   Users,
+  X,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -51,6 +52,10 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
   const { user } = useAuth();
   const isBuyerOrAdmin = user?.role === 'buyer' || user?.role === 'admin' || user?.role === 'master_admin';
   const [amount, setAmount] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [localError, setLocalError] = useState('');
+
   const summary = useQuery({
     queryKey: ['reverse-auction-live', id],
     queryFn: async () => {
@@ -67,12 +72,14 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
       return undefined;
     }
   });
+
   const participants = useQuery({
     queryKey: ['reverse-auction-participants', id],
     queryFn: () => reverseAuctionApi.participants(id),
     refetchInterval: 10_000,
     enabled: !summary.isError,
   });
+
   const bids = useQuery({
     queryKey: ['reverse-auction-bids', id],
     queryFn: () => reverseAuctionApi.bids(id),
@@ -86,12 +93,27 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
     qc.invalidateQueries({ queryKey: ['reverse-auction-bids', id] });
   };
 
+  const transition = useMutation({
+    mutationFn: (action: 'schedule' | 'start' | 'pause' | 'resume' | 'close') => reverseAuctionApi.transition(id, action),
+    onSuccess: () => {
+      setLocalError('');
+      invalidate();
+    },
+    onError: (err: any) => {
+      setLocalError(`Action failed: ${err.message}`);
+    }
+  });
+
   const bid = useMutation({
     mutationFn: (nextAmount: number) => reverseAuctionApi.placeBid(id, nextAmount),
     onSuccess: () => {
       setAmount('');
+      setLocalError('');
       invalidate();
     },
+    onError: (err: any) => {
+      setLocalError(err.message || 'Bid submission failed');
+    }
   });
 
   const auction = (summary.data?.auction || liveSummaryCache.get(id)?.auction) as ReverseAuction | undefined;
@@ -125,12 +147,37 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextAmount = Number(amount);
-    if (!Number.isFinite(nextAmount)) return;
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+      setLocalError('Please enter a valid positive number');
+      return;
+    }
+    if (minNextBid > 0 && nextAmount > minNextBid) {
+      setLocalError(`Bid amount cannot exceed ${formatCurrency(minNextBid)}`);
+      return;
+    }
+    if (!acceptedTerms) {
+      setLocalError('Please accept the auction terms and rules first');
+      return;
+    }
+    setLocalError('');
+    setShowConfirmModal(true);
+  };
+
+  const confirmSubmit = () => {
+    const nextAmount = Number(amount);
+    setShowConfirmModal(false);
     bid.mutate(nextAmount);
   };
 
   return (
     <div className="space-y-4 pb-6">
+      {localError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 flex justify-between items-center">
+          <span>{localError}</span>
+          <button onClick={() => setLocalError('')}><X className="h-4 w-4" /></button>
+        </div>
+      )}
+      
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
@@ -148,18 +195,38 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
               {auction.description || 'Participate in a price-only reverse auction with server-time validation, rank tracking, decrement controls, and audit-backed bid submission.'}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             <Button type="button" variant="outline" onClick={invalidate} disabled={summary.isFetching}>
               <RefreshCw className={cn('mr-2 h-4 w-4', summary.isFetching && 'animate-spin')} /> Refresh
             </Button>
             <Link href={`/reverse-auctions/${id}`}><Button type="button" variant="outline">Details</Button></Link>
-            <Link href={`/reverse-auctions/${id}/results`}><Button type="button" variant="secondary">Results</Button></Link>
+            {isBuyerOrAdmin ? (
+              <>
+                {status === 'DRAFT' && (
+                  <Button onClick={() => transition.mutate('schedule')} variant="outline">Schedule</Button>
+                )}
+                {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(status) && (
+                  <Button onClick={() => transition.mutate('start')} className="bg-emerald-600 hover:bg-emerald-700 text-white">Start</Button>
+                )}
+                {status === 'LIVE' && (
+                  <Button onClick={() => transition.mutate('pause')} variant="secondary">Pause</Button>
+                )}
+                {['LIVE', 'PAUSED'].includes(status) && (
+                  <Button onClick={() => transition.mutate('close')} variant="danger">Close</Button>
+                )}
+                <Link href={`/reverse-auctions/${id}/results`}><Button type="button" variant="secondary">Results</Button></Link>
+              </>
+            ) : null}
           </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Metric icon={IndianRupee} label="Current lowest" value={currentLowest > 0 ? formatCurrency(currentLowest) : 'No bids yet'} tone="green" />
-          <Metric icon={Trophy} label="My rank" value={participant?.currentRank ? `L${participant.currentRank}` : 'Not ranked'} tone="amber" />
+          {isBuyerOrAdmin ? (
+            <Metric icon={Users} label="Invited Sellers" value={formatNumber(participantRows.length)} tone="amber" />
+          ) : (
+            <Metric icon={Trophy} label="My rank" value={participant?.currentRank ? `L${participant.currentRank}` : 'Not ranked'} tone="amber" />
+          )}
           <Metric icon={LineChart} label="Savings from start" value={savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : 'Not established'} tone="blue" />
           <Metric icon={Clock3} label="Ends" value={formatRelative(auction.endTime)} hint={formatDateTime(auction.endTime)} tone="slate" />
           <Metric icon={RadioTower} label="Server time" value={formatDateTime(summary.data?.serverTime)} tone="slate" />
@@ -236,13 +303,20 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="space-y-4 p-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Submit Lower Bid</p>
-                <h2 className="mt-1 text-base font-black text-slate-950">Bidding Console</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+                  {isBuyerOrAdmin ? 'Sourcing Control' : 'Submit Lower Bid'}
+                </p>
+                <h2 className="mt-1 text-base font-black text-slate-950">
+                  {isBuyerOrAdmin ? 'Live Sourcing Console' : 'Bidding Console'}
+                </h2>
                 <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
-                  Bid must be lower than or equal to the permitted next amount. Final validation happens on server time under an auction lock.
+                  {isBuyerOrAdmin
+                    ? 'Monitor MSME bid activities, adjust live parameters, or pause/close the event.'
+                    : 'Your bid must be lower than or equal to the permitted next amount. Final check occurs on server time.'}
                 </p>
               </div>
 
+              {/* Warning/Status locks */}
               {!live && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
                   <div className="flex items-start gap-2">
@@ -254,36 +328,89 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
                 </div>
               )}
 
-              {bid.error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{(bid.error as Error).message}</div>}
+              {!isBuyerOrAdmin && participant?.status === 'DISQUALIFIED' && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+                  Disqualified: {participant.disqualificationReason || 'No reason specified'}
+                </div>
+              )}
 
+              {!isBuyerOrAdmin && participant?.status === 'INVITED' && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs font-bold text-blue-800 leading-normal">
+                  Invitation pending. Bidding will activate automatically when you place a bid or accept terms below.
+                </div>
+              )}
+
+              {/* Bid limits and guardrails */}
               <div className="grid grid-cols-2 gap-2">
                 <BidGuardrail label="Minimum next bid" value={minNextBid > 0 ? formatCurrency(minNextBid) : '-'} />
                 <BidGuardrail label="Decrement" value={decrement > 0 ? formatCurrency(decrement) : '-'} />
-                <BidGuardrail label="Reserve price" value={auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not shown'} />
+                <BidGuardrail label="Reserve price" value={isBuyerOrAdmin && auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not shown'} />
                 <BidGuardrail label="Auto extensions" value={auction.autoExtensionEnabled ? `${extensionCount}/${maxExtensions}` : 'Disabled'} />
               </div>
 
-              <form onSubmit={submit} className="space-y-3">
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Your bid amount</span>
-                  <input
-                    value={amount}
-                    onChange={event => setAmount(event.target.value)}
-                    name="amount"
-                    type="number"
-                    min="1"
-                    max={minNextBid > 0 ? minNextBid : undefined}
-                    step="0.01"
-                    required
-                    placeholder={minNextBid > 0 ? `Up to ${minNextBid}` : 'Enter amount'}
-                    className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-black text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
-                    disabled={!live || bid.isPending}
-                  />
-                </label>
-                <Button disabled={!live || bid.isPending} className="h-11 w-full rounded-md">
-                  <Send className="mr-2 h-4 w-4" /> {bid.isPending ? 'Submitting...' : 'Submit bid'}
-                </Button>
-              </form>
+              {/* Console Forms */}
+              {isBuyerOrAdmin ? (
+                <div className="space-y-3 pt-2">
+                  <div className="rounded bg-slate-50 p-3 text-xs font-semibold leading-relaxed text-slate-600 border">
+                    <p className="font-bold text-[#12335f] mb-1">Live Sourcing Monitoring Active</p>
+                    <p>Invited Sellers: {participantRows.length}</p>
+                    <p className="mt-1">Active Sellers: {participantRows.filter((p: any) => p.status === 'ACCEPTED').length}</p>
+                    <p className="mt-1">Auto Extensions Triggered: {extensionCount} / {maxExtensions}</p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={submit} className="space-y-3">
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Your bid amount</span>
+                    <input
+                      value={amount}
+                      onChange={event => setAmount(event.target.value)}
+                      name="amount"
+                      type="number"
+                      min="1"
+                      max={minNextBid > 0 ? minNextBid : undefined}
+                      step="0.01"
+                      required
+                      placeholder={minNextBid > 0 ? `Up to ${minNextBid}` : 'Enter amount'}
+                      className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-black text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+                      disabled={!live || bid.isPending || participant?.status === 'DISQUALIFIED'}
+                    />
+                  </label>
+
+                  {/* Terms Checkbox */}
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 transition hover:bg-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={acceptedTerms}
+                      onChange={e => setAcceptedTerms(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-350 text-[#12335f] focus:ring-[#12335f]"
+                      disabled={!live || bid.isPending || participant?.status === 'DISQUALIFIED'}
+                    />
+                    <span className="text-[10px] font-bold text-slate-700 leading-normal select-none">
+                      I accept the reverse auction terms, bidding rules, and confirm our capacity to supply.
+                    </span>
+                  </label>
+
+                  <Button 
+                    disabled={!live || bid.isPending || !acceptedTerms || participant?.status === 'DISQUALIFIED'} 
+                    className="h-11 w-full rounded-md"
+                  >
+                    <Send className="mr-2 h-4 w-4" /> {bid.isPending ? 'Submitting...' : 'Submit bid'}
+                  </Button>
+
+                  {/* Confirmation Modal Panel */}
+                  {showConfirmModal && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 mt-3 text-xs font-semibold text-slate-700 space-y-2.5">
+                      <p className="font-bold text-[#12335f]">Confirm Commercial Bid</p>
+                      <p>Are you sure you want to submit a commercial downward bid of <span className="font-black text-slate-950">{formatCurrency(Number(amount))}</span>? This offer is legally binding.</p>
+                      <div className="flex gap-2">
+                        <Button size="sm" type="button" onClick={confirmSubmit} className="bg-[#12335f] hover:bg-[#0e2a4f] text-white">Confirm & Submit</Button>
+                        <Button size="sm" type="button" variant="outline" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              )}
             </CardContent>
           </Card>
 

@@ -70,7 +70,16 @@ const checkFeatureIfAuthenticated = (featureCode: string) => {
         // If user has no company context, allow through — marketplace pages are public
         // and should not block authenticated users who lack a companyId.
         if (!req.user.companyId) return next();
-        return checkFeatureEnabled(featureCode)(req, res, next);
+        
+        // Only block if the feature is explicitly disabled for the company.
+        // For new organizations, allow features by default.
+        const disabledRecord = await prisma.companyFeature.findFirst({
+            where: { companyId: req.user.companyId, enabled: false, feature: { code: featureCode } }
+        });
+        if (disabledRecord) {
+            return res.status(403).json({ success: false, message: 'Feature is disabled for this company', code: 'FEATURE_DISABLED' });
+        }
+        return next();
     };
 };
 
@@ -1553,6 +1562,18 @@ router.get('/marketplace/products', optionalAuthenticate, checkFeatureIfAuthenti
         if (query.verified === 'true' || query.verifiedSeller === 'true') {
             where.AND = [...(where.AND || []), { organization: { verificationStatus: 'VERIFIED' } }];
         }
+        if (req.query.msmeOnly === 'true' || req.query.isMsmeMade === 'true') {
+            where.isMsmeMade = true;
+        }
+        if (req.query.bulkDeal === 'true' || req.query.bulkDealAvailable === 'true') {
+            where.bulkDealAvailable = true;
+        }
+        if (req.query.taxRate !== undefined && req.query.taxRate !== '') {
+            where.taxRate = Number(req.query.taxRate);
+        }
+        if (req.query.brand !== undefined && req.query.brand !== '') {
+            where.brand = { contains: String(req.query.brand), mode: 'insensitive' };
+        }
         if (query.discount === 'true' || query.discount === 'active' || query.sort === 'discount') {
             const offer = activeOfferWhere();
             where.AND = [...(where.AND || []), ...(Array.isArray(offer.AND) ? offer.AND : []), { OR: offer.OR }];
@@ -1685,6 +1706,12 @@ router.get('/marketplace/services', optionalAuthenticate, checkFeatureIfAuthenti
         }
         if (query.verified === 'true' || query.verifiedSeller === 'true') {
             where.AND = [...(where.AND || []), { organization: { verificationStatus: 'VERIFIED' } }];
+        }
+        if (req.query.msmeOnly === 'true' || req.query.isMsmeMade === 'true') {
+            where.isMsmeMade = true;
+        }
+        if (req.query.taxRate !== undefined && req.query.taxRate !== '') {
+            where.taxRate = Number(req.query.taxRate);
         }
         if (query.discount === 'true' || query.discount === 'active' || query.sort === 'discount') {
             const offer = activeOfferWhere();
@@ -2147,8 +2174,14 @@ router.get('/public/requirements/latest', shortCache(30), async (req: Request, r
 router.post('/buyer/requirements', authenticate, authorize('buyer', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
     try {
         const body = requirementSchema.parse(req.body);
-        const actor = await prisma.user.findUnique({ where: { id: Number(req.user?.id) }, select: { onboardingStatus: true, organizationId: true, companyId: true } });
-        if (req.user?.role === 'buyer' && (!actor || !['approved_for_procurement', 'approved'].includes(String(actor.onboardingStatus)))) {
+        const actor = await prisma.user.findUnique({
+            where: { id: Number(req.user?.id) },
+            select: { onboardingStatus: true, organizationId: true, companyId: true, isDualRole: true, buyerProfile: true }
+        });
+        const isApproved = actor?.isDualRole
+            ? (actor.buyerProfile?.verificationStatusEnum === 'VERIFIED' || actor.buyerProfile?.verificationStatus === 'VERIFIED')
+            : ['approved_for_procurement', 'approved'].includes(String(actor?.onboardingStatus));
+        if (req.user?.role === 'buyer' && !isApproved) {
             return apiResponse.error(res, 403, 'Please complete buyer onboarding and organization verification to continue.', 'BUYER_VERIFICATION_REQUIRED');
         }
         const requirement = await db.buyerRequirement.create({
@@ -2169,8 +2202,14 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
         if (req.user?.role !== 'seller') {
             return apiResponse.error(res, 403, 'Only seller accounts can respond to buyer requirements.', 'SELLER_ROLE_REQUIRED');
         }
-        const seller = await prisma.user.findUnique({ where: { id: Number(req.user?.id) }, select: { id: true, onboardingStatus: true, organizationId: true } });
-        if (req.user?.role === 'seller' && (!seller || !['approved_for_procurement', 'approved'].includes(String(seller.onboardingStatus)))) {
+        const seller = await prisma.user.findUnique({
+            where: { id: Number(req.user?.id) },
+            select: { id: true, onboardingStatus: true, organizationId: true, isDualRole: true, sellerProfile: true }
+        });
+        const isSellerApproved = seller?.isDualRole
+            ? seller.sellerProfile?.verificationStatusEnum === 'VERIFIED'
+            : ['approved_for_procurement', 'approved'].includes(String(seller?.onboardingStatus));
+        if (req.user?.role === 'seller' && !isSellerApproved) {
             return apiResponse.error(res, 403, 'Please complete seller onboarding and verification to respond to this requirement.', 'SELLER_VERIFICATION_REQUIRED');
         }
         const sellerOrganizationId = seller?.organizationId || req.user?.organizationId || null;

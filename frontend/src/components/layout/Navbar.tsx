@@ -37,6 +37,7 @@ import {
   Check,
   CheckSquare,
   UserPlus,
+  PlusCircle,
   ClipboardList,
   BookOpen,
   Images,
@@ -45,7 +46,9 @@ import {
   UsersRound,
   MessageSquare,
   Mail,
-  MapPin
+  MapPin,
+  UserCheck,
+  Globe
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -73,11 +76,14 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('../../views/Dashboard'),
   '/master-admin': () => import('../../features/masterAdmin/pages/MasterAdminPage'),
   '/buyer/create-procurement': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
-  '/buyer/create-bid': () => import('../../features/bidCreationWizardV2/pages/CreateBidPage'),
+  // LEGACY: /buyer/create-bid now shows LegacyNoticePage → redirects to unified wizard
+  '/buyer/create-bid': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/drafts': () => import('../../features/procurementWizard/pages/ProcurementDraftsPage'),
   '/buyer/procurements': () => import('../../features/requirements/pages/RequirementsPage'),
   '/seller/opportunities': () => import('../../features/sellerOpportunities/pages/SellerOpportunitiesPage'),
+  '/seller/procurement': () => import('../../features/sellerOpportunities/pages/SellerProcurementHub'),
+  '/seller/procurement/events': () => import('../../features/sellerOpportunities/pages/SellerEventListPage'),
   '/orders': () => import('../../features/procurementBid/pages/ProcurementOrdersPage'),
   '/orders/delivery-confirmation': () => import('../../features/grn/pages/GrnListPage'),
   '/orders/tracking': () => import('../../views/ParcelTracking'),
@@ -440,21 +446,17 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
     { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
-    { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    { label: 'Marketplace (Buy Products)', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
-      { label: 'Buying Dashboard', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
-      { label: 'My Procurements', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
-      // { label: 'Buy from Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
-      // { label: 'My Cart / Checkout', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
-      // { label: 'Create Bid / Tender', path: '/buyer/create-bid', icon: Gavel, roles: ['buyer'] },
-      // { label: 'Create Reverse Auction', path: '/reverse-auctions/create', icon: Gavel, roles: ['buyer'] },
-      // { label: 'PAC Procurement', path: '/buyer/create-bid?type=PAC', icon: FileText, roles: ['buyer'] },
-      { label: 'Procurement Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
-      { label: 'My Bids / Tenders', path: '/buyer/tenders', icon: Gavel, roles: ['buyer'] },
-      { label: 'Direct Purchase', path: '/buyer/direct-purchase/orders', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Sourcing Hub / Dashboard', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
+      { label: 'Create Procurement', path: '/buyer/procurement/create', icon: PlusCircle, roles: ['buyer'] },
+      { label: 'My Procurement Requests', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
+      
+      { label: 'Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
+      
       { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },
-      { label: 'Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },
-      // { label: 'Orders', path: '/orders', icon: Truck, roles: ['buyer'] },
+      { label: 'Pending Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },
+      
     ] },
     { label: 'Orders', icon: Truck, roles: ['buyer'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['buyer'] },
@@ -472,15 +474,15 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Messages', path: '/buyer/messages', icon: MessageSquare, roles: ['buyer'] },
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
-    { label: 'Opportunities', icon: FileSearch, roles: ['seller'], children: [
-      { label: 'New Opportunities', path: '/seller/opportunities', icon: FileSearch, roles: ['seller'] },
-      { label: 'RFQ', path: '/seller/opportunities?type=quote', icon: ClipboardCheck, roles: ['seller'] },
-      { label: 'Buyer Requirements', path: '/seller/opportunities?type=requirement', icon: ClipboardList, roles: ['seller'] },
-      { label: 'Reverse Auctions', path: '/seller/opportunities?type=auction', icon: Gavel, roles: ['seller'] },
-    ] },
-    { label: 'Tenders & Bids', icon: Gavel, roles: ['seller'], children: [
-      { label: 'Public Tenders', path: '/seller/tenders', icon: Gavel, roles: ['seller'] },
-      { label: 'My Bids', path: '/quotations', icon: ClipboardCheck, roles: ['seller'] },
+    { label: 'Procurement Sourcing', icon: FileSearch, roles: ['seller'], children: [
+      { label: 'Unified Sourcing Hub', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
+      { label: 'Marketplace Sourcing Leads', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
+      { label: 'Unified Sourcing Events', path: '/seller/procurement/events', icon: ClipboardList, roles: ['seller'] },
+      { label: 'Invited Sourcing Events', path: '/seller/procurement/events?filter=invited', icon: UserCheck, roles: ['seller'] },
+      { label: 'My Submissions', path: '/quotations', icon: ClipboardCheck, roles: ['seller'] },
+      { label: 'Clarifications', path: '/seller/procurement/events?filter=clarifications', icon: MessageSquare, roles: ['seller'] },
+      { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['seller'] },
+      { label: 'Legacy/Public Tenders', path: '/seller/tenders', icon: Globe, roles: ['seller'] },
     ] },
     { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
     { label: 'Orders & Deliveries', icon: Truck, roles: ['seller'], children: [
@@ -492,9 +494,9 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['seller'], featureCode: 'payment-module' },
       { label: 'Payment Status', path: '/payments/transactions', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module' },
     ] },
-    { label: 'Marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog', children: [
-      { label: 'Products & Services', path: '/seller/marketplace', icon: ShoppingCart, roles: ['seller'], featureCode: 'product-service-catalog' },
-      { label: 'My Catalogue', path: '/seller/catalogue', icon: Store, roles: ['seller'] },
+    { label: 'Marketplace', icon: ShoppingCart, roles: ['seller', 'shg'], children: [
+      { label: 'Products & Services', path: '/seller/marketplace', icon: Store, roles: ['seller', 'shg'] },
+      { label: 'My Catalogue', path: '/seller/catalogue', icon: Store, roles: ['seller', 'shg'] }
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['seller'] },
     { label: 'Banner Eligibility', path: '/my-org/banner-eligibility', icon: Images, roles: ['seller', 'buyer'] },

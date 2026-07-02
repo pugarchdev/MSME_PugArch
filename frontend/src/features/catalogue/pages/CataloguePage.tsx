@@ -723,70 +723,55 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       : 'Search approved products and services from active sellers.';
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#059669]">{title}</p>
-          <h1 className="text-2xl font-black text-slate-950 font-sans tracking-tight">Marketplace</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{subtitle}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {mode === 'seller' && (
-            <>
-              <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <PackagePlus className="mr-2 h-4 w-4" /> Add Product
-              </Button>
-              <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700">
-                <Wrench className="mr-2 h-4 w-4" />Add Service
-              </Button>
-              <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
-                <FileUp className="mr-2 h-4 w-4" /> Import Products
-              </Button>
-              <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('service')} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
-                <FileUp className="mr-2 h-4 w-4" /> Import Services
-              </Button>
-              <Button disabled={!sellerApproved} variant="outline" onClick={() => {
-                const path = '/api/catalogue/import/templates/products';
-                const token = localStorage.getItem('token') || '';
-                fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
-                  .then(r => r.blob())
-                  .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'catalogue_products_template.xlsx';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  })
-                  .catch(() => toast.error('Template download failed'));
-              }} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
-                <Download className="mr-2 h-4 w-4" /> Product Template
-              </Button>
-              <Button disabled={!sellerApproved} variant="outline" onClick={() => {
-                const path = '/api/catalogue/import/templates/services';
-                const token = localStorage.getItem('token') || '';
-                fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
-                  .then(r => r.blob())
-                  .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'catalogue_services_template.xlsx';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  })
-                  .catch(() => toast.error('Template download failed'));
-              }} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider">
-                <Download className="mr-2 h-4 w-4" /> Service Template
-              </Button>
-            </>
-          )}
-          <Button variant="outline" onClick={loadCatalogue} className="h-10 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50">
-            <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />Refresh
-          </Button>
-          {/* Standardised list/grid view toggle */}
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
-
+    <div className="space-y-6 min-w-0">
+      {/* Premium Dashboard Banner Header */}
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0c1a30] via-[#122b4f] to-[#1d447d] p-6 text-white shadow-lg relative">
+        <div className="absolute right-0 top-0 h-40 w-40 bg-emerald-500/10 rounded-full blur-3xl" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between relative z-10">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+              <Store className="h-3.5 w-3.5" /> {title}
+            </div>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">Marketplace Catalogue</h1>
+            <p className="mt-1 text-xs font-semibold text-white/70">{subtitle}</p>
+          </div>
+          
+          <div className="flex flex-wrap gap-2.5">
+            {mode === 'seller' && (
+              <>
+                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border-0 px-4">
+                  <PackagePlus className="mr-2 h-4 w-4" /> Add Product
+                </Button>
+                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white shadow-md border-0 px-4">
+                  <Wrench className="mr-2 h-4 w-4" /> Add Service
+                </Button>
+                <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10">
+                  <FileUp className="mr-2 h-4 w-4" /> Import
+                </Button>
+                <Button disabled={!sellerApproved} variant="outline" onClick={() => {
+                  const path = '/api/catalogue/import/templates/products';
+                  const token = localStorage.getItem('token') || '';
+                  fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+                    .then(r => r.blob())
+                    .then(blob => {
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'catalogue_products_template.xlsx';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })
+                    .catch(() => toast.error('Template download failed'));
+                }} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10" title="Download Product Template">
+                  <Download className="mr-2 h-4 w-4" /> Template
+                </Button>
+              </>
+            )}
+            <Button variant="outline" onClick={loadCatalogue} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10 backdrop-blur-sm">
+              <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} /> Refresh
+            </Button>
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          </div>
         </div>
       </div>
 
@@ -1894,13 +1879,14 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
 
 function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
   return (
-    <Card className="border-slate-200/80 shadow-sm bg-white hover:border-emerald-100 transition-all duration-200">
-      <CardContent className="flex items-center justify-between p-4">
+    <Card className="border-slate-250/70 shadow-sm bg-white hover:shadow-md hover:border-slate-350/80 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl relative overflow-hidden group">
+      <div className="absolute right-0 top-0 h-16 w-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition-all duration-300" />
+      <CardContent className="flex items-center justify-between p-5">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-          <p className="mt-1 text-lg font-black text-neutral-900">{value}</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+          <p className="mt-1.5 text-xl font-extrabold text-slate-900 font-mono tracking-tight">{value}</p>
         </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 shadow-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 shadow-sm group-hover:scale-105 group-hover:bg-emerald-50 group-hover:text-emerald-600 group-hover:border-emerald-100 transition-all duration-300 shrink-0">
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>

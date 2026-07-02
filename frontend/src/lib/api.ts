@@ -195,6 +195,14 @@ const invalidatePrefixFor = (endpoint: string) => {
   const cleanPrefix = prefix.startsWith('/') ? prefix : '/' + prefix;
   prefixesToInvalidate.add(cleanPrefix);
 
+  if (cleanPrefix.startsWith('/api/seller/products') || cleanPrefix.startsWith('/api/seller/services')) {
+    prefixesToInvalidate.add('/api/seller/products');
+    prefixesToInvalidate.add('/api/seller/services');
+    prefixesToInvalidate.add('/api/marketplace/products');
+    prefixesToInvalidate.add('/api/marketplace/services');
+    prefixesToInvalidate.add('/api/marketplace/home');
+  }
+
   if (cleanPrefix.startsWith('/api/cart')) {
     prefixesToInvalidate.add('/api/cart');
     prefixesToInvalidate.add('/api/approvals');

@@ -1,0 +1,1 @@
+import { GstService } from './src/services/gstService.ts'; import dotenv from 'dotenv'; dotenv.config(); GstService.verifyGstin('27AAKCP3338H1Z8').then(d => { console.log(JSON.stringify(d.raw, null, 2)); console.log('----'); console.log(JSON.stringify(d, null, 2)) }).catch(console.error);

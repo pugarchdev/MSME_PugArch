@@ -66,7 +66,7 @@ test('Stage 1: registration creates a User row with role', () => {
 test('Stage 2a: GST verify upserts Organization for buyer and seller', () => {
     assert.match(phase4, /async function upsertOrganizationFromGst/);
     assert.match(phase4, /db\.organization\.create/);
-    assert.match(phase4, /verificationStatus:\s*'VERIFIED'/);
+    assert.match(phase4, /verificationStatus:\s*'PENDING'/);
 });
 
 test('Stage 2b: GST verify links User.organizationId for both roles', () => {
@@ -190,10 +190,10 @@ test('Stage 6d: org admin can change member role and remove members', () => {
 // STAGE 7 — Cart workflow
 // ============================================================
 
-test('Stage 7a: cart routes require ApprovedOrg + OrgRole', () => {
+test('Stage 7a: cart routes require ApprovedOrg + Permission', () => {
     assert.match(cartRoutes, /'\/cart\/items'/);
     assert.match(cartRoutes, /requireApprovedOrg/);
-    assert.match(cartRoutes, /requireOrgRole/);
+    assert.match(cartRoutes, /requirePermission/);
 });
 
 test('Stage 7b: cart submission notifies finance officers', () => {
@@ -216,7 +216,7 @@ test('Stage 7d: rejection requires a note >= 5 chars', () => {
 test('Stage 7e: tech officer scope is per line item', () => {
     assert.match(cartRoutes, /'\/cart\/items\/:id\/tech-approve'/);
     assert.match(cartRoutes, /'\/cart\/items\/:id\/tech-reject'/);
-    assert.match(cartRoutes, /requireOrgRole\('ORG_ADMIN',\s*'TECHNICAL_OFFICER'\)/);
+    assert.match(cartRoutes, /requirePermission\('inspection\.approve',\s*orgScope\)/);
 });
 
 test('Stage 7f: starting an approval chain on cart requires APPROVED state', () => {
@@ -304,12 +304,12 @@ test('Stage 10b: only qualified bids (≥60%) appear in financial tab', () => {
     assert.match(tenderEvalRoutes, /total \/ maxScore\) >= 0\.6/);
 });
 
-test('Stage 10c: opening financial bids is restricted to PROCUREMENT or ORG_ADMIN', () => {
+test('Stage 10c: opening financial bids is restricted to bid.financial.evaluate permission', () => {
     // The route registers '/tender-eval/:tenderId/open-financial' followed by
-    // authenticate, authorize, requireApprovedOrg, requireOrgRole(ORG_ADMIN, PROCUREMENT_OFFICER).
+    // authenticate, requireApprovedOrg, requireScopedPermission('bid.financial.evaluate').
     assert.match(
         tenderEvalRoutes,
-        /'\/tender-eval\/:tenderId\/open-financial'[\s\S]*?requireOrgRole\('ORG_ADMIN',\s*'PROCUREMENT_OFFICER'\)/
+        /'\/tender-eval\/:tenderId\/open-financial'[\s\S]*?requireScopedPermission\('bid\.financial\.evaluate'\)/
     );
 });
 

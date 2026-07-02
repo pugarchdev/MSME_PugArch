@@ -404,9 +404,12 @@ export const assertSellerVerified = async (actor: Actor) => {
   });
   assertActiveAccount(user, 'Seller');
   if (user?.organization?.isBlacklisted) throw new ApiError(403, 'Seller organization is blocked for procurement participation.', 'SELLER_NOT_VERIFIED');
-  const profileVerified = user?.sellerProfile?.verificationStatusEnum === 'VERIFIED' || user?.sellerProfile?.panVerified || user?.sellerProfile?.isUdyamCertified;
+  const profileVerified = user?.isDualRole
+    ? user?.sellerProfile?.verificationStatusEnum === 'VERIFIED'
+    : user?.sellerProfile?.verificationStatusEnum === 'VERIFIED' || user?.sellerProfile?.panVerified || user?.sellerProfile?.isUdyamCertified;
   const orgVerified = user?.organization?.verificationStatus === 'VERIFIED';
-  if (!user || (!sellerVerifiedStatuses.includes(String(user.onboardingStatus)) && !profileVerified && !orgVerified)) {
+  const legacyApproved = user?.isDualRole ? false : sellerVerifiedStatuses.includes(String(user?.onboardingStatus));
+  if (!user || (!legacyApproved && !profileVerified && !orgVerified)) {
     throw new ApiError(403, 'Please complete seller verification before participating in bids.', 'SELLER_NOT_VERIFIED');
   }
 };
@@ -420,8 +423,8 @@ export const assertBuyerVerified = async (actor: Actor) => {
   assertActiveAccount(user, 'Buyer');
   if (user?.organization?.isBlacklisted) throw new ApiError(403, 'Buyer organization is blocked for procurement publishing.', 'BUYER_NOT_VERIFIED');
   const orgVerified = user?.organization ? verifiedOrganizationStatuses.includes(String(user.organization.verificationStatus)) : false;
-  const profileVerified = user?.buyerProfile?.verificationStatusEnum === 'VERIFIED';
-  const legacyApproved = sellerVerifiedStatuses.includes(String(user?.onboardingStatus));
+  const profileVerified = user?.buyerProfile?.verificationStatusEnum === 'VERIFIED' || user?.buyerProfile?.verificationStatus === 'VERIFIED';
+  const legacyApproved = user?.isDualRole ? false : sellerVerifiedStatuses.includes(String(user?.onboardingStatus));
   if (!user || (!orgVerified && !profileVerified && !legacyApproved)) {
     throw new ApiError(403, 'Buyer organization must be verified before submitting bids for admin approval.', 'BUYER_NOT_VERIFIED');
   }

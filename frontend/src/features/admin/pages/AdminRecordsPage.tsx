@@ -624,7 +624,7 @@ function DetailPanel({ kind, record, onClose }: { kind: AdminKind; record: Recor
               <DetailSection title="Aadhaar Verification">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DetailField label="Status" value={label(aadhaarKycOf(record)?.status)} />
-                  <DetailField label="Provider" value="MeriPehchaan / API Setu" />
+                  <DetailField label="Provider" value="MeriPehchaan" />
                   <DetailField label="Verified Name" value={aadhaarKycOf(record)?.verifiedName || 'Not available'} />
                   <DetailField label="Verified At" value={formatDate(aadhaarKycOf(record)?.verifiedAt)} />
                   <DetailField label="Reference Key" value={aadhaarKycOf(record)?.referenceKey || 'Not available'} />

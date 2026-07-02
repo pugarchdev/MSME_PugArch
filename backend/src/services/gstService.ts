@@ -114,6 +114,20 @@ export const hasValidGstinChecksum = (value: unknown) => {
 
 export const isValidGstin = (value: unknown) => hasValidGstinChecksum(value);
 
+const parseGstDateStr = (dateStr: unknown): string => {
+  const str = clean(dateStr);
+  if (!str) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    const [day, month, year] = str.split('/');
+    return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return '';
+};
+
 const pick = (...values: unknown[]) => {
   for (const value of values) {
     const normalized = clean(value);
@@ -133,27 +147,41 @@ const nested = (source: any, paths: string[]) => {
 
 const compact = (...values: unknown[]) => values.map(clean).filter(Boolean);
 
-const providerPayload = (raw: any) =>
-  raw?.data?.result ||
-  raw?.data?.gstinData ||
-  raw?.data?.gstDetails ||
-  raw?.data?.data ||
-  raw?.result ||
-  raw?.gstinData ||
-  raw?.gstDetails ||
-  raw?.taxpayerDetails ||
-  raw?.taxPayerDetails ||
-  raw?.certificateData ||
-  raw;
+const providerPayload = (raw: any) => {
+  // API Setu v2 returns [] when no data — treat empty arrays as empty.
+  if (Array.isArray(raw) && raw.length === 0) return {};
+  return (
+    raw?.data?.result ||
+    raw?.data?.gstinData ||
+    raw?.data?.gstDetails ||
+    raw?.data?.data ||
+    raw?.result ||
+    raw?.gstinData ||
+    raw?.gstDetails ||
+    raw?.taxpayerDetails ||
+    raw?.taxPayerDetails ||
+    raw?.certificateData ||
+    raw
+  );
+};
 
 const config = () => {
   const apiKey = cleanEnv(process.env.APISETU_API_KEY || process.env.GST_APISETU_APIKEY);
   const clientId = cleanEnv(process.env.APISETU_CLIENT_ID || process.env.GST_APISETU_CLIENTID);
-  const urlTemplate = cleanEnv(process.env.APISETU_GST_URL || 'https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}');
+  const urlTemplate = cleanEnv(process.env.APISETU_GST_URL || 'https://apisetu.gov.in/gstn/v1/taxpayers/{gstin}');
+  const contactEmail = cleanEnv(
+    process.env.APISETU_GST_EMAIL ||
+    process.env.APISETU_CONTACT_EMAIL ||
+    process.env.SMTP_USER ||
+    process.env.MASTER_ADMIN_EMAIL
+  );
+  const contactMobile = cleanEnv(process.env.APISETU_GST_MOBILE || process.env.APISETU_CONTACT_MOBILE).replace(/\D/g, '');
   return {
     apiKey,
     clientId,
     urlTemplate,
+    contactEmail,
+    contactMobile,
     configured: Boolean(apiKey && clientId && !/YOUR_|placeholder/i.test(`${apiKey} ${clientId}`))
   };
 };
@@ -188,6 +216,25 @@ const apiSetuCa = () => {
 const apiSetuAllowInsecureTls = () =>
   cleanEnv(process.env.APISETU_ALLOW_INSECURE_TLS).toLowerCase() === 'true' ||
   process.env.NODE_ENV !== 'production';
+
+const apiSetuCertificateFallbackEnabled = () =>
+  cleanEnv(process.env.APISETU_GST_CERTIFICATE_FALLBACK).toLowerCase() === 'true';
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const apiSetuMaxRetries = () => {
+  const parsed = Number(cleanEnv(process.env.APISETU_GST_MAX_RETRIES || 2));
+  return Number.isFinite(parsed) ? Math.min(3, Math.max(0, parsed)) : 2;
+};
+
+const isIncompleteGstData = (data: GstData) =>
+  Boolean(data.partial || (!data.legalName && !data.tradeName) || !data.address || !data.pincode || !data.city);
+
+type ApiSetuAttempt = {
+  method: string;
+  url: string;
+  body?: string;
+};
 
 const requestJson = async (url: string, init: RequestInit, headers: Record<string, string>) => {
   if (isApiSetuHost(url)) {
@@ -228,15 +275,35 @@ const requestJson = async (url: string, init: RequestInit, headers: Record<strin
   }
 };
 
-const certificateRequestBody = (gstin: string, clientId: string) => {
+const shouldTryNextAttempt = (status: number) =>
+  [404, 405, 415, 408, 429].includes(status) || status >= 500;
+
+const isTransientProviderStatus = (status: number) =>
+  status === 408 || status === 429 || status >= 500;
+
+const providerErrorMessage = (status: number) => {
+  if (status === 504) {
+    return 'GST verification provider timed out. Please try again after a few minutes.';
+  }
+  if (status === 429) {
+    return 'GST verification provider is rate-limiting requests. Please try again after a few minutes.';
+  }
+  return `GST verification failed: API Setu returned status ${status}`;
+};
+
+const certificateRequestBody = (gstin: string, clientId: string, contact: { email?: string; mobile?: string }) => {
   const now = new Date().toISOString();
   const to = new Date();
   to.setFullYear(to.getFullYear() + 1);
+  const contactParameters = {
+    ...(contact.mobile ? { mobile: contact.mobile } : {}),
+    ...(contact.email ? { email: contact.email } : {})
+  };
   return {
     txnId: crypto.randomUUID(),
     format: 'json',
-    certificateParameters: { GSTIN: gstin },
-    data: { id: gstin },
+    certificateParameters: { GSTIN: gstin, ...contactParameters },
+    data: { id: gstin, ...contactParameters },
     consentArtifact: {
       consent: {
         consentId: crypto.randomUUID(),
@@ -314,9 +381,9 @@ const normalizeProviderData = (raw: any, requestedGstin: string, source: GstData
     legalName,
     tradeName,
     organizationName: legalName || tradeName,
-    constitutionOfBusiness: pick(payload?.constitutionOfBusiness, payload?.ctb, payload?.ctj),
-    registrationDate: pick(payload?.dateOfRegistration, payload?.rgdt, payload?.registrationDate),
-    taxpayerType: pick(payload?.taxpayerType, payload?.dty, payload?.registrationType),
+    constitutionOfBusiness: pick(payload?.constitutionOfBusiness, payload?.ctb, payload?.ctj, payload?.constitution),
+    registrationDate: parseGstDateStr(pick(payload?.dateOfRegistration, payload?.rgdt, payload?.registrationDate)),
+    taxpayerType: pick(payload?.taxpayerType, payload?.dty, payload?.registrationType, payload?.taxPayerType),
     businessAddress: address,
     address,
     registeredOfficeAddress: address,
@@ -404,11 +471,24 @@ const cacheResult = async (data: GstData) => {
   }).catch(() => undefined);
 };
 
+/** Returns true when every meaningful field in a v1 response is null/empty. */
+const isAllNullResponse = (raw: any): boolean => {
+  if (Array.isArray(raw) && raw.length === 0) return true;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const values = Object.values(raw);
+    return values.length > 0 && values.every(v => v === null || v === undefined || v === '');
+  }
+  return false;
+};
+
 export class GstService {
   static normalize(raw: unknown) {
     const gstin = normalizeGstin(raw);
     if (!GSTIN_REGEX.test(gstin)) {
       throw new ApiError(400, 'Invalid GSTIN format. GSTIN must be 15 characters, for example 27AAKCP3338H1Z8.', 'INVALID_GSTIN');
+    }
+    if (!hasValidGstinChecksum(gstin)) {
+      throw new ApiError(400, 'Invalid GSTIN checksum. Please re-check the last character from your GST certificate.', 'INVALID_GSTIN_CHECKSUM');
     }
     return gstin;
   }
@@ -422,11 +502,10 @@ export class GstService {
     );
     if (cached && !isLegacyPlaceholder) return normalizeCacheData(cached, gstin);
 
-    const { apiKey, clientId, urlTemplate, configured } = config();
+    const { apiKey, clientId, contactEmail, contactMobile, configured } = config();
     if (!configured) {
       throw new ApiError(503, 'GST verification service is not configured (API credentials missing).', 'GST_NOT_CONFIGURED');
     }
-
     const headers = {
       'X-APISETU-APIKEY': apiKey,
       'X-APISETU-CLIENTID': clientId,
@@ -434,70 +513,117 @@ export class GstService {
       'Content-Type': 'application/json',
       'User-Agent': 'MSME-Portal/1.0'
     };
-    const url = apiUrlFor(urlTemplate, gstin);
-    const preferPost = /certificate\/v3/i.test(url) || cleanEnv(process.env.APISETU_GST_METHOD).toUpperCase() === 'POST';
-    const attempts = preferPost
-      ? [{ method: 'POST', url, body: JSON.stringify(certificateRequestBody(gstin, clientId)) }]
-      : [{ method: 'GET', url }, { method: 'POST', url: 'https://apisetu.gov.in/certificate/v3/taxpayers/gstn', body: JSON.stringify(certificateRequestBody(gstin, clientId)) }];
 
-    let lastResponse: { status: number; text: string } | null = null;
-    let lastNetworkError: { code?: string; message: string } | null = null;
-    for (const attempt of attempts) {
-      let response: { ok: boolean; status: number; body: any; text: string };
-      try {
-        response = await requestJson(attempt.url, { method: attempt.method, body: attempt.body }, headers);
-      } catch (error: any) {
-        // Network-level failure (DNS, TLS, timeout, abort). Log full detail so
-        // the underlying issue is visible in production logs, then try next
-        // attempt. We never want a single transient failure to mask the POST
-        // fallback that often succeeds.
-        lastNetworkError = {
-          code: error?.cause?.code || error?.code || error?.name,
-          message: String(error?.message || error)
-        };
-        logger.error({
-          err: error,
+    const contact = {
+      ...(contactMobile ? { mobile: contactMobile } : {}),
+      ...(contactEmail ? { email: contactEmail } : {})
+    };
+
+    const v2Url = `https://apisetu.gov.in/gstn/v2/taxpayers/${gstin}`;
+    const v1Url = `https://apisetu.gov.in/gstn/v1/taxpayers/${gstin}`;
+    const certificateFallbackAttempt: ApiSetuAttempt = {
+      method: 'POST',
+      url: 'https://apisetu.gov.in/certificate/v3/taxpayers/gstn',
+      body: JSON.stringify(certificateRequestBody(gstin, clientId, contact))
+    };
+
+    const shouldAttemptCertificateFallback = Boolean(contact.mobile || contact.email);
+    const attempts: ApiSetuAttempt[] = [
+      { method: 'GET', url: v2Url },
+      { method: 'GET', url: v1Url }
+    ];
+    if (shouldAttemptCertificateFallback) {
+      attempts.push(certificateFallbackAttempt);
+    }
+
+    const mergedGstData: GstData = {
+      gstNumber: gstin,
+      gstin: gstin,
+      requestedGstin: gstin,
+      responseGstin: gstin,
+      legalBusinessName: '',
+      legalName: '',
+      tradeName: '',
+      organizationName: '',
+      constitutionOfBusiness: '',
+      registrationDate: '',
+      taxpayerType: '',
+      businessAddress: '',
+      address: '',
+      registeredOfficeAddress: '',
+      country: 'India',
+      state: stateByCode[gstin.slice(0, 2)] || '',
+      city: '',
+      district: '',
+      pincode: '',
+      pinCode: '',
+      pan: gstin.slice(2, 12),
+      status: 'Active',
+      isRegisteredDealer: true,
+      source: 'live_apisetu',
+      raw: {},
+      partial: true,
+      message: 'GST details could not be fetched automatically. Please enter details manually.'
+    };
+
+    let hasReceivedValidResponse = false;
+    const maxRetries = apiSetuMaxRetries();
+
+    for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+      const attempt = attempts[attemptIndex];
+      let response: { ok: boolean; status: number; body: any; text: string } | null = null;
+      for (let retry = 0; retry <= maxRetries; retry += 1) {
+        try {
+          response = await requestJson(attempt.url, { method: attempt.method, body: attempt.body }, headers);
+        } catch (error: any) {
+          logger.error({
+            err: error,
+            gstinHash: gstin.slice(0, 4),
+            attemptUrl: attempt.url,
+            attemptMethod: attempt.method,
+            retry
+          }, '[GST] API Setu request failed');
+          if (retry < maxRetries) {
+            await sleep(500 * (retry + 1));
+            continue;
+          }
+          break;
+        }
+
+        if (response.ok || !isTransientProviderStatus(response.status) || retry >= maxRetries) break;
+        logger.warn({
           gstinHash: gstin.slice(0, 4),
+          providerStatus: response.status,
           attemptUrl: attempt.url,
           attemptMethod: attempt.method,
-          errorCode: lastNetworkError.code
-        }, '[GST] API Setu request failed');
-        continue;
-      }
-      if (!response.ok) {
-        lastResponse = { status: response.status, text: response.text };
-        if (![404, 405, 415].includes(response.status)) break;
-        continue;
+          retry: retry + 1
+        }, '[GST] API Setu transient failure; retrying');
+        await sleep(500 * (retry + 1));
       }
 
-      const normalized = normalizeProviderData(response.body, gstin, 'live_apisetu');
-      if (normalized.responseGstin && normalized.responseGstin !== gstin) {
-        throw new ApiError(400, `GSTIN mismatch: requested ${gstin}, but API returned ${normalized.responseGstin}`, 'GSTIN_MISMATCH');
+      if (response && response.ok && !isAllNullResponse(response.body)) {
+        const normalized = normalizeProviderData(response.body, gstin, 'live_apisetu');
+        hasReceivedValidResponse = true;
+        // Merge fields
+        for (const [key, val] of Object.entries(normalized)) {
+          if (val !== null && val !== undefined && val !== '' && val !== 'Unknown') {
+            (mergedGstData as any)[key] = val;
+          }
+        }
+        if (response.body) {
+          (mergedGstData.raw as any)[`attempt_${attemptIndex}`] = response.body;
+        }
       }
-      await cacheResult(normalized);
-      return normalized;
     }
 
-    if (lastResponse) {
-      logger.warn({
-        gstinHash: gstin.slice(0, 4),
-        providerStatus: lastResponse.status,
-        providerBody: lastResponse.text?.slice(0, 500)
-      }, '[GST] API Setu returned a non-success status');
-      throw new ApiError(
-        lastResponse.status < 500 ? 400 : 424,
-        `GST verification failed: API Setu returned status ${lastResponse.status}`,
-        'GST_PROVIDER_ERROR',
-        { providerStatus: lastResponse.status, providerBody: lastResponse.text?.slice(0, 500) }
-      );
+    if (hasReceivedValidResponse) {
+      mergedGstData.partial = isIncompleteGstData(mergedGstData);
+      mergedGstData.message = mergedGstData.partial ? 'Address not available from GST API. Please enter manually.' : undefined;
+      await cacheResult(mergedGstData);
+      return mergedGstData;
     }
 
-    // No response at all - every attempt threw a network error.
-    throw new ApiError(
-      424,
-      'GST verification provider is unreachable. Please try again later.',
-      'GST_PROVIDER_UNREACHABLE',
-      { cause: lastNetworkError?.code || lastNetworkError?.message || 'unknown' }
-    );
+    logger.warn({ gstinHash: gstin.slice(0, 4) }, '[GST] API Setu returned no data across all attempts. Falling back to manual entry.');
+    return mergedGstData;
   }
 }

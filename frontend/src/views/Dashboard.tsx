@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui/card';
-import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2, Images, Trophy, Package, Wrench, KeyRound, UserPlus, Truck, CreditCard, Store } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, XCircle, FileText, ArrowRight, ShieldCheck, Bell, Info, ShoppingBag, MessageSquare, Gavel, Briefcase, Users, BarChart3, ClipboardCheck, FileSearch, Loader2, Images, Trophy, Package, Wrench, KeyRound, UserPlus, Truck, CreditCard, Store, PlusCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { validators } from '../lib/validators';
@@ -15,6 +15,7 @@ import { bannerApi } from '../features/banners/api';
 import { marketplaceApi } from '../features/marketplace/api';
 import { resolveMarketplaceImage } from '../features/marketplace/utils/marketplaceImages';
 import { AIInsightBox } from '../features/dashboard/components/AIInsightBox';
+import { formatGstVerificationError } from '../features/shared/gstVerification';
 
 const ADMIN_REVIEW_CHECKLIST = [
   'Clear pending stakeholder approvals',
@@ -277,6 +278,14 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
+  const [showPendingModal, setShowPendingModal] = useState(false);
+
+  useEffect(() => {
+    if (user && ['buyer', 'seller'].includes(user.role) && user.organization && (user.organization as any).verificationStatus === 'PENDING') {
+      setShowPendingModal(true);
+    }
+  }, [user]);
+
   const [gstInput, setGstInput] = useState('');
   const [isSubmittingGst, setIsSubmittingGst] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -395,8 +404,7 @@ export default function Dashboard() {
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        const message = [errorData.message, errorData.instruction].filter(Boolean).join(' ');
-        throw new Error(message || "Failed to verify GSTIN. Please re-check the number or try again later.");
+        throw new Error(formatGstVerificationError(errorData));
       }
       toast.success("GSTIN verified and saved successfully!");
       await refreshUser({ skipCache: true });
@@ -705,6 +713,37 @@ export default function Dashboard() {
         </section>
       )}
 
+      {user?.role === 'seller' && (
+        <section className="rounded-lg border border-emerald-500/20 bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-4 shadow-sm animate-in fade-in duration-300">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Primary Seller Actions</p>
+              <h2 className="text-base font-black text-slate-950">Manage Products & Services</h2>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                Grow your business: upload products/services to the public Marketplace, manage your Catalogue, and bid on public tenders.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Link href="/seller/products/new">
+                <Button className="h-10 rounded-md bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-black uppercase tracking-wide text-white flex items-center gap-1.5 shadow-sm">
+                  <PlusCircle className="h-4 w-4" /> Add Product
+                </Button>
+              </Link>
+              <Link href="/seller/catalogue">
+                <Button variant="outline" className="h-10 rounded-md border-slate-200 bg-white hover:bg-slate-50 px-4 text-xs font-black uppercase tracking-wide text-slate-700 shadow-sm">
+                  My Catalogue
+                </Button>
+              </Link>
+              <Link href="/seller/marketplace">
+                <Button variant="outline" className="h-10 rounded-md border-[#12335f]/20 hover:border-[#12335f]/30 hover:bg-[#12335f]/5 text-[#12335f] px-4 text-xs font-black uppercase tracking-wide shadow-sm">
+                  Public Market
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {(user?.role as string) !== 'admin' && <RoleAwareActionCards />}
 
       <div className="space-y-4">
@@ -848,6 +887,41 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      {showPendingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 flex flex-col items-center text-center space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">
+                Organization Verification Pending
+              </h3>
+              <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                Your organization <span className="font-bold text-slate-700">"{user?.organization?.organizationName}"</span> is currently pending approval. Please complete your onboarding application to submit all sections for admin compliance review.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full pt-2">
+              <Button
+                onClick={() => {
+                  setShowPendingModal(false);
+                  router.push(user?.role === 'seller' ? '/seller/onboarding' : '/buyer/onboarding');
+                }}
+                className="w-full bg-[#12335f] hover:bg-[#0b2445] text-white rounded h-10 px-4 font-bold uppercase text-[11px] tracking-wide transition-all"
+              >
+                Verify Organization Now
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowPendingModal(false)}
+                className="w-full border-slate-200 hover:bg-slate-50 rounded h-10 px-4 font-bold uppercase text-[11px] tracking-wide text-slate-750 transition-all"
+              >
+                Remind Me Later
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

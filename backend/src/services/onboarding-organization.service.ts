@@ -286,7 +286,7 @@ export async function createOrUpdatePendingOrganization(userId: number): Promise
             pincode: orgData.pincode,
             website: orgData.website,
             verificationStatus: 'PENDING' as any,
-            organizationOnboardingStatus: 'under_compliance_review'
+            organizationOnboardingStatus: 'pending'
           },
           select: selectSafeOrganization
         });
@@ -304,8 +304,8 @@ export async function createOrUpdatePendingOrganization(userId: number): Promise
         organization = await tx.organization.update({
           where: { id: duplicate.id },
           data: {
-            verificationStatus: 'PENDING' as any,
-            organizationOnboardingStatus: 'under_compliance_review'
+            verificationStatus: duplicate.verificationStatus === 'VERIFIED' ? 'VERIFIED' as any : 'PENDING' as any,
+            organizationOnboardingStatus: duplicate.verificationStatus === 'VERIFIED' ? 'approved_for_procurement' : 'pending'
           },
           select: selectSafeOrganization
         });
@@ -322,7 +322,7 @@ export async function createOrUpdatePendingOrganization(userId: number): Promise
             website: orgData.website,
             companyId: defaultCompanyId,
             verificationStatus: 'PENDING' as any,
-            organizationOnboardingStatus: 'under_compliance_review'
+            organizationOnboardingStatus: 'pending'
           },
           select: selectSafeOrganization
         });

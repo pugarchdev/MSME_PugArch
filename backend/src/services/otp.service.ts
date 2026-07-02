@@ -4,6 +4,7 @@ import { isRedisReady, redis } from '../config/redis.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';
 import { sha256 } from '../utils/crypto.js';
+import { normalizeIndianMobile } from './sms.service.js';
 
 export type OtpPurpose =
   | 'registration_email'
@@ -57,7 +58,17 @@ if (typeof setInterval === 'function') {
   setInterval(cleanupMemoryStores, MEMORY_CLEANUP_INTERVAL_MS).unref?.();
 }
 
-const normalizeIdentity = (identity: string) => identity.trim().toLowerCase();
+const normalizeIdentity = (identity: string) => {
+  const trimmed = identity.trim();
+  if (trimmed.includes('@')) {
+    return trimmed.toLowerCase();
+  }
+  const normalizedMobile = normalizeIndianMobile(trimmed);
+  if (normalizedMobile) {
+    return normalizedMobile;
+  }
+  return trimmed.toLowerCase();
+};
 const keyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otp(purpose, identity);
 const attemptsKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpAttempts(purpose, identity);
 const sendCountKeyFor = (purpose: OtpPurpose, identity: string) => redisKeys.otpCooldown(purpose, identity);

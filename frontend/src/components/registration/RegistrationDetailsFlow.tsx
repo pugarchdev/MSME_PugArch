@@ -271,38 +271,106 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     try {
       const res = await api.fetch(`/api/utils/gst-verify/${formData.gstin}`);
 
+      const resolvedPan = formData.gstin.toUpperCase().slice(2, 12);
       if (res.ok) {
         const data = await res.json();
-        if (!data?.legalName || !data?.address) {
-          setGstError('Please verify GSTIN and enter.');
-          return;
+        // If API returns valid name, auto-populate
+        if (data?.legalName || data?.tradeName) {
+          const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+          const apiPan = String(data.pan || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const finalPan = PAN_RE.test(apiPan) ? apiPan : resolvedPan;
+
+          setFormData((prev: any) => ({
+            ...prev,
+            businessName: (data.legalName || data.tradeName || '').trim() || prev.businessName,
+            orgPan: finalPan || prev.orgPan,
+            state: data.state?.trim() || prev.state,
+            district: data.city?.trim() || prev.district,
+          }));
+          setVerifiedGstDetails(data);
+          setIsGstVerified(true);
+          toast.success(`GST verified: ${data.status || 'Active'}`);
+        } else {
+          // API succeeded but returned empty/null data: allow manual entry
+          setFormData((prev: any) => ({
+            ...prev,
+            orgPan: resolvedPan || prev.orgPan
+          }));
+          setVerifiedGstDetails({
+            gstin: formData.gstin,
+            pan: resolvedPan,
+            legalName: '',
+            address: '',
+            state: '',
+            city: '',
+            district: '',
+            pincode: '',
+            registrationDate: ''
+          });
+          setIsGstVerified(true);
+          setGstError('');
+          toast.warning('Please enter your Organisation Name .');
         }
-        // Never let a masked PAN ("AA***1P") populate the field — derive it
-        // from the GSTIN (chars 3–12) if the API value isn't a valid PAN.
-        const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-        const apiPan = String(data.pan || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const gstinPan = String(formData.gstin || '').toUpperCase().slice(2, 12);
-        const resolvedPan = PAN_RE.test(apiPan) ? apiPan : (PAN_RE.test(gstinPan) ? gstinPan : '');
-        setFormData((prev: any) => ({
-          ...prev,
-          businessName: data.legalName?.trim() || prev.businessName,
-          orgPan: resolvedPan || prev.orgPan,
-          state: data.state?.trim() || prev.state,
-          district: data.city?.trim() || prev.district,
-        }));
-        setVerifiedGstDetails(data);
-        setIsGstVerified(true);
-        toast.success(`GST verified: ${data.status || 'Status available'}`);
       } else {
-        const err = await res.json().catch(() => ({}));
-        setGstError(err?.message || 'Incorrect or invalid GST');
-        setVerifiedGstDetails(null);
-        setIsGstVerified(false);
+        // API returned error: check if it's already registered
+        let errorMsg = '';
+        let isRegistered = false;
+        try {
+          const errData = await res.json();
+          if (errData?.code === 'GST_ALREADY_REGISTERED' || errData?.message?.includes('already registered')) {
+            errorMsg = 'GST is already registered. Please use another GSTIN.';
+            isRegistered = true;
+          } else if (errData?.message) {
+            errorMsg = errData.message;
+          }
+        } catch {}
+
+        if (isRegistered) {
+          setGstError(errorMsg);
+          setIsGstVerified(false);
+          toast.error(errorMsg);
+        } else {
+          // API returned other error: allow manual entry
+          setFormData((prev: any) => ({
+            ...prev,
+            orgPan: resolvedPan || prev.orgPan
+          }));
+          setVerifiedGstDetails({
+            gstin: formData.gstin,
+            pan: resolvedPan,
+            legalName: '',
+            address: '',
+            state: '',
+            city: '',
+            district: '',
+            pincode: '',
+            registrationDate: ''
+          });
+          setIsGstVerified(true);
+          setGstError('');
+          toast.warning('Please enter your Organisation Name.');
+        }
       }
     } catch (err) {
-      setGstError('Verification service unavailable');
-      setVerifiedGstDetails(null);
-      setIsGstVerified(false);
+      const resolvedPan = formData.gstin.toUpperCase().slice(2, 12);
+      setFormData((prev: any) => ({
+        ...prev,
+        orgPan: resolvedPan || prev.orgPan
+      }));
+      setVerifiedGstDetails({
+        gstin: formData.gstin,
+        pan: resolvedPan,
+        legalName: '',
+        address: '',
+        state: '',
+        city: '',
+        district: '',
+        pincode: '',
+        registrationDate: ''
+      });
+      setIsGstVerified(true);
+      setGstError('');
+      toast.warning('Please enter your Organisation Name.');
     } finally {
       setIsFetchingGst(false);
     }
@@ -863,7 +931,9 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           email: user.email,
           gst: formData.gstin || null,
           verificationMethod: formData.personalVerificationMethod,
-          documents: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments()
+          documents: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments(),
+          incorporationDate: verifiedGstDetails?.registrationDate || null,
+          registrationDate: verifiedGstDetails?.registrationDate || null
         };
         res = await api.post('/api/auth/activate-dual-role', {
           roleToActivate: role,
@@ -872,7 +942,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       } else {
         // Normal registration
         const token = formData.kycSessionToken || (typeof window !== 'undefined' ? sessionStorage.getItem('preRegisterKycSessionToken') || '' : '');
-        console.error("DEBUG SUBMIT PAYLOAD:", {
+        console.log("DEBUG SUBMIT PAYLOAD:", {
           token,
           formDataKycToken: formData.kycSessionToken,
           sessionStorageKycToken: typeof window !== 'undefined' ? sessionStorage.getItem('preRegisterKycSessionToken') : null,
@@ -906,6 +976,8 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
             gstin: formData.gstin,
             gstVerified: Boolean(formData.gstin && isGstVerified),
             gstDetails: Boolean(formData.gstin && isGstVerified) ? verifiedGstDetails : null,
+            incorporationDate: verifiedGstDetails?.registrationDate || null,
+            registrationDate: verifiedGstDetails?.registrationDate || null,
             cin: formData.cin,
             website: formData.website,
             accountName,
@@ -1114,10 +1186,12 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                             placeholder="Enter GSTIN"
                             value={formData.gstin}
                             onChange={(e) => {
-                              setFormData({ ...formData, gstin: e.target.value.toUpperCase() });
+                              const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+                              setFormData({ ...formData, gstin: val });
                               setIsGstVerified(false);
                               setGstError('');
                             }}
+                            maxLength={15}
                             error={gstError}
                             className="h-10 rounded border-slate-300 bg-white text-[13px] flex-1"
                           />
@@ -1180,7 +1254,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                           placeholder={isHerShg ? 'Please enter your Self-Help Group name' : 'Please enter your Business/Company Name'}
                           value={formData.businessName}
                           onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                          disabled={showOptionalDetails}
+                          disabled={showOptionalDetails && Boolean(isGstVerified && verifiedGstDetails?.legalName)}
                           className="h-10 rounded border-slate-300 bg-white text-[13px] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                         />
                         {!formData.businessName && (
@@ -1212,10 +1286,12 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 placeholder="Enter GSTIN"
                                 value={formData.gstin}
                                 onChange={(e) => {
-                                  setFormData({ ...formData, gstin: e.target.value.toUpperCase() });
+                                  const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+                                  setFormData({ ...formData, gstin: val });
                                   setIsGstVerified(false);
                                   setGstError('');
                                 }}
+                                maxLength={15}
                                 error={gstError}
                                 className="h-10 rounded border-slate-300 bg-white text-[13px] flex-1"
                               />

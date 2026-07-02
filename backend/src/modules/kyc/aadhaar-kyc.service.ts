@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import prisma from '../../config/prisma.js';
 import { env, isProduction } from '../../config/env.js';
 import type { AuthenticatedUser } from '../../middleware/authenticate.js';
+import { logger } from '../../config/logger.js';
+
 
 const PROVIDER = 'MERIPEHCHAAN' as const;
 const VERIFICATION_TYPE = 'AADHAAR' as const;
@@ -234,19 +236,19 @@ const verifyIdToken = async (idToken: string | undefined, config: ReturnType<typ
   }
 
   const parts = (idToken || '').split('.');
-  console.log('[verifyIdToken] Token parts count:', parts.length);
+  logger.debug({ partsCount: parts.length }, '[verifyIdToken] Token parts count');
   if (parts[0]) {
     try {
       const headerStr = Buffer.from(parts[0], 'base64url').toString('utf8');
-      console.log('[verifyIdToken] Decoded header:', headerStr);
+      logger.debug({ header: headerStr }, '[verifyIdToken] Decoded header');
     } catch (e) {
-      console.error('[verifyIdToken] Failed to decode header part:', e);
+      logger.error({ err: e }, '[verifyIdToken] Failed to decode header part');
     }
   }
 
   const decoded = jwt.decode(idToken, { complete: true });
   if (!decoded || typeof decoded !== 'object' || !decoded.header?.alg) {
-    console.error('[verifyIdToken] Invalid JWT decoded structure:', decoded);
+    logger.error({ decoded }, '[verifyIdToken] Invalid JWT decoded structure');
     throw Object.assign(new Error('MeriPehchaan ID token header is invalid'), { statusCode: 502, code: 'ID_TOKEN_INVALID' });
   }
   if (!ALLOWED_ID_TOKEN_ALGORITHMS.includes(decoded.header.alg as jwt.Algorithm)) {
@@ -374,7 +376,7 @@ export const aadhaarKycService = {
         where: { state }
       });
       if (preRegSession) {
-        console.log(`[Aadhaar Callback] Detected pre-registration guest session for state: ${state}. Redirecting to preRegisterCallback.`);
+        logger.info({ state }, '[Aadhaar Callback] Detected pre-registration guest session, redirecting to preRegisterCallback');
         return this.preRegisterCallback(query, meta);
       }
     }

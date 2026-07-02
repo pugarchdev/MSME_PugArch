@@ -579,10 +579,12 @@ export default function MasterAdminPage() {
   const loadCompanies = async () => {
     setBusy('companies', true);
     try {
+      const useFilters = activeTab === 'organizations' && !editor;
       const data = await fetchJson<ApiPage<Company>>(endpoint('/api/master-admin/companies', {
-        ...pages.companies,
-        search: debouncedFilters.organizations.search,
-        status: debouncedFilters.organizations.status,
+        page: useFilters ? pages.companies.page : 1,
+        pageSize: useFilters ? pages.companies.pageSize : 100,
+        search: useFilters ? debouncedFilters.organizations.search : '',
+        status: useFilters ? debouncedFilters.organizations.status : '',
         sortBy: sorts.companies.field,
         sortOrder: sorts.companies.direction
       }));
@@ -969,7 +971,7 @@ export default function MasterAdminPage() {
     if (activeTab === 'organizations' || activeTab === 'branding' || activeTab === 'features' || activeTab === 'email' || editor?.type === 'organization' || editor?.type === 'user') {
       void loadCompanies();
     }
-  }, [activeTab, editor?.type, pages.companies, debouncedFilters.organizations.search, debouncedFilters.organizations.status, sorts.companies]);
+  }, [activeTab, editor, pages.companies, debouncedFilters.organizations.search, debouncedFilters.organizations.status, sorts.companies]);
 
   useEffect(() => {
     if (activeTab === 'organizations' || editor?.type === 'user') {
@@ -1703,6 +1705,7 @@ export default function MasterAdminPage() {
               columns={[
                 ['name', 'Name'],
                 ['email', 'Email'],
+                ['mobile', 'Phone'],
                 ['role', 'Role'],
                 ['company.name', 'Company'],
                 ['organization.organizationName', 'Organization'],
@@ -3318,6 +3321,85 @@ function EntityEditor({
     reason: ''
   });
   const set = (key: string, value: any) => setValues(prev => ({ ...prev, [key]: value }));
+  
+  const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual');
+  const [focusedField, setFocusedField] = useState<'subject' | 'htmlBody' | 'textBody'>('htmlBody');
+
+  const insertVariable = (variable: string) => {
+    if (focusedField === 'htmlBody' && editorMode === 'visual') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const visualEl = document.getElementById('field-htmlBody-visual');
+        if (visualEl && visualEl.contains(range.commonAncestorContainer)) {
+          range.deleteContents();
+          const node = document.createTextNode(`{{${variable}}}`);
+          range.insertNode(node);
+          range.setStartAfter(node);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          set('htmlBody', visualEl.innerHTML);
+          return;
+        }
+      }
+      const visualEl = document.getElementById('field-htmlBody-visual');
+      if (visualEl) {
+        visualEl.innerHTML += `{{${variable}}}`;
+        set('htmlBody', visualEl.innerHTML);
+      }
+      return;
+    }
+
+    const inputEl = document.getElementById(`field-${focusedField}`) as HTMLInputElement | HTMLTextAreaElement | null;
+    if (inputEl) {
+      const start = inputEl.selectionStart || 0;
+      const end = inputEl.selectionEnd || 0;
+      const text = inputEl.value;
+      const before = text.substring(0, start);
+      const after = text.substring(end, text.length);
+      const newValue = before + `{{${variable}}}` + after;
+      set(focusedField, newValue);
+
+      setTimeout(() => {
+        inputEl.focus();
+        inputEl.selectionStart = inputEl.selectionEnd = start + variable.length + 4;
+      }, 50);
+    } else {
+      set(focusedField, (values[focusedField] || '') + `{{${variable}}}`);
+    }
+  };
+
+  const compilePreviewHtml = (html: string) => {
+    if (!html) return '';
+    let preview = html;
+    const mockVars: Record<string, string> = {
+      userName: 'John Doe',
+      userEmail: 'johndoe@example.com',
+      organizationName: 'Acme Corporates Ltd',
+      portalName: 'JsgSmile Portal',
+      companyName: 'JsgSmile MSME Portal',
+      actionUrl: 'https://jsgsmile.portal/dashboard/procurement',
+      supportEmail: 'support@jsgsmile.org',
+      loginUrl: 'https://jsgsmile.portal/login',
+      invoiceNumber: 'INV-2026-0042',
+      orderNumber: 'PO-2026-9812',
+      tenderTitle: 'Procurement of High-Grade Steel Cables',
+      bidReference: 'BID-STL-88',
+      amount: '4,50,000',
+      currency: 'INR',
+      dueDate: '15th July 2026',
+      currentDate: new Date().toLocaleDateString(),
+      otp: '982741'
+    };
+
+    for (const [key, val] of Object.entries(mockVars)) {
+      const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+      preview = preview.replace(regex, val);
+    }
+    return preview;
+  };
+
   const title = `${editor.mode === 'create' ? 'Add' : 'Edit'} ${labelize(editor.type)}`;
   return (
     <ModalShell title={title} onCancel={onCancel} wide>
@@ -3393,59 +3475,136 @@ function EntityEditor({
         )}
         {editor.type === 'emailTemplate' && (
           <>
-            <FormField label="Template name" value={values.name} onChange={value => set('name', value)} required />
-            <FormField label="Subject line" value={values.subject} onChange={value => set('subject', value)} required placeholder="e.g. Welcome to {{portalName}}, {{userName}}!" />
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700">HTML Body <span className="text-red-500">*</span></label>
-              <textarea
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[200px] resize-y"
-                value={values.htmlBody || ''}
-                onChange={e => set('htmlBody', e.target.value)}
-                placeholder="<html><body><h1>Hello {{userName}}</h1><p>Your account has been created.</p></body></html>"
+            {/* Left Column: Editor Controls */}
+            <div className="space-y-4">
+              <FormField 
+                label="Template name" 
+                value={values.name} 
+                onChange={value => set('name', value)} 
+                required 
               />
-            </div>
-            {values.htmlBody && (
+              
+              <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                Subject Line *
+                <input 
+                  id="field-subject"
+                  value={values.subject ?? ''} 
+                  onChange={event => set('subject', event.target.value)} 
+                  onFocus={() => setFocusedField('subject')}
+                  placeholder="e.g. Welcome to {{portalName}}, {{userName}}!"
+                  className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f] transition-all" 
+                />
+              </label>
+
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">Live Preview</label>
-                <div className="rounded-md border border-slate-200 bg-white p-3 max-h-[200px] overflow-y-auto">
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">HTML Body <span className="text-red-500">*</span></label>
+                  <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setEditorMode('visual')}
+                      className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${editorMode === 'visual' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Visual Editor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditorMode('code')}
+                      className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${editorMode === 'code' ? 'bg-white text-[#12335f] shadow-sm' : 'text-slate-500'}`}
+                    >
+                      HTML Source
+                    </button>
+                  </div>
+                </div>
+
+                {editorMode === 'visual' ? (
+                  <div className="space-y-2">
+                    {/* Visual Editor Toolbar */}
+                    <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                      <button type="button" title="Bold" onClick={() => document.execCommand('bold', false)} className="h-7 w-7 rounded flex items-center justify-center text-xs font-bold bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">B</button>
+                      <button type="button" title="Italic" onClick={() => document.execCommand('italic', false)} className="h-7 w-7 rounded flex items-center justify-center text-xs italic bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">I</button>
+                      <button type="button" title="Underline" onClick={() => document.execCommand('underline', false)} className="h-7 w-7 rounded flex items-center justify-center text-xs underline bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">U</button>
+                      <span className="w-px h-5 bg-slate-200 my-1 mx-0.5" />
+                      <button type="button" onClick={() => document.execCommand('formatBlock', false, '<h1>')} className="px-1.5 py-0.5 rounded text-[10px] font-black bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">H1</button>
+                      <button type="button" onClick={() => document.execCommand('formatBlock', false, '<h2>')} className="px-1.5 py-0.5 rounded text-[10px] font-black bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">H2</button>
+                      <button type="button" onClick={() => document.execCommand('formatBlock', false, '<p>')} className="px-1.5 py-0.5 rounded text-[10px] bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">Para</button>
+                      <span className="w-px h-5 bg-slate-200 my-1 mx-0.5" />
+                      <button type="button" title="Link" onClick={() => {
+                        const url = prompt('Enter link URL:');
+                        if (url) document.execCommand('createLink', false, url);
+                      }} className="px-2 py-0.5 rounded text-[10px] bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">Link</button>
+                      <button type="button" title="Remove Link" onClick={() => document.execCommand('unlink', false)} className="px-2 py-0.5 rounded text-[10px] bg-white border border-slate-200 hover:bg-slate-100 text-slate-700">Unlink</button>
+                    </div>
+
+                    <div
+                      id="field-htmlBody-visual"
+                      contentEditable
+                      onFocus={() => setFocusedField('htmlBody')}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[220px] max-h-[300px] overflow-y-auto outline-none prose max-w-none"
+                      dangerouslySetInnerHTML={{ __html: values.htmlBody || '<p><br></p>' }}
+                      onBlur={e => {
+                        set('htmlBody', e.currentTarget.innerHTML);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <textarea
+                    id="field-htmlBody"
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[260px] resize-y"
+                    value={values.htmlBody || ''}
+                    onFocus={() => setFocusedField('htmlBody')}
+                    onChange={e => set('htmlBody', e.target.value)}
+                    placeholder="<html><body><h1>Hello {{userName}}</h1><p>Your account has been created.</p></body></html>"
+                  />
+                )}
+              </div>
+
+              <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                Plain Text Fallback
+                <textarea
+                  id="field-textBody"
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f] min-h-[80px] resize-y"
+                  value={values.textBody || ''}
+                  onFocus={() => setFocusedField('textBody')}
+                  onChange={e => set('textBody', e.target.value)}
+                  placeholder="Hello {{userName}}, your account has been created."
+                />
+              </label>
+
+              <ToggleField label="Active" value={Boolean(values.isActive ?? true)} onChange={value => set('isActive', value)} />
+            </div>
+
+            {/* Right Column: Preview & Variables */}
+            <div className="space-y-4 flex flex-col h-full justify-between">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Smart Live Preview</label>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 shadow-inner">
                   <iframe
                     title="Template preview"
-                    srcDoc={values.htmlBody}
-                    className="w-full border-0 min-h-[120px]"
+                    srcDoc={compilePreviewHtml(values.htmlBody || '<p style="color: #64748b; font-style: italic; text-align: center; margin-top: 40px;">Write template content to preview...</p>')}
+                    className="w-full border-0 min-h-[300px] max-h-[380px] bg-white rounded-md"
                     sandbox=""
                   />
                 </div>
               </div>
-            )}
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700">Plain Text Fallback</label>
-              <textarea
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm focus:border-[#12335f] focus:outline-none focus:ring-1 focus:ring-[#12335f] min-h-[80px] resize-y"
-                value={values.textBody || ''}
-                onChange={e => set('textBody', e.target.value)}
-                placeholder="Hello {{userName}}, your account has been created."
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700">Available Variables</label>
-              <p className="mb-2 text-[10px] text-slate-400">Click to insert into subject or body. Use the format <code className="rounded bg-slate-100 px-1">{'{{variableName}}'}</code></p>
-              <div className="flex flex-wrap gap-1.5">
-                {emailTemplateAvailableVars.map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-[#12335f] hover:text-white hover:border-[#12335f] transition-colors"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`{{${v}}}`);
-                      toast.success(`{{${v}}} copied to clipboard`);
-                    }}
-                  >
-                    {`{{${v}}}`}
-                  </button>
-                ))}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Available Variables</label>
+                <p className="mb-2 text-[10px] text-slate-400">Click to insert directly into active field ({focusedField}) at cursor position:</p>
+                <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto p-1 border border-slate-100 rounded-lg bg-slate-50/50">
+                  {emailTemplateAvailableVars.map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-[#12335f] hover:text-white hover:border-[#12335f] transition-all duration-150"
+                      onClick={() => insertVariable(v)}
+                    >
+                      {`{{${v}}}`}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <ToggleField label="Active" value={Boolean(values.isActive ?? true)} onChange={value => set('isActive', value)} />
           </>
         )}
       </div>

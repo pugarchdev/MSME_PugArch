@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Clock3, Filter, Gavel, Plus, RadioTower, RefreshCw, Search, Trophy, type LucideIcon } from 'lucide-react';
+import { Clock3, Filter, Gavel, Plus, RadioTower, RefreshCw, Search, Trophy, Building2, UserCheck, Eye, ClipboardList, type LucideIcon } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
@@ -10,6 +10,7 @@ import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { reverseAuctionApi, type ReverseAuction } from '../api';
+import { useAuth } from '../../../hooks/useAuth';
 
 const statusOptions = ['All', 'DRAFT', 'SCHEDULED', 'LIVE', 'PAUSED', 'CLOSED', 'AWARD_RECOMMENDED', 'CANCELLED'];
 const priceBands = [
@@ -22,6 +23,8 @@ const priceBands = [
 let globalAuctionsCache: { auctions: ReverseAuction[]; total: number } | null = null;
 
 export default function ReverseAuctionListPage() {
+  const { user } = useAuth();
+  const isSeller = user?.role === 'seller';
   const [viewMode, setViewMode] = useResponsiveViewMode('reverse-auctions:view-mode');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('All');
@@ -93,9 +96,17 @@ export default function ReverseAuctionListPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement</p>
-          <h1 className="text-2xl font-black text-slate-950">Reverse Auctions</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Create, monitor, close, and recommend L1 awards.</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+            {isSeller ? 'Sourcing Portal' : 'Procurement Sourcing'}
+          </p>
+          <h1 className="text-2xl font-black text-slate-950">
+            {isSeller ? 'Unified Sourcing Auctions' : 'Reverse Auctions'}
+          </h1>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {isSeller
+              ? 'Participate in live downward auctions, scheduled dynamic bids, and submit commercial offers.'
+              : 'Create, monitor, close, and recommend L1 awards for unified sourcing events.'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
@@ -103,9 +114,11 @@ export default function ReverseAuctionListPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Link href="/reverse-auctions/create">
-            <Button type="button"><Plus className="mr-2 h-4 w-4" />Create</Button>
-          </Link>
+          {!isSeller && (
+            <Link href="/buyer/procurement/create">
+              <Button type="button"><Plus className="mr-2 h-4 w-4" />Create Procurement</Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -162,7 +175,7 @@ export default function ReverseAuctionListPage() {
       ) : viewMode === 'grid' ? (
         <div className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {pageItems.map(auction => <AuctionCard key={auction.id} auction={auction} />)}
+            {pageItems.map(auction => <AuctionCard key={auction.id} auction={auction} isSeller={isSeller} />)}
           </div>
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="auctions" />
         </div>
@@ -171,37 +184,87 @@ export default function ReverseAuctionListPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <tr>
-                  <th className="w-16 px-4 py-3">S.No.</th>
-                  <th className="px-4 py-3">Auction</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Timeline</th>
-                  <th className="px-4 py-3 text-right">Start price</th>
-                  <th className="px-4 py-3 text-right">Current L1</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
+                {isSeller ? (
+                  <tr>
+                    <th className="w-16 px-4 py-3">S.No.</th>
+                    <th className="px-4 py-3">Auction Details</th>
+                    <th className="px-4 py-3">Buyer Organization</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Timeline</th>
+                    <th className="px-4 py-3 text-right">My Last Bid</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                ) : (
+                  <tr>
+                    <th className="w-16 px-4 py-3">S.No.</th>
+                    <th className="px-4 py-3">Auction Details</th>
+                    <th className="px-4 py-3">Linked Sourcing Event</th>
+                    <th className="px-4 py-3">Method</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Timeline</th>
+                    <th className="px-4 py-3 text-right">Start Price</th>
+                    <th className="px-4 py-3 text-right">Current L1</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                )}
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pageItems.map((auction, index) => (
-                  <tr key={auction.id} className="align-top transition hover:bg-slate-50/80">
-                    <td className="px-4 py-3 text-xs font-black text-slate-500">{(page - 1) * pageSize + index + 1}</td>
-                    <td className="max-w-sm px-4 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{auction.auctionCode || `RA-${auction.id}`}</p>
-                      <p className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{auction.title || 'Reverse auction'}</p>
-                      {auction.description && <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500">{auction.description}</p>}
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={getAuctionStatus(auction)} /></td>
-                    <td className="px-4 py-3 font-semibold text-slate-600">
-                      <p>{formatDateTime(auction.startTime)}</p>
-                      <p className="mt-1 text-slate-400">to {formatDateTime(auction.endTime)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right font-black text-slate-900">{formatCurrency(auction.startPrice)}</td>
-                    <td className="px-4 py-3 text-right font-black text-emerald-700">{auction.currentLowestAmount ? formatCurrency(auction.currentLowestAmount) : '-'}</td>
-                    <td className="px-4 py-3">
-                      <AuctionActions auction={auction} align="right" />
-                    </td>
-                  </tr>
-                ))}
+                {pageItems.map((auction, index) => {
+                  const statusVal = getAuctionStatus(auction);
+                  return (
+                    <tr key={auction.id} className="align-top transition hover:bg-slate-50/80">
+                      <td className="px-4 py-3 text-xs font-black text-slate-500">{(page - 1) * pageSize + index + 1}</td>
+                      <td className="max-w-sm px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{auction.auctionCode || `RA-${auction.id}`}</p>
+                        <p className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{auction.title || 'Reverse auction'}</p>
+                        {auction.description && <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500">{auction.description}</p>}
+                      </td>
+                      {isSeller ? (
+                        <>
+                          <td className="px-4 py-3 font-semibold text-slate-700">
+                            <span className="inline-flex items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                              {auction.buyerOrgId ? `Buyer Org #${auction.buyerOrgId}` : 'Verified Buyer'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3"><StatusBadge status={statusVal} /></td>
+                          <td className="px-4 py-3 font-semibold text-slate-600">
+                            <p>{formatDateTime(auction.startTime)}</p>
+                            <p className="mt-1 text-slate-400">to {formatDateTime(auction.endTime)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-right font-black text-slate-600">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">See Live Screen</span>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 font-semibold text-slate-700">
+                            {auction.referenceNo ? (
+                              <span className="inline-flex rounded bg-[#12335f]/5 px-2 py-1 text-[10px] font-bold text-[#12335f]">
+                                {auction.referenceNo}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-medium">No link</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-600">
+                            {auction.tenderId ? 'Bid with Reverse Auction' : 'Standalone Reverse Auction'}
+                          </td>
+                          <td className="px-4 py-3"><StatusBadge status={statusVal} /></td>
+                          <td className="px-4 py-3 font-semibold text-slate-600">
+                            <p>{formatDateTime(auction.startTime)}</p>
+                            <p className="mt-1 text-slate-400">to {formatDateTime(auction.endTime)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-right font-black text-slate-900">{formatCurrency(auction.startPrice)}</td>
+                          <td className="px-4 py-3 text-right font-black text-emerald-700">{auction.currentLowestAmount ? formatCurrency(auction.currentLowestAmount) : '-'}</td>
+                        </>
+                      )}
+                      <td className="px-4 py-3">
+                        <AuctionActions auction={auction} isSeller={isSeller} align="right" />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -246,7 +309,7 @@ function Select({ value, onChange, options }: { value: string; onChange: (value:
   );
 }
 
-function AuctionCard({ auction }: { auction: ReverseAuction }) {
+function AuctionCard({ auction, isSeller }: { auction: ReverseAuction; isSeller?: boolean }) {
   return (
     <Card className="h-full border-slate-200 shadow-sm">
       <CardContent className="flex h-full flex-col p-4">
@@ -257,27 +320,38 @@ function AuctionCard({ auction }: { auction: ReverseAuction }) {
           </div>
           <StatusBadge status={getAuctionStatus(auction)} />
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-          <Metric label="Starting price" value={formatCurrency(auction.startPrice)} />
-          <Metric label="Current L1" value={auction.currentLowestAmount ? formatCurrency(auction.currentLowestAmount) : '-'} />
-          <Metric label="Start" value={formatDate(auction.startTime)} />
-          <Metric label="End" value={formatDate(auction.endTime)} />
-        </div>
+        {isSeller ? (
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <Metric label="Buyer Organization" value={auction.buyerOrgId ? `Buyer Org #${auction.buyerOrgId}` : 'Verified Buyer'} />
+            <Metric label="Start" value={formatDate(auction.startTime)} />
+            <Metric label="End" value={formatDate(auction.endTime)} />
+            <Metric label="My Last Bid" value="See Live Screen" />
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <Metric label="Starting price" value={formatCurrency(auction.startPrice)} />
+            <Metric label="Current L1" value={auction.currentLowestAmount ? formatCurrency(auction.currentLowestAmount) : '-'} />
+            <Metric label="Start" value={formatDate(auction.startTime)} />
+            <Metric label="End" value={formatDate(auction.endTime)} />
+          </div>
+        )}
         {auction.description && <p className="mt-4 line-clamp-2 text-xs font-semibold text-slate-500">{auction.description}</p>}
         <div className="mt-auto pt-4">
-          <AuctionActions auction={auction} />
+          <AuctionActions auction={auction} isSeller={isSeller} />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function AuctionActions({ auction, align = 'left' }: { auction: ReverseAuction; align?: 'left' | 'right' }) {
+function AuctionActions({ auction, isSeller, align = 'left' }: { auction: ReverseAuction; isSeller?: boolean; align?: 'left' | 'right' }) {
   return (
     <div className={`flex flex-wrap gap-2 ${align === 'right' ? 'justify-end' : ''}`}>
       <Link href={`/reverse-auctions/${auction.id}`}><Button type="button" size="sm" variant="outline">Details</Button></Link>
       <Link href={`/reverse-auctions/${auction.id}/live`}><Button type="button" size="sm"><RadioTower className="mr-1 h-3.5 w-3.5" />Live</Button></Link>
-      <Link href={`/reverse-auctions/${auction.id}/results`}><Button type="button" size="sm" variant="secondary">Results</Button></Link>
+      {!isSeller && (
+        <Link href={`/reverse-auctions/${auction.id}/results`}><Button type="button" size="sm" variant="secondary">Results</Button></Link>
+      )}
     </div>
   );
 }

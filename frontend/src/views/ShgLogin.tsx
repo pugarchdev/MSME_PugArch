@@ -199,13 +199,13 @@ export default function ShgLogin() {
               <>
                 <div className="space-y-1">
                   <label className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    SHG Email Address
+                    SHG Email or Mobile
                   </label>
                   <div className="group relative">
                     <Mail className="absolute left-4 top-1/2 h-3 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-700" />
                     <input
-                      type="email"
-                      placeholder="name@shggroup.org"
+                      type="text"
+                      placeholder="email@shggroup.org or 10-digit mobile"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required

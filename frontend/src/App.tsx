@@ -116,11 +116,15 @@ const OrganizationBannerEligibilityPage = lazy(() => import('./features/banners/
 const AdminMarketplaceHomeSectionsPage = lazy(() => import('./features/marketplace/pages/AdminMarketplaceHomeSectionsPage'));
 const CreateProcurementPage = lazy(() => import('./features/procurementWizard/pages/CreateProcurementPage'));
 const ProcurementDraftsPage = lazy(() => import('./features/procurementWizard/pages/ProcurementDraftsPage'));
-const CreateBidPage = lazy(() => import('./features/bidCreationWizardV2/pages/CreateBidPage'));
+// LEGACY: CreateBidPage import removed — /buyer/create-bid now shows LegacyNoticePage.
+// The old bidCreationWizardV2 files are preserved but no longer routed.
 const BuyerProcurementHub = lazy(() => import('./features/procurement/pages/BuyerProcurementHub'));
 const MyProcurementsPage = lazy(() => import('./features/procurement/pages/MyProcurementsPage'));
 const ProcurementCheckoutPage = lazy(() => import('./features/procurementCheckoutV2/pages/ProcurementCheckoutPage'));
 const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
+const SellerProcurementHub = lazy(() => import('./features/sellerOpportunities/pages/SellerProcurementHub'));
+const SellerEventListPage = lazy(() => import('./features/sellerOpportunities/pages/SellerEventListPage'));
+const SellerEventDetailPage = lazy(() => import('./features/sellerOpportunities/pages/SellerEventDetailPage'));
 const FactoringDashboard = lazy(() => import('./views/FactoringDashboard'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
@@ -180,7 +184,7 @@ const rolePreloaders = {
     () => import('./features/procurement/pages/MyProcurementsPage'),
     () => import('./features/procurementWizard/pages/CreateProcurementPage'),
     () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
-    () => import('./features/bidCreationWizardV2/pages/CreateBidPage'),
+    // LEGACY: CreateBidPage preload removed — /buyer/create-bid now shows LegacyNoticePage
     () => import('./views/Tenders'),
     () => import('./views/Vendors'),
     () => import('./features/requirements/pages/RequirementsPage'),
@@ -193,6 +197,9 @@ const rolePreloaders = {
   ],
   seller: [
     () => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'),
+    () => import('./features/sellerOpportunities/pages/SellerProcurementHub'),
+    () => import('./features/sellerOpportunities/pages/SellerEventListPage'),
+    () => import('./features/sellerOpportunities/pages/SellerEventDetailPage'),
     () => import('./views/SellerTenders'),
     () => import('./features/sellerDelivery/pages/SellerDeliveryManagementPage'),
     () => import('./features/payments/pages/PaymentHistoryPage'),
@@ -288,11 +295,42 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
+function LegacyNoticePage({ title, target = '/buyer/procurement/create' }: { title: string; target?: string }) {
+  const router = useRouter();
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
+      <div className="max-w-md border border-slate-200 bg-white rounded-2xl p-8 shadow-sm space-y-6">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+          <svg className="h-7 w-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Unified Sourcing Upgrade</h2>
+          <p className="text-sm font-semibold leading-relaxed text-slate-500">
+            The legacy "{title}" creation flow has been retired and upgraded to the unified, guided Create Procurement wizard.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2.5">
+          <button onClick={() => router.push(target)} className="w-full bg-[#12335f] hover:bg-[#0e2c53] text-white font-black h-11 uppercase text-[10px] tracking-widest rounded-lg shadow-sm transition">
+            Open Create Procurement
+          </button>
+          <button onClick={() => router.push('/buyer/procurement')} className="w-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-black h-11 uppercase text-[10px] tracking-widest rounded-lg transition">
+            Go to Sourcing Hub
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+let globalMounted = false;
+
 export default function App() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname() || '/';
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(globalMounted);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
@@ -319,6 +357,7 @@ export default function App() {
   };
 
   React.useEffect(() => {
+    globalMounted = true;
     setMounted(true);
   }, []);
 
@@ -389,9 +428,6 @@ export default function App() {
   }, [mounted, user]);
 
   if (!mounted) {
-    if (isPublicRoute(pathname)) {
-      return <Suspense fallback={<PremiumLoader />}><MarketplaceSellersPage /></Suspense>;
-    }
     return <PremiumLoader />;
   }
 
@@ -481,6 +517,14 @@ export default function App() {
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
     if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
+    if (pathname === '/seller/procurement' && roleOk(user.role, ['seller'])) return <SellerProcurementHub />;
+    if (pathname === '/seller/procurement/events' && roleOk(user.role, ['seller'])) return <SellerEventListPage />;
+    {
+      const sellerEventDetailMatch = pathname.match(/^\/seller\/procurement\/events\/([^/]+)$/);
+      if (sellerEventDetailMatch && roleOk(user.role, ['seller'])) {
+        return <SellerEventDetailPage id={sellerEventDetailMatch[1]} />;
+      }
+    }
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <MarketplaceProductList />;
     if (pathname === '/seller/catalogue' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
     if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
@@ -499,7 +543,10 @@ export default function App() {
     if (/^\/seller\/tenders\/[^/]+\/bid$/.test(pathname) && roleOk(user.role, ['seller'])) return <CreateQuotation />;
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
-    if (pathname === '/buyer/create-bid' && roleOk(user.role, ['buyer'])) return <CreateBidPage />;
+    // LEGACY PROCUREMENT UI - hidden because unified procurement flow is now active.
+    if (pathname === '/buyer/create-bid' && roleOk(user.role, ['buyer'])) {
+      return <LegacyNoticePage title="Create Bid / Tender" />;
+    }
     if ((pathname === '/buyer/create-procurement' || pathname === '/buyer/procurement/create' || /^\/buyer\/create-procurement\/[^/]+$/.test(pathname)) && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
     if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
     if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
@@ -507,11 +554,15 @@ export default function App() {
     if (pathname === '/buyer/procurement/approvals' && roleOk(user.role, ['buyer'])) return <ApprovalQueuePage />;
     if (pathname === '/buyer/marketplace' && roleOk(user.role, ['buyer'])) return <MarketplaceProductList />;
     if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
-    if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
+    if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) {
+      return <LegacyNoticePage title="New Buyer Requirement" />;
+    }
     if (pathname === '/buyer/procurement' && roleOk(user.role, ['buyer'])) return <BuyerProcurementHub />;
     if (pathname === '/buyer/my-procurements' && roleOk(user.role, ['buyer'])) return <MyProcurementsPage />;
     if (pathname === '/buyer/procurement/checkout' && roleOk(user.role, ['buyer'])) return <ProcurementCheckoutPage />;
-    if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) return <Redirect to="/buyer/procurement?from=legacy-direct-purchase" />;
+    if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) {
+      return <LegacyNoticePage title="Direct Purchase Sourcing" target="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
+    }
     if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage listOnly />;
     if ((pathname === '/buyer/direct-purchase/checkout' || pathname === '/buyer/create-procurement/direct-purchase/checkout') && roleOk(user.role, ['buyer'])) {
       return <Redirect to="/buyer/procurement/checkout" />;
@@ -604,7 +655,9 @@ export default function App() {
         if (Number.isFinite(id) && id > 0) return <AuctionLivePage id={id} />;
       }
       if (pathname === '/reverse-auctions') return <ReverseAuctionListPage />;
-      if (pathname === '/reverse-auctions/create') return <ReverseAuctionCreatePage />;
+      if (pathname === '/reverse-auctions/create') {
+        return <LegacyNoticePage title="Create Reverse Auction" target="/buyer/procurement/create?method=REVERSE_AUCTION" />;
+      }
       const reverseAuctionLiveMatch = pathname.match(/^\/reverse-auctions\/(\d+)\/live$/);
       if (reverseAuctionLiveMatch) {
         const id = Number(reverseAuctionLiveMatch[1]);

@@ -1,5 +1,6 @@
 import prisma from '../../config/prisma.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
+import { logger } from '../../config/logger.js';
 
 type AuditPayload = {
   actorId?: number | null;
@@ -38,15 +39,15 @@ const persistAuditLog = async (payload: AuditPayload) => {
       return;
     }
   } catch (error) {
-    console.error('[Audit] Failed to persist audit log', error instanceof Error ? error.message : error);
+    logger.error({ err: error }, '[Audit] Failed to persist audit log');
   }
 
-  console.log('[Audit]', JSON.stringify(maskSensitive(payload)));
+  logger.info({ audit: maskSensitive(payload) }, '[Audit] Logged audit payload');
 };
 
 export const auditLog = async (payload: AuditPayload) => {
   void persistAuditLog(payload).catch(error => {
-    console.error('[Audit] Background audit failed', error instanceof Error ? error.message : error);
+    logger.error({ err: error }, '[Audit] Background audit failed');
   });
 };
 

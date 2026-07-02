@@ -75,17 +75,30 @@ const ok = (res: Response, data: unknown, status = 200) => res.status(status).js
 
 const procurementMethodDefinitions = [
   { slug: 'direct-purchase', code: 'DIRECT_PURCHASE', name: 'Direct Purchase', route: '/buyer/create-procurement/direct-purchase', handoffRoute: '/buyer/direct-purchase', badge: 'Common', valueHint: 'Best for low-value or approved direct buys' },
-  { slug: 'l1-comparison', code: 'L1_COMPARISON', name: 'L1 Comparison', route: '/buyer/create-procurement/l1-comparison', handoffRoute: '/buyer/marketplace', badge: 'Recommended', valueHint: 'Use where comparable offers exist' },
-  { slug: 'rfq', code: 'RFQ', name: 'RFQ', route: '/buyer/create-procurement/rfq', handoffRoute: '/buyer/rfq', badge: 'Common', valueHint: 'Useful for custom specs and supplier quotes' },
-  { slug: 'tender', code: 'TENDER', name: 'Tender / Open Bid', route: '/buyer/create-procurement/tender', handoffRoute: '/buyer/publish-bid?method=tender', badge: 'Compliance Required', valueHint: 'Formal bids and higher-value procurement' },
+  { slug: 'catalog-purchase', code: 'CATALOG_PURCHASE', name: 'Catalogue Purchase', route: '/buyer/create-procurement/catalog-purchase', handoffRoute: '/buyer/marketplace', badge: 'Fast-Track', valueHint: 'Pre-approved catalogue item purchase' },
+  { slug: 'rfq', code: 'RFQ', name: 'Request for Quotation (RFQ)', route: '/buyer/create-procurement/rfq', handoffRoute: '/buyer/rfq', badge: 'Common', valueHint: 'Useful for custom specs and supplier quotes' },
+  { slug: 'rfp', code: 'RFP', name: 'Request for Proposal (RFP)', route: '/buyer/create-procurement/rfp', handoffRoute: '/buyer/publish-bid?method=rfp', badge: 'Strategic', valueHint: 'Evaluate complex services with technical & financial proposals' },
+  { slug: 'rfi', code: 'RFI', name: 'Request for Information (RFI)', route: '/buyer/create-procurement/rfi', handoffRoute: '/buyer/publish-bid?method=rfi', badge: 'Market Research', valueHint: 'Gather interest and identify potential vendors' },
+  { slug: 'sealed-tender', code: 'SEALED_TENDER', name: 'Sealed Tender', route: '/buyer/create-procurement/sealed-tender', handoffRoute: '/buyer/publish-bid?method=sealed-tender', badge: 'Confidential', valueHint: 'Formal envelope-based bidding with blind opening' },
+  { slug: 'open-tender', code: 'OPEN_TENDER', name: 'Open Tender', route: '/buyer/create-procurement/open-tender', handoffRoute: '/buyer/publish-bid?method=open-tender', badge: 'Compliance Required', valueHint: 'Formal bids and higher-value procurement' },
+  { slug: 'limited-tender', code: 'LIMITED_TENDER', name: 'Limited Tender', route: '/buyer/create-procurement/limited-tender', handoffRoute: '/buyer/publish-bid?method=limited-tender', badge: 'Restricted Pool', valueHint: 'Bids invited from a selected list of suppliers' },
+  { slug: 'two-packet-bid', code: 'TWO_PACKET_BID', name: 'Two Packet Bid', route: '/buyer/create-procurement/two-packet-bid', handoffRoute: '/buyer/publish-bid?method=two-packet-bid', badge: 'Separated Evaluation', valueHint: 'Separate technical and financial openings' },
   { slug: 'reverse-auction', code: 'REVERSE_AUCTION', name: 'Reverse Auction', route: '/buyer/create-procurement/reverse-auction', handoffRoute: '/reverse-auctions/create', badge: 'Advanced', valueHint: 'Use after technical qualification' },
-  { slug: 'boq', code: 'BOQ_BID', name: 'BOQ Based Bid', route: '/buyer/create-procurement/boq', handoffRoute: '/buyer/publish-bid?method=boq', badge: 'Advanced', valueHint: 'Works, AMC, item-wise rates' },
-  { slug: 'custom-product', code: 'CUSTOM_PRODUCT_BID', name: 'Custom Product Bid', route: '/buyer/create-procurement/custom-product', handoffRoute: '/buyer/publish-bid?method=custom-product', badge: 'Approval Required', valueHint: 'Use when catalogue item is unavailable' },
-  { slug: 'custom-service', code: 'CUSTOM_SERVICE_BID', name: 'Custom Service Bid', route: '/buyer/create-procurement/custom-service', handoffRoute: '/buyer/publish-bid?method=custom-service', badge: 'Service', valueHint: 'For work orders and service contracts' },
-  { slug: 'pac', code: 'PAC_BID', name: 'PAC / Proprietary Bid', route: '/buyer/create-procurement/pac', handoffRoute: '/buyer/publish-bid?method=pac', badge: 'Compliance Required', valueHint: 'Single-source justification required' },
-  { slug: 'rate-contract', code: 'RATE_CONTRACT', name: 'Rate Contract', route: '/buyer/create-procurement/rate-contract', handoffRoute: '/buyer/publish-bid?method=rate-contract', badge: 'Advanced', valueHint: 'For repeated demand over a validity period' },
-  { slug: 'emergency', code: 'EMERGENCY_PROCUREMENT', name: 'Emergency Procurement', route: '/buyer/create-procurement/emergency', handoffRoute: '/buyer/publish-bid?method=emergency', badge: 'Urgent', valueHint: 'Use only with emergency justification' },
-  { slug: 'repeat-order', code: 'REPEAT_ORDER', name: 'Repeat Order / Reorder', route: '/buyer/create-procurement/repeat-order', handoffRoute: '/buyer/direct-purchase?method=repeat-order', badge: 'Common', valueHint: 'Use with prior order reference' },
+  { slug: 'bid-with-reverse-auction', code: 'BID_WITH_REVERSE_AUCTION', name: 'Bid with Reverse Auction', route: '/buyer/create-procurement/bid-with-reverse-auction', handoffRoute: '/buyer/publish-bid?method=bid-with-reverse-auction', badge: 'Hybrid Sourcing', valueHint: 'Formal bid followed by real-time downward pricing window' },
+  { slug: 'rate-contract', code: 'RATE_CONTRACT', name: 'Rate Contract', route: '/buyer/create-procurement/rate-contract', handoffRoute: '/buyer/publish-bid?method=rate-contract', badge: 'Standing Agreement', valueHint: 'For repeated demand over a validity period' },
+  { slug: 'repeat-order', code: 'REPEAT_ORDER', name: 'Repeat Order', route: '/buyer/create-procurement/repeat-order', handoffRoute: '/buyer/direct-purchase?method=repeat-order', badge: 'Quick Reorder', valueHint: 'Use with prior order reference' },
+  { slug: 'single-source', code: 'SINGLE_SOURCE', name: 'Single Source', route: '/buyer/create-procurement/single-source', handoffRoute: '/buyer/publish-bid?method=single-source', badge: 'Exception', valueHint: 'Direct negotiation with single vendor lock-in justification' },
+  { slug: 'pac', code: 'PAC', name: 'PAC / Proprietary Bid', route: '/buyer/create-procurement/pac', handoffRoute: '/buyer/publish-bid?method=pac', badge: 'PAC Standard', valueHint: 'Single-source justification with PAC certificate required' },
+  { slug: 'emergency-purchase', code: 'EMERGENCY_PURCHASE', name: 'Emergency Purchase', route: '/buyer/create-procurement/emergency-purchase', handoffRoute: '/buyer/publish-bid?method=emergency-purchase', badge: 'Urgent', valueHint: 'Use only with emergency justification' },
+  { slug: 'boq-based-bid', code: 'BOQ_BASED_BID', name: 'BOQ Based Bid', route: '/buyer/create-procurement/boq-based-bid', handoffRoute: '/buyer/publish-bid?method=boq-based-bid', badge: 'BOQ Sheet', valueHint: 'Works, AMC, item-wise rates via spreadsheet' },
+  // Legacy alias entries kept for backward compatibility with old records
+  { slug: 'l1-comparison', code: 'RFQ', name: 'L1 Comparison (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/marketplace', badge: 'Legacy', valueHint: 'Migrated to RFQ' },
+  { slug: 'tender', code: 'OPEN_TENDER', name: 'Tender (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=tender', badge: 'Legacy', valueHint: 'Migrated to Open Tender' },
+  { slug: 'boq', code: 'BOQ_BASED_BID', name: 'BOQ (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=boq', badge: 'Legacy', valueHint: 'Migrated to BOQ Based Bid' },
+  { slug: 'custom-product', code: 'OPEN_TENDER', name: 'Custom Product (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=custom-product', badge: 'Legacy', valueHint: 'Migrated to Open Tender' },
+  { slug: 'custom-service', code: 'RFP', name: 'Custom Service (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=custom-service', badge: 'Legacy', valueHint: 'Migrated to RFP' },
+  { slug: 'pac-bid', code: 'PAC', name: 'PAC Bid (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=pac', badge: 'Legacy', valueHint: 'Migrated to PAC' },
+  { slug: 'emergency', code: 'EMERGENCY_PURCHASE', name: 'Emergency (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=emergency', badge: 'Legacy', valueHint: 'Migrated to Emergency Purchase' },
 ];
 
 const defaultMarketplaceCategories = [
@@ -337,9 +350,15 @@ const assertBuyerProcurementApproved = async (req: AuthRequest) => {
   if (isAdmin(req) || req.user?.role !== 'buyer') return;
   const user = await db.user.findUnique({
     where: { id: userId(req) },
-    select: { onboardingStatus: true, accountStatus: true }
+    select: { onboardingStatus: true, accountStatus: true, isDualRole: true, buyerProfile: true }
   });
-  if (!user || !approvedProcurementStatuses.has(String(user.onboardingStatus))) {
+  if (!user) throw new ApiError(404, 'User not found');
+
+  const isApproved = user.isDualRole
+    ? (user.buyerProfile?.verificationStatusEnum === 'VERIFIED' || user.buyerProfile?.verificationStatus === 'VERIFIED')
+    : approvedProcurementStatuses.has(String(user.onboardingStatus));
+
+  if (!isApproved) {
     throw new ApiError(
       403,
       'Buyer account must be approved by admin before procurement actions are allowed.',
@@ -672,13 +691,84 @@ const requirementBody = z.object({
   })).optional()
 });
 
+const normalizeToCanonicalMethod = (rawMethod: unknown): string => {
+  const str = String(rawMethod || '').trim().toUpperCase().replace(/-/g, '_');
+  
+  if ([
+    'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'RFQ', 'RFP', 'RFI',
+    'SEALED_TENDER', 'OPEN_TENDER', 'LIMITED_TENDER', 'TWO_PACKET_BID',
+    'REVERSE_AUCTION', 'BID_WITH_REVERSE_AUCTION', 'RATE_CONTRACT',
+    'REPEAT_ORDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE',
+    'BOQ_BASED_BID'
+  ].includes(str)) {
+    return str;
+  }
+
+  switch (str) {
+    case 'L1_COMPARISON':
+    case 'COMPARISON':
+      return 'RFQ';
+    case 'REQUEST_FOR_PROPOSAL':
+      return 'RFP';
+    case 'EXPRESSION_OF_INTEREST':
+      return 'RFI';
+    case 'SINGLE_TENDER':
+      return 'SINGLE_SOURCE';
+    case 'PAC_BID':
+      return 'PAC';
+    case 'BOQ_BID':
+    case 'BOQ':
+      return 'BOQ_BASED_BID';
+    case 'EMERGENCY':
+    case 'EMERGENCY_PROCUREMENT':
+      return 'EMERGENCY_PURCHASE';
+    case 'BID_WITH_RA':
+      return 'BID_WITH_REVERSE_AUCTION';
+    case 'TENDER':
+      return 'OPEN_TENDER';
+    case 'CUSTOM_PRODUCT_BID':
+    case 'PRODUCT_BID':
+    case 'CUSTOM_BID':
+      return 'OPEN_TENDER';
+    case 'CUSTOM_SERVICE_BID':
+    case 'SERVICE_BID':
+      return 'RFP';
+    default:
+      return 'OPEN_TENDER';
+  }
+};
+
 const procurementMethodCodeFor = (value: unknown) => {
-  const key = String(value || '').trim().toLowerCase().replace(/_/g, '-');
-  if (['direct-purchase', 'direct', 'repeat-order', 'reorder'].includes(key)) return 'DIRECT_PURCHASE';
-  if (['rfq', 'request-quotations', 'request-quotation', 'l1-comparison', 'comparison'].includes(key)) return 'RFQ';
-  if (['reverse-auction', 'auction', 'negotiate-price'].includes(key)) return 'REVERSE_AUCTION';
-  if (['rate-contract'].includes(key)) return 'RATE_CONTRACT';
-  return 'TENDER';
+  const canonical = normalizeToCanonicalMethod(value);
+  switch (canonical) {
+    case 'DIRECT_PURCHASE':
+    case 'CATALOG_PURCHASE':
+    case 'REPEAT_ORDER':
+    case 'SINGLE_SOURCE':
+    case 'EMERGENCY_PURCHASE':
+      return 'DIRECT_PURCHASE';
+
+    case 'RFQ':
+    case 'RFI':
+      return 'RFQ';
+
+    case 'REVERSE_AUCTION':
+    case 'BID_WITH_REVERSE_AUCTION':
+      return 'REVERSE_AUCTION';
+
+    case 'RATE_CONTRACT':
+      return 'RATE_CONTRACT';
+
+    case 'RFP':
+    case 'SEALED_TENDER':
+    case 'OPEN_TENDER':
+    case 'LIMITED_TENDER':
+    case 'TWO_PACKET_BID':
+    case 'PAC':
+    case 'BOQ_BASED_BID':
+    default:
+      return 'TENDER';
+  }
 };
 
 const procurementDraftBody = z.object({
@@ -766,9 +856,9 @@ const procurementListSelect = {
 };
 
 const methodSlugForDraft = (body: Record<string, unknown>) => {
-  const raw = body.methodSlug || body.method || body.procurementMethod || 'tender';
-  const slug = String(raw).trim().toLowerCase().replace(/_/g, '-');
-  return procurementMethodDefinitions.some(method => method.slug === slug) ? slug : 'tender';
+  const raw = body.methodSlug || body.method || body.procurementMethod || 'OPEN_TENDER';
+  const canonical = normalizeToCanonicalMethod(raw);
+  return canonical.toLowerCase().replace(/_/g, '-');
 };
 
 const toDraftItems = (items: Array<Record<string, unknown>> | undefined, methodSlug: string, draftMeta: Record<string, unknown>) =>
@@ -790,10 +880,12 @@ const toDraftItems = (items: Array<Record<string, unknown>> | undefined, methodS
 
 export const serializeProcurementDraft = (requirement: any) => {
   const firstMeta = requirement?.items?.find((item: any) => item.specifications)?.specifications || {};
-  const methodSlug = firstMeta.procurementMethodSlug || String(requirement.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
-
-  // Try to get payload from requirement directly first (if stored in DB), then fall back to item specifications
   const payload = requirement.payload || firstMeta.draftMeta?.payload || null;
+  
+  // Resolve methodSlug canonically
+  const rawMethod = payload?.fullProcurementMethod || payload?.type || firstMeta.procurementMethodSlug || requirement.procurementMethod || 'OPEN_TENDER';
+  const methodSlug = normalizeToCanonicalMethod(rawMethod).toLowerCase().replace(/_/g, '-');
+
   const draftStep = requirement.draftStep ?? firstMeta.draftMeta?.draftStep ?? null;
 
   return {
@@ -840,7 +932,13 @@ const validateProcurementDraftForSubmit = (draft: any) => {
   if (!hasConsigneeLocation || totalItemQuantity <= 0 || totalItemQuantity !== totalConsigneeQuantity) {
     throw new ApiError(400, 'Total consignee quantity must equal total procurement quantity', 'PROCUREMENT_CONSIGNEE_QUANTITY_INVALID');
   }
-  if (['tender', 'boq', 'custom-product', 'custom-service', 'pac', 'rate-contract', 'emergency'].includes(methodSlug)) {
+  // Timeline validations for tender-family, BOQ, PAC, rate-contract, and bid-with-reverse-auction methods
+  const timelineMethodSlugs = [
+    'open-tender', 'sealed-tender', 'limited-tender', 'two-packet-bid',
+    'boq-based-bid', 'pac', 'rate-contract',
+    'rfp', 'bid-with-reverse-auction', 'emergency-purchase'
+  ];
+  if (timelineMethodSlugs.includes(methodSlug)) {
     if (tender.bidStartDate && tender.bidClosingDate && !isAfter(tender.bidClosingDate, tender.bidStartDate)) {
       throw new ApiError(400, 'Bid end date must be after start date', 'PROCUREMENT_DATE_INVALID');
     }
@@ -857,24 +955,20 @@ const validateProcurementDraftForSubmit = (draft: any) => {
   if (rules.performanceSecurity && Number(tender.performanceSecurityAmount || 0) <= 0) {
     throw new ApiError(400, 'ePBG / performance security amount is required when enabled', 'PROCUREMENT_EPBG_REQUIRED');
   }
-  if (methodSlug === 'boq' && !hasDocument(/boq|price schedule/i) && items.length === 0) {
+  if (methodSlug === 'boq-based-bid' && !hasDocument(/boq|price schedule/i) && items.length === 0) {
     throw new ApiError(400, 'BOQ bid requires a BOQ file or line items', 'PROCUREMENT_BOQ_REQUIRED');
   }
-  if (methodSlug === 'pac') {
-    if (!hasDocument(/pac certificate/i)) throw new ApiError(400, 'PAC bid requires PAC certificate upload', 'PROCUREMENT_PAC_CERTIFICATE_REQUIRED');
-    if (clean(basics.justification || draft.description).length < 20) throw new ApiError(400, 'PAC bid requires single-source justification', 'PROCUREMENT_JUSTIFICATION_REQUIRED');
+  if (['pac', 'single-source'].includes(methodSlug)) {
+    if (!hasDocument(/pac certificate|proprietary certificate/i)) throw new ApiError(400, 'PAC or Single Source requires a proprietary certificate upload', 'PROCUREMENT_PAC_CERTIFICATE_REQUIRED');
+    if (clean(basics.justification || draft.description).length < 20) throw new ApiError(400, 'PAC or Single Source requires single-source justification', 'PROCUREMENT_JUSTIFICATION_REQUIRED');
   }
-  if (methodSlug === 'custom-product') {
-    if (clean(basics.justification || draft.description).length < 20) throw new ApiError(400, 'Custom product bid requires catalog unavailability reason', 'PROCUREMENT_CATALOG_REASON_REQUIRED');
-    if (!hasSpecification) throw new ApiError(400, 'Custom product bid requires custom technical specifications', 'PROCUREMENT_SPEC_REQUIRED');
+  if (methodSlug === 'rfp' && clean(tender.scopeOfWork || basics.justification || draft.description).length < 20) {
+    throw new ApiError(400, 'RFP requires a scope of work or detailed justification', 'PROCUREMENT_SCOPE_REQUIRED');
   }
-  if (methodSlug === 'custom-service' && clean(tender.scopeOfWork || basics.justification || draft.description).length < 20) {
-    throw new ApiError(400, 'Custom service bid requires scope of work', 'PROCUREMENT_SCOPE_REQUIRED');
-  }
-  if (methodSlug === 'emergency' && clean(basics.justification || draft.description).length < 30) {
+  if (methodSlug === 'emergency-purchase' && clean(basics.justification || draft.description).length < 30) {
     throw new ApiError(400, 'Emergency procurement requires an audit justification', 'PROCUREMENT_EMERGENCY_JUSTIFICATION_REQUIRED');
   }
-  if (methodSlug === 'reverse-auction') {
+  if (['reverse-auction', 'bid-with-reverse-auction'].includes(methodSlug)) {
     if (Number(rules.startPrice || 0) <= 0) throw new ApiError(400, 'Reverse auction requires a start price', 'PROCUREMENT_AUCTION_PRICE_REQUIRED');
     if (Number(rules.minimumDecrement || 0) <= 0) throw new ApiError(400, 'Reverse auction requires minimum decrement value', 'PROCUREMENT_AUCTION_DECREMENT_REQUIRED');
   }
@@ -1089,18 +1183,30 @@ router.put('/seller/onboarding', authenticate, authorize('seller'), asyncRoute(a
 router.post('/buyer/onboarding/send-otp', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const { generateOtp, storeOtp } = await import('../services/otp.service.js');
   const { sendOtpEmail } = await import('../services/mail.service.js');
+  const { smsService } = await import('../services/sms.service.js');
 
-  const user = await db.user.findUnique({ where: { id: userId(req) } });
+  const user = await db.user.findUnique({ where: { id: userId(req) }, include: { buyerProfile: true } });
   if (!user) throw new ApiError(404, 'User not found');
-  if (!user.email) throw new ApiError(400, 'Login email is not available for OTP delivery.');
+
+  const mobile = user.mobile || user.buyerProfile?.mobile;
+  const channel = req.body?.channel === 'sms' && mobile && smsService.isEnabled() ? 'sms' : 'email';
+  const identity = channel === 'sms' ? mobile : user.email;
+  if (!identity) throw new ApiError(400, `${channel === 'sms' ? 'Mobile' : 'Email'} is not configured.`);
 
   const otp = generateOtp();
-  const otpState = await storeOtp('buyer_profile_update', user.email, otp, { userId: user.id });
-  const deliveryConfigured = await sendOtpEmail(user.email, otp, '[SECURE AUTH] Profile update verification code');
+  const otpState = await storeOtp('buyer_profile_update', identity, otp, { userId: user.id, channel }, channel);
 
-  await auditWrite(req, 'buyer.profile_update_otp.sent', 'user', user.id);
+  let deliveryConfigured = false;
+  if (channel === 'sms') {
+    const smsResult = await smsService.sendOtpSms(identity, otp, 'onboarding_alert');
+    deliveryConfigured = smsResult.success;
+  } else {
+    deliveryConfigured = await sendOtpEmail(identity, otp, '[SECURE AUTH] Profile update verification code');
+  }
 
-  ok(res, { success: true, sendsRemaining: otpState.sendsRemaining, deliveryConfigured });
+  await auditWrite(req, 'buyer.profile_update_otp.sent', 'user', user.id, { channel });
+
+  ok(res, { success: true, sendsRemaining: otpState.sendsRemaining, deliveryConfigured, channel });
 }));
 
 router.post('/buyer/settings/change-email/send-otp', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
@@ -1203,16 +1309,21 @@ router.put('/buyer/onboarding', authenticate, authorize('buyer'), asyncRoute(asy
         throw new ApiError(400, 'OTP is required for updating personal information');
       }
 
-      const user = await db.user.findUnique({ where: { id: userId(req) } });
-      if (!user || !user.email) throw new ApiError(404, 'User not found or email not set');
+      const user = await db.user.findUnique({ where: { id: userId(req) }, include: { buyerProfile: true } });
+      if (!user) throw new ApiError(404, 'User not found');
 
       const { verifyOtp, consumeOtp } = await import('../services/otp.service.js');
-      const verifyResult = await verifyOtp('buyer_profile_update', user.email, otp);
+      const mobile = user.mobile || user.buyerProfile?.mobile;
+      const channel = req.body?.channel === 'sms' && mobile ? 'sms' : 'email';
+      const identity = channel === 'sms' ? mobile : user.email;
+      if (!identity) throw new ApiError(400, 'Identity not configured for verification');
+
+      const verifyResult = await verifyOtp('buyer_profile_update', identity, otp);
       if (!verifyResult.ok) {
         throw new ApiError(400, 'Invalid or expired OTP');
       }
 
-      await consumeOtp('buyer_profile_update', user.email);
+      await consumeOtp('buyer_profile_update', identity);
     }
   }
 
@@ -1356,7 +1467,7 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
       }
     }
 
-    if (profile.isUdyamCertified || regDetails.udyamNumber) {
+    if (!isShg) {
       addRequiredDoc('udyam_certificate');
     }
 
@@ -1364,7 +1475,7 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
       addRequiredDoc('dipp_certificate');
     }
 
-    const hasGstin = regDetails.gstin || profile.offices?.some((o: any) => o.gstNumber || o.gst);
+    const hasGstin = Array.isArray(profile.registrationTypes) && profile.registrationTypes.includes('GST_REGISTERED');
     if (hasGstin) {
       addRequiredDoc('gst_certificate');
     }
@@ -1423,6 +1534,25 @@ router.post('/onboarding/submit', authenticate, asyncRoute(async (req, res) => {
 
   let onboardingStatus = 'under_compliance_review';
   let registrationStatus = 'completed';
+
+  const isDualRole = Boolean(user.isDualRole);
+  const alreadyApproved = user.onboardingStatus === 'approved_for_procurement';
+
+  if (isDualRole && alreadyApproved) {
+    onboardingStatus = 'approved_for_procurement';
+  }
+
+  if (user.role === 'buyer') {
+    await db.buyerProfile.updateMany({
+      where: { userId: user.id },
+      data: { verificationStatusEnum: 'UNDER_REVIEW', verificationStatus: 'UNDER_REVIEW' }
+    });
+  } else if (user.role === 'seller') {
+    await db.sellerProfile.updateMany({
+      where: { userId: user.id },
+      data: { verificationStatusEnum: 'UNDER_REVIEW' }
+    });
+  }
 
   const updated = await db.user.update({
     where: { id: userId(req) },
@@ -1632,21 +1762,46 @@ router.get('/admin/onboarding', authenticate, authorizeAdmin, asyncRoute(async (
   const query = parse(paginationQuery, req.query);
   const pendingStatuses = ['pending', 'pending_validation', 'manual_review_required', 'under_compliance_review'];
   const where: any = { role: { in: query.role ? [query.role] : ['buyer', 'seller'] } };
+  const conditions: any[] = [];
+
   if (query.status) {
-    where.onboardingStatus = query.status === 'review_queue'
-      ? { in: pendingStatuses }
-      : query.status;
+    if (query.status === 'review_queue') {
+      conditions.push({
+        OR: [
+          { onboardingStatus: { in: pendingStatuses } },
+          {
+            isDualRole: true,
+            role: 'seller',
+            sellerProfile: { verificationStatusEnum: 'UNDER_REVIEW' }
+          },
+          {
+            isDualRole: true,
+            role: 'buyer',
+            buyerProfile: { verificationStatusEnum: 'UNDER_REVIEW' }
+          }
+        ]
+      });
+    } else {
+      conditions.push({ onboardingStatus: query.status });
+    }
   }
+
   if (query.q) {
-    where.OR = [
-      { name: { contains: query.q, mode: 'insensitive' } },
-      { email: { contains: query.q, mode: 'insensitive' } },
-      { buyerProfile: { organizationName: { contains: query.q, mode: 'insensitive' } } },
-      { buyerProfile: { gst: { contains: query.q, mode: 'insensitive' } } },
-      { buyerProfile: { pan: { contains: query.q, mode: 'insensitive' } } },
-      { sellerProfile: { businessName: { contains: query.q, mode: 'insensitive' } } },
-      { sellerProfile: { pan: { contains: query.q, mode: 'insensitive' } } }
-    ];
+    conditions.push({
+      OR: [
+        { name: { contains: query.q, mode: 'insensitive' } },
+        { email: { contains: query.q, mode: 'insensitive' } },
+        { buyerProfile: { organizationName: { contains: query.q, mode: 'insensitive' } } },
+        { buyerProfile: { gst: { contains: query.q, mode: 'insensitive' } } },
+        { buyerProfile: { pan: { contains: query.q, mode: 'insensitive' } } },
+        { sellerProfile: { businessName: { contains: query.q, mode: 'insensitive' } } },
+        { sellerProfile: { pan: { contains: query.q, mode: 'insensitive' } } }
+      ]
+    });
+  }
+
+  if (conditions.length > 0) {
+    where.AND = conditions;
   }
   const window = listWindow(query);
   const [users, total, statusGroups, approvedRoleGroups, flagged] = await Promise.all([
@@ -2473,7 +2628,7 @@ async function upsertOrganizationFromGst(
         country: 'India',
         companyId: defaultCompanyId,
         previousOrganizationId: previousOrg?.id || null,
-        verificationStatus: 'VERIFIED' as any
+        verificationStatus: 'PENDING' as any
       }
     });
 
@@ -2512,8 +2667,7 @@ async function upsertOrganizationFromGst(
         city: gstResult.city || org.city,
         district: gstResult.district || org.district,
         pincode: gstResult.pincode || org.pincode,
-        addressLine1: gstResult.address || org.addressLine1,
-        verificationStatus: 'VERIFIED' as any
+        addressLine1: gstResult.address || org.addressLine1
       }
     });
   }
@@ -3090,7 +3244,6 @@ router.get('/admin/catalogue/services', authenticate, authorizeAdmin, asyncRoute
 
 // Requirements
 router.post('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
-  await assertBuyerProcurementApproved(req);
   const body = parse(procurementDraftBody, req.body);
   const draft = await saveProcurementDraft(req, body);
   ok(res, serializeProcurementDraft(draft), body.id ? 200 : 201);

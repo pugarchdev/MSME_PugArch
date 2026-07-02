@@ -268,6 +268,10 @@ const transition = (target: string, enumStatus: string, extra?: (req: AuthReques
       const auction = await db.auction.findUnique({ where: { id } });
       if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
       assertAuctionManager(req, auction);
+      const current = String(auction.status || 'DRAFT').toUpperCase();
+      if (['CLOSED', 'CANCELLED'].includes(current)) {
+        throw new ApiError(400, 'Cannot transition an auction that is closed or cancelled', 'AUCTION_ALREADY_FINALIZED');
+      }
       const data = { status: target, statusEnum: enumStatus, ...(extra ? extra(req) : {}) };
       const updated = await db.auction.update({ where: { id }, data });
       await writeAuctionEvent(req, id, target.toLowerCase(), `Auction moved to ${target}`, data);

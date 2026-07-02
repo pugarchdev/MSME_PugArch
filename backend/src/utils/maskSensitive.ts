@@ -50,23 +50,33 @@ export const maskAadhaar = (value: unknown) => maskValue(compact(value), 4);
 export const maskBankAccount = (value: unknown) => maskValue(String(value ?? '').replace(/\s+/g, ''), 4);
 
 export const maskSensitive = <T>(input: T): T => {
-  if (!input || typeof input !== 'object') return input;
-  if (input instanceof Date) return input;
-  if (input.constructor && (input.constructor.name === 'Decimal' || (input as any)._isDecimal === true || (typeof (input as any).toNumber === 'function' && typeof (input as any).toFixed === 'function'))) return input;
-  if (Array.isArray(input)) return input.map(item => maskSensitive(item)) as T;
+  const seen = new WeakSet();
 
-  return Object.entries(input as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    if (passthroughKeys.has(key)) {
-      acc[key] = value;
-    } else if (/^aadhaar$/i.test(key)) {
-      acc[key] = value ? maskAadhaar(value) : value;
-    } else if (key !== 'bankAccounts' && /accountNumber|bankAccount/i.test(key)) {
-      acc[key] = value ? maskBankAccount(value) : value;
-    } else if (sensitiveKeys.has(key) || /password|secret|token/i.test(key)) {
-      acc[key] = value ? maskValue(value) : value;
-    } else {
-      acc[key] = maskSensitive(value);
-    }
-    return acc;
-  }, {}) as T;
+  const mask = (val: any): any => {
+    if (!val || typeof val !== 'object') return val;
+    if (val instanceof Date) return val;
+    if (val.constructor && (val.constructor.name === 'Decimal' || val._isDecimal === true || (typeof val.toNumber === 'function' && typeof val.toFixed === 'function'))) return val;
+    
+    if (seen.has(val)) return '[Circular]';
+    seen.add(val);
+
+    if (Array.isArray(val)) return val.map(item => mask(item));
+
+    return Object.entries(val).reduce<Record<string, unknown>>((acc, [key, value]) => {
+      if (passthroughKeys.has(key)) {
+        acc[key] = value;
+      } else if (/^aadhaar$/i.test(key)) {
+        acc[key] = value ? maskAadhaar(value) : value;
+      } else if (key !== 'bankAccounts' && /accountNumber|bankAccount/i.test(key)) {
+        acc[key] = value ? maskBankAccount(value) : value;
+      } else if (sensitiveKeys.has(key) || /password|secret|token/i.test(key)) {
+        acc[key] = value ? maskValue(value) : value;
+      } else {
+        acc[key] = mask(value);
+      }
+      return acc;
+    }, {});
+  };
+
+  return mask(input) as T;
 };

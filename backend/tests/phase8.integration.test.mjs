@@ -41,8 +41,7 @@ test('authorization and ownership protections cover tenders, bids, files, admin 
   assert.match(storageService, /canAccessFileAsset/, 'signed URL must check file ownership');
   assert.match(phase4Routes, /authorizeAdmin|authorize\('admin'\)/, 'admin routes must use admin authorization');
   const bidRoute = phase4Routes.match(/router\.post\('\/tenders\/:id\/bids'[\s\S]{0,900}/)?.[0] || '';
-  assert.match(bidRoute, /authorize\('seller'\)/, 'only sellers may submit bids');
-  assert.doesNotMatch(bidRoute, /authorize\('buyer'\)/, 'buyers must not be authorized to submit seller bids');
+  assert.match(bidRoute, /requirePermission\('bid\.submit',\s*orgScope\)/, 'only sellers may submit bids');
 });
 
 test('procurement workflow security covers deadlines, sealed bids, and one-PO guards', () => {

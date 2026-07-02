@@ -46,6 +46,11 @@ export default function MarketplaceProductList() {
     const [pricingModelFilter, setPricingModelFilter] = useState(searchParams?.get('pricingModel') || '');
     const [districtFilter, setDistrictFilter] = useState(searchParams?.get('district') || '');
     const [discountFilter, setDiscountFilter] = useState(searchParams?.get('discount') || '');
+    const [msmeOnlyFilter, setMsmeOnlyFilter] = useState(searchParams?.get('msmeOnly') === 'true');
+    const [bulkDealFilter, setBulkDealFilter] = useState(searchParams?.get('bulkDeal') === 'true');
+    const [taxRateFilter, setTaxRateFilter] = useState(searchParams?.get('taxRate') || '');
+    const [brandSearchFilter, setBrandSearchFilter] = useState(searchParams?.get('brand') || '');
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [page, setPage] = useState(Number(searchParams?.get('page')) || 1);
     const [viewMode, setViewMode] = useResponsiveViewMode(`phase7:marketplace:${isServices ? 'services' : 'products'}:view-mode`);
 
@@ -118,11 +123,15 @@ export default function MarketplaceProductList() {
         ...(districtFilter ? { district: districtFilter } : {}),
         ...(discountFilter ? { discount: discountFilter } : {}),
         ...(verificationFilter === 'VERIFIED' ? { verifiedSeller: 'true' } : {}),
+        ...(msmeOnlyFilter ? { msmeOnly: 'true' } : {}),
+        ...(bulkDealFilter ? { bulkDeal: 'true' } : {}),
+        ...(taxRateFilter ? { taxRate: taxRateFilter } : {}),
+        ...(brandSearchFilter ? { brand: brandSearchFilter } : {}),
     }).toString();
     const cacheUrl = isServices ? `/api/marketplace/services?${qs}` : `/api/marketplace/products?${qs}`;
 
     const { data: listData, isLoading } = useQuery({
-        queryKey: ['marketplaceList', isServices, debouncedQuery, categoryId, sort, page, districtFilter, discountFilter, verificationFilter],
+        queryKey: ['marketplaceList', isServices, debouncedQuery, categoryId, sort, page, districtFilter, discountFilter, verificationFilter, msmeOnlyFilter, bulkDealFilter, taxRateFilter, brandSearchFilter],
         queryFn: () => {
             const params: Record<string, string | number> = { page, pageSize: 12, sort };
             if (debouncedQuery) params.q = debouncedQuery;
@@ -130,6 +139,10 @@ export default function MarketplaceProductList() {
             if (districtFilter) params.district = districtFilter;
             if (discountFilter) params.discount = discountFilter;
             if (verificationFilter === 'VERIFIED') params.verifiedSeller = 'true';
+            if (msmeOnlyFilter) params.msmeOnly = 'true';
+            if (bulkDealFilter) params.bulkDeal = 'true';
+            if (taxRateFilter) params.taxRate = taxRateFilter;
+            if (brandSearchFilter) params.brand = brandSearchFilter;
             return isServices ? marketplaceApi.getServices(params) : marketplaceApi.getProducts(params);
         },
         placeholderData: keepPreviousData,
@@ -155,9 +168,15 @@ export default function MarketplaceProductList() {
                         price >= 10000);
         const matchesCondition = isServices || !conditionFilter || String(item.itemCondition || '').toUpperCase() === conditionFilter.toUpperCase();
         const matchesPricingModel = !isServices || !pricingModelFilter || String(item.pricingModel || '').toUpperCase() === pricingModelFilter.toUpperCase();
-        return matchesStatus && matchesVerification && matchesPrice && matchesCondition && matchesPricingModel;
-    }), [isServices, items, priceFilter, statusFilter, verificationFilter, conditionFilter, pricingModelFilter]);
-    const total = statusFilter || priceFilter || verificationFilter || conditionFilter || pricingModelFilter ? filteredItems.length : listData?.total || 0;
+        
+        const matchesMsme = !msmeOnlyFilter || Boolean(item.isMsmeMade);
+        const matchesBulk = isServices || !bulkDealFilter || Boolean(item.bulkDealAvailable);
+        const matchesTaxRate = !taxRateFilter || String(item.taxRate || '') === taxRateFilter || Number(item.taxRate || 0) === Number(taxRateFilter);
+        const matchesBrand = !brandSearchFilter || String(item.brand || '').toLowerCase().includes(brandSearchFilter.toLowerCase());
+
+        return matchesStatus && matchesVerification && matchesPrice && matchesCondition && matchesPricingModel && matchesMsme && matchesBulk && matchesTaxRate && matchesBrand;
+    }), [isServices, items, priceFilter, statusFilter, verificationFilter, conditionFilter, pricingModelFilter, msmeOnlyFilter, bulkDealFilter, taxRateFilter, brandSearchFilter]);
+    const total = statusFilter || priceFilter || verificationFilter || conditionFilter || pricingModelFilter || msmeOnlyFilter || bulkDealFilter || taxRateFilter || brandSearchFilter ? filteredItems.length : listData?.total || 0;
     const totalPages = listData?.totalPages || 0;
     const sortedItems = useMemo(() => [...filteredItems].sort((a: any, b: any) => {
         const valueFor = (item: any) => {
@@ -423,76 +442,192 @@ export default function MarketplaceProductList() {
                     )}
 
                     {/* Filters Bar */}
-                    <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                        <form onSubmit={handleSearch} className="flex-1 relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                            <input
-                                type="text"
-                                value={query}
-                                onChange={e => { setQuery(e.target.value); setPage(1); syncUrl({ q: e.target.value, page: 1 }); }}
-                                placeholder={isServices ? "Search services..." : "Search products..."}
-                                className="w-full h-10 pl-10 pr-4 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20"
-                            />
-                        </form>
-                        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Statuses</option>
-                            <option value="ACTIVE">Active</option>
-                            <option value="DRAFT">Draft</option>
-                            <option value="INACTIVE">Inactive</option>
-                        </select>
-                        <select value={priceFilter} onChange={e => { setPriceFilter(e.target.value); setPage(1); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Prices</option>
-                            <option value="quote">Quote Based</option>
-                            <option value="low">Below Rs. 1k</option>
-                            <option value="mid">Rs. 1k to 10k</option>
-                            <option value="high">Above Rs. 10k</option>
-                        </select>
-                        <select value={verificationFilter} onChange={e => { setVerificationFilter(e.target.value); setPage(1); syncUrl({ verifiedSeller: e.target.value === 'VERIFIED' ? 'true' : '', page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Sellers</option>
-                            <option value="VERIFIED">Verified</option>
-                            <option value="PENDING">Pending</option>
-                        </select>
-                        <select value={districtFilter} onChange={e => { setDistrictFilter(e.target.value); setPage(1); syncUrl({ district: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Locations</option>
-                            <option value="Jharsuguda">Jharsuguda</option>
-                            <option value="Odisha">Odisha</option>
-                        </select>
-                        <select value={discountFilter} onChange={e => { setDiscountFilter(e.target.value); setPage(1); syncUrl({ discount: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Offers</option>
-                            <option value="active">Active Discounts</option>
-                        </select>
-                        {!isServices && (
-                            <select value={conditionFilter} onChange={e => { setConditionFilter(e.target.value); setPage(1); syncUrl({ condition: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                                <option value="">All Conditions</option>
-                                <option value="NEW">New</option>
-                                <option value="USED">Used/Refurbished</option>
+                    <div className="flex flex-col gap-3 mb-6">
+                        {/* Primary Filter Row */}
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <form onSubmit={handleSearch} className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={query}
+                                    onChange={e => { setQuery(e.target.value); setPage(1); syncUrl({ q: e.target.value, page: 1 }); }}
+                                    placeholder={isServices ? "Search services..." : "Search products..."}
+                                    className="w-full h-10 pl-10 pr-4 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20"
+                                />
+                            </form>
+                            
+                            <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); syncUrl({ categoryId: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-semibold bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20">
+                                <option value="">All Categories</option>
+                                {categories.filter((c: any) => isServices ? ['SERVICE', 'BOTH'].includes(c.type) : ['PRODUCT', 'BOTH'].includes(c.type)).map((c: any) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
                             </select>
-                        )}
-                        {isServices && (
-                            <select value={pricingModelFilter} onChange={e => { setPricingModelFilter(e.target.value); setPage(1); syncUrl({ pricingModel: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                                <option value="">All Billing Types</option>
-                                <option value="PER_PROJECT">Per Project</option>
-                                <option value="MONTHLY">Monthly</option>
-                                <option value="HOURLY">Hourly</option>
-                                <option value="CUSTOM">Custom/Quote</option>
+
+                            <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); syncUrl({ sort: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-semibold bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20">
+                                <option value="popular">Popular</option>
+                                <option value="latest">Newest</option>
+                                <option value="price_asc">Price: Low to High</option>
+                                <option value="price_desc">Price: High to Low</option>
+                                <option value="discount">Discount</option>
+                                <option value="most_purchased">Most Purchased</option>
+                                <option value="verified">Verified Sellers First</option>
+                                <option value="name">Name A-Z</option>
                             </select>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowAdvancedFilters(prev => !prev)}
+                                className={cn(
+                                    "h-10 px-4 flex items-center justify-center gap-2 rounded-lg border text-sm font-black transition shadow-sm",
+                                    showAdvancedFilters
+                                        ? "bg-[#0b2447] border-[#0b2447] text-white"
+                                        : "bg-white border-slate-200 text-[#0b2447] hover:bg-slate-50 hover:border-slate-300"
+                                )}
+                            >
+                                <SlidersHorizontal className="h-4 w-4" />
+                                Advanced Filters
+                            </button>
+                        </div>
+
+                        {/* Collapsible Advanced Filters Panel */}
+                        {showAdvancedFilters && (
+                            <div className="bg-slate-50 rounded-lg border border-slate-200/80 p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Sellers Status</label>
+                                    <select value={verificationFilter} onChange={e => { setVerificationFilter(e.target.value); setPage(1); syncUrl({ verifiedSeller: e.target.value === 'VERIFIED' ? 'true' : '', page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All Sellers</option>
+                                        <option value="VERIFIED">Verified Only</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Price Range</label>
+                                    <select value={priceFilter} onChange={e => { setPriceFilter(e.target.value); setPage(1); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All Prices</option>
+                                        <option value="quote">Quote Based</option>
+                                        <option value="low">Below Rs. 1,000</option>
+                                        <option value="mid">Rs. 1,000 to 10,000</option>
+                                        <option value="high">Above Rs. 10,000</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">District / State</label>
+                                    <select value={districtFilter} onChange={e => { setDistrictFilter(e.target.value); setPage(1); syncUrl({ district: e.target.value, page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All Locations</option>
+                                        <option value="Jharsuguda">Jharsuguda</option>
+                                        <option value="Odisha">Odisha</option>
+                                        <option value="Maharashtra">Maharashtra</option>
+                                    </select>
+                                </div>
+
+                                {!isServices ? (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Item Condition</label>
+                                        <select value={conditionFilter} onChange={e => { setConditionFilter(e.target.value); setPage(1); syncUrl({ condition: e.target.value, page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                            <option value="">All Conditions</option>
+                                            <option value="NEW">New</option>
+                                            <option value="USED">Used/Refurbished</option>
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Billing Type</label>
+                                        <select value={pricingModelFilter} onChange={e => { setPricingModelFilter(e.target.value); setPage(1); syncUrl({ pricingModel: e.target.value, page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                            <option value="">All Billing Types</option>
+                                            <option value="PER_PROJECT">Per Project</option>
+                                            <option value="MONTHLY">Monthly</option>
+                                            <option value="HOURLY">Hourly</option>
+                                            <option value="CUSTOM">Custom/Quote</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">MSME Produced</label>
+                                    <select value={msmeOnlyFilter ? 'true' : ''} onChange={e => { const v = e.target.value === 'true'; setMsmeOnlyFilter(v); setPage(1); syncUrl({ msmeOnly: v ? 'true' : '', page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All Items</option>
+                                        <option value="true">Certified MSME Produced</option>
+                                    </select>
+                                </div>
+
+                                {!isServices && (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Bulk Discounts</label>
+                                        <select value={bulkDealFilter ? 'true' : ''} onChange={e => { const v = e.target.value === 'true'; setBulkDealFilter(v); setPage(1); syncUrl({ bulkDeal: v ? 'true' : '', page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                            <option value="">All Offers</option>
+                                            <option value="true">Bulk Order Deals Only</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">GST Tax Slab</label>
+                                    <select value={taxRateFilter} onChange={e => { setTaxRateFilter(e.target.value); setPage(1); syncUrl({ taxRate: e.target.value, page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All GST Slabs</option>
+                                        <option value="0">0% (GST Exempt)</option>
+                                        <option value="5">5% GST</option>
+                                        <option value="12">12% GST</option>
+                                        <option value="18">18% GST</option>
+                                        <option value="28">28% GST</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Brand / Manufacturer</label>
+                                    <input
+                                        type="text"
+                                        value={brandSearchFilter}
+                                        onChange={e => { setBrandSearchFilter(e.target.value); setPage(1); syncUrl({ brand: e.target.value, page: 1 }); }}
+                                        placeholder="Search brand name..."
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:ring-1 focus:ring-[#0b2447]/30"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Promotion Offers</label>
+                                    <select value={discountFilter} onChange={e => { setDiscountFilter(e.target.value); setPage(1); syncUrl({ discount: e.target.value, page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
+                                        <option value="">All Active Offers</option>
+                                        <option value="active">Active Discounts</option>
+                                    </select>
+                                </div>
+
+                                <div className="sm:col-span-2 md:col-span-3 lg:col-span-4 flex justify-end gap-2 border-t border-slate-200/80 pt-3 mt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setStatusFilter('');
+                                            setPriceFilter('');
+                                            setVerificationFilter('');
+                                            setConditionFilter('');
+                                            setPricingModelFilter('');
+                                            setDistrictFilter('');
+                                            setDiscountFilter('');
+                                            setMsmeOnlyFilter(false);
+                                            setBulkDealFilter(false);
+                                            setTaxRateFilter('');
+                                            setBrandSearchFilter('');
+                                            setPage(1);
+                                            syncUrl({
+                                                verifiedSeller: '',
+                                                district: '',
+                                                discount: '',
+                                                condition: '',
+                                                pricingModel: '',
+                                                msmeOnly: '',
+                                                bulkDeal: '',
+                                                taxRate: '',
+                                                brand: '',
+                                                page: 1
+                                            });
+                                        }}
+                                        className="h-8 px-4 rounded-md border border-slate-200 bg-white text-xs font-black text-slate-600 hover:bg-slate-50 transition shadow-sm"
+                                    >
+                                        Reset Advanced Filters
+                                    </button>
+                                </div>
+                            </div>
                         )}
-                        <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); syncUrl({ categoryId: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="">All Categories</option>
-                            {categories.filter((c: any) => isServices ? ['SERVICE', 'BOTH'].includes(c.type) : ['PRODUCT', 'BOTH'].includes(c.type)).map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                        <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); syncUrl({ sort: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer">
-                            <option value="popular">Popular</option>
-                            <option value="latest">Newest</option>
-                            <option value="price_asc">Price: Low to High</option>
-                            <option value="price_desc">Price: High to Low</option>
-                            <option value="discount">Discount</option>
-                            <option value="most_purchased">Most Purchased</option>
-                            <option value="verified">Verified Sellers First</option>
-                            <option value="name">Name A-Z</option>
-                        </select>
                     </div>
 
                     {/* Results Count */}
@@ -517,7 +652,9 @@ export default function MarketplaceProductList() {
                             <h3 className="text-sm font-black text-slate-800">{activeCategory ? 'No products or services found in this category.' : `No ${isServices ? 'services' : 'products'} found matching your criteria.`}</h3>
                             <p className="mt-1 text-xs font-semibold text-slate-500">Publish your requirement so verified MSMEs can respond.</p>
                             <div className="mt-4 flex flex-wrap justify-center gap-2">
-                                <Link href="/buyer/requirements/new" className="inline-flex h-9 items-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white hover:bg-[#12335f]">Publish Requirement</Link>
+                                {/* LEGACY PROCUREMENT UI - hidden because unified Create Procurement flow is now active. */}
+                                {/* Do not delete. Restore only if required. */}
+                                <Link href="/buyer/procurement/create" className="inline-flex h-9 items-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white hover:bg-[#12335f]">Create Sourcing Request</Link>
                                 <button type="button" onClick={() => { setCategoryId(''); setQuery(''); setPage(1); syncUrl({ categoryId: '', q: '', page: 1 }); }} className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-[#0b2447] hover:bg-slate-50">Browse All Categories</button>
                             </div>
                         </div>

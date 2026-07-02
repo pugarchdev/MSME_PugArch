@@ -24,20 +24,34 @@ const toDateInputValue = (value: unknown) => {
 
 const SUBMITTED_REVIEW_STATUSES = new Set([
   'under_compliance_review',
+  'under_review',
   'pending_validation',
   'manual_review_required',
-  'approved_for_procurement'
+  'approved_for_procurement',
+  'verified',
+  'VERIFIED'
 ]);
 
 const hasSubmittedApplication = (userRecord: any) => userRecord?.sectionStatus?.submitted === true;
 
-const shouldShowSubmissionOverlay = (userRecord: any) =>
-  hasSubmittedApplication(userRecord) && SUBMITTED_REVIEW_STATUSES.has(String(userRecord?.onboardingStatus || ''));
+const getProfileStatus = (userRecord: any, profileRecord: any) => {
+  if (userRecord?.isDualRole) {
+    return String(profileRecord?.verificationStatusEnum || 'PENDING');
+  }
+  return String(userRecord?.onboardingStatus || '');
+};
 
-const shouldLockSellerProfile = (userRecord: any) => {
-  const status = String(userRecord?.onboardingStatus || '');
-  if (status === 'approved_for_procurement') return true;
-  return hasSubmittedApplication(userRecord) && SUBMITTED_REVIEW_STATUSES.has(status);
+const shouldShowSubmissionOverlay = (userRecord: any, profileRecord: any) => {
+  const status = getProfileStatus(userRecord, profileRecord);
+  const isSubmitted = userRecord?.sectionStatus?.submitted === true || ['under_review', 'verified', 'approved_for_procurement', 'under_compliance_review'].includes(status.toLowerCase());
+  return isSubmitted && SUBMITTED_REVIEW_STATUSES.has(status);
+};
+
+const shouldLockSellerProfile = (userRecord: any, profileRecord: any) => {
+  const status = getProfileStatus(userRecord, profileRecord);
+  if (status === 'approved_for_procurement' || status === 'verified' || status === 'VERIFIED') return true;
+  const isSubmitted = userRecord?.sectionStatus?.submitted === true || ['under_review', 'under_compliance_review'].includes(status.toLowerCase());
+  return isSubmitted && SUBMITTED_REVIEW_STATUSES.has(status);
 };
 
 const SELLER_SAVED_SECTIONS_KEY_PREFIX = 'seller-onboarding-saved-sections';
@@ -118,8 +132,9 @@ const completedSellerSectionsFromStatus = (sectionStatus: unknown) => {
   return SELLER_ONBOARDING_SECTIONS.filter(section => isCompletedSectionStatus(statusMap[section]));
 };
 
-const completedSellerSectionsFromUser = (userRecord: any) => {
-  if (String(userRecord?.onboardingStatus || '') === 'approved_for_procurement') {
+const completedSellerSectionsFromUser = (userRecord: any, profileRecord: any) => {
+  const status = getProfileStatus(userRecord, profileRecord);
+  if (status === 'approved_for_procurement' || status === 'verified' || status === 'VERIFIED') {
     return SELLER_ONBOARDING_SECTIONS;
   }
   return completedSellerSectionsFromStatus(userRecord?.sectionStatus);
@@ -157,14 +172,14 @@ export default function SellerOnboarding() {
   const [isFetching, setIsFetching] = useState(!cachedMe);
   const initialSavedSections = Array.from(new Set([
     ...inferCompletedSellerSections(cachedProfile),
-    ...completedSellerSectionsFromUser(cachedMe?.user)
+    ...completedSellerSectionsFromUser(cachedMe?.user, cachedProfile)
   ]));
   const [savedSections, setSavedSections] = useState<string[]>(initialSavedSections);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const cachedStatus = cachedMe?.user?.onboardingStatus;
+  const cachedStatus = getProfileStatus(cachedMe?.user, cachedProfile);
   const [onboardingStatus, setOnboardingStatus] = useState(cachedStatus || 'pending');
-  const [isProfileLocked, setIsProfileLocked] = useState(shouldLockSellerProfile(cachedMe?.user));
-  const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedMe?.user));
+  const [isProfileLocked, setIsProfileLocked] = useState(shouldLockSellerProfile(cachedMe?.user, cachedProfile));
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedMe?.user, cachedProfile));
   const [editingOfficeId, setEditingOfficeId] = useState<number | null>(null);
   const [editingBankId, setEditingBankId] = useState<number | null>(null);
   const [officeForm, setOfficeForm] = useState(() => {
@@ -225,6 +240,8 @@ export default function SellerOnboarding() {
   });
   const [bankErrors, setBankErrors] = useState<Record<string, string>>({});
   const [additionalErrors, setAdditionalErrors] = useState<Record<string, string>>({});
+  const [panErrors, setPanErrors] = useState<Record<string, string>>({});
+  const [detailsErrors, setDetailsErrors] = useState<Record<string, string>>({});
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const addCustomCategory = () => {
@@ -245,6 +262,8 @@ export default function SellerOnboarding() {
   const [ownershipOtp, setOwnershipOtp] = useState('');
   const [ownershipOtpSent, setOwnershipOtpSent] = useState(false);
   const [isSendingOwnershipOtp, setIsSendingOwnershipOtp] = useState(false);
+  const [submissionChannel, setSubmissionChannel] = useState<'email' | 'sms'>('email');
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
 
   const [aadhaarData, setAadhaarData] = useState({ number: '', mobile: '', consent: false });
   const [emailData, setEmailData] = useState({ newEmail: '', verifyEmail: '' });
@@ -351,11 +370,12 @@ export default function SellerOnboarding() {
       return docs;
     }
 
-    const required: { id: string; label: string; required: boolean; category: 'mandatory' | 'optional' }[] = [
+    const docs: { id: string; label: string; required: boolean; category: 'mandatory' | 'optional' }[] = [
       { id: 'pan_copy', label: 'PAN Card Copy', required: true, category: 'mandatory' },
       { id: 'bank_passbook', label: 'Bank Passbook / Cancelled Cheque', required: true, category: 'mandatory' },
       { id: 'address_proof', label: 'Address Proof', required: true, category: 'mandatory' }
     ];
+
     const selectedDocs = Array.isArray(regDetails.selectedDocuments) ? regDetails.selectedDocuments : [];
     const selectedDocLabels: Record<string, string> = {
       pan_copy: 'PAN Card Copy',
@@ -369,36 +389,74 @@ export default function SellerOnboarding() {
       itr_3_years: 'Income Tax Returns of Last 3 Years',
       nsic_certificate: 'NSIC Registration Certificate'
     };
-    const addRequired = (id: string, label = selectedDocLabels[id] || id) => {
-      if (!required.some(doc => doc.id === id)) required.push({ id, label, required: true, category: 'mandatory' });
-    };
 
-    selectedDocs.forEach((id: string) => addRequired(id));
+    // GST Certificate
+    const isGstRequired = Boolean(formData.registrationTypes?.includes('GST_REGISTERED'));
+    docs.push({
+      id: 'gst_certificate',
+      label: 'GST Certificate',
+      required: isGstRequired,
+      category: isGstRequired ? 'mandatory' : 'optional'
+    });
 
-    if (formData.isUdyamCertified || regDetails.udyamNumber) {
-      addRequired('udyam_certificate');
-    }
+    // Udyam Certificate
+    const isUdyamRequired = true;
+    docs.push({
+      id: 'udyam_certificate',
+      label: 'Udyam Certificate',
+      required: isUdyamRequired,
+      category: isUdyamRequired ? 'mandatory' : 'optional'
+    });
 
-    if (formData.isStartup || String(formData.organizationType || regDetails.businessType).toLowerCase() === 'startup') {
-      addRequired('dipp_certificate');
-    }
+    // DIPP Certificate
+    const isDippRequired = Boolean(formData.isStartup === true);
+    docs.push({
+      id: 'dipp_certificate',
+      label: 'DIPP Certificate',
+      required: isDippRequired,
+      category: isDippRequired ? 'mandatory' : 'optional'
+    });
 
-    const hasGstin = regDetails.gstin || formData.offices?.some((o: any) => o.gstNumber || o.gst);
-    if (hasGstin) {
-      addRequired('gst_certificate');
-    }
+    // NSIC Certificate
+    const isNsicRequired = Boolean(formData.registrationTypes?.includes('NSIC_REGISTERED'));
+    docs.push({
+      id: 'nsic_certificate',
+      label: 'NSIC Registration Certificate',
+      required: isNsicRequired,
+      category: isNsicRequired ? 'mandatory' : 'optional'
+    });
 
-    if (regDetails.verificationMethod === 'Aadhaar' || regDetails.aadhaarNumber) {
-      addRequired('aadhaar_card');
-    }
+    // Aadhaar Card
+    const isAadhaarRequired = Boolean(selectedDocs.includes('aadhaar_card'));
+    docs.push({
+      id: 'aadhaar_card',
+      label: 'Aadhaar of Authorized Person',
+      required: isAadhaarRequired,
+      category: isAadhaarRequired ? 'mandatory' : 'optional'
+    });
 
-    const corporateTypes = ['Company', 'LLP', 'Partnership', 'Cooperative', 'Society', 'Trust'];
-    const isCorporate = corporateTypes.some(t => String(formData.organizationType || regDetails.businessType).toLowerCase().includes(t.toLowerCase()));
-    if (isCorporate && (regDetails.cinNumber || regDetails.registrationNumber || regDetails.cin)) {
-      addRequired('business_registration_proof');
-    }
+    // Business Registration Proof
+    const isCorpRequired = Boolean(selectedDocs.includes('business_registration_proof'));
+    docs.push({
+      id: 'business_registration_proof',
+      label: 'Business Registration Proof (CIN/Shop Act)',
+      required: isCorpRequired,
+      category: isCorpRequired ? 'mandatory' : 'optional'
+    });
 
-    return required;
+    // Add any remaining selected documents from the backend or custom documents
+    selectedDocs.forEach((id: string) => {
+      if (!docs.some(doc => doc.id === id)) {
+        docs.push({
+          id,
+          label: selectedDocLabels[id] || id,
+          required: true,
+          category: 'mandatory'
+        });
+      }
+    });
+
+    return docs;
   }, [formData, regDetails, isHerShg, shgType]);
 
   const areAllDocumentsUploaded = useCallback(() => {
@@ -408,15 +466,28 @@ export default function SellerOnboarding() {
   }, [getRequiredDocuments, sellerDocuments]);
 
   const submittedOnboardingDocuments = useMemo(() => {
-    const requiredIds = new Set(getRequiredDocuments().filter(doc => doc.required).map(doc => doc.id));
-    return sellerDocuments.filter((doc: any) => requiredIds.has(doc.documentType));
+    const allDocIds = new Set(getRequiredDocuments().map(doc => doc.id));
+    return sellerDocuments.filter((doc: any) => allDocIds.has(doc.documentType));
   }, [getRequiredDocuments, sellerDocuments]);
 
-  const isApprovedProfile = onboardingStatus === 'approved_for_procurement';
+  const isApprovedProfile = onboardingStatus === 'approved_for_procurement' || onboardingStatus === 'verified' || onboardingStatus === 'VERIFIED';
   const lockBadgeText = isApprovedProfile ? 'Approved profile locked' : 'Submitted profile under review';
   const lockToastText = isApprovedProfile
     ? 'Approved profiles are locked'
     : 'Submitted profiles are locked during compliance review';
+
+  useEffect(() => {
+    api.get('/api/auth/features')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.enabledFeatures) {
+          setEnabledFeatures(data.enabledFeatures);
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const isSmsEnabled = enabledFeatures.includes('sms');
 
   useEffect(() => {
     try {
@@ -448,15 +519,15 @@ export default function SellerOnboarding() {
       setRegDetails(regDetails);
       setSellerDocuments(profile.sellerDocuments || []);
 
-      const serverCompletedSections = completedSellerSectionsFromUser(data.user);
+      const serverCompletedSections = completedSellerSectionsFromUser(data.user, profile);
 
       const inferredSections = inferCompletedSellerSections(profile);
       setSavedSections(Array.from(new Set([...inferredSections, ...serverCompletedSections])));
       const userRecord = data.user || {};
-      const currentStatus = userRecord.onboardingStatus;
+      const currentStatus = getProfileStatus(userRecord, profile);
       setOnboardingStatus(currentStatus || 'pending');
-      setIsProfileLocked(shouldLockSellerProfile(userRecord));
-      setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord));
+      setIsProfileLocked(shouldLockSellerProfile(userRecord, profile));
+      setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord, profile));
 
       const org = data.user?.organization || {};
       const hasAdditionalCompleted = data.user?.sectionStatus?.additional === 'completed' || data.user?.sectionStatus?.additional === 'approved';
@@ -506,7 +577,43 @@ export default function SellerOnboarding() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (isProfileLocked && !isAccountSettings) return;
     const { name, value, type } = e.target as any;
-    const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    let val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    if (name === 'pan') {
+      val = String(val).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+      setPanErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.pan;
+        return next;
+      });
+    }
+    if (name === 'nameAsInPan') {
+      setPanErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.nameAsInPan;
+        return next;
+      });
+    }
+    if (name === 'dateAsInPan') {
+      setPanErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.dateAsInPan;
+        return next;
+      });
+    }
+    if (name === 'dateOfIncorporation') {
+      setDetailsErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.dateOfIncorporation;
+        return next;
+      });
+    }
+    if (name === 'mobile') {
+      setDetailsErrors((prev: any) => {
+        const next = { ...prev };
+        delete next.mobile;
+        return next;
+      });
+    }
     setFormData((prev: any) => ({ ...prev, [name]: val }));
   };
 
@@ -514,6 +621,26 @@ export default function SellerOnboarding() {
     if (isProfileLocked && !isAccountSettings) {
       toast.info(lockToastText);
       return;
+    }
+    if (currentSection === 'pan') {
+      const panRegex = /^[A-Z]{3}[ABCFGHLJPT][A-Z]\d{4}[A-Z]$/;
+      const errors: Record<string, string> = {};
+      if (!formData.pan || !panRegex.test(formData.pan.toUpperCase())) {
+        errors.pan = 'Please enter a valid 10-character government PAN (e.g. ABCDE1234F)';
+      }
+      if (!formData.dateAsInPan) {
+        errors.dateAsInPan = 'Please select Date (As in PAN)';
+      }
+      if (!formData.nameAsInPan?.trim()) {
+        errors.nameAsInPan = 'Name (As in PAN) is required';
+      }
+      if (Object.keys(errors).length > 0) {
+        setPanErrors(errors);
+        toast.error('Please fix validation errors in the PAN section.');
+        return;
+      } else {
+        setPanErrors({});
+      }
     }
     if (currentSection === 'additional') {
       const { errors, isValid } = validateAdditionalForm(formData);
@@ -523,9 +650,21 @@ export default function SellerOnboarding() {
         return;
       }
     }
-    if (currentSection === 'details' && !/^[6-9]\d{9}$/.test(String(formData.mobile || '').trim())) {
-      toast.error('Please enter a valid 10-digit registered mobile number.');
-      return;
+    if (currentSection === 'details') {
+      const errors: Record<string, string> = {};
+      if (!formData.dateOfIncorporation) {
+        errors.dateOfIncorporation = 'Date of Incorporation is required';
+      }
+      if (!formData.mobile || !/^[6-9]\d{9}$/.test(String(formData.mobile).trim())) {
+        errors.mobile = 'Enter a valid 10-digit registered mobile number';
+      }
+      if (Object.keys(errors).length > 0) {
+        setDetailsErrors(errors);
+        toast.error('Please fix validation errors in the Details section.');
+        return;
+      } else {
+        setDetailsErrors({});
+      }
     }
     setIsLoading(true);
     try {
@@ -569,7 +708,9 @@ export default function SellerOnboarding() {
 
     setIsSendingOwnershipOtp(true);
     try {
-      const res = await api.post('/api/seller/ownership/send-otp', {}, {
+      const res = await api.post('/api/seller/ownership/send-otp', {
+        channel: submissionChannel
+      }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json().catch(() => ({}));
@@ -579,7 +720,7 @@ export default function SellerOnboarding() {
       }
       setOwnershipOtpSent(true);
       setOwnershipOtp('');
-      toast.success(`OTP sent to ${data.email || user?.email || 'your login email'}`);
+      toast.success(data.channel === 'sms' ? `OTP sent to your registered mobile: ${data.mobile || user?.mobile || 'your mobile'}` : `OTP sent to your login email: ${data.email || user?.email || 'your email'}`);
     } catch {
       toast.error('Unable to send OTP right now');
     } finally {
@@ -594,7 +735,7 @@ export default function SellerOnboarding() {
       return;
     }
     if (!/^\d{6}$/.test(ownershipOtp.trim())) {
-      toast.error('Enter the 6-digit OTP sent to your login email.');
+      toast.error(submissionChannel === 'sms' ? 'Enter the 6-digit OTP sent to your registered mobile.' : 'Enter the 6-digit OTP sent to your login email.');
       return;
     }
 
@@ -609,7 +750,7 @@ export default function SellerOnboarding() {
         return;
       }
 
-      const res = await api.post('/api/seller/submit', { otp: ownershipOtp.trim() }, {
+      const res = await api.post('/api/seller/submit', { otp: ownershipOtp.trim(), channel: submissionChannel }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
@@ -810,14 +951,23 @@ export default function SellerOnboarding() {
   };
 
   const verifyAndContinue = async () => {
-    if (!formData.pan || formData.pan.length !== 10) {
-      toast.error('Please enter a valid 10-digit PAN');
-      return;
+    const panRegex = /^[A-Z]{3}[ABCFGHLJPT][A-Z]\d{4}[A-Z]$/;
+    const errors: Record<string, string> = {};
+    if (!formData.pan || !panRegex.test(formData.pan.toUpperCase())) {
+      errors.pan = 'Please enter a valid 10-character government PAN (e.g. ABCDE1234F)';
     }
     if (!formData.dateAsInPan) {
-      toast.error('Please select Date (As in PAN) before verification');
+      errors.dateAsInPan = 'Please select Date (As in PAN) before verification';
+    }
+    if (!formData.nameAsInPan?.trim()) {
+      errors.nameAsInPan = 'Name (As in PAN) is required';
+    }
+    if (Object.keys(errors).length > 0) {
+      setPanErrors(errors);
+      toast.error('Please fix validation errors in the PAN section.');
       return;
     }
+    setPanErrors({});
     setIsLoading(true);
     try {
       // Simulate verification API call
@@ -1190,9 +1340,9 @@ export default function SellerOnboarding() {
                           disabled
                           className="bg-slate-50 border-slate-200"
                         />
-                        <Input label="Business PAN Number" name="pan" value={formData.pan} onChange={handleChange} placeholder="ABCDE1234F" required />
-                        <Input label="Name (As in PAN)" name="nameAsInPan" value={formData.nameAsInPan} onChange={handleChange} placeholder="Autofetched from PAN" required />
-                        <Input label="Date (As in PAN)" name="dateAsInPan" type="date" value={formData.dateAsInPan} onChange={handleChange} required />
+                        <Input label="Business PAN Number" name="pan" value={formData.pan} onChange={handleChange} placeholder="ABCDE1234F" maxLength={10} required error={panErrors.pan} />
+                        <Input label="Name (As in PAN)" name="nameAsInPan" value={formData.nameAsInPan} onChange={handleChange} placeholder="Autofetched from PAN" required error={panErrors.nameAsInPan} />
+                        <Input label="Date (As in PAN)" name="dateAsInPan" type="date" value={formData.dateAsInPan} onChange={handleChange} required error={panErrors.dateAsInPan} />
                       </div>
                       <div className="flex justify-end gap-3 pt-4">
                         <Button onClick={verifyAndContinue} disabled={isLoading} className="bg-[#12335f] hover:bg-slate-800 rounded-xl px-8 h-12 font-black uppercase text-xs tracking-widest text-white shadow-lg shadow-blue-100">
@@ -1214,14 +1364,24 @@ export default function SellerOnboarding() {
                           required
                           className="bg-slate-50 border-slate-200"
                         />
-                        <Input label="Date of Incorporation" name="dateOfIncorporation" type="date" value={formData.dateOfIncorporation} onChange={handleChange} required />
+                        <Input label="Date of Incorporation" name="dateOfIncorporation" type="date" value={formData.dateOfIncorporation} onChange={handleChange} required error={detailsErrors.dateOfIncorporation} />
                         <Input
                           label="Registered Mobile Number"
                           name="mobile"
                           value={formData.mobile}
-                          onChange={(event) => setFormData((prev: any) => ({ ...prev, mobile: event.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                          onChange={(event) => {
+                            const val = event.target.value.replace(/\D/g, '').slice(0, 10);
+                            setFormData((prev: any) => ({ ...prev, mobile: val }));
+                            setDetailsErrors((prev: any) => {
+                              const next = { ...prev };
+                              delete next.mobile;
+                              return next;
+                            });
+                          }}
                           placeholder="Enter registered mobile number"
                           required
+                          maxLength={10}
+                          error={detailsErrors.mobile}
                         />
                       </div>
                       <div className="flex justify-end gap-3 pt-2">
@@ -1571,6 +1731,17 @@ export default function SellerOnboarding() {
                               </div>
                             )}
                           </div>
+                          <div className="flex justify-end pt-4">
+                            <Button onClick={() => {
+                              if (normalizeList(formData.offices).length === 0) {
+                                toast.error("Please add at least one office location.");
+                                return;
+                              }
+                              handleSaveSection('bank');
+                            }} className="bg-[#12335f] hover:bg-slate-800 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                              Save & Next
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -1671,17 +1842,7 @@ export default function SellerOnboarding() {
                         </div>
                       )}
 
-                      <div className="flex justify-end pt-4">
-                        <Button onClick={() => {
-                          if (normalizeList(formData.offices).length === 0) {
-                            toast.error("Please add at least one office location.");
-                            return;
-                          }
-                          handleSaveSection('bank');
-                        }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                          Save & Continue
-                        </Button>
-                      </div>
+
                     </div>
                   )}
 
@@ -1760,6 +1921,17 @@ export default function SellerOnboarding() {
                                 )}
                               </tbody>
                             </table>
+                          </div>
+                          <div className="flex justify-end pt-4">
+                            <Button onClick={() => {
+                              if (normalizeList(formData.bankAccounts).length === 0) {
+                                toast.error("Please add at least one bank account.");
+                                return;
+                              }
+                              handleSaveSection('ownership');
+                            }} className="bg-[#12335f] hover:bg-slate-800 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
+                              Save & Next
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1873,24 +2045,14 @@ export default function SellerOnboarding() {
                                 accountNumber: validation.values.accountNumber,
                                 isPrimary: validation.values.isPrimary
                               });
-                            }} disabled={!bankValidation.isValid || isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-6 h-9 rounded transition-colors tracking-wide uppercase text-xs disabled:cursor-not-allowed disabled:opacity-50">
+                            }} disabled={isLoading} className="bg-[#12335f] hover:bg-slate-800 text-white font-bold px-6 h-9 rounded transition-colors tracking-wide uppercase text-xs disabled:cursor-not-allowed disabled:opacity-50">
                               {editingBankId ? 'VALIDATE & UPDATE' : 'VALIDATE & ADD'}
                             </Button>
                           </div>
                         </div>
                       )}
 
-                      <div className="flex justify-end pt-2">
-                        <Button onClick={() => {
-                          if (normalizeList(formData.bankAccounts).length === 0) {
-                            toast.error("Please add at least one bank account.");
-                            return;
-                          }
-                          handleSaveSection('ownership');
-                        }} className="bg-gray-900 text-white rounded px-6 h-9 font-bold uppercase text-xs tracking-wide">
-                          Save & Continue
-                        </Button>
-                      </div>
+
                     </div>
                   )}
 
@@ -2069,9 +2231,37 @@ export default function SellerOnboarding() {
                               All mandatory documents must be uploaded before final submission.
                             </p>
                           ) : (
-                            <p className="text-xs font-semibold text-slate-500 text-center">
-                              OTP will be sent to your login email: <span className="text-slate-800">{user?.email || 'registered email'}</span>
-                            </p>
+                            <div className="flex flex-col items-center gap-2">
+                              {isSmsEnabled && user?.mobile ? (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block text-center">Select OTP Channel</label>
+                                  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-0.5 rounded-lg w-48">
+                                    {(['email', 'sms'] as const).map((ch) => (
+                                      <button
+                                        key={ch}
+                                        type="button"
+                                        disabled={ownershipOtpSent}
+                                        onClick={() => setSubmissionChannel(ch)}
+                                        className={`py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${
+                                          submissionChannel === ch
+                                            ? 'bg-white text-[#12335f] shadow-sm'
+                                            : 'text-slate-500'
+                                        }`}
+                                      >
+                                        {ch === 'email' ? 'Email' : 'SMS'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                              <p className="text-xs font-semibold text-slate-500 text-center mt-1">
+                                {submissionChannel === 'sms' ? (
+                                  <>OTP will be sent to your registered mobile: <span className="text-slate-800">{user?.mobile}</span></>
+                                ) : (
+                                  <>OTP will be sent to your login email: <span className="text-slate-800">{user?.email || 'registered email'}</span></>
+                                )}
+                              </p>
+                            </div>
                           )}
 
                           <div className="flex w-full max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">

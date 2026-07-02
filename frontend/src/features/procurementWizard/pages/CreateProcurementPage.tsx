@@ -1,56 +1,71 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  BadgeCheck,
-  BarChart3,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardCheck,
-  FileText,
-  Gavel,
-  History,
-  Info,
-  Package,
-  Paperclip,
   Plus,
   Save,
-  Send,
-  ShieldCheck,
-  ShoppingCart,
-  Trash2,
-  Upload,
-  Users,
+  History,
   Loader2,
   X,
-  RotateCcw,
-  AlertTriangle,
+  ClipboardCheck,
+  ShieldCheck,
+  Package,
+  Users,
+  CalendarClock,
+  FileText,
+  Upload,
+  BarChart3,
+  BadgeCheck,
+  ArrowRight,
+  ChevronRight,
+  Info
 } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
-import { PROCUREMENT_DRAFTS_ROUTE, fetchProcurementDrafts, fetchProcurementDraft, saveProcurementDraft, submitProcurementDraft, uploadProcurementDocument } from '../api';
+import { useAuth } from '../../../hooks/useAuth';
+import { marketplaceApi } from '../../marketplace/api';
 import { DELIVERY_TYPES, PAYMENT_TERMS, QUANTITY_UNITS } from '../../../constants/dropdowns';
-import { marketplaceApi, type MarketplaceSeller } from '../../marketplace/api';
+import {
+  PROCUREMENT_DRAFTS_ROUTE,
+  fetchProcurementDraft,
+  saveProcurementDraft,
+  submitProcurementDraft
+} from '../api';
+import {
+  suggestProcurementMethod,
+  mapToDatabaseMethod,
+  METHOD_DEFINITIONS,
+  type ProcurementMethodId,
+  type BuyerType,
+  type RecommendationResult
+} from '../procurementMethodsConfig';
 
-type ProcurementType =
-  | 'direct-purchase'
-  | 'l1-comparison'
-  | 'rfq'
-  | 'tender'
-  | 'reverse-auction'
-  | 'boq'
-  | 'custom-product'
-  | 'custom-service'
-  | 'pac'
-  | 'rate-contract'
-  | 'emergency'
-  | 'repeat-order';
-type StepKind = 'basics' | 'items' | 'vendors' | 'schedule' | 'rules' | 'documents' | 'approval' | 'review';
+// Import Reusable Sourcing components from Loop 3
+import {
+  ProcurementStepper,
+  ProcurementMethodCard,
+  ProcurementStatusBadge,
+  BuyerTypeBadge,
+  MethodBadge,
+  SectionCard,
+  StickyActionBar,
+  EmptyState,
+  BOQTable,
+  SupplierSelector,
+  DocumentRequirementBuilder,
+  EvaluationCriteriaBuilder,
+  ApprovalTimeline,
+  ProcurementSummaryPanel,
+  type BOQRow,
+  type Supplier,
+  type SourcingDoc,
+  type EvalCriteria
+} from '../components/SourcingWizardComponents';
+
+type StepKind = 'basics' | 'internal' | 'items' | 'vendors' | 'schedule' | 'terms' | 'documents' | 'evaluation' | 'publish';
 
 type ItemRow = {
   id: string;
@@ -64,652 +79,243 @@ type ItemRow = {
   brandPolicy: string;
   technicalSpecification: string;
   specificationFileName: string;
-};
-
-type ConsigneeRow = {
-  id: string;
-  name: string;
-  location: string;
-  contact: string;
-  quantity: number;
+  fileAssetId?: number | null;
 };
 
 type DocumentRow = {
   id: string;
   name: string;
-  requirement: 'Mandatory' | 'Optional' | 'Not Required';
-  fileName: string;
-  version: number;
-  fileAssetId?: number | null;
-  documentUrl?: string;
-  mimeType?: string;
-  size?: number;
-  uploadedAt?: string;
-  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
-  uploadProgress?: number;
-  uploadError?: string;
-};
-
-type PaymentMilestone = {
-  id: string;
-  label: string;
-  percentage: string;
-  trigger: string;
+  required: boolean;
+  fileType: string;
+  maxSize: number;
+  instructions: string;
 };
 
 type Draft = {
   id?: number;
-  type: ProcurementType;
+  type: ProcurementMethodId;
   basics: {
+    buyerType: BuyerType;
     title: string;
+    whatAreYouBuying: string;
     category: string;
     subCategory: string;
     department: string;
     priority: 'Normal' | 'Urgent' | 'Emergency';
-    requirementType: 'Goods' | 'Services' | 'Works' | 'Consultancy';
     estimatedValue: number;
-    fundingSource: string;
-    costCenter: string;
+    requiredByDate: string;
+    deliveryLocation: string;
+    isCatalogueAvailable: boolean;
+    isOnlyOneVendor: boolean;
+    isReverseAuctionNeeded: boolean;
+    isTechnicalEvaluationNeeded: boolean;
     justification: string;
+    isSpecClear: boolean;
+    isRepeatedSupply: boolean;
+    marketResearchOnly: boolean;
   };
-  vendors: {
-    selection: 'Open' | 'Selected Vendors' | 'Single / PAC Vendor';
-    inviteCount: number;
-    msmePreference: boolean;
-    makeInIndiaPreference: boolean;
-    localVendorPreference: boolean;
-    minimumTurnover: string;
-    experienceYears: string;
-    complianceNotes: string;
-    selectedSellerId?: number | null;
-    selectedSellerName?: string;
-    selectedSellerCode?: string;
-  };
-  schedule: {
-    publishDate: string;
-    submissionDate: string;
-    openingDate: string;
-    validityDays: number;
-    deliveryDate: string;
-    preBidMeeting: boolean;
-    preBidDate: string;
-  };
-  rules: {
-    bidType: 'Single Bid' | 'Two Bid' | 'Price Bid Only';
-    evaluation: 'L1 Lowest Price' | 'QCBS' | 'Technical then Financial';
-    emdRequired: boolean;
-    emdAmount: number;
-    performanceSecurity: boolean;
-    reverseAuctionIntent: boolean;
-    startPrice: number;
-    reservePrice: number;
-    minimumDecrement: number;
-    autoExtension: boolean;
-    hideVendorIdentity: boolean;
+  internal: {
+    orgName: string;
+    department: string;
+    costCenter: string;
+    budgetHead: string;
+    projectCode: string;
+    contactPerson: string;
+    email: string;
+    mobile: string;
+    competentAuthority: string;
+    approvalAuthority: string;
+    internalFileNumber: string;
+    justification: string;
+    budgetConfirmed: boolean;
   };
   items: ItemRow[];
-  consigneeDetails: ConsigneeRow[];
-  documents: DocumentRow[];
+  serviceDetails: {
+    serviceTitle: string;
+    scopeOfWork: string;
+    deliverables: string;
+    inclusions: string;
+    exclusions: string;
+    slaResponseTime: string;
+    duration: string;
+    manpowerRequired: string;
+    experienceRequired: string;
+    milestones: Array<{ id: string; label: string; percentage: string; trigger: string }>;
+    penaltyClause: string;
+    location: string;
+  };
+  boqTable: BOQRow[];
+  boqFileAssetId: number | null;
+  boqFileName: string;
+  vendors: {
+    selection: 'Open' | 'Selected' | 'Category' | 'Past';
+    inviteCount: number;
+    msmePreference: boolean;
+    localVendorPreference: boolean;
+    excludeBlacklisted: boolean;
+    selectedSellerId: number | null;
+    selectedSellerName: string;
+    selectedSellerCode: string;
+    invitedSellers: number[];
+  };
+  schedule: {
+    packetType: 'Single' | 'Two';
+    publishDate: string;
+    submissionDate: string;
+    validityDays: number;
+    submissionStartDate: string;
+    clarificationAllowed: boolean;
+    clarificationDeadline: string;
+    preBidMeeting: boolean;
+    preBidDate: string;
+    technicalOpeningDate: string;
+    financialOpeningDate: string;
+    bidValidityDate: string;
+    allowWithdrawal: boolean;
+    allowRevision: boolean;
+    showSellerRank: boolean;
+    showLowestPrice: boolean;
+    autoClose: boolean;
+    minimumBidders: number;
+    rebidsAllowed: boolean;
+  };
+  terms: {
+    paymentTerms: string;
+    deliveryTerms: string;
+    freightIncluded: boolean;
+    gstIncluded: boolean;
+    warrantyTerms: string;
+    penaltyClause: string;
+    advanceAllowed: boolean;
+    retentionAmount: number;
+    securityDeposit: number;
+    emdRequired: boolean;
+    emdAmount: number;
+    documentFee: number;
+    pbgRequired: boolean;
+  };
+  requiredDocs: DocumentRow[];
+  evaluation: {
+    method: string;
+    techWeight: number;
+    commWeight: number;
+    minQualifyingMarks: number;
+    technicalCriteria: EvalCriteria[];
+  };
   approval: {
-    workflow: 'Department Approval' | 'Finance + Procurement' | 'Competent Authority';
+    workflow: string;
     approver: string;
     notes: string;
   };
-  tender: {
-    tenderNumber: string;
-    tenderType: string;
-    tenderMode: string;
-    visibility: string;
-    shortDescription: string;
-    scopeOfWork: string;
-    purpose: string;
-    deliveryLocation: string;
-    deliveryType: string;
-    deliveryTimeline: string;
-    installationRequired: boolean;
-    trainingRequired: boolean;
-    specialInstructions: string;
-    currency: string;
-    priceType: string;
-    taxType: string;
-    gstIncluded: boolean;
-    gstRate: string;
-    paymentTerms: string;
-    performanceSecurityAmount: string;
-    milestones: PaymentMilestone[];
-    bidStartDate: string;
-    bidClosingDate: string;
-    bidClosingTime: string;
-    technicalEvaluationDate: string;
-    financialEvaluationDate: string;
-    awardDate: string;
-    startupPreference: boolean;
-    shgPreference: boolean;
-    womenOwnedPreference: boolean;
-    gstMandatory: boolean;
-    panMandatory: boolean;
-    requiredCertifications: string;
-    technicalWeightage: string;
-    experienceScore: string;
-    certificationScore: string;
-    complianceScore: string;
-    priceWeightage: string;
-    evaluationMethod: string;
-    contactName: string;
-    contactEmail: string;
-    contactMobile: string;
-    contactPhone: string;
-    departmentContact: string;
-    escalationContact: string;
-    approvalRequired: boolean;
-    approverName: string;
-    approverRemarks: string;
-    approvalChain: string;
-    approvalStatus: string;
-    documentUrl: string;
-  };
-  updatedAt?: string;
 };
 
-type MethodConfig = {
-  id: ProcurementType;
-  slug: ProcurementType;
-  title: string;
-  subtitle: string;
-  icon: typeof ShoppingCart;
-  accent: string;
-  route?: string;
-  badge: string;
-  valueHint: string;
-  fit: string[];
-  gates: string[];
+const DRAFT_KEY = 'msme:guided-procurement-create:v2';
+
+const today = new Date().toISOString().split('T')[0];
+const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+const nextFortnight = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
+const makeId = () => Math.random().toString(36).substring(2, 9);
+
+const CATEGORY_OPTIONS = [
+  'Raw Materials',
+  'Steel, Plates & Structural Materials',
+  'Cement, Sand & Civil Materials',
+  'Pipes, Hume Pipes & Fittings',
+  'Mechanical Spares',
+  'Bearings & Industrial Components',
+  'Electrical Equipment',
+  'Automobile & HEMM Spares',
+  'Lubricants, Oils & Filters',
+  'Refractory & Furnace Materials',
+  'Hardware, Fasteners & Consumables',
+  'Lab Chemicals & Reagents',
+  'IT Hardware, Printers & Toners',
+  'Office Supplies & Stationery',
+  'Safety, Medical & Ambulance Supplies',
+  'Transport, Cab & Vehicle Hiring',
+  'Facility Management & Canteen Services',
+  'Repair, AMC & Overhauling Services',
+  'Mining, Material Handling & Crane Services',
+  'Construction & Works Contract',
+  'Other',
+];
+
+const stepLibrary = {
+  basics: { id: 'basics', label: 'Procurement Intent', description: 'Buyer type, title, value & method', icon: ClipboardCheck },
+  internal: { id: 'internal', label: 'Internal Details', description: 'Cost center, CFA & justifications', icon: ShieldCheck },
+  items: { id: 'items', label: 'Item / Service / BOQ', description: 'Quantities, specs and BOQ items', icon: Package },
+  vendors: { id: 'vendors', label: 'Suppliers', description: 'MSME reach, invite selection pool', icon: Users },
+  schedule: { id: 'schedule', label: 'Timeline & Rules', description: 'Envelope bids & deadline schedules', icon: CalendarClock },
+  terms: { id: 'terms', label: 'Commercial Terms', description: 'Payment, delivery and EM/PBG fees', icon: FileText },
+  documents: { id: 'documents', label: 'Required Documents', description: 'Checklists and validation requests', icon: Upload },
+  evaluation: { id: 'evaluation', label: 'Evaluation Basis', description: 'QCBS weights and technical scores', icon: BarChart3 },
+  publish: { id: 'publish', label: 'Approval & Publish', description: 'Summary review & workflow release', icon: BadgeCheck },
+} as const;
+
+const ALL_STEPS: StepKind[] = ['basics', 'internal', 'items', 'vendors', 'schedule', 'terms', 'documents', 'evaluation', 'publish'];
+
+const defaultRequiredDocs = (buyerType: BuyerType, method: ProcurementMethodId): DocumentRow[] => {
+  const isGov = buyerType === 'GOVERNMENT_BUYER';
+  const docs: DocumentRow[] = [
+    { id: 'gst', name: 'GST Certificate', required: true, fileType: 'pdf', maxSize: 5, instructions: 'Upload verified GST registration document.' },
+    { id: 'pan', name: 'PAN Card', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Upload official PAN card.' },
+    { id: 'bank', name: 'Bank Details', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Cancelled cheque or passbook.' },
+    { id: 'tech_compliance', name: 'Technical Compliance Sheet', required: method !== 'DIRECT_PURCHASE' && method !== 'CATALOG_PURCHASE', fileType: 'pdf,docx', maxSize: 10, instructions: 'Compliance report against specified standards.' },
+    { id: 'financial_quote', name: 'Detailed Price Breakup', required: true, fileType: 'pdf,xlsx', maxSize: 5, instructions: 'Itemized cost schedule.' },
+  ];
+
+  if (isGov) {
+    docs.push(
+      { id: 'experience', name: 'Experience Certificate', required: true, fileType: 'pdf', maxSize: 10, instructions: 'Proof of similar supply in past 3 years.' },
+      { id: 'turnover', name: 'Turnover Certificate', required: true, fileType: 'pdf', maxSize: 5, instructions: 'Chartered Accountant certified turnover.' },
+      { id: 'no_deviation', name: 'No-Deviation Certificate', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Declaration confirming no specs deviation.' }
+    );
+  }
+
+  if (method === 'PAC') {
+    docs.push({ id: 'pac_cert', name: 'Proprietary Article Certificate (PAC)', required: true, fileType: 'pdf', maxSize: 5, instructions: 'OEM signed proprietary certificate.' });
+  }
+
+  return docs;
 };
 
-type StepConfig = {
-  id: StepKind;
-  label: string;
-  description: string;
-  icon: typeof ClipboardCheck;
-};
-
-type AdvisorState = {
-  estimatedValue: string;
-  catalogAvailable: boolean;
-  technicalEvaluation: boolean;
-  proprietary: boolean;
-  boqRequired: boolean;
-};
-
-const DRAFT_KEY = 'msme:guided-procurement-create:v1';
-const TENDER_HANDOFF_KEY = 'msme:tender-create-prefill:v1';
-const REQUIREMENT_HANDOFF_KEY = 'msme:requirement-create-prefill:v1';
-const RFQ_HANDOFF_KEY = 'msme:rfq-create-prefill:v1';
-const PROCUREMENT_SUMMARIES_KEY = 'msme:procurement-intake-summaries:v1';
-const today = new Date().toISOString().slice(0, 10);
-const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-const nextFortnight = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-const makeId = () => Math.random().toString(36).slice(2, 10);
-
-const PROCUREMENT_CATEGORY_OPTIONS = [
-  'Construction',
-  'Civil Work',
-  'Electrical',
-  'Mechanical',
-  'Hydraulics',
-  'Industrial Machinery',
-  'Automation',
-  'IT & Software',
-  'Cloud Services',
-  'Networking',
-  'Office Equipment',
-  'Furniture',
-  'Catering',
-  'Housekeeping',
-  'Security Services',
-  'Transportation',
-  'Logistics',
-  'Packaging',
-  'Printing',
-  'Medical Supplies',
-  'Laboratory Equipment',
-  'Chemicals',
-  'Steel & Metals',
-  'Cement & Building Materials',
-  'Safety Equipment',
-  'Fire Safety',
-  'Power & Energy',
-  'Telecom',
-  'Repair & Maintenance',
-  'AMC Services',
-  'Consultancy Services',
-  'Office Supplies',
-  'General Services',
-  'OEM Supply',
-  'Manpower Supply',
-];
-
-const PROCUREMENT_SUBCATEGORY_OPTIONS = [
-  'Raw materials',
-  'Finished goods',
-  'Consumables',
-  'Spares and components',
-  'Capital equipment',
-  'AMC / maintenance',
-  'Installation and commissioning',
-  'Civil execution',
-  'Electrical works',
-  'IT implementation',
-  'Logistics support',
-  'Professional services',
-  'Statutory compliance',
-];
-
-const DEPARTMENT_OPTIONS = [
-  'Administration',
-  'Procurement',
-  'Operations',
-  'Production',
-  'Maintenance',
-  'Engineering',
-  'Projects',
-  'Finance',
-  'IT',
-  'HR',
-  'Quality',
-  'Safety',
-  'Warehouse',
-  'Sales',
-  'Legal',
-];
-
-const FUNDING_SOURCE_OPTIONS = [
-  'Operating budget',
-  'Project budget',
-  'Capex budget',
-  'Opex budget',
-  'Department budget',
-  'Scheme / grant',
-  'CSR budget',
-  'Emergency approval',
-  'Buyer funded',
-];
-
-const COST_CENTER_OPTIONS = [
-  'Administration',
-  'Factory / plant',
-  'Project site',
-  'Warehouse',
-  'Head office',
-  'Regional office',
-  'Maintenance',
-  'IT services',
-  'Quality control',
-  'Safety and compliance',
-];
-
-const MINIMUM_TURNOVER_OPTIONS = [
-  'Not required',
-  'Rs 1 lakh and above',
-  'Rs 5 lakh and above',
-  'Rs 10 lakh and above',
-  'Rs 25 lakh and above',
-  'Rs 50 lakh and above',
-  'Rs 1 crore and above',
-  'Rs 5 crore and above',
-];
-
-const EXPERIENCE_REQUIRED_OPTIONS = [
-  'Not required',
-  '1 year',
-  '2 years',
-  '3 years',
-  '5 years',
-  '7 years',
-  '10 years',
-];
-
-const REQUIREMENT_TYPE_OPTIONS = ['Goods', 'Services', 'Works', 'Consultancy'];
-const PRIORITY_OPTIONS = ['Normal', 'Urgent', 'Emergency'];
-const TENDER_TYPE_OPTIONS = ['Open Tender', 'Limited Tender', 'Single Tender', 'Global Tender', 'Expression of Interest', 'Request for Quotation'];
-const TENDER_MODE_OPTIONS = ['Single Bid', 'Two Bid', 'Three Packet', 'Reverse Auction enabled'];
-const TENDER_VISIBILITY_OPTIONS = ['Public marketplace', 'Verified suppliers', 'Invited suppliers only', 'MSME suppliers only'];
-const SUPPLIER_SELECTION_OPTIONS = ['Open', 'Selected Vendors', 'Single / PAC Vendor'];
-const BID_TYPE_OPTIONS = ['Single Bid', 'Two Bid', 'Price Bid Only'];
-const EVALUATION_OPTIONS = ['L1 Lowest Price', 'QCBS', 'Technical then Financial'];
-const TENDER_EVALUATION_OPTIONS = ['L1 method', 'L2 / L3 comparison', 'QCBS method', 'Technical compliance then L1', 'Reverse auction'];
-const PRICE_TYPE_OPTIONS = ['Firm fixed price', 'Variable price', 'Rate contract', 'Item-wise price', 'Milestone-based'];
-const TAX_TYPE_OPTIONS = ['GST', 'IGST', 'Exempt', 'Composite tax'];
-const DOCUMENT_REQUIREMENT_OPTIONS: DocumentRow['requirement'][] = ['Mandatory', 'Optional', 'Not Required'];
-const BRAND_POLICY_OPTIONS = ['Equivalent or better allowed', 'OEM only', 'No brand restriction', 'Specific make with justification'];
-const APPROVAL_STATUS_OPTIONS = ['Draft', 'Pending department approval', 'Pending finance approval', 'Approved', 'Returned for correction'];
-const APPROVAL_WORKFLOW_OPTIONS = ['Department Approval', 'Finance + Procurement', 'Competent Authority'];
-const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR'];
-const OTHER_OPTION = 'Other';
-
-const isTenderMethod = (type: ProcurementType) =>
-  ['tender', 'boq', 'custom-product', 'custom-service', 'pac', 'rate-contract', 'emergency'].includes(type);
-
-const isDirectMethod = (type: ProcurementType) =>
-  ['direct-purchase', 'pac', 'repeat-order'].includes(type);
-
-const isAuctionMethod = (type: ProcurementType) => type === 'reverse-auction';
-
-const isComparisonMethod = (type: ProcurementType) => type === 'l1-comparison';
-
-const normalizeProcurementType = (type?: string): ProcurementType => {
-  const legacy: Record<string, ProcurementType> = {
-    direct: 'direct-purchase',
-    comparison: 'l1-comparison',
-    auction: 'reverse-auction',
-  };
-  const normalized = legacy[type || ''] || type;
-  return methodConfigs.some(method => method.id === normalized) ? normalized as ProcurementType : 'rfq';
-};
-
-const methodConfigs: MethodConfig[] = [
-  {
-    id: 'direct-purchase',
-    slug: 'direct-purchase',
-    title: 'Direct Purchase',
-    subtitle: 'Known item, catalogue or identified seller, short approval path',
-    icon: ShoppingCart,
-    accent: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    route: '/buyer/direct-purchase',
-    badge: 'Common',
-    valueHint: 'Best for low-value or approved direct buys',
-    fit: ['Low value or PAC purchase', 'Known seller or catalogue item', 'Budget check before approval'],
-    gates: ['Vendor and bank verification', 'Budget availability', 'Short approval workflow'],
-  },
-  {
-    id: 'l1-comparison',
-    slug: 'l1-comparison',
-    title: 'L1 Comparison',
-    subtitle: 'Compare sellers before order',
-    icon: BarChart3,
-    accent: 'border-cyan-200 bg-cyan-50 text-cyan-800',
-    route: '/buyer/marketplace',
-    badge: 'Recommended',
-    valueHint: 'Use where comparable offers exist',
-    fit: ['Comparable catalogue items', 'Need price reasonableness record', 'Shortlisting 3 or more sellers'],
-    gates: ['Equivalent specifications', 'Tax and freight comparison', 'Approval of selected L1'],
-  },
-  {
-    id: 'rfq',
-    slug: 'rfq',
-    title: 'RFQ / eRFQ',
-    subtitle: 'Request quotations with controlled vendor invite',
-    icon: FileText,
-    accent: 'border-blue-200 bg-blue-50 text-blue-800',
-    route: '/buyer/rfq',
-    badge: 'Common',
-    valueHint: 'Useful for custom specs and supplier quotes',
-    fit: ['Custom specification', 'Need quote validity', 'Open or invited supplier set'],
-    gates: ['Clear BOQ/specification', 'Submission schedule', 'Commercial and eligibility terms'],
-  },
-  {
-    id: 'tender',
-    slug: 'tender',
-    title: 'Tender / Open Bid',
-    subtitle: 'Published bidding with committee evaluation',
-    icon: ClipboardCheck,
-    accent: 'border-amber-200 bg-amber-50 text-amber-900',
-    route: '/buyer/publish-bid?method=tender',
-    badge: 'Compliance Required',
-    valueHint: 'Formal bids and higher-value procurement',
-    fit: ['Higher value procurement', 'Two-bid or formal compliance checks', 'Public audit trail needed'],
-    gates: ['NIT and document checklist', 'Bid opening committee', 'Technical and financial evaluation'],
-  },
-  {
-    id: 'reverse-auction',
-    slug: 'reverse-auction',
-    title: 'Reverse Auction',
-    subtitle: 'Price discovery after qualified competition',
-    icon: Gavel,
-    accent: 'border-violet-200 bg-violet-50 text-violet-800',
-    route: '/reverse-auctions/create',
-    badge: 'Advanced',
-    valueHint: 'Use after technical qualification',
-    fit: ['Comparable items and qualified bidders', 'Need transparent price reduction', 'RA intent declared upfront'],
-    gates: ['Start and reserve price', 'Minimum decrement', 'Auto-extension and rank visibility rules'],
-  },
-  {
-    id: 'boq',
-    slug: 'boq',
-    title: 'BOQ Based Bid',
-    subtitle: 'Line item bidding with BOQ schedule and validation',
-    icon: Package,
-    accent: 'border-slate-200 bg-slate-50 text-slate-800',
-    route: '/buyer/publish-bid?method=boq',
-    badge: 'Advanced',
-    valueHint: 'Works, AMC, item-wise rates',
-    fit: ['Multiple line items', 'Need rate and tax comparison', 'BOQ template or line table available'],
-    gates: ['BOQ upload or completed line items', 'Quantity and unit validation', 'Commercial schedule review'],
-  },
-  {
-    id: 'custom-product',
-    slug: 'custom-product',
-    title: 'Custom Product Bid',
-    subtitle: 'Non-catalogue product with custom technical specifications',
-    icon: ClipboardCheck,
-    accent: 'border-indigo-200 bg-indigo-50 text-indigo-800',
-    route: '/buyer/publish-bid?method=custom-product',
-    badge: 'Approval Required',
-    valueHint: 'Use when catalogue item is unavailable',
-    fit: ['Catalogue item unavailable', 'Golden parameters or drawings required', 'Admin approval may be needed'],
-    gates: ['Unavailability reason', 'Technical specification', 'Drawing/specification attachment'],
-  },
-  {
-    id: 'custom-service',
-    slug: 'custom-service',
-    title: 'Custom Service Bid',
-    subtitle: 'Scope, SLA, manpower, milestones and service terms',
-    icon: Users,
-    accent: 'border-sky-200 bg-sky-50 text-sky-800',
-    route: '/buyer/publish-bid?method=custom-service',
-    badge: 'Service',
-    valueHint: 'For work orders and service contracts',
-    fit: ['Scope of work based procurement', 'SLA or manpower requirement', 'Milestone payment schedule'],
-    gates: ['Scope of work', 'SLA and duration', 'Payment milestone review'],
-  },
-  {
-    id: 'pac',
-    slug: 'pac',
-    title: 'PAC / Proprietary Bid',
-    subtitle: 'Single OEM or proprietary article certificate route',
-    icon: ShieldCheck,
-    accent: 'border-rose-200 bg-rose-50 text-rose-800',
-    route: '/buyer/publish-bid?method=pac',
-    badge: 'Compliance Required',
-    valueHint: 'Single-source justification required',
-    fit: ['OEM/proprietary item', 'No equivalent substitute', 'Competent authority approval required'],
-    gates: ['PAC certificate', 'Manufacturer details', 'Single-source justification'],
-  },
-  {
-    id: 'rate-contract',
-    slug: 'rate-contract',
-    title: 'Rate Contract',
-    subtitle: 'Reusable rate schedule for recurring procurement',
-    icon: CalendarClock,
-    accent: 'border-teal-200 bg-teal-50 text-teal-800',
-    route: '/buyer/publish-bid?method=rate-contract',
-    badge: 'Advanced',
-    valueHint: 'For repeated demand over a validity period',
-    fit: ['Recurring items/services', 'Rate validity needed', 'Quantity slabs or renewal terms'],
-    gates: ['Contract duration', 'Rate validity', 'Renewal and slab terms'],
-  },
-  {
-    id: 'emergency',
-    slug: 'emergency',
-    title: 'Emergency Procurement',
-    subtitle: 'Urgent procurement with audit justification',
-    icon: AlertTriangle,
-    accent: 'border-orange-200 bg-orange-50 text-orange-800',
-    route: '/buyer/publish-bid?method=emergency',
-    badge: 'Urgent',
-    valueHint: 'Use only with emergency justification',
-    fit: ['Operational emergency', 'Shortened timeline', 'Approval authority identified'],
-    gates: ['Emergency justification', 'Approval authority', 'Audit note mandatory'],
-  },
-  {
-    id: 'repeat-order',
-    slug: 'repeat-order',
-    title: 'Repeat Order / Reorder',
-    subtitle: 'Repeat a previous order with same item or seller',
-    icon: RotateCcw,
-    accent: 'border-lime-200 bg-lime-50 text-lime-800',
-    route: '/buyer/direct-purchase?method=repeat-order',
-    badge: 'Common',
-    valueHint: 'Use with prior order reference',
-    fit: ['Same item or service', 'Known previous seller', 'Repeat quantity within policy'],
-    gates: ['Previous order reference', 'Price comparison', 'Reorder reason'],
-  },
-];
-
-const stepLibrary: Record<StepKind, StepConfig> = {
-  basics: { id: 'basics', label: 'Requirement', description: 'Purpose, category, value and budget ownership', icon: ClipboardCheck },
-  items: { id: 'items', label: 'Items / BOQ', description: 'Line items, quantity, tax and specifications', icon: Package },
-  vendors: { id: 'vendors', label: 'Suppliers', description: 'Vendor reach, preferences and eligibility filters', icon: Users },
-  schedule: { id: 'schedule', label: 'Schedule', description: 'Publishing, submission, opening and delivery dates', icon: CalendarClock },
-  rules: { id: 'rules', label: 'Rules', description: 'Bid mode, EMD, evaluation and auction settings', icon: ShieldCheck },
-  documents: { id: 'documents', label: 'Documents', description: 'Supporting documents and compliance files', icon: Upload },
-  approval: { id: 'approval', label: 'Approval', description: 'Review chain and publishing controls', icon: BadgeCheck },
-  review: { id: 'review', label: 'Review', description: 'Readiness checks before moving ahead', icon: CheckCircle2 },
-};
-
-const stepsByType: Record<ProcurementType, StepKind[]> = {
-  'direct-purchase': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
-  'l1-comparison': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
-  rfq: ['basics', 'items', 'vendors', 'schedule', 'rules', 'documents', 'approval', 'review'],
-  tender: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  'reverse-auction': ['basics', 'items', 'vendors', 'rules', 'schedule', 'documents', 'approval', 'review'],
-  boq: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  'custom-product': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  'custom-service': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  pac: ['basics', 'items', 'vendors', 'schedule', 'rules', 'documents', 'approval', 'review'],
-  'rate-contract': ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  emergency: ['basics', 'items', 'schedule', 'vendors', 'rules', 'documents', 'approval', 'review'],
-  'repeat-order': ['basics', 'items', 'vendors', 'schedule', 'documents', 'approval', 'review'],
-};
-
-const defaultDocuments = (type: ProcurementType = 'rfq'): DocumentRow[] => [
-  { id: makeId(), name: isTenderMethod(type) ? 'Tender Specification File' : 'Requirement note / indent approval', requirement: isTenderMethod(type) ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: type === 'pac' ? 'PAC Certificate' : 'BOQ / Price Schedule', requirement: isTenderMethod(type) || type === 'boq' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: 'Terms & Conditions', requirement: 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: isTenderMethod(type) ? 'Annexures / Drawings' : 'Technical specification', requirement: ['custom-product', 'custom-service'].includes(type) ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: isTenderMethod(type) ? 'Technical Documents' : 'Commercial terms and delivery conditions', requirement: type === 'emergency' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: isTenderMethod(type) ? 'Compliance Documents' : 'Budget approval / fund availability', requirement: type === 'pac' ? 'Mandatory' : 'Optional', fileName: '', version: 1 },
-  { id: makeId(), name: 'Other Attachments', requirement: 'Optional', fileName: '', version: 1 },
-];
-
-const emptyMilestone = (): PaymentMilestone => ({
-  id: makeId(),
-  label: 'Delivery acceptance',
-  percentage: '100',
-  trigger: 'After delivery, inspection, and acceptance',
-});
-
-const defaultTenderDetails = () => ({
-  tenderNumber: `TDR-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`,
-  tenderType: 'Open Tender',
-  tenderMode: 'Two Bid',
-  visibility: 'Verified suppliers',
-  shortDescription: '',
-  scopeOfWork: '',
-  purpose: '',
-  deliveryLocation: '',
-  deliveryType: '',
-  deliveryTimeline: '',
-  installationRequired: false,
-  trainingRequired: false,
-  specialInstructions: '',
-  currency: 'INR',
-  priceType: 'Firm fixed price',
-  taxType: 'GST',
-  gstIncluded: true,
-  gstRate: '18',
-  paymentTerms: '',
-  performanceSecurityAmount: '',
-  milestones: [emptyMilestone()],
-  bidStartDate: '',
-  bidClosingDate: '',
-  bidClosingTime: '',
-  technicalEvaluationDate: '',
-  financialEvaluationDate: '',
-  awardDate: '',
-  startupPreference: false,
-  shgPreference: false,
-  womenOwnedPreference: false,
-  gstMandatory: true,
-  panMandatory: true,
-  requiredCertifications: '',
-  technicalWeightage: '70',
-  experienceScore: '20',
-  certificationScore: '20',
-  complianceScore: '30',
-  priceWeightage: '30',
-  evaluationMethod: 'QCBS method',
-  contactName: '',
-  contactEmail: '',
-  contactMobile: '',
-  contactPhone: '',
-  departmentContact: '',
-  escalationContact: '',
-  approvalRequired: true,
-  approverName: '',
-  approverRemarks: '',
-  approvalChain: 'Department Head > Finance > Procurement Head',
-  approvalStatus: 'Draft',
-  documentUrl: '',
-});
-
-const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
+const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 'PRIVATE_BUYER'): Draft => ({
   type,
   basics: {
+    buyerType,
     title: '',
-    category: isTenderMethod(type) ? '' : isDirectMethod(type) ? 'Office Supplies' : 'Goods',
+    whatAreYouBuying: 'Product',
+    category: 'Office Supplies & Stationery',
     subCategory: '',
     department: '',
-    priority: type === 'emergency' ? 'Emergency' : 'Normal',
-    requirementType: type === 'custom-service' ? 'Services' : 'Goods',
+    priority: 'Normal',
     estimatedValue: 0,
-    fundingSource: '',
-    costCenter: '',
+    requiredByDate: nextFortnight,
+    deliveryLocation: '',
+    isCatalogueAvailable: false,
+    isOnlyOneVendor: false,
+    isReverseAuctionNeeded: false,
+    isTechnicalEvaluationNeeded: false,
     justification: '',
+    isSpecClear: true,
+    isRepeatedSupply: false,
+    marketResearchOnly: false,
   },
-  vendors: {
-    selection: isDirectMethod(type) ? 'Single / PAC Vendor' : 'Open',
-    inviteCount: 0,
-    msmePreference: true,
-    makeInIndiaPreference: true,
-    localVendorPreference: false,
-    minimumTurnover: '',
-    experienceYears: '',
-    complianceNotes: '',
-    selectedSellerId: null,
-    selectedSellerName: '',
-    selectedSellerCode: '',
-  },
-  schedule: {
-    publishDate: today,
-    submissionDate: nextWeek,
-    openingDate: nextWeek,
-    validityDays: 90,
-    deliveryDate: nextFortnight,
-    preBidMeeting: false,
-    preBidDate: '',
-  },
-  rules: {
-    bidType: isDirectMethod(type) || isComparisonMethod(type) ? 'Price Bid Only' : 'Two Bid',
-    evaluation: 'L1 Lowest Price',
-    emdRequired: false,
-    emdAmount: 0,
-    performanceSecurity: false,
-    reverseAuctionIntent: isAuctionMethod(type),
-    startPrice: 0,
-    reservePrice: 0,
-    minimumDecrement: 5000,
-    autoExtension: true,
-    hideVendorIdentity: true,
+  internal: {
+    orgName: '',
+    department: '',
+    costCenter: '',
+    budgetHead: '',
+    projectCode: '',
+    contactPerson: '',
+    email: '',
+    mobile: '',
+    competentAuthority: '',
+    approvalAuthority: '',
+    internalFileNumber: '',
+    justification: '',
+    budgetConfirmed: false,
   },
   items: [
     {
@@ -720,1188 +326,1327 @@ const defaultDraft = (type: ProcurementType = 'rfq'): Draft => ({
       unit: 'Nos',
       unitPrice: 0,
       gst: 18,
-      deliveryDate: '',
-      brandPolicy: 'Equivalent or better allowed',
+      deliveryDate: nextFortnight,
+      brandPolicy: 'Equivalent allowed',
       technicalSpecification: '',
       specificationFileName: '',
     },
   ],
-  consigneeDetails: [
-    {
-      id: makeId(),
-      name: '',
-      location: '',
-      contact: '',
-      quantity: 1,
-    },
+  serviceDetails: {
+    serviceTitle: '',
+    scopeOfWork: '',
+    deliverables: '',
+    inclusions: '',
+    exclusions: '',
+    slaResponseTime: '4 hours',
+    duration: '1 Year',
+    manpowerRequired: '0',
+    experienceRequired: '0',
+    milestones: [
+      { id: makeId(), label: 'Mobilization advance', percentage: '10', trigger: 'Signing of contract' },
+      { id: makeId(), label: 'Monthly running bill', percentage: '90', trigger: 'Completion of monthly service' },
+    ],
+    penaltyClause: '0.5% per week delay up to max 10%',
+    location: '',
+  },
+  boqTable: [
+    { srNo: 1, description: '', category: 'General', quantity: 1, uom: 'Nos', estimatedRate: 0, taxPercent: 18, total: 0, remarks: '' }
   ],
-  documents: defaultDocuments(type),
+  boqFileAssetId: null,
+  boqFileName: '',
+  vendors: {
+    selection: 'Open',
+    inviteCount: 0,
+    msmePreference: true,
+    localVendorPreference: false,
+    excludeBlacklisted: true,
+    selectedSellerId: null,
+    selectedSellerName: '',
+    selectedSellerCode: '',
+    invitedSellers: [],
+  },
+  schedule: {
+    packetType: 'Single',
+    publishDate: today,
+    submissionDate: nextWeek,
+    validityDays: 90,
+    submissionStartDate: today,
+    clarificationAllowed: true,
+    clarificationDeadline: nextWeek,
+    preBidMeeting: false,
+    preBidDate: '',
+    technicalOpeningDate: nextWeek,
+    financialOpeningDate: nextWeek,
+    bidValidityDate: nextFortnight,
+    allowWithdrawal: true,
+    allowRevision: true,
+    showSellerRank: true,
+    showLowestPrice: true,
+    autoClose: true,
+    minimumBidders: 3,
+    rebidsAllowed: true,
+  },
+  terms: {
+    paymentTerms: '100% after delivery and acceptance',
+    deliveryTerms: 'Door delivery to site',
+    freightIncluded: true,
+    gstIncluded: false,
+    warrantyTerms: '12 Months standard warranty',
+    penaltyClause: '0.5% per week delay up to max 10%',
+    advanceAllowed: false,
+    retentionAmount: 0,
+    securityDeposit: 0,
+    emdRequired: false,
+    emdAmount: 0,
+    documentFee: 0,
+    pbgRequired: false,
+  },
+  requiredDocs: defaultRequiredDocs(buyerType, type),
+  evaluation: {
+    method: 'L1 total value',
+    techWeight: 70,
+    commWeight: 30,
+    minQualifyingMarks: 60,
+    technicalCriteria: [
+      { id: makeId(), name: 'Company credentials', description: 'Years of operation, certifications, experience.', maxScore: 30, weightage: 30, mandatory: true, minMarks: 15 },
+      { id: makeId(), name: 'Technical compliance', description: 'Compliance score based on technical specification sheet.', maxScore: 50, weightage: 50, mandatory: true, minMarks: 35 },
+      { id: makeId(), name: 'Past performance rating', description: 'Seller platform rating and past order delivery.', maxScore: 20, weightage: 20, mandatory: false, minMarks: 0 }
+    ],
+  },
   approval: {
     workflow: 'Finance + Procurement',
     approver: '',
     notes: '',
   },
-  tender: defaultTenderDetails(),
-});
-
-const money = (value: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number.isFinite(value) ? value : 0);
-
-const itemTotal = (item: ItemRow) => item.quantity * item.unitPrice * (1 + item.gst / 100);
-const subtotal = (items: ItemRow[]) => items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-const grandTotal = (items: ItemRow[]) => items.reduce((sum, item) => sum + itemTotal(item), 0);
-
-const recommendProcurementType = (draft: Draft): ProcurementType => {
-  const value = draft.basics.estimatedValue || grandTotal(draft.items);
-  if (draft.basics.priority === 'Emergency') return 'emergency';
-  if (draft.type === 'pac' || draft.vendors.selection === 'Single / PAC Vendor') return 'pac';
-  if (isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent) return 'reverse-auction';
-  if (value > 1000000) return 'tender';
-  if (value > 50000 && draft.vendors.selection === 'Open') return 'rfq';
-  if (value > 50000) return 'l1-comparison';
-  return 'direct-purchase';
-};
-
-const recommendFromAdvisor = (advisor: AdvisorState): ProcurementType => {
-  const value = Number(advisor.estimatedValue || 0);
-  if (advisor.proprietary) return 'pac';
-  if (advisor.boqRequired) return 'boq';
-  if (advisor.catalogAvailable && value > 0 && value <= 25000 && !advisor.technicalEvaluation) return 'direct-purchase';
-  if (advisor.catalogAvailable && !advisor.technicalEvaluation) return 'l1-comparison';
-  if (advisor.technicalEvaluation || value > 1000000) return 'tender';
-  if (value > 50000) return 'rfq';
-  return 'direct-purchase';
-};
-
-const methodLabel = (type: ProcurementType) => methodConfigs.find(method => method.id === type)?.title || type;
-
-const attachedDocuments = (draft: Draft) => draft.documents.filter(document => document.fileName);
-
-const buildProcurementSummary = (draft: Draft) => {
-  const value = draft.basics.estimatedValue || grandTotal(draft.items);
-  const documents = attachedDocuments(draft);
-  return {
-    id: `PI-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    method: draft.type,
-    methodLabel: methodLabel(draft.type),
-    title: draft.basics.title || 'Untitled procurement',
-    category: draft.basics.category,
-    subCategory: draft.basics.subCategory,
-    department: draft.basics.department,
-    requirementType: draft.basics.requirementType,
-    priority: draft.basics.priority,
-    estimatedValue: value,
-    justification: draft.basics.justification,
-    supplierSelection: draft.vendors.selection,
-    publishDate: draft.schedule.publishDate,
-    submissionDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
-    deliveryDate: draft.schedule.deliveryDate,
-    bidType: draft.rules.bidType,
-    evaluation: isTenderMethod(draft.type) ? draft.tender.evaluationMethod : draft.rules.evaluation,
-    approvalWorkflow: isTenderMethod(draft.type) ? draft.tender.approvalChain : draft.approval.workflow,
-    items: draft.items.map(item => ({
-      name: item.name,
-      specification: item.specification || item.technicalSpecification,
-      quantity: item.quantity,
-      unit: item.unit,
-      unitPrice: item.unitPrice,
-      gst: item.gst,
-      total: itemTotal(item),
-    })),
-    consigneeDetails: draft.consigneeDetails.map(consignee => ({
-      name: consignee.name,
-      location: consignee.location,
-      contact: consignee.contact,
-      quantity: consignee.quantity,
-    })),
-    documents: documents.map(document => ({
-      name: document.name,
-      requirement: document.requirement,
-      fileName: document.fileName,
-      version: document.version,
-      fileAssetId: document.fileAssetId || null,
-      documentUrl: document.documentUrl || '',
-      mimeType: document.mimeType || '',
-      size: document.size || 0,
-      uploadedAt: document.uploadedAt || '',
-    })),
-  };
-};
-
-const formatProcurementSummaryText = (draft: Draft) => {
-  const summary = buildProcurementSummary(draft);
-  const docs = summary.documents.length
-    ? summary.documents.map(document => `- ${document.name}: ${document.fileName} (${document.requirement}, v${document.version})`).join('\n')
-    : '- No documents attached';
-  const items = summary.items.length
-    ? summary.items.map(item => `- ${item.name || 'Unnamed item'}: ${item.quantity} ${item.unit}, ${item.specification || 'No specification'}, unit ${money(item.unitPrice || 0)}`).join('\n')
-    : '- No line items';
-  const consignees = summary.consigneeDetails.length
-    ? summary.consigneeDetails.map(consignee => `- ${consignee.name || 'Consignee'}: ${consignee.quantity}, ${consignee.location || 'Location not set'}`).join('\n')
-    : '- No consignee allocation';
-
-  return [
-    draft.basics.justification || draft.tender.scopeOfWork || draft.tender.shortDescription || 'Procurement requirement captured from Create Procurement.',
-    '',
-    'Procurement Intake Summary',
-    `Route: ${summary.methodLabel}`,
-    `Category: ${summary.category || '-'} / ${summary.subCategory || '-'}`,
-    `Department: ${summary.department || '-'}`,
-    `Requirement Type: ${summary.requirementType}`,
-    `Estimated Value: ${money(summary.estimatedValue)}`,
-    `Supplier Selection: ${summary.supplierSelection}`,
-    `Submission / Closing: ${summary.submissionDate || '-'}`,
-    `Delivery Required By: ${summary.deliveryDate || '-'}`,
-    `Evaluation: ${summary.evaluation}`,
-    `Approval Workflow: ${summary.approvalWorkflow || '-'}`,
-    '',
-    'Line Items',
-    items,
-    '',
-    'Consignee Allocation',
-    consignees,
-    '',
-    'Attached Documents',
-    docs,
-  ].join('\n');
-};
-
-const writeProcurementSummary = (draft: Draft) => {
-  const summary = buildProcurementSummary(draft);
-  try {
-    const existing = JSON.parse(localStorage.getItem(PROCUREMENT_SUMMARIES_KEY) || '[]');
-    const list = Array.isArray(existing) ? existing : [];
-    localStorage.setItem(PROCUREMENT_SUMMARIES_KEY, JSON.stringify([summary, ...list].slice(0, 10)));
-  } catch {
-    localStorage.setItem(PROCUREMENT_SUMMARIES_KEY, JSON.stringify([summary]));
-  }
-};
-
-const buildRequirementHandoffDraft = (draft: Draft) => ({
-  draft: {
-    requirementTitle: draft.basics.title,
-    requirementType: isDirectMethod(draft.type)
-      ? 'Direct Purchase'
-      : isAuctionMethod(draft.type)
-        ? 'Reverse Auction'
-        : draft.type === 'rfq'
-          ? 'RFQ'
-          : methodLabel(draft.type),
-    procurementCategory: draft.basics.requirementType,
-    description: formatProcurementSummaryText(draft),
-    department: draft.basics.department,
-    priority: draft.basics.priority === 'Normal' ? 'Medium' : draft.basics.priority,
-    closingDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
-    bidEndDate: isTenderMethod(draft.type) ? draft.tender.bidClosingDate : draft.schedule.submissionDate,
-    deliveryAddress: draft.tender.deliveryLocation,
-    consigneeDetails: draft.consigneeDetails,
-    deliveryPeriod: draft.tender.deliveryTimeline,
-    deliveryType: draft.tender.deliveryType,
-    paymentTerms: draft.tender.paymentTerms || '100% After Delivery',
-    minimumTurnover: draft.vendors.minimumTurnover,
-    experienceYears: draft.vendors.experienceYears,
-    fundingSource: draft.basics.fundingSource,
-    budgetHead: draft.basics.costCenter,
-    needReason: draft.basics.justification,
-    evaluationMethod: draft.rules.evaluation,
-    technicalWeightage: draft.tender.technicalWeightage,
-    financialWeightage: draft.tender.priceWeightage,
-    technicalContactName: draft.tender.contactName,
-    technicalContactEmail: draft.tender.contactEmail,
-    technicalContactNumber: draft.tender.contactMobile,
-    terms: draft.approval.notes || draft.vendors.complianceNotes,
-  },
-  items: draft.items.map(item => ({
-    name: item.name,
-    category: draft.basics.category || draft.basics.requirementType,
-    subCategory: draft.basics.subCategory,
-    description: item.specification || item.technicalSpecification,
-    quantity: item.quantity,
-    unit: item.unit,
-    budget: item.unitPrice,
-    equivalentBrandAllowed: item.brandPolicy !== 'OEM only',
-  })),
-  consigneeDetails: draft.consigneeDetails,
-  docs: draft.documents.map(document => ({
-    category: document.name,
-    requirement: document.requirement,
-    files: document.fileName ? [{
-      name: document.fileName,
-      size: document.size || 0,
-      uploadedAt: document.uploadedAt || new Date().toISOString(),
-      version: document.version,
-      fileAssetId: document.fileAssetId || null,
-      url: document.documentUrl || '',
-    }] : [],
-  })),
-});
-
-const buildRfqHandoffDraft = (draft: Draft) => ({
-  subject: draft.basics.title,
-  message: formatProcurementSummaryText(draft),
-  estimatedValue: String(draft.basics.estimatedValue || grandTotal(draft.items) || ''),
-  deadlineDate: draft.schedule.submissionDate,
-  documentName: attachedDocuments(draft)[0]?.fileName || '',
-  fileAssetId: attachedDocuments(draft)[0]?.fileAssetId || null,
-  documentUrl: attachedDocuments(draft)[0]?.documentUrl || '',
-});
-
-const buildTenderHandoffDraft = (draft: Draft) => ({
-  title: draft.basics.title,
-  tenderNumber: draft.tender.tenderNumber,
-  tenderType: draft.tender.tenderType,
-  category: draft.basics.category,
-  subCategory: draft.basics.subCategory,
-  department: draft.basics.department,
-  tenderMode: draft.tender.tenderMode,
-  visibility: draft.tender.visibility,
-  shortDescription: draft.tender.shortDescription,
-  scopeOfWork: draft.tender.scopeOfWork || draft.basics.justification,
-  purpose: draft.tender.purpose || draft.basics.justification,
-  items: draft.items.map(item => ({
-    id: item.id,
-    name: item.name,
-    description: item.specification,
-    quantity: String(item.quantity || 1),
-    unit: item.unit,
-    deliveryDate: item.deliveryDate,
-    brandPolicy: item.brandPolicy,
-    technicalSpecification: item.technicalSpecification,
-    specificationFileName: item.specificationFileName,
-  })),
-  deliveryLocation: draft.tender.deliveryLocation,
-  consigneeDetails: draft.consigneeDetails,
-  deliveryType: draft.tender.deliveryType,
-  deliveryTimeline: draft.tender.deliveryTimeline,
-  installationRequired: draft.tender.installationRequired,
-  trainingRequired: draft.tender.trainingRequired,
-  specialInstructions: draft.tender.specialInstructions,
-  budget: String(draft.basics.estimatedValue || subtotal(draft.items) || ''),
-  currency: draft.tender.currency,
-  priceType: draft.tender.priceType,
-  taxType: draft.tender.taxType,
-  gstIncluded: draft.tender.gstIncluded,
-  gstRate: draft.tender.gstRate,
-  paymentTerms: draft.tender.paymentTerms,
-  emdRequired: draft.rules.emdRequired,
-  emdAmount: draft.rules.emdAmount ? String(draft.rules.emdAmount) : '',
-  performanceSecurityRequired: draft.rules.performanceSecurity,
-  performanceSecurityAmount: draft.tender.performanceSecurityAmount,
-  milestones: draft.tender.milestones,
-  publishDate: draft.schedule.publishDate,
-  bidStartDate: draft.tender.bidStartDate,
-  bidClosingDate: draft.tender.bidClosingDate,
-  bidClosingTime: draft.tender.bidClosingTime,
-  technicalEvaluationDate: draft.tender.technicalEvaluationDate,
-  financialEvaluationDate: draft.tender.financialEvaluationDate,
-  awardDate: draft.tender.awardDate,
-  documents: draft.documents.map(document => ({
-    id: document.id,
-    label: document.name,
-    requirement: document.requirement,
-    fileName: document.fileName,
-    version: document.version,
-    fileAssetId: document.fileAssetId || null,
-    documentUrl: document.documentUrl || '',
-    mimeType: document.mimeType || '',
-    size: document.size || 0,
-    uploadedAt: document.uploadedAt || '',
-  })),
-  msmePreference: draft.vendors.msmePreference,
-  startupPreference: draft.tender.startupPreference,
-  shgPreference: draft.tender.shgPreference,
-  womenOwnedPreference: draft.tender.womenOwnedPreference,
-  localSupplierPreference: draft.vendors.localVendorPreference,
-  minExperience: draft.vendors.experienceYears,
-  minTurnover: draft.vendors.minimumTurnover,
-  requiredCertifications: draft.tender.requiredCertifications,
-  gstMandatory: draft.tender.gstMandatory,
-  panMandatory: draft.tender.panMandatory,
-  technicalWeightage: draft.tender.technicalWeightage,
-  experienceScore: draft.tender.experienceScore,
-  certificationScore: draft.tender.certificationScore,
-  complianceScore: draft.tender.complianceScore,
-  priceWeightage: draft.tender.priceWeightage,
-  evaluationMethod: draft.tender.evaluationMethod,
-  contactName: draft.tender.contactName,
-  contactEmail: draft.tender.contactEmail,
-  contactMobile: draft.tender.contactMobile,
-  contactPhone: draft.tender.contactPhone,
-  departmentContact: draft.tender.departmentContact,
-  escalationContact: draft.tender.escalationContact,
-  approvalRequired: draft.tender.approvalRequired,
-  approverName: draft.tender.approverName || draft.approval.approver,
-  approverRemarks: draft.tender.approverRemarks || draft.approval.notes,
-  approvalChain: draft.tender.approvalChain,
-  approvalStatus: draft.tender.approvalStatus,
-  documentUrl: draft.tender.documentUrl,
-});
-
-const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => ({
-  id: draft.id,
-  methodSlug: draft.type,
-  procurementMethod: draft.type,
-  title: draft.basics.title || `${methodLabel(draft.type)} draft`,
-  description: formatProcurementSummaryText(draft),
-  estimatedValue: draft.basics.estimatedValue || grandTotal(draft.items),
-  requiredBy: isTenderMethod(draft.type)
-    ? draft.tender.bidClosingDate || draft.schedule.submissionDate || draft.schedule.deliveryDate || undefined
-    : draft.schedule.submissionDate || draft.schedule.deliveryDate || undefined,
-  draftStep,
-  workflowStatus: 'DRAFT',
-  approvalStatus: draft.tender.approvalStatus || draft.approval.workflow || 'DRAFT',
-  payload: draft,
-  items: draft.items
-    .filter(item => item.name.trim())
-    .map(item => ({
-      itemName: item.name,
-      description: item.specification || item.technicalSpecification,
-      quantity: item.quantity,
-      unitOfMeasure: item.unit,
-      estimatedUnitPrice: item.unitPrice,
-      specifications: {
-        brandPolicy: item.brandPolicy,
-        technicalSpecification: item.technicalSpecification,
-        specificationFileName: item.specificationFileName,
-        deliveryDate: item.deliveryDate,
-        gst: item.gst,
-      }
-    }))
 });
 
 export default function CreateProcurementPage() {
   const router = useRouter();
-  const pathname = usePathname() || '';
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const draftIdParam = searchParams?.get('id') || searchParams?.get('draftId');
 
-  const routeMethod = useMemo(() => {
-    const match = pathname.match(/^\/buyer\/create-procurement\/([^/?#]+)$/);
-    return match ? normalizeProcurementType(match[1]) : null;
-  }, [pathname]);
-  const [draft, setDraft] = useState<Draft>(() => defaultDraft(routeMethod || 'rfq'));
-  const [methodSelected, setMethodSelected] = useState(Boolean(routeMethod));
+  // Determine initial buyer type from profile
+  const initialBuyerType = useMemo<BuyerType>(() => {
+    const u = user as any;
+    const orgType = u?.buyerProfile?.organizationType || u?.organization?.organizationType || u?.organizationType || '';
+    const isGov = String(orgType).toUpperCase().includes('GOVT') ||
+      String(orgType).toUpperCase().includes('GOVERNMENT') ||
+      String(orgType).toUpperCase().includes('MINISTRY') ||
+      String(orgType).toUpperCase().includes('DEPT') ||
+      String(orgType).toUpperCase().includes('PSU');
+    return isGov ? 'GOVERNMENT_BUYER' : 'PRIVATE_BUYER';
+  }, [user]);
+
+  const [draft, setDraft] = useState<Draft>(() => defaultDraft('RFQ', initialBuyerType));
   const [activeStep, setActiveStep] = useState(0);
-  const [preview, setPreview] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submittingDraft, setSubmittingDraft] = useState(false);
-  const [advisor, setAdvisor] = useState<AdvisorState>({
-    estimatedValue: '',
-    catalogAvailable: true,
-    technicalEvaluation: false,
-    proprietary: false,
-    boqRequired: false,
-  });
-  const [savedDraftMeta, setSavedDraftMeta] = useState<Draft | null>(null);
-  const [serverDraftMeta, setServerDraftMeta] = useState<any | null>(null);
+  const [showItemDrawer, setShowItemDrawer] = useState(false);
+  const [selectedItemForEdit, setSelectedItemForEdit] = useState<ItemRow | null>(null);
 
-  // Load a specific draft from query parameter if provided
+  // Auto-fill buyer type on load
+  useEffect(() => {
+    if (initialBuyerType && !draft.basics.title) {
+      setDraft(current => ({
+        ...current,
+        basics: { ...current.basics, buyerType: initialBuyerType },
+        requiredDocs: defaultRequiredDocs(initialBuyerType, current.type)
+      }));
+    }
+  }, [initialBuyerType]);
+
+  // Load draft
   useEffect(() => {
     if (!draftIdParam) return;
-    const draftId = parseInt(draftIdParam, 10);
-    if (isNaN(draftId)) return;
+    const id = parseInt(draftIdParam, 10);
+    if (isNaN(id)) return;
 
-    fetchProcurementDraft(draftId)
-      .then((data) => {
-        const source = data?.payload;
-        if (!source) return;
-        const type = normalizeProcurementType(source.type || data.methodSlug);
-        const restored = {
-          ...defaultDraft(type),
-          ...source,
-          id: data.id,
-          type,
-          tender: { ...defaultTenderDetails(), ...source.tender }
-        };
-        setDraft(restored);
-        setSavedDraftMeta(restored);
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(restored));
-        setMethodSelected(true);
-        setPreview(false);
-        setActiveStep(data.draftStep || restored.draftStep || 0);
+    fetchProcurementDraft(id)
+      .then((res) => {
+        const payload = res?.payload;
+        if (!payload) return;
+        setDraft({
+          ...defaultDraft(payload.type || 'RFQ', payload.basics?.buyerType || initialBuyerType),
+          ...payload,
+          id: res.id,
+        });
+        setActiveStep(res.draftStep || 0);
       })
       .catch((err) => {
-        toast.error('Failed to load draft from server: ' + err.message);
+        toast.error('Failed to load draft: ' + err.message);
       });
-  }, [draftIdParam]);
-
-  useEffect(() => {
-    if (routeMethod) {
-      setDraft(defaultDraft(routeMethod));
-      setMethodSelected(true);
-      setPreview(false);
-      setActiveStep(0);
-      return;
-    }
-    if (draftIdParam) return;
-    try {
-      const saved = localStorage.getItem(DRAFT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<Draft>;
-        const type = normalizeProcurementType(parsed.type);
-        const restored = { ...defaultDraft(type), ...parsed, type, tender: { ...defaultTenderDetails(), ...parsed.tender } };
-        setDraft(restored);
-        setSavedDraftMeta(restored);
-      }
-    } catch {
-      localStorage.removeItem(DRAFT_KEY);
-    }
-  }, [routeMethod, draftIdParam]);
-
-  useEffect(() => {
-    if (routeMethod || draftIdParam) return;
-    fetchProcurementDrafts()
-      .then((result) => {
-        const drafts = result?.drafts || result?.records || result?.data?.drafts || [];
-        setServerDraftMeta(Array.isArray(drafts) ? drafts[0] || null : null);
-      })
-      .catch(() => undefined);
-  }, [routeMethod, draftIdParam]);
-
-  const activeSteps = stepsByType[draft.type];
-  const currentStep = activeSteps[Math.min(activeStep, activeSteps.length - 1)];
-  const method = methodConfigs.find(config => config.id === draft.type) || methodConfigs[2];
-  const MethodIcon = method.icon;
-  const recommendedType = useMemo(() => recommendProcurementType(draft), [draft]);
-  const advisorRecommendation = useMemo(() => recommendFromAdvisor(advisor), [advisor]);
-  const readiness = useMemo(() => getReadiness(draft), [draft]);
-
-  useEffect(() => {
-    if (activeStep > activeSteps.length - 1) setActiveStep(activeSteps.length - 1);
-  }, [activeStep, activeSteps.length]);
+  }, [draftIdParam, initialBuyerType]);
 
   const updateDraft = (updater: (current: Draft) => Draft) => {
     setDraft(current => {
-      const next = { ...updater(current), updatedAt: new Date().toISOString() };
+      const next = updater(current);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
       return next;
     });
   };
 
-  const changeType = (type: ProcurementType) => {
-    setDraft({ ...defaultDraft(type), updatedAt: new Date().toISOString() });
-    setPreview(false);
-    setActiveStep(0);
-  };
+  // Sourcing Validation Checklist
+  const getReadiness = (d: Draft) => {
+    const list: Array<{ label: string; ok: boolean; severity: 'error' | 'warning' | 'info' }> = [];
+    
+    // Step 1 Basics - Errors
+    list.push({ label: 'Title is required (min 3 chars)', ok: d.basics.title.trim().length >= 3, severity: 'error' });
+    list.push({ label: 'Estimated budget must be set (> 0)', ok: d.basics.estimatedValue > 0, severity: 'error' });
+    list.push({ label: 'Required by date is required', ok: Boolean(d.basics.requiredByDate), severity: 'error' });
+    list.push({ label: 'Delivery location is required', ok: d.basics.deliveryLocation.trim().length > 0, severity: 'error' });
 
-  const goToDetails = () => {
-    router.push(`/buyer/create-procurement/${draft.type}`);
-    setPreview(false);
-    setActiveStep(0);
-  };
-
-  const goBack = () => {
-    if (methodSelected) {
-      router.push('/buyer/create-procurement');
-      setMethodSelected(false);
-      setPreview(false);
-      setActiveStep(0);
-      return;
+    // Step 2 Internal Details - Errors
+    list.push({ label: 'Internal Org Name is required', ok: d.internal.orgName.trim().length > 0, severity: 'error' });
+    if (d.basics.buyerType === 'GOVERNMENT_BUYER') {
+      list.push({ label: 'Competent Authority (CFA) is required', ok: d.internal.competentAuthority.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Department File / Case Number is required', ok: d.internal.internalFileNumber.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Sanction Approval Authority is required', ok: d.internal.approvalAuthority.trim().length > 0, severity: 'error' });
+    } else {
+      list.push({ label: 'Cost Center code is required', ok: d.internal.costCenter.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Buying Department name is required', ok: d.internal.department.trim().length > 0, severity: 'error' });
+      if (d.basics.estimatedValue >= 1000000) {
+        list.push({ label: 'Budget Head / Code is required for corporate spends >= 10L', ok: d.internal.budgetHead.trim().length > 0, severity: 'error' });
+      }
     }
-    router.back();
+
+    // Step 3 Sourcing specification items - Errors
+    if (d.basics.whatAreYouBuying === 'BOQ') {
+      list.push({ label: 'At least one BOQ item is required', ok: d.boqTable.length > 0 && d.boqTable.some(r => r.description.trim()), severity: 'error' });
+      if (d.boqTable.length > 0) {
+        list.push({ label: 'All BOQ rows must have positive quantities & rates', ok: d.boqTable.every(r => r.quantity > 0 && r.estimatedRate >= 0), severity: 'error' });
+      }
+    } else if (d.basics.whatAreYouBuying === 'Service') {
+      list.push({ label: 'Service Contract SOW is required (min 10 chars)', ok: d.serviceDetails.scopeOfWork.trim().length >= 10, severity: 'error' });
+      list.push({ label: 'Service Deliverables list is required (min 5 chars)', ok: d.serviceDetails.deliverables.trim().length >= 5, severity: 'error' });
+      list.push({ label: 'Service Duration is required', ok: d.serviceDetails.duration.trim().length > 0, severity: 'error' });
+    } else {
+      list.push({ label: 'At least one product item is required', ok: d.items.length > 0, severity: 'error' });
+      if (d.items.length > 0) {
+        list.push({ label: 'All product items must have valid name & quantity > 0', ok: d.items.every(i => i.name.trim().length > 0 && i.quantity > 0), severity: 'error' });
+      }
+    }
+
+    // Step 4 Sourcing reach - Errors
+    if (d.vendors.selection !== 'Open') {
+      list.push({ label: 'At least one invited supplier is required for non-open strategy', ok: (d.vendors.invitedSellers || []).length > 0, severity: 'error' });
+    }
+
+    // Step 5 Event timeline - Errors
+    list.push({ label: 'Submission deadline date is required', ok: Boolean(d.schedule.submissionDate), severity: 'error' });
+    if (d.schedule.submissionDate && d.schedule.submissionStartDate) {
+      list.push({ label: 'Submission deadline must be after submission start date', ok: new Date(d.schedule.submissionDate) > new Date(d.schedule.submissionStartDate), severity: 'error' });
+    }
+    if (d.basics.isTechnicalEvaluationNeeded) {
+      list.push({ label: 'Technical opening date is required', ok: Boolean(d.schedule.technicalOpeningDate), severity: 'error' });
+      if (d.schedule.technicalOpeningDate && d.schedule.submissionDate) {
+        list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) >= new Date(d.schedule.submissionDate), severity: 'error' });
+      }
+    }
+    if (d.schedule.packetType === 'Two') {
+      list.push({ label: 'Financial opening date is required for two packet flows', ok: Boolean(d.schedule.financialOpeningDate), severity: 'error' });
+      if (d.schedule.financialOpeningDate && d.schedule.technicalOpeningDate) {
+        list.push({ label: 'Financial opening date must be on or after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) >= new Date(d.schedule.technicalOpeningDate), severity: 'error' });
+      }
+    }
+
+    // Step 6 Commercial Terms - Errors
+    list.push({ label: 'Payment terms are required', ok: Boolean(d.terms.paymentTerms), severity: 'error' });
+    list.push({ label: 'Delivery terms location is required', ok: Boolean(d.terms.deliveryTerms), severity: 'error' });
+    if (d.terms.emdRequired) {
+      list.push({ label: 'EMD amount must be greater than 0 if EMD is required', ok: d.terms.emdAmount > 0, severity: 'error' });
+    }
+
+    // Step 7 Documents - Errors
+    list.push({ label: 'At least one required document must be checklist', ok: d.requiredDocs.length > 0, severity: 'error' });
+    
+    // Step 8 Evaluation criteria - Errors
+    list.push({ label: 'Evaluation method is required', ok: Boolean(d.evaluation.method), severity: 'error' });
+    if (d.evaluation.method === 'QCBS / weighted technical-commercial score') {
+      const qcbsTotal = d.evaluation.technicalCriteria.reduce((sum, c) => sum + Number(c.weightage || 0), 0);
+      list.push({ label: 'QCBS evaluation weightage sum must be exactly 100%', ok: qcbsTotal === 100, severity: 'error' });
+    }
+
+    // Warnings / Advisories
+    if (d.basics.buyerType === 'GOVERNMENT_BUYER' && d.basics.estimatedValue > 250000 && d.vendors.selection !== 'Open') {
+      const isExempt = d.basics.isOnlyOneVendor || d.basics.priority === 'Emergency' || d.type === 'PAC' || d.type === 'SINGLE_SOURCE';
+      list.push({
+        label: 'Est. value > 2.5 Lakhs. GFR rules require open advertised tender unless PAC/Single/Emergency is justified.',
+        ok: isExempt,
+        severity: 'warning'
+      });
+    }
+    if (d.basics.isOnlyOneVendor || d.type === 'PAC' || d.type === 'SINGLE_SOURCE') {
+      list.push({
+        label: 'PAC / Single Source justification note is short (recommend min 15 chars)',
+        ok: d.internal.justification.trim().length >= 15,
+        severity: 'warning'
+      });
+    }
+    if (!d.terms.penaltyClause || d.terms.penaltyClause.trim().length < 5) {
+      list.push({
+        label: 'Late Delivery Penalty Clause is recommended for contract compliance',
+        ok: false,
+        severity: 'warning'
+      });
+    }
+    if (d.basics.priority === 'Emergency') {
+      const hasEmergencyDoc = d.requiredDocs.some(doc => doc.name.toLowerCase().includes('emergency') || doc.name.toLowerCase().includes('justification'));
+      list.push({
+        label: 'Emergency procurement priority selected: emergency approval file is recommended in checklist.',
+        ok: hasEmergencyDoc,
+        severity: 'warning'
+      });
+    }
+
+    // Info (Sourcing Overrides)
+    const customDocs = d.requiredDocs.filter(doc => !['PAN Card', 'GST Certificate', 'MSME Certificate', 'Bid Security / EMD exemption', 'Technical Proposal', 'Proprietary Article Certificate', 'Sanction Letter'].includes(doc.name));
+    customDocs.forEach(c => {
+      list.push({ label: `Custom document checklist added: "${c.name}"`, ok: true, severity: 'info' });
+    });
+    
+    return list;
   };
 
-  const saveDraft = async (opts: { silent?: boolean; draftOverride?: Draft } = {}) => {
-    const saved = { ...(opts.draftOverride || draft), updatedAt: new Date().toISOString() };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
-    setSavedDraftMeta(saved);
+  const readiness = useMemo(() => getReadiness(draft), [draft]);
+  
+  const completionPercentage = useMemo(() => {
+    const valid = readiness.filter(r => r.ok).length;
+    return Math.round((valid / readiness.length) * 100);
+  }, [readiness]);
+
+  // Suggested Sourcing Method Engine
+  const recommendedMethod = useMemo(() => {
+    return suggestProcurementMethod({
+      buyerType: draft.basics.buyerType,
+      estimatedValue: draft.basics.estimatedValue,
+      whatAreYouBuying: draft.basics.whatAreYouBuying,
+      isCatalogueAvailable: draft.basics.isCatalogueAvailable,
+      isOnlyOneVendor: draft.basics.isOnlyOneVendor,
+      isReverseAuctionNeeded: draft.basics.isReverseAuctionNeeded,
+      isTechnicalEvaluationNeeded: draft.basics.isTechnicalEvaluationNeeded,
+      urgency: draft.basics.priority,
+      lineItemsCount: draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable.length : draft.items.length,
+      isSpecClear: draft.basics.isSpecClear,
+      isRepeatedSupply: draft.basics.isRepeatedSupply,
+      marketResearchOnly: draft.basics.marketResearchOnly,
+    });
+  }, [draft]);
+
+  // Save Draft to Backend
+  const saveDraftLocally = async (silent = false) => {
     setSavingDraft(true);
     try {
-      const backendDraft = await saveProcurementDraft(buildProcurementApiPayload(saved, activeStep));
-      const merged = { ...saved, id: Number(backendDraft?.id || backendDraft?.data?.id || saved.id || 0) || saved.id };
-      setDraft(merged);
-      setSavedDraftMeta(merged);
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(merged));
-      if (!opts.silent) toast.success('Procurement draft saved');
-      return merged;
+      const payload = buildProcurementApiPayload(draft, activeStep);
+      const res = await saveProcurementDraft(payload);
+      const serverId = Number(res?.id || res?.data?.id || draft.id || 0);
+      if (serverId) {
+        updateDraft(current => ({ ...current, id: serverId }));
+      }
+      if (!silent) toast.success('Draft saved successfully');
     } catch (err) {
-      if (!opts.silent) toast.error(err instanceof Error ? err.message : 'Draft saved locally, but backend save failed');
-      return saved;
+      if (!silent) toast.error('Failed to save draft on server');
     } finally {
       setSavingDraft(false);
     }
   };
 
-  const advanceStep = async () => {
-    await saveDraft({ silent: true });
-    setActiveStep(step => Math.min(activeSteps.length - 1, step + 1));
-  };
-
-  const uploadDocumentForDraft = async (documentId: string, file: File) => {
-    const target = draft.documents.find(document => document.id === documentId);
-    if (!target) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Document upload limit is 10 MB');
-      return;
-    }
-
-    const optimisticDraft: Draft = {
-      ...draft,
-      documents: draft.documents.map(document => document.id === documentId
-        ? {
-          ...document,
-          fileName: file.name,
-          version: document.fileName ? (document.version || 1) + 1 : 1,
-          uploadStatus: 'uploading',
-          uploadProgress: 1,
-          uploadError: '',
-        }
-        : document),
-      tender: isTenderMethod(draft.type) && target.name === 'Tender Specification File'
-        ? { ...draft.tender, documentUrl: file.name }
-        : draft.tender,
-    };
-    updateDraft(() => optimisticDraft);
-
-    try {
-      const saved = await saveDraft({ silent: true, draftOverride: optimisticDraft });
-      if (!saved.id) {
-        throw new Error('Unable to create procurement draft before upload');
+  // Validations per Step
+  const validateStep = (stepIdx: number): boolean => {
+    const d = draft;
+    if (stepIdx === 0) {
+      // Step 1 Basics
+      if (d.basics.title.trim().length < 3) {
+        toast.error('Procurement title is required (min 3 chars).');
+        return false;
       }
-      const asset = await uploadProcurementDocument(saved.id, file, percent => {
-        updateDraft(current => ({
-          ...current,
-          documents: current.documents.map(document => document.id === documentId
-            ? { ...document, uploadStatus: 'uploading', uploadProgress: Math.max(1, percent) }
-            : document),
-        }));
-      });
-      const documentUrl = asset.url || asset.documentUrl || `/api/files/${asset.id}/view`;
-      const uploadedDraft: Draft = {
-        ...saved,
-        documents: saved.documents.map(document => document.id === documentId
-          ? {
-            ...document,
-            fileName: asset.originalName || file.name,
-            fileAssetId: asset.id,
-            documentUrl,
-            mimeType: asset.mimeType || file.type,
-            size: asset.size || file.size,
-            uploadedAt: new Date().toISOString(),
-            uploadStatus: 'uploaded',
-            uploadProgress: 100,
-            uploadError: '',
-          }
-          : document),
-        tender: isTenderMethod(saved.type) && target.name === 'Tender Specification File'
-          ? { ...saved.tender, documentUrl }
-          : saved.tender,
-      };
-      updateDraft(() => uploadedDraft);
-      toast.success('Document uploaded');
-      await saveDraft({ silent: true, draftOverride: uploadedDraft });
-    } catch (err) {
-      updateDraft(current => ({
-        ...current,
-        documents: current.documents.map(document => document.id === documentId
-          ? { ...document, uploadStatus: 'failed', uploadProgress: 0, uploadError: err instanceof Error ? err.message : 'Upload failed' }
-          : document),
-      }));
-      toast.error(err instanceof Error ? err.message : 'Document upload failed');
+      if (d.basics.estimatedValue <= 0) {
+        toast.error('Estimated value must be greater than 0.');
+        return false;
+      }
+      if (!d.basics.requiredByDate) {
+        toast.error('Required by date is required.');
+        return false;
+      }
+      if (!d.basics.deliveryLocation.trim()) {
+        toast.error('Delivery location is required.');
+        return false;
+      }
+    } else if (stepIdx === 1) {
+      // Step 2 Internal details
+      if (!d.internal.orgName.trim()) {
+        toast.error('Organization name is required.');
+        return false;
+      }
+      if (d.basics.buyerType === 'GOVERNMENT_BUYER') {
+        if (!d.internal.internalFileNumber.trim()) {
+          toast.error('Department File/Case Number is required for government buyers.');
+          return false;
+        }
+        if (!d.internal.competentAuthority.trim()) {
+          toast.error('Competent Financial Authority is required.');
+          return false;
+        }
+        if (!d.internal.approvalAuthority.trim()) {
+          toast.error('Sanction Approval Authority is required.');
+          return false;
+        }
+      } else {
+        if (!d.internal.department.trim()) {
+          toast.error('Buying Department name is required.');
+          return false;
+        }
+        if (!d.internal.costCenter.trim()) {
+          toast.error('Cost Center code is required for private buyers.');
+          return false;
+        }
+        if (d.basics.estimatedValue >= 1000000 && !d.internal.budgetHead.trim()) {
+          toast.error('Budget Head/Code is required for corporate spends >= 10 Lakhs.');
+          return false;
+        }
+      }
+    } else if (stepIdx === 2) {
+      // Step 3 Items details
+      if (d.basics.whatAreYouBuying === 'BOQ') {
+        if (d.boqTable.length === 0 || !d.boqTable.some(r => r.description.trim())) {
+          toast.error('At least one Bill of Quantities (BOQ) row must be filled.');
+          return false;
+        }
+        if (d.boqTable.some(r => r.quantity <= 0 || r.estimatedRate < 0)) {
+          toast.error('All BOQ rows must have positive quantities & rates.');
+          return false;
+        }
+      } else if (d.basics.whatAreYouBuying === 'Service') {
+        if (!d.serviceDetails.serviceTitle.trim()) {
+          toast.error('Service Contract Title is required.');
+          return false;
+        }
+        if (d.serviceDetails.scopeOfWork.trim().length < 10) {
+          toast.error('Scope of Work is required (min 10 chars).');
+          return false;
+        }
+        if (d.serviceDetails.deliverables.trim().length < 5) {
+          toast.error('Service deliverables list is required.');
+          return false;
+        }
+        if (!d.serviceDetails.duration.trim()) {
+          toast.error('Service duration is required.');
+          return false;
+        }
+      } else {
+        if (d.items.length === 0 || d.items.some(i => !i.name.trim() || i.quantity <= 0)) {
+          toast.error('At least one product item with a valid name and quantity is required.');
+          return false;
+        }
+      }
+    } else if (stepIdx === 3) {
+      // Step 4 Suppliers
+      if (d.vendors.selection !== 'Open' && (!d.vendors.invitedSellers || d.vendors.invitedSellers.length === 0)) {
+        toast.error('Please invite at least 1 supplier or change sourcing scope to Open.');
+        return false;
+      }
+    } else if (stepIdx === 4) {
+      // Step 5 Event timeline
+      if (!d.schedule.submissionDate) {
+        toast.error('Submission deadline date is required.');
+        return false;
+      }
+      const nowTime = new Date(d.schedule.submissionStartDate).getTime();
+      const endTime = new Date(d.schedule.submissionDate).getTime();
+      if (endTime <= nowTime) {
+        toast.error('Submission closing date must be after submission start date.');
+        return false;
+      }
+      if (d.basics.isTechnicalEvaluationNeeded) {
+        if (!d.schedule.technicalOpeningDate) {
+          toast.error('Technical opening date is required.');
+          return false;
+        }
+        if (new Date(d.schedule.technicalOpeningDate) < new Date(d.schedule.submissionDate)) {
+          toast.error('Technical opening date cannot be scheduled before submission deadline.');
+          return false;
+        }
+      }
+      if (d.schedule.packetType === 'Two') {
+        if (!d.schedule.financialOpeningDate) {
+          toast.error('Financial opening date is required for Two Packet flow.');
+          return false;
+        }
+        if (new Date(d.schedule.financialOpeningDate) < new Date(d.schedule.technicalOpeningDate)) {
+          toast.error('Financial opening date must be scheduled on or after technical envelope opening.');
+          return false;
+        }
+      }
+    } else if (stepIdx === 5) {
+      // Step 6 Terms
+      if (!d.terms.paymentTerms) {
+        toast.error('Payment terms are required.');
+        return false;
+      }
+      if (!d.terms.deliveryTerms) {
+        toast.error('Delivery location terms are required.');
+        return false;
+      }
+      if (d.terms.emdRequired && d.terms.emdAmount <= 0) {
+        toast.error('Please specify an EMD amount greater than 0.');
+        return false;
+      }
+    } else if (stepIdx === 6) {
+      // Step 7 Documents
+      if (d.requiredDocs.length === 0) {
+        toast.error('Please specify at least 1 required verification document.');
+        return false;
+      }
+    } else if (stepIdx === 7) {
+      // Step 8 Evaluation criteria
+      if (!d.evaluation.method) {
+        toast.error('Evaluation method is required.');
+        return false;
+      }
+      if (d.evaluation.method === 'QCBS / weighted technical-commercial score') {
+        const total = d.evaluation.technicalCriteria.reduce((sum, c) => sum + Number(c.weightage || 0), 0);
+        if (total !== 100) {
+          toast.error('QCBS evaluation weightage sum must be exactly 100%.');
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  const goNext = async () => {
+    if (!validateStep(activeStep)) return;
+    await saveDraftLocally(true);
+    if (activeStep < ALL_STEPS.length - 1) {
+      setActiveStep(step => step + 1);
     }
   };
 
-  const continueToModule = async () => {
-    const missing = readiness.filter(item => !item.ok);
-    if (missing.length > 0) {
-      toast.error(`Complete required fields first: ${missing.map(item => item.label).join(', ')}`);
+  const goBack = () => {
+    if (activeStep > 0) {
+      setActiveStep(step => step - 1);
+    } else {
+      router.push('/buyer/procurement');
+    }
+  };
+
+  const submitProcurement = async () => {
+    const failed = readiness.filter(r => !r.ok && r.severity === 'error');
+    if (failed.length > 0) {
+      toast.error(`Please fix missing details: ${failed.map(f => f.label).join(', ')}`);
       return;
     }
     setSubmittingDraft(true);
     try {
-      const saved = await saveDraft({ silent: true });
-      const submitPayload = buildProcurementApiPayload(saved, activeStep);
-      const submitted = await submitProcurementDraft(submitPayload);
-      writeProcurementSummary(saved);
-      localStorage.setItem(REQUIREMENT_HANDOFF_KEY, JSON.stringify(buildRequirementHandoffDraft(saved)));
-      if (saved.type === 'rfq') {
-        localStorage.setItem(RFQ_HANDOFF_KEY, JSON.stringify(buildRfqHandoffDraft(saved)));
-      }
-      if (isTenderMethod(saved.type)) {
-        localStorage.setItem(TENDER_HANDOFF_KEY, JSON.stringify(buildTenderHandoffDraft(saved)));
-      }
-      if (isDirectMethod(saved.type)) {
-        localStorage.setItem('msme:direct-purchase-create-prefill:v1', JSON.stringify({
-          sellerId: saved.vendors.selectedSellerId,
-          vendorName: saved.vendors.selectedSellerName,
-          vendorCode: saved.vendors.selectedSellerCode,
-          purchaseTitle: saved.basics.title,
-          department: saved.basics.department,
-          costCenter: saved.basics.costCenter,
-          totalAmount: grandTotal(saved.items),
-          items: saved.items.map(item => ({
-            id: item.id,
-            name: item.name,
-            spec: item.specification,
-            qty: item.quantity,
-            unit: item.unit,
-            price: item.unitPrice,
-            tax: item.gst
-          }))
-        }));
-      }
-      const referenceNumber = submitted?.referenceNumber || submitted?.procurement?.requirementNumber || submitted?.data?.referenceNumber;
-      toast.success(referenceNumber ? `Procurement submitted: ${referenceNumber}` : 'Procurement submitted');
-      if (method.route) {
-        router.push(method.route);
-        return;
-      }
-      toast.success('Tender workbench draft is ready for approval');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to submit procurement');
+      const payload = buildProcurementApiPayload(draft, activeStep);
+      await submitProcurementDraft(payload);
+      toast.success('Procurement request submitted successfully');
+      router.push(`/buyer/procurement`);
+    } catch (err: any) {
+      toast.error('Submission failed: ' + err.message);
     } finally {
       setSubmittingDraft(false);
     }
   };
 
+  const currentStepKind = ALL_STEPS[activeStep];
+  const stepConfig = stepLibrary[currentStepKind];
+
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      {/* Tri-color Accent Strip */}
-      <div className="h-1.5 w-full bg-gradient-to-r from-[#ff9933] via-white to-[#128807]" />
+    <main className="min-h-screen bg-slate-50 text-slate-950 pb-20">
+      {/* Accent Header Line */}
+      <div className="h-1.5 w-full bg-[#12335f]" />
 
-      {/* Official Government Branding Banner */}
-     
-
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1720px] flex-col gap-4 px-4 py-4 lg:px-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <button
-                type="button"
-                onClick={goBack}
-                className="mb-2 inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-[#12335f]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" /> Procurement
-              </button>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-black tracking-tight text-slate-950">Create Procurement</h1>
-                <span className={cn('rounded-full border px-3 py-1 text-[11px] font-black uppercase', method.accent)}>
-                  {method.title}
-                </span>
-                {recommendedType !== draft.type && (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black text-amber-800">
-                    Suggested: {methodLabel(recommendedType)}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 max-w-3xl text-sm font-semibold text-slate-500">
-                Choose the procurement route first, then complete only the controls needed for that route.
-              </p>
+      <div className="mx-auto max-w-[1560px] px-4 py-6 lg:px-6">
+        
+        {/* Step Header Row */}
+        <div className="flex flex-col gap-4 border border-slate-200 bg-white p-4 rounded-xl shadow-xs lg:flex-row lg:items-center lg:justify-between mb-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-wider">
+              <span>Guided Procurement Wizard</span>
+              <span>&middot;</span>
+              <BuyerTypeBadge buyerType={draft.basics.buyerType} />
+              <span>&middot;</span>
+              <MethodBadge method={draft.type} />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => router.push(PROCUREMENT_DRAFTS_ROUTE)} className="h-10">
-                <History className="mr-2 h-4 w-4" /> Drafts
-              </Button>
-              {methodSelected && (
-                <Button type="button" variant="outline" onClick={() => setPreview(value => !value)} className="h-10">
-                  <Info className="mr-2 h-4 w-4" /> {preview ? 'Edit' : 'Preview'}
-                </Button>
-              )}
-              <Button type="button" variant="outline" onClick={() => void saveDraft()} disabled={savingDraft || submittingDraft} className="h-10">
-                {savingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Draft
-              </Button>
-              <Button type="button" onClick={methodSelected ? () => void continueToModule() : goToDetails} disabled={savingDraft || submittingDraft} className="h-10 bg-[#12335f] text-white">
-                {submittingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : methodSelected ? <Send className="mr-2 h-4 w-4" /> : <ArrowRight className="mr-2 h-4 w-4" />}
-                {methodSelected ? submittingDraft ? 'Submitting...' : 'Submit & Continue' : 'Next'}
-              </Button>
-            </div>
+            <h1 className="text-lg font-black text-slate-900 tracking-tight mt-1 truncate">
+              {draft.basics.title || 'Draft Sourcing Event'}
+            </h1>
+            <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+              Step {activeStep + 1} of {ALL_STEPS.length}: {stepConfig.label} &middot; {completionPercentage}% Form Completion
+            </p>
           </div>
-
-          {!methodSelected && (
-            <div className="grid gap-3 xl:grid-cols-5">
-              {methodConfigs.map(config => (
-                <MethodCard
-                  key={config.id}
-                  config={config}
-                  selected={draft.type === config.id}
-                  recommended={recommendedType === config.id}
-                  onSelect={() => changeType(config.id)}
-                  onStart={() => router.push(`/buyer/create-procurement/${config.slug}`)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!methodSelected ? (
-        <div className="mx-auto max-w-[1720px] px-4 py-5 lg:px-6">
-          <div className="grid gap-4 xl:grid-cols-[1fr_330px]">
-            <section className="space-y-4">
-              <GuidanceBand draft={draft} method={method} />
-              <Panel title={`${method.title} route preview`} icon={<MethodIcon className="h-4 w-4" />}>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Use this when</p>
-                    <div className="mt-3">
-                      <Checklist rows={method.fit} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Before publishing</p>
-                    <div className="mt-3">
-                      <Checklist rows={method.gates} />
-                    </div>
-                  </div>
-                </div>
-              </Panel>
-              <MethodHelpSection />
-              <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                <Button type="button" variant="outline" onClick={() => router.back()}>
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                </Button>
-                <div className="text-center text-xs font-bold text-slate-500">
-                  Select a procurement method, then continue to its form.
-                </div>
-                <Button type="button" onClick={goToDetails} className="bg-[#12335f] text-white">
-                  Next <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </div>
-            </section>
-            <aside className="space-y-4">
-              <SummaryCard draft={draft} readiness={readiness} method={method} />
-              <ProcurementAdvisor
-                advisor={advisor}
-                recommendation={advisorRecommendation}
-                onChange={setAdvisor}
-                onApply={(type) => changeType(type)}
-                onStart={(type) => router.push(`/buyer/create-procurement/${type}`)}
-              />
-              <DraftPanel
-                draft={savedDraftMeta}
-                serverDraft={serverDraftMeta}
-                onContinue={() => {
-                  const source = savedDraftMeta || serverDraftMeta?.payload;
-                  if (!source) return;
-                  const type = normalizeProcurementType(source.type || serverDraftMeta?.methodSlug);
-                  const restored = { ...defaultDraft(type), ...source, id: source.id || serverDraftMeta?.id, type, tender: { ...defaultTenderDetails(), ...source.tender } };
-                  setDraft(restored);
-                  setSavedDraftMeta(restored);
-                  localStorage.setItem(DRAFT_KEY, JSON.stringify(restored));
-                  setMethodSelected(true);
-                  setPreview(false);
-                  setActiveStep(0);
-                }}
-                onOpenDrafts={() => router.push(PROCUREMENT_DRAFTS_ROUTE)}
-              />
-            </aside>
-          </div>
-        </div>
-      ) : (
-      <div className="mx-auto grid max-w-[1720px] gap-4 px-4 py-5 lg:px-6 xl:grid-cols-[300px_1fr_330px]">
-        <aside className="space-y-4">
-          <Panel title="Process" icon={<ClipboardCheck className="h-4 w-4" />}>
-            <div className="space-y-2">
-              {activeSteps.map((stepId, index) => {
-                const step = stepLibrary[stepId];
-                const Icon = step.icon;
-                const active = currentStep === stepId;
-                const done = index < activeStep;
-                return (
-                  <button
-                    key={stepId}
-                    type="button"
-                    onClick={() => setActiveStep(index)}
-                    className={cn(
-                      'flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition',
-                      active ? 'border-[#12335f] bg-[#12335f]/5' : 'border-slate-200 bg-white hover:bg-slate-50'
-                    )}
-                  >
-                    <span className={cn('mt-0.5 flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-black', done ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : active ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 text-slate-400')}>
-                      {done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-sm font-black text-slate-900">
-                        <Icon className="h-3.5 w-3.5" /> {step.label}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-500">{step.description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </Panel>
-
-          <Panel title="Route Fit" icon={<BadgeCheck className="h-4 w-4" />}>
-            <Checklist rows={method.fit} />
-          </Panel>
-          <Button type="button" variant="outline" onClick={() => setMethodSelected(false)} className="w-full">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Change Method
-          </Button>
-        </aside>
-
-        <section className="min-w-0 space-y-4">
-          <GuidanceBand draft={draft} method={method} />
-          {preview ? (
-            <ReviewStep draft={draft} readiness={readiness} />
-          ) : (
-            <StepBody step={currentStep} draft={draft} updateDraft={updateDraft} onDocumentUpload={uploadDocumentForDraft} />
-          )}
-
-          <div className="flex flex-col-reverse gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => activeStep === 0 ? setMethodSelected(false) : setActiveStep(step => Math.max(0, step - 1))}
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" /> Previous
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => saveDraftLocally()} disabled={savingDraft} className="h-9 font-bold text-slate-700">
+              {savingDraft ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+              Save Draft
             </Button>
-            <div className="text-center text-xs font-bold text-slate-500">
-              Step {Math.min(activeStep + 1, activeSteps.length)} of {activeSteps.length}
-            </div>
-            {activeStep < activeSteps.length - 1 ? (
-              <Button type="button" onClick={() => void advanceStep()} disabled={savingDraft || submittingDraft} className="bg-[#12335f] text-white">
-                {savingDraft ? 'Saving...' : 'Next'} {savingDraft ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <ArrowRight className="ml-2 h-4 w-4" />}
-              </Button>
-            ) : (
-              <Button type="button" onClick={() => void continueToModule()} disabled={savingDraft || submittingDraft} className="bg-[#12335f] text-white">
-                {submittingDraft ? 'Submitting...' : 'Submit & Continue'} {submittingDraft ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Send className="ml-2 h-4 w-4" />}
-              </Button>
-            )}
+            <Button variant="outline" size="sm" onClick={() => router.push(PROCUREMENT_DRAFTS_ROUTE)} className="h-9 font-bold text-slate-700">
+              <History className="h-4 w-4 mr-1.5" /> Drafts History
+            </Button>
           </div>
-        </section>
+        </div>
 
-        <aside className="space-y-4">
-          <SummaryCard draft={draft} readiness={readiness} method={method} />
-        <Panel title="Before Publishing" icon={<ShieldCheck className="h-4 w-4" />}>
-            <Checklist rows={method.gates} />
-          </Panel>
-          <Panel title="Readiness" icon={<CheckCircle2 className="h-4 w-4" />}>
-            <div className="space-y-2">
-              {readiness.map(item => (
-                <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <span className="text-xs font-bold text-slate-600">{item.label}</span>
-                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-black uppercase', item.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                    {item.ok ? 'Ready' : 'Needed'}
-                  </span>
-                </div>
-              ))}
+        {/* Wizard Main Layout */}
+        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+          
+          {/* Stepper Sidebar */}
+          <aside className="space-y-4">
+            <div className="bg-slate-100/50 border border-slate-200 rounded-xl p-4">
+              <h2 className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2.5 px-0.5">Wizard Progression</h2>
+              <ProcurementStepper
+                steps={ALL_STEPS.map(s => ({
+                  id: s,
+                  label: stepLibrary[s].label,
+                  description: stepLibrary[s].description,
+                  icon: stepLibrary[s].icon
+                }))}
+                currentStep={activeStep}
+                completedSteps={ALL_STEPS.slice(0, activeStep)}
+                onStepClick={async (idx) => {
+                  if (idx < activeStep || validateStep(activeStep)) {
+                    await saveDraftLocally(true);
+                    setActiveStep(idx);
+                  }
+                }}
+                disabledFutureSteps={true}
+              />
             </div>
-          </Panel>
-        </aside>
+          </aside>
+
+          {/* Form Step Body Wrapper */}
+          <div className="space-y-6">
+            
+            {/* Step 1 Sourcing Intent */}
+            {currentStepKind === 'basics' && (
+              <SectionCard title="Procurement Intent & Strategy" description="Specify buyer profile, sourcing title, categories, priority and method selections" icon={stepLibrary.basics.icon}>
+                <BasicsStepForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                  recommendedMethod={recommendedMethod}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 2 Buyer details */}
+            {currentStepKind === 'internal' && (
+              <SectionCard title="Buyer & Internal Details" description="Fill out organization hierarchy, project cost codes, and statutory approvals" icon={stepLibrary.internal.icon}>
+                <InternalDetailsForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 3 Items specs */}
+            {currentStepKind === 'items' && (
+              <SectionCard title="Item / Service / BOQ details" description="Upload or map required products, custom SLA contracts, or multiple BOQ schedules" icon={stepLibrary.items.icon}>
+                <ItemsDetailsForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                  showItemDrawer={showItemDrawer}
+                  setShowItemDrawer={setShowItemDrawer}
+                  selectedItemForEdit={selectedItemForEdit}
+                  setSelectedItemForEdit={setSelectedItemForEdit}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 4 Sellers Selection */}
+            {currentStepKind === 'vendors' && (
+              <SectionCard title="Supplier Reach & Invites" description="Configure bidding scopes and invite registered verified companies" icon={stepLibrary.vendors.icon}>
+                <VendorsStepForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 5 Timeline Event Rules */}
+            {currentStepKind === 'schedule' && (
+              <SectionCard title="Event Timeline & Auction Rules" description="Set submission windows, envelope opening schedules, and transparency parameters" icon={stepLibrary.schedule.icon}>
+                <ScheduleStepForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 6 Commercial Terms */}
+            {currentStepKind === 'terms' && (
+              <SectionCard title="Commercial & Payment Terms" description="Configure delivery, warranty clauses, and financial deposit parameters" icon={stepLibrary.terms.icon}>
+                <CommercialTermsForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 7 Document Checklists */}
+            {currentStepKind === 'documents' && (
+              <SectionCard title="Required Document Checklists" description="Add mandatory credentials required from bidders at technical opening" icon={stepLibrary.documents.icon}>
+                <DocumentsStepForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 8 Evaluation scoring */}
+            {currentStepKind === 'evaluation' && (
+              <SectionCard title="Evaluation Basis & Weightages" description="Define QCBS scoring percentages or L1 award guidelines" icon={stepLibrary.evaluation.icon}>
+                <EvaluationBasisForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                />
+              </SectionCard>
+            )}
+
+            {/* Step 9 Preview & approval */}
+            {currentStepKind === 'publish' && (
+              <SectionCard title="Review, Approval & Publish Sourcing Event" description="Overview all configurations and submit for corporate/regulatory compliance workflow" icon={stepLibrary.publish.icon}>
+                <PreviewPublishForm
+                  draft={draft}
+                  updateDraft={updateDraft}
+                  readiness={readiness}
+                />
+              </SectionCard>
+            )}
+
+            {/* Sticky Actions control bar */}
+            <StickyActionBar
+              onBack={goBack}
+              onSaveDraft={() => saveDraftLocally()}
+              onContinue={goNext}
+              onSubmit={submitProcurement}
+              isSaving={savingDraft}
+              isSubmitting={submittingDraft}
+              showSubmit={activeStep === ALL_STEPS.length - 1}
+            />
+
+          </div>
+
+        </div>
+
       </div>
-      )}
     </main>
   );
 }
 
-function ProcurementAdvisor({
-  advisor,
-  recommendation,
-  onChange,
-  onApply,
-  onStart,
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1 Form components: Sourcing Intent
+// ─────────────────────────────────────────────────────────────────────────────
+function BasicsStepForm({
+  draft,
+  updateDraft,
+  recommendedMethod
 }: {
-  advisor: AdvisorState;
-  recommendation: ProcurementType;
-  onChange: (advisor: AdvisorState) => void;
-  onApply: (type: ProcurementType) => void;
-  onStart: (type: ProcurementType) => void;
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+  recommendedMethod: RecommendationResult;
 }) {
-  const method = methodConfigs.find(config => config.id === recommendation) || methodConfigs[2];
-  const update = (patch: Partial<AdvisorState>) => onChange({ ...advisor, ...patch });
+  const availableMethods = useMemo(() => {
+    return METHOD_DEFINITIONS.filter(m => m.buyerTypes.includes(draft.basics.buyerType));
+  }, [draft.basics.buyerType]);
+
+  const handleApplyRecommendation = () => {
+    updateDraft(current => ({
+      ...current,
+      type: recommendedMethod.id,
+      requiredDocs: defaultRequiredDocs(current.basics.buyerType, recommendedMethod.id)
+    }));
+    toast.success(`Applied recommended method: ${recommendedMethod.id}`);
+  };
 
   return (
-    <Panel title="Not sure what to choose?" icon={<Info className="h-4 w-4" />}>
-      <div className="space-y-3">
-        <div>
-          <label className="text-[10px] font-black uppercase tracking-wide text-slate-500">Estimated procurement value</label>
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Buyer type workflow" required>
+          <div className="grid grid-cols-2 gap-2 border border-slate-200 p-1.5 rounded-lg bg-slate-50">
+            <button
+              type="button"
+              onClick={() => {
+                updateDraft(current => ({
+                  ...current,
+                  basics: { ...current.basics, buyerType: 'PRIVATE_BUYER' },
+                  requiredDocs: defaultRequiredDocs('PRIVATE_BUYER', current.type)
+                }));
+              }}
+              className={cn("h-9 rounded-md text-xs font-black uppercase transition-all", draft.basics.buyerType === 'PRIVATE_BUYER' ? "bg-white text-[#12335f] shadow-sm" : "text-slate-500 hover:text-slate-900")}
+            >
+              Private Buyer (SAP)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateDraft(current => ({
+                  ...current,
+                  basics: { ...current.basics, buyerType: 'GOVERNMENT_BUYER' },
+                  requiredDocs: defaultRequiredDocs('GOVERNMENT_BUYER', current.type)
+                }));
+              }}
+              className={cn("h-9 rounded-md text-xs font-black uppercase transition-all", draft.basics.buyerType === 'GOVERNMENT_BUYER' ? "bg-white text-[#12335f] shadow-sm" : "text-slate-500 hover:text-slate-900")}
+            >
+              Govt Buyer (GeM)
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 font-semibold mt-1">
+            Private Buyer uses corporate SAP compliance. Govt Buyer uses GeM GFR-2017 rules.
+          </p>
+        </Field>
+
+        <Field label="Procurement title" required>
+          <input
+            value={draft.basics.title}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, title: e.target.value } }))}
+            className={inputClass}
+            placeholder="Office computers, AMC maintenance, raw supply..."
+          />
+        </Field>
+
+        <Field label="What are you buying?" required>
+          <select
+            value={draft.basics.whatAreYouBuying}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, whatAreYouBuying: e.target.value } }))}
+            className={inputClass}
+          >
+            <option value="Product">Product / Goods</option>
+            <option value="Service">Service Contract</option>
+            <option value="Works">Works Contract</option>
+            <option value="BOQ">BOQ Sourced (Multi line)</option>
+            <option value="Catalogue item">Catalogue Standard Item</option>
+          </select>
+          <p className="text-[10px] text-slate-500 font-semibold mt-1">
+            Category of sourcing requirement (e.g. Products, Services, or Bill of Quantities).
+          </p>
+        </Field>
+
+        <Field label="Estimated value (INR)" required>
           <input
             type="number"
             min={0}
-            value={advisor.estimatedValue}
-            onChange={event => update({ estimatedValue: event.target.value })}
+            value={draft.basics.estimatedValue || ''}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, estimatedValue: Number(e.target.value || 0) } }))}
             className={inputClass}
-            placeholder="Enter estimated value"
+            placeholder="0"
           />
-        </div>
-        <div className="grid gap-2">
-          <Toggle label="Item available in catalogue" checked={advisor.catalogAvailable} onChange={value => update({ catalogAvailable: value })} />
-          <Toggle label="Technical evaluation required" checked={advisor.technicalEvaluation} onChange={value => update({ technicalEvaluation: value })} />
-          <Toggle label="Proprietary / single OEM" checked={advisor.proprietary} onChange={value => update({ proprietary: value })} />
-          <Toggle label="BOQ or line-item schedule required" checked={advisor.boqRequired} onChange={value => update({ boqRequired: value })} />
-        </div>
-        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-          <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Recommended Method</p>
-          <p className="mt-1 text-sm font-black text-blue-950">{method.title}</p>
-          <p className="mt-1 text-xs font-semibold leading-relaxed text-blue-900">{method.subtitle}</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button type="button" variant="outline" onClick={() => onApply(recommendation)} className="h-9 text-xs font-black uppercase">
-            Apply
-          </Button>
-          <Button type="button" onClick={() => onStart(recommendation)} className="h-9 bg-[#12335f] text-xs font-black uppercase text-white">
-            Start <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function MethodHelpSection() {
-  const rows = [
-    {
-      name: 'Direct Purchase',
-      use: 'Low-value or approved single-seller purchase where catalogue or vendor selection is clear.',
-      caution: 'Keep vendor, budget, and delivery proof ready before submission.',
-    },
-    {
-      name: 'RFQ',
-      use: 'Need quotations from invited or open sellers before deciding commercial terms.',
-      caution: 'Use when specs are clear but final seller price discovery is still required.',
-    },
-    {
-      name: 'Tender / Open Bid',
-      use: 'Formal public procurement with eligibility, bid dates, EMD/ePBG, and technical evaluation.',
-      caution: 'Requires complete timeline, documents, and evaluation settings.',
-    },
-    {
-      name: 'BOQ Based Bid',
-      use: 'Works, AMC, fabrication, or item-wise schedule where rates are evaluated line by line.',
-      caution: 'Upload BOQ or complete the line-item schedule before submission.',
-    },
-    {
-      name: 'PAC Bid',
-      use: 'Proprietary or single-OEM procurement where competition is not feasible.',
-      caution: 'PAC certificate and justification are mandatory.',
-    },
-    {
-      name: 'Reverse Auction',
-      use: 'Post-qualification price discovery where eligible sellers compete through decrements.',
-      caution: 'Set start price, decrement, and auction rules clearly.',
-    },
-  ];
-
-  return (
-    <Panel title="Method help" icon={<Info className="h-4 w-4" />}>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {rows.map(row => (
-          <div key={row.name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm font-black text-slate-950">{row.name}</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{row.use}</p>
-            <p className="mt-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-bold leading-4 text-slate-500">{row.caution}</p>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function DraftPanel({
-  draft,
-  serverDraft,
-  onContinue,
-  onOpenDrafts,
-}: {
-  draft: Draft | null;
-  serverDraft?: any | null;
-  onContinue: () => void;
-  onOpenDrafts: () => void;
-}) {
-  const title = draft?.basics.title || serverDraft?.title || '';
-  const method = draft?.type || normalizeProcurementType(serverDraft?.methodSlug || serverDraft?.procurementMethod);
-  const updatedAt = draft?.updatedAt || serverDraft?.updatedAt;
-  const hasDraft = Boolean(draft || serverDraft);
-
-  return (
-    <Panel title="Recently saved drafts" icon={<History className="h-4 w-4" />}>
-      {hasDraft ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{methodLabel(method)}</p>
-            <p className="mt-1 text-sm font-black text-slate-950 text-wrap-anywhere">{title || 'Untitled procurement draft'}</p>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
-              {updatedAt ? `Saved ${new Date(updatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Saved in this browser'}
-            </p>
-          </div>
-          <Button type="button" onClick={onContinue} className="h-9 w-full bg-[#12335f] text-xs font-black uppercase text-white">
-            Continue Draft <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
-          <p className="text-sm font-black text-slate-800">No saved draft in this browser</p>
-          <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Choose a procurement method and save the wizard to resume it here.</p>
-        </div>
-      )}
-      <Button type="button" variant="outline" onClick={onOpenDrafts} className="mt-3 h-9 w-full text-xs font-black uppercase">
-        Open Draft Register
-      </Button>
-    </Panel>
-  );
-}
-
-function MethodCard({
-  config,
-  selected,
-  recommended,
-  onSelect,
-  onStart,
-}: {
-  config: MethodConfig;
-  selected: boolean;
-  recommended: boolean;
-  onSelect: () => void;
-  onStart: () => void;
-}) {
-  const Icon = config.icon;
-  return (
-    <article
-      className={cn(
-        'min-h-[136px] rounded-xl border bg-gradient-to-br from-white to-slate-50/30 p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between border-slate-200',
-        selected 
-          ? 'border-[#12335f] bg-[#12335f]/5 shadow-md ring-1 ring-[#12335f] border-l-4 border-l-[#ff9933]' 
-          : recommended 
-            ? 'border-slate-200 border-l-4 border-l-emerald-500 hover:border-slate-300' 
-          : 'border-slate-200 border-l-4 border-l-slate-300 hover:border-slate-300'
-      )}
-    >
-      <button type="button" onClick={onSelect} className="w-full text-left">
-        <div className="w-full flex items-start justify-between gap-3">
-          <span className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm', 
-            selected ? 'bg-[#12335f] text-white border-transparent' : config.accent
-          )}>
-            <Icon className="h-5 w-5" />
-          </span>
-          <span className="flex flex-col items-end gap-1">
-            {recommended && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> RECOMMENDED
-              </span>
-            )}
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
-              {config.badge}
-            </span>
-          </span>
-        </div>
-      </button>
-      <div>
-        <p className="mt-3 text-sm font-black text-slate-950">{config.title}</p>
-        <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500">{config.subtitle}</p>
-        <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{config.valueHint}</p>
-      </div>
-      <Button type="button" variant={selected ? 'primary' : 'outline'} size="sm" onClick={onStart} className={cn('mt-3 h-8 justify-center text-[10px] font-black uppercase', selected && 'bg-[#12335f] text-white')}>
-        Start <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-      </Button>
-    </article>
-  );
-}
-
-function StepBody({
-  step,
-  draft,
-  updateDraft,
-  onDocumentUpload,
-}: {
-  step: StepKind;
-  draft: Draft;
-  updateDraft: (updater: (current: Draft) => Draft) => void;
-  onDocumentUpload: (documentId: string, file: File) => Promise<void>;
-}) {
-  switch (step) {
-    case 'basics':
-      return <BasicsStep draft={draft} updateDraft={updateDraft} />;
-    case 'items':
-      return <ItemsStep draft={draft} updateDraft={updateDraft} />;
-    case 'vendors':
-      return <VendorsStep draft={draft} updateDraft={updateDraft} />;
-    case 'schedule':
-      return <ScheduleStep draft={draft} updateDraft={updateDraft} />;
-    case 'rules':
-      return <RulesStep draft={draft} updateDraft={updateDraft} />;
-    case 'documents':
-      return <DocumentsStep draft={draft} updateDraft={updateDraft} onDocumentUpload={onDocumentUpload} />;
-    case 'approval':
-      return <ApprovalStep draft={draft} updateDraft={updateDraft} />;
-    case 'review':
-    default:
-      return <ReviewStep draft={draft} readiness={getReadiness(draft)} />;
-  }
-}
-
-function BasicsStep({ draft, updateDraft }: StepProps) {
-  const updateBasics = (key: keyof Draft['basics'], value: string | number) =>
-    updateDraft(current => ({ ...current, basics: { ...current.basics, [key]: value } }));
-  const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
-
-  return (
-    <Panel title="Requirement Details" icon={<ClipboardCheck className="h-4 w-4" />}>
-      <div className="grid gap-4 lg:grid-cols-4">
-        <Field label="Procurement title" required className="lg:col-span-2">
-          <input value={draft.basics.title} onChange={event => updateBasics('title', event.target.value)} className={inputClass} placeholder="Office equipment, AMC renewal, raw material supply..." />
+          <p className="text-[10px] text-slate-500 font-semibold mt-1">
+            Estimated budget for the procurement in INR.
+          </p>
         </Field>
-        <Field label="Requirement type" required>
-          <SelectWithOther value={draft.basics.requirementType} options={REQUIREMENT_TYPE_OPTIONS} onChange={value => updateBasics('requirementType', value)} otherPlaceholder="Enter requirement type" />
-        </Field>
-        <Field label="Priority">
-          <select value={draft.basics.priority} onChange={event => updateBasics('priority', event.target.value)} className={inputClass}>
-            {PRIORITY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+
+        <Field label="Procurement category" required>
+          <select
+            value={draft.basics.category}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, category: e.target.value } }))}
+            className={inputClass}
+          >
+            {CATEGORY_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
           </select>
         </Field>
-        <Field label="Category" required>
-          <SelectWithOther value={draft.basics.category} options={PROCUREMENT_CATEGORY_OPTIONS} onChange={value => updateBasics('category', value)} placeholder="Select category" otherPlaceholder="Enter category" />
+
+        <Field label="Urgency priority">
+          <select
+            value={draft.basics.priority}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, priority: e.target.value as any } }))}
+            className={inputClass}
+          >
+            <option value="Normal">Normal</option>
+            <option value="Urgent">Urgent</option>
+            <option value="Emergency">Emergency</option>
+          </select>
         </Field>
-        <Field label="Sub category">
-          <SelectWithOther value={draft.basics.subCategory} options={PROCUREMENT_SUBCATEGORY_OPTIONS} onChange={value => updateBasics('subCategory', value)} placeholder="Select sub category" otherPlaceholder="Enter sub category" />
+
+        <Field label="Required by date" required>
+          <input
+            type="date"
+            value={draft.basics.requiredByDate}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, requiredByDate: e.target.value } }))}
+            className={inputClass}
+          />
         </Field>
-        <Field label="Department">
-          <SelectWithOther value={draft.basics.department} options={DEPARTMENT_OPTIONS} onChange={value => updateBasics('department', value)} placeholder="Select department" otherPlaceholder="Enter department" />
+
+        <Field label="Delivery location" required>
+          <input
+            value={draft.basics.deliveryLocation}
+            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, deliveryLocation: e.target.value } }))}
+            className={inputClass}
+            placeholder="Warehouse yard, Central office..."
+          />
         </Field>
-        <Field label="Estimated value" required>
-          <input type="number" min={0} value={draft.basics.estimatedValue || ''} onChange={event => updateBasics('estimatedValue', Number(event.target.value || 0))} className={inputClass} placeholder="0" />
+      </div>
+
+      {/* Sourcing parameters checkboxes */}
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Procurement Parameters</h3>
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isCatalogueAvailable}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isCatalogueAvailable: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Catalog item available?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isOnlyOneVendor}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isOnlyOneVendor: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Only one vendor allowed?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isReverseAuctionNeeded}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isReverseAuctionNeeded: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Reverse auction needed?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isTechnicalEvaluationNeeded}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isTechnicalEvaluationNeeded: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Tech opening needed?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isSpecClear}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isSpecClear: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Specifications are clear?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.isRepeatedSupply}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isRepeatedSupply: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Repeated/recurring supply?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.basics.marketResearchOnly}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, marketResearchOnly: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Market research/RFI only?</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Suggested method banner */}
+      <div className="border border-amber-250 bg-amber-50/40 p-5 rounded-xl space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-600/10 text-amber-700">
+              <Info className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-xs font-black uppercase text-amber-900 tracking-wider">Suggested Sourcing Method</h4>
+                <span className={cn(
+                  "px-2 py-0.5 rounded text-[8px] font-black uppercase leading-none border",
+                  recommendedMethod.confidence === 'HIGH' ? "bg-emerald-100 border-emerald-250 text-emerald-850" :
+                  recommendedMethod.confidence === 'MEDIUM' ? "bg-amber-100 border-amber-250 text-amber-850" :
+                  "bg-rose-100 border-rose-250 text-rose-850"
+                )}>
+                  {recommendedMethod.confidence} Confidence
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-amber-800 mt-1.5 leading-relaxed max-w-2xl">
+                <strong>{recommendedMethod.id.replace(/_/g, ' ')}</strong>: {recommendedMethod.reason}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleApplyRecommendation}
+            disabled={draft.type === recommendedMethod.id}
+            className="bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] uppercase font-black tracking-wide h-9 shrink-0"
+          >
+            {draft.type === recommendedMethod.id ? 'Applied' : 'Apply Recommendation'}
+          </Button>
+        </div>
+
+        {/* Alternative recommendation options */}
+        {recommendedMethod.alternativeMethods && recommendedMethod.alternativeMethods.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-850">
+            <span>Alternative methods:</span>
+            {recommendedMethod.alternativeMethods.map(alt => (
+              <button
+                key={alt}
+                type="button"
+                onClick={() => {
+                  updateDraft(current => ({
+                    ...current,
+                    type: alt,
+                    requiredDocs: defaultRequiredDocs(current.basics.buyerType, alt)
+                  }));
+                  toast.success(`Selected alternative: ${alt}`);
+                }}
+                className="bg-white border border-amber-250 hover:border-amber-400 px-2 py-0.5 rounded text-[9px] uppercase font-bold text-amber-900 transition shadow-2xs"
+              >
+                {alt.replace(/_/g, ' ')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Suggested Warnings */}
+        {recommendedMethod.warnings && recommendedMethod.warnings.length > 0 && (
+          <div className="border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-800 space-y-1">
+            <span className="text-amber-900 font-extrabold uppercase text-[8px] tracking-wider block">Compliance Alerts:</span>
+            {recommendedMethod.warnings.map((warning, idx) => (
+              <p key={idx} className="flex items-center gap-1.5 pl-1 text-[10.5px]">
+                <span className="text-amber-600 text-xs shrink-0">⚠️</span>
+                <span>{warning}</span>
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Sourcing Justifications */}
+        {recommendedMethod.requiredJustifications && recommendedMethod.requiredJustifications.length > 0 && (
+          <div className="border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-800 space-y-1">
+            <span className="text-amber-900 font-extrabold uppercase text-[8px] tracking-wider block">Required Justifications:</span>
+            {recommendedMethod.requiredJustifications.map((just, idx) => (
+              <p key={idx} className="flex items-center gap-1.5 pl-1 text-[10.5px]">
+                <span className="text-slate-400 shrink-0">&middot;</span>
+                <span>{just}</span>
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Override Alert Banner */}
+      {draft.type !== recommendedMethod.id && (
+        <div className="p-4 bg-amber-50/50 border border-amber-200 text-amber-850 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
+          <div>
+            <span className="text-amber-900 font-black uppercase text-[9px] tracking-wider block">Manual Method Override Active</span>
+            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
+              You have manually selected <strong>{draft.type.replace(/_/g, ' ')}</strong> instead of the suggested <strong>{recommendedMethod.id.replace(/_/g, ' ')}</strong>. Ensure corporate policy or GFR rules approve this override.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Method specific notices */}
+      {['PAC', 'SINGLE_SOURCE', 'EMERGENCY_PURCHASE'].includes(draft.type) && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+          <span className="text-rose-600 text-sm shrink-0">⚠️</span>
+          <div>
+            <span className="text-rose-950 font-black uppercase text-[9px] tracking-wider block">Exclusivity / Emergency Sourcing Active</span>
+            <p className="mt-0.5 leading-relaxed text-rose-700 font-medium">
+              This method skips open-market competition. You must upload legal justifications (e.g. PAC Certificate) in Step 7 and obtain CFA approval signatures.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {draft.type === 'REVERSE_AUCTION' && !draft.basics.isSpecClear && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
+          <div>
+            <span className="text-amber-950 font-black uppercase text-[9px] tracking-wider block">Reverse Auction Spec Warning</span>
+            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
+              Conducting reverse auctions with unclear specifications increases the risk of delivery disputes. Verify item dimensions and specifications.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {draft.type === 'DIRECT_PURCHASE' && !draft.basics.isCatalogueAvailable && (
+        <div className="p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+          <span className="text-slate-500 text-sm shrink-0">ℹ️</span>
+          <div>
+            <span className="text-slate-900 font-black uppercase text-[9px] tracking-wider block">Direct Purchase Catalogue Notice</span>
+            <p className="mt-0.5 leading-relaxed text-slate-600 font-medium">
+              Direct Sourcing is best applied when matching pre-approved catalog numbers or identical previous orders to ensure price reasonability.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {draft.type === 'TWO_PACKET_BID' && (
+        <div className="p-4 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+          <span className="text-indigo-600 text-sm shrink-0">ℹ️</span>
+          <div>
+            <span className="text-indigo-900 font-black uppercase text-[9px] tracking-wider block">Two Packet Envelopes Setup</span>
+            <p className="mt-0.5 leading-relaxed text-indigo-750 font-medium">
+              Two-packet bidding mandates separate Technical Opening and Financial Opening dates. Setup these dates carefully in Step 5 (Timeline & Rules).
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Sourcing Method Selection Cards */}
+      <div className="space-y-3.5">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide pl-0.5">Select Sourcing Method</h3>
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {availableMethods.map(method => (
+            <ProcurementMethodCard
+              key={method.id}
+              title={method.title}
+              subtitle={method.subtitle}
+              icon={method.icon}
+              complexity={method.complexity}
+              estimatedTime={method.estimatedTime}
+              isSelected={draft.type === method.id}
+              isRecommended={method.id === recommendedMethod.id}
+              fitCriteria={method.fit}
+              onSelect={() => {
+                updateDraft(current => ({
+                  ...current,
+                  type: method.id,
+                  requiredDocs: defaultRequiredDocs(current.basics.buyerType, method.id)
+                }));
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2 Form components: Buyer & Internal details
+// ─────────────────────────────────────────────────────────────────────────────
+function InternalDetailsForm({
+  draft,
+  updateDraft
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+}) {
+  const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
+  const updateInternal = (key: keyof Draft['internal'], val: string | boolean) => {
+    updateDraft(c => ({ ...c, internal: { ...c.internal, [key]: val } }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Organization name" required>
+          <input
+            value={draft.internal.orgName}
+            onChange={e => updateInternal('orgName', e.target.value)}
+            className={inputClass}
+            placeholder="Enter organization title"
+          />
         </Field>
-        <Field label="Funding source">
-          <SelectWithOther value={draft.basics.fundingSource} options={FUNDING_SOURCE_OPTIONS} onChange={value => updateBasics('fundingSource', value)} placeholder="Select funding source" otherPlaceholder="Enter funding source" />
+
+        <Field label="Buying Department" required>
+          <input
+            value={draft.internal.department}
+            onChange={e => updateInternal('department', e.target.value)}
+            className={inputClass}
+            placeholder="Sourcing, Procurement, IT Dept..."
+          />
         </Field>
-        <Field label="Cost center">
-          <SelectWithOther value={draft.basics.costCenter} options={COST_CENTER_OPTIONS} onChange={value => updateBasics('costCenter', value)} placeholder="Select cost center" otherPlaceholder="Enter cost center" />
+
+        <Field label="Contact Person Name" required>
+          <input
+            value={draft.internal.contactPerson}
+            onChange={e => updateInternal('contactPerson', e.target.value)}
+            className={inputClass}
+            placeholder="John Doe"
+          />
         </Field>
-        <Field label="Justification / scope" className="lg:col-span-4">
-          <textarea value={draft.basics.justification} onChange={event => updateBasics('justification', event.target.value)} rows={5} maxLength={1000} className={textareaClass} placeholder="Why this procurement is required, expected outcome, constraints and delivery need." />
+
+        <Field label="Contact Email Address" required>
+          <input
+            type="email"
+            value={draft.internal.email}
+            onChange={e => updateInternal('email', e.target.value)}
+            className={inputClass}
+            placeholder="john.doe@company.com"
+          />
         </Field>
-        {isTenderMethod(draft.type) && (
+
+        <Field label="Contact Mobile Number" required>
+          <input
+            value={draft.internal.mobile}
+            onChange={e => updateInternal('mobile', e.target.value)}
+            className={inputClass}
+            placeholder="9876543210"
+          />
+        </Field>
+
+        {/* Private vs Government Specific Forms UI emphasis */}
+        {!isGov ? (
           <>
-            <Field label="Tender number">
-              <input value={draft.tender.tenderNumber} onChange={event => updateTender('tenderNumber', event.target.value)} className={inputClass} />
+            <Field label="Cost Center" required>
+              <input
+                value={draft.internal.costCenter}
+                onChange={e => updateInternal('costCenter', e.target.value)}
+                className={inputClass}
+                placeholder="CC-MKTG-102"
+              />
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">
+                Internal corporate code for cost tracking and accounting allocation.
+              </p>
             </Field>
-            <Field label="Tender type" required>
-              <SelectWithOther value={draft.tender.tenderType} options={TENDER_TYPE_OPTIONS} onChange={value => updateTender('tenderType', value)} otherPlaceholder="Enter tender type" />
+
+            <Field label="Budget Head / Code">
+              <input
+                value={draft.internal.budgetHead}
+                onChange={e => updateInternal('budgetHead', e.target.value)}
+                className={inputClass}
+                placeholder="BH-CAPEX-IT"
+              />
             </Field>
-            <Field label="Tender mode">
-              <SelectWithOther value={draft.tender.tenderMode} options={TENDER_MODE_OPTIONS} onChange={value => updateTender('tenderMode', value)} otherPlaceholder="Enter tender mode" />
+
+            <Field label="Project Code reference">
+              <input
+                value={draft.internal.projectCode}
+                onChange={e => updateInternal('projectCode', e.target.value)}
+                className={inputClass}
+                placeholder="PROJ-2026-CLOUD"
+              />
             </Field>
-            <Field label="Tender visibility">
-              <SelectWithOther value={draft.tender.visibility} options={TENDER_VISIBILITY_OPTIONS} onChange={value => updateTender('visibility', value)} otherPlaceholder="Enter tender visibility" />
+
+            <Field label="Internal Approval Authority" required>
+              <input
+                value={draft.internal.approvalAuthority}
+                onChange={e => updateInternal('approvalAuthority', e.target.value)}
+                className={inputClass}
+                placeholder="Chief Sourcing Officer"
+              />
             </Field>
-            <Field label="Short description" required className="lg:col-span-4">
-              <textarea value={draft.tender.shortDescription} onChange={event => updateTender('shortDescription', event.target.value)} rows={3} className={textareaClass} placeholder="Concise business need and procurement outcome." />
+          </>
+        ) : (
+          <>
+            <Field label="Department File / Case Number" required>
+              <input
+                value={draft.internal.internalFileNumber}
+                onChange={e => updateInternal('internalFileNumber', e.target.value)}
+                className={inputClass}
+                placeholder="DEPT/2026/RFQ/8801"
+              />
             </Field>
-            <Field label="Detailed scope of work" required className="lg:col-span-4">
-              <textarea value={draft.tender.scopeOfWork} onChange={event => updateTender('scopeOfWork', event.target.value)} rows={5} className={textareaClass} placeholder="Deliverables, standards, acceptance criteria, exclusions, dependencies and site constraints." />
+
+            <Field label="Competent Financial Authority (CFA)" required>
+              <input
+                value={draft.internal.competentAuthority}
+                onChange={e => updateInternal('competentAuthority', e.target.value)}
+                className={inputClass}
+                placeholder="Director of Finance (DF)"
+              />
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">
+                Financial authority who possesses delegation of power to sanction.
+              </p>
             </Field>
-            <Field label="Purpose / objective" className="lg:col-span-4">
-              <textarea value={draft.tender.purpose} onChange={event => updateTender('purpose', event.target.value)} rows={3} className={textareaClass} placeholder="Why this tender is being floated and expected business outcome." />
+
+            <Field label="Sanction Approval Authority" required>
+              <input
+                value={draft.internal.approvalAuthority}
+                onChange={e => updateInternal('approvalAuthority', e.target.value)}
+                className={inputClass}
+                placeholder="Joint Secretary Sourcing"
+              />
             </Field>
           </>
         )}
+
+        <Field label="Purchase justification & compliance reason" className="sm:col-span-2" required>
+          <textarea
+            value={draft.internal.justification}
+            onChange={e => updateInternal('justification', e.target.value)}
+            rows={4}
+            maxLength={1000}
+            className={textareaClass}
+            placeholder="State business justification, urgency reason, or GFR rule compliance justification..."
+          />
+        </Field>
       </div>
-    </Panel>
+
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={draft.internal.budgetConfirmed}
+            onChange={e => updateInternal('budgetConfirmed', e.target.checked)}
+            className="h-5 w-5 rounded mt-0.5 accent-[#12335f]"
+          />
+          <div>
+            <span className="text-xs font-black text-slate-800 uppercase tracking-wide">Confirm Budget Allocation & Sanction</span>
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              I verify that sufficient funds are allocated and sanctioned for this procurement purchase order under GFR/Corporate compliance guidelines.
+            </p>
+          </div>
+        </label>
+      </div>
+    </div>
   );
 }
 
-function ItemsStep({ draft, updateDraft }: StepProps) {
-  const updateItem = (id: string, patch: Partial<ItemRow>) => updateDraft(current => ({
-    ...current,
-    items: current.items.map(item => item.id === id ? { ...item, ...patch } : item),
-  }));
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3 Form components: Items / Service / BOQ details
+// ─────────────────────────────────────────────────────────────────────────────
+function ItemsDetailsForm({
+  draft,
+  updateDraft,
+  showItemDrawer,
+  setShowItemDrawer,
+  selectedItemForEdit,
+  setSelectedItemForEdit
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+  showItemDrawer: boolean;
+  setShowItemDrawer: (open: boolean) => void;
+  selectedItemForEdit: ItemRow | null;
+  setSelectedItemForEdit: (item: ItemRow | null) => void;
+}) {
+  const whatBuying = draft.basics.whatAreYouBuying;
 
-  const addItem = () => updateDraft(current => ({
-    ...current,
-    items: [...current.items, {
+  // Item list handlers
+  const handleSaveItem = (item: ItemRow) => {
+    updateDraft(current => {
+      const idx = current.items.findIndex(i => i.id === item.id);
+      const nextItems = [...current.items];
+      if (idx >= 0) {
+        nextItems[idx] = item;
+      } else {
+        nextItems.push(item);
+      }
+      const totalSum = nextItems.reduce((acc, row) => acc + (row.quantity * row.unitPrice), 0);
+      return {
+        ...current,
+        items: nextItems,
+        basics: { ...current.basics, estimatedValue: totalSum }
+      };
+    });
+    toast.success('Item details saved');
+    setShowItemDrawer(false);
+    setSelectedItemForEdit(null);
+  };
+
+  const handleAddNewItem = () => {
+    setSelectedItemForEdit({
       id: makeId(),
       name: '',
       specification: '',
@@ -1909,938 +1654,1107 @@ function ItemsStep({ draft, updateDraft }: StepProps) {
       unit: 'Nos',
       unitPrice: 0,
       gst: 18,
-      deliveryDate: '',
-      brandPolicy: 'Equivalent or better allowed',
+      deliveryDate: nextFortnight,
+      brandPolicy: 'Equivalent allowed',
       technicalSpecification: '',
       specificationFileName: '',
-    }],
-  }));
-
-  const removeItem = (id: string) => updateDraft(current => ({
-    ...current,
-    items: current.items.length === 1 ? current.items : current.items.filter(item => item.id !== id),
-  }));
-
-  return (
-    <Panel
-      title="Items / BOQ"
-      icon={<Package className="h-4 w-4" />}
-      action={<Button type="button" size="sm" onClick={addItem} className="bg-[#12335f] text-white"><Plus className="mr-2 h-4 w-4" /> Add Item</Button>}
-    >
-      <div className="overflow-x-auto">
-        <table className="min-w-[1180px] w-full border-collapse text-left text-xs">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
-              <th className="px-3 py-2">Item / service <span className="text-rose-600">*</span></th>
-              <th className="px-3 py-2">Specification <span className="text-rose-600">*</span></th>
-              <th className="px-3 py-2">Qty <span className="text-rose-600">*</span></th>
-              <th className="px-3 py-2">Unit <span className="text-rose-600">*</span></th>
-              {isTenderMethod(draft.type) && <th className="px-3 py-2">Delivery date</th>}
-              {isTenderMethod(draft.type) && <th className="px-3 py-2">Brand policy</th>}
-              <th className="px-3 py-2">Unit price</th>
-              <th className="px-3 py-2">GST %</th>
-              {isTenderMethod(draft.type) && <th className="px-3 py-2">Spec file</th>}
-              <th className="px-3 py-2 text-right">Total</th>
-              <th className="px-3 py-2 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {draft.items.map(item => (
-              <tr key={item.id} className="border-b border-slate-100 align-top">
-                <td className="px-3 py-2"><input value={item.name} onChange={event => updateItem(item.id, { name: event.target.value })} className={tableInputClass} placeholder="Item name" /></td>
-                <td className="px-3 py-2">
-                  <input value={item.specification} onChange={event => updateItem(item.id, { specification: event.target.value })} className={tableInputClass} placeholder="Key specs" />
-                  {isTenderMethod(draft.type) && (
-                    <input value={item.technicalSpecification} onChange={event => updateItem(item.id, { technicalSpecification: event.target.value })} className={cn(tableInputClass, 'mt-2')} placeholder="Technical compliance notes" />
-                  )}
-                </td>
-                <td className="px-3 py-2"><input type="number" min={0} value={item.quantity || ''} onChange={event => updateItem(item.id, { quantity: Number(event.target.value || 0) })} className={tableInputClass} /></td>
-                <td className="px-3 py-2">
-                  <SelectWithOther value={item.unit} options={QUANTITY_UNITS} onChange={value => updateItem(item.id, { unit: value })} placeholder="Select unit" otherPlaceholder="Enter unit" className={tableInputClass} />
-                </td>
-                {isTenderMethod(draft.type) && <td className="px-3 py-2"><input type="date" value={item.deliveryDate} onChange={event => updateItem(item.id, { deliveryDate: event.target.value })} className={tableInputClass} /></td>}
-                {isTenderMethod(draft.type) && (
-                  <td className="px-3 py-2">
-                    <SelectWithOther value={item.brandPolicy} options={BRAND_POLICY_OPTIONS} onChange={value => updateItem(item.id, { brandPolicy: value })} placeholder="Select brand policy" otherPlaceholder="Enter brand policy" className={tableInputClass} />
-                  </td>
-                )}
-                <td className="px-3 py-2"><input type="number" min={0} value={item.unitPrice || ''} onChange={event => updateItem(item.id, { unitPrice: Number(event.target.value || 0) })} className={tableInputClass} /></td>
-                <td className="px-3 py-2"><input type="number" min={0} value={item.gst || ''} onChange={event => updateItem(item.id, { gst: Number(event.target.value || 0) })} className={tableInputClass} /></td>
-                {isTenderMethod(draft.type) && (
-                  <td className="px-3 py-2">
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 font-bold text-slate-600">
-                      <Paperclip className="h-4 w-4" /> {item.specificationFileName || 'Attach'}
-                      <input type="file" className="hidden" onChange={event => updateItem(item.id, { specificationFileName: event.target.files?.[0]?.name || '' })} />
-                    </label>
-                  </td>
-                )}
-                <td className="px-3 py-2 text-right font-black text-slate-900">{money(itemTotal(item))}</td>
-                <td className="px-3 py-2 text-right">
-                  <button type="button" onClick={() => removeItem(item.id)} className="rounded-md p-2 text-rose-600 hover:bg-rose-50" aria-label="Remove item">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <Metric label="Sub total" value={money(subtotal(draft.items))} />
-        <Metric label="Tax included total" value={money(grandTotal(draft.items))} />
-        <Metric label="Items" value={String(draft.items.length)} />
-      </div>
-    </Panel>
-  );
-}
-
-interface VendorSearchableDropdownProps {
-  value: string | number;
-  onChange: (seller: MarketplaceSeller | null) => void;
-  placeholder?: string;
-  className?: string;
-}
-
-function VendorSearchableDropdown({ value, onChange, placeholder = 'Search vendor name or organization...', className }: VendorSearchableDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [sellers, setSellers] = useState<MarketplaceSeller[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedSeller, setSelectedSeller] = useState<MarketplaceSeller | null>(null);
-
-  // Fetch initial seller if value exists
-  useEffect(() => {
-    if (value) {
-      setLoading(true);
-      marketplaceApi.getSellers({ pageSize: 50 })
-        .then(res => {
-          const found = res?.sellers?.find((s: any) => s.sellerUserId === Number(value) || s.id === Number(value));
-          if (found) {
-            setSelectedSeller(found);
-            setSearch(found.organizationName);
-          }
-        })
-        .catch(err => console.error(err))
-        .finally(() => setLoading(false));
-    } else {
-      setSelectedSeller(null);
-      setSearch('');
-    }
-  }, [value]);
-
-  // Debounce search query
-  useEffect(() => {
-    if (!open) return;
-    const delayDebounce = setTimeout(() => {
-      setLoading(true);
-      const params: Record<string, string | number> = { pageSize: 20 };
-      if (search) params.q = search;
-      marketplaceApi.getSellers(params)
-        .then(res => {
-          setSellers(res?.sellers || []);
-        })
-        .catch(err => console.error(err))
-        .finally(() => setLoading(false));
-    }, 300);
-
-    return () => clearTimeout(delayDebounce);
-  }, [search, open]);
-
-  return (
-    <div className={cn("relative w-full", className)}>
-      <div className="relative">
-        <input
-          type="text"
-          className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-3 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-        />
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-slate-400">
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
-          {search && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setSelectedSeller(null);
-                onChange(null);
-                setSellers([]);
-              }}
-              className="hover:text-slate-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg z-20">
-            {loading && sellers.length === 0 ? (
-              <div className="p-3 text-center text-xs font-semibold text-slate-500">Loading sellers...</div>
-            ) : sellers.length === 0 ? (
-              <div className="p-3 text-center text-xs font-semibold text-slate-500">No sellers found</div>
-            ) : (
-              sellers.map((seller) => {
-                const isValid = seller.sellerUserId !== null && seller.sellerUserId !== undefined;
-                const isSelected = selectedSeller?.id === seller.id;
-                return (
-                  <button
-                    key={seller.id}
-                    type="button"
-                    disabled={!isValid}
-                    onClick={() => {
-                      setSelectedSeller(seller);
-                      setSearch(seller.organizationName);
-                      onChange(seller);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-xs transition",
-                      !isValid ? "opacity-50 cursor-not-allowed bg-slate-50/50" : "hover:bg-slate-50",
-                      isSelected && "bg-blue-50 text-[#12335f]"
-                    )}
-                  >
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="font-bold text-slate-900">{seller.organizationName}</span>
-                      {seller.verificationStatus === 'VERIFIED' && (
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] uppercase font-bold border border-emerald-200 text-emerald-700">Verified</span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex w-full items-center justify-between text-[10px] text-slate-500 font-semibold">
-                      <span>
-                        {seller.organizationType} · {[seller.city, seller.state].filter(Boolean).join(', ')}
-                      </span>
-                      {!isValid && (
-                        <span className="text-red-500 font-bold">No active user account</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function VendorsStep({ draft, updateDraft }: StepProps) {
-  const updateVendors = (key: keyof Draft['vendors'], value: string | number | boolean | null) =>
-    updateDraft(current => ({ ...current, vendors: { ...current.vendors, [key]: value } }));
-  const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
-
-  const showSingleVendor = isDirectMethod(draft.type) || draft.vendors.selection === 'Single / PAC Vendor';
-
-  return (
-    <Panel title="Supplier Reach & Eligibility" icon={<Users className="h-4 w-4" />}>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Field label="Supplier selection" required>
-          <select value={draft.vendors.selection} onChange={event => updateVendors('selection', event.target.value)} className={inputClass}>
-            {SUPPLIER_SELECTION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
-        </Field>
-        <Field label="Invite count">
-          <input type="number" min={0} max={50} value={draft.vendors.inviteCount || ''} onChange={event => updateVendors('inviteCount', Number(event.target.value || 0))} className={inputClass} placeholder="0" />
-        </Field>
-        <Field label="Minimum turnover">
-          <SelectWithOther value={draft.vendors.minimumTurnover} options={MINIMUM_TURNOVER_OPTIONS} onChange={value => updateVendors('minimumTurnover', value)} placeholder="Select turnover requirement" otherPlaceholder="Enter turnover requirement" />
-        </Field>
-        {showSingleVendor && (
-          <>
-            <Field label="Select Single Vendor *" required className="lg:col-span-3">
-              <VendorSearchableDropdown
-                value={draft.vendors.selectedSellerId || ''}
-                onChange={(seller) => {
-                  updateDraft(current => ({
-                    ...current,
-                    vendors: {
-                      ...current.vendors,
-                      selectedSellerId: seller ? seller.sellerUserId || seller.id : null,
-                      selectedSellerName: seller ? seller.organizationName : '',
-                      selectedSellerCode: seller ? `VEN${10000 + seller.id}` : ''
-                    }
-                  }));
-                }}
-              />
-            </Field>
-            {draft.vendors.selectedSellerId && (
-              <div className="lg:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold space-y-1">
-                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Selected Vendor Name:</span> {draft.vendors.selectedSellerName}</p>
-                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Seller User ID:</span> {draft.vendors.selectedSellerId}</p>
-                <p><span className="text-slate-500 font-bold uppercase text-[10px]">Vendor Code:</span> {draft.vendors.selectedSellerCode}</p>
-              </div>
-            )}
-          </>
-        )}
-        <Field label="Experience required">
-          <SelectWithOther value={draft.vendors.experienceYears} options={EXPERIENCE_REQUIRED_OPTIONS} onChange={value => updateVendors('experienceYears', value)} placeholder="Select experience" otherPlaceholder="Enter experience requirement" />
-        </Field>
-        <Toggle label="MSME preference" checked={draft.vendors.msmePreference} onChange={value => updateVendors('msmePreference', value)} />
-        <Toggle label="Make in India preference" checked={draft.vendors.makeInIndiaPreference} onChange={value => updateVendors('makeInIndiaPreference', value)} />
-        <Toggle label="Local vendor preference" checked={draft.vendors.localVendorPreference} onChange={value => updateVendors('localVendorPreference', value)} />
-        {isTenderMethod(draft.type) && (
-          <>
-            <Toggle label="Startup preference" checked={draft.tender.startupPreference} onChange={value => updateTender('startupPreference', value)} />
-            <Toggle label="SHG preference" checked={draft.tender.shgPreference} onChange={value => updateTender('shgPreference', value)} />
-            <Toggle label="Women-owned business preference" checked={draft.tender.womenOwnedPreference} onChange={value => updateTender('womenOwnedPreference', value)} />
-            <Toggle label="GST mandatory" checked={draft.tender.gstMandatory} onChange={value => updateTender('gstMandatory', value)} />
-            <Toggle label="PAN mandatory" checked={draft.tender.panMandatory} onChange={value => updateTender('panMandatory', value)} />
-            <Field label="Required certifications" className="lg:col-span-3">
-              <textarea value={draft.tender.requiredCertifications} onChange={event => updateTender('requiredCertifications', event.target.value)} rows={3} className={textareaClass} placeholder="ISO, BIS, OEM authorization, safety license, statutory registrations." />
-            </Field>
-          </>
-        )}
-        <Field label="Compliance notes" className="lg:col-span-3">
-          <textarea value={draft.vendors.complianceNotes} onChange={event => updateVendors('complianceNotes', event.target.value)} rows={4} className={textareaClass} placeholder="GST, PAN, Udyam, ISO, prior experience or special eligibility." />
-        </Field>
-      </div>
-    </Panel>
-  );
-}
-
-function ScheduleStep({ draft, updateDraft }: StepProps) {
-  const updateSchedule = (key: keyof Draft['schedule'], value: string | number | boolean) =>
-    updateDraft(current => ({ ...current, schedule: { ...current.schedule, [key]: value } }));
-  const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
-  const updateConsignee = (id: string, patch: Partial<ConsigneeRow>) =>
-    updateDraft(current => ({
-      ...current,
-      consigneeDetails: current.consigneeDetails.map(consignee => consignee.id === id ? { ...consignee, ...patch } : consignee),
-    }));
-  const addConsignee = () =>
-    updateDraft(current => ({
-      ...current,
-      consigneeDetails: [...current.consigneeDetails, { id: makeId(), name: '', location: '', contact: '', quantity: 0 }],
-    }));
-  const removeConsignee = (id: string) =>
-    updateDraft(current => ({
-      ...current,
-      consigneeDetails: current.consigneeDetails.length === 1 ? current.consigneeDetails : current.consigneeDetails.filter(consignee => consignee.id !== id),
-    }));
-  const totalItemQuantity = draft.items.reduce((total, item) => total + Number(item.quantity || 0), 0);
-  const totalConsigneeQuantity = draft.consigneeDetails.reduce((total, consignee) => total + Number(consignee.quantity || 0), 0);
-
-  return (
-    <Panel
-      title="Schedule & Delivery"
-      icon={<CalendarClock className="h-4 w-4" />}
-      action={<Button type="button" variant="outline" size="sm" onClick={addConsignee}>Add consignee</Button>}
-    >
-      <div className="grid gap-4 lg:grid-cols-4">
-        <Field label="Publish date" required>
-          <input type="date" value={draft.schedule.publishDate} onChange={event => updateSchedule('publishDate', event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Submission end date" required>
-          <input type="date" value={draft.schedule.submissionDate} onChange={event => updateSchedule('submissionDate', event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Opening date" required>
-          <input type="date" value={draft.schedule.openingDate} onChange={event => updateSchedule('openingDate', event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Quote validity days">
-          <input type="number" min={1} value={draft.schedule.validityDays || ''} onChange={event => updateSchedule('validityDays', Number(event.target.value || 0))} className={inputClass} />
-        </Field>
-        <Field label="Required delivery date" required>
-          <input type="date" value={draft.schedule.deliveryDate} onChange={event => updateSchedule('deliveryDate', event.target.value)} className={inputClass} />
-        </Field>
-        <Toggle label="Pre-bid meeting" checked={draft.schedule.preBidMeeting} onChange={value => updateSchedule('preBidMeeting', value)} />
-        {draft.schedule.preBidMeeting && (
-          <Field label="Pre-bid date">
-            <input type="date" value={draft.schedule.preBidDate} onChange={event => updateSchedule('preBidDate', event.target.value)} className={inputClass} />
-          </Field>
-        )}
-        {isTenderMethod(draft.type) && (
-          <>
-            <Field label="Bid start date">
-              <input type="date" value={draft.tender.bidStartDate} onChange={event => updateTender('bidStartDate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Bid closing date" required>
-              <input type="date" value={draft.tender.bidClosingDate} onChange={event => updateTender('bidClosingDate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Bid closing time" required>
-              <input type="time" value={draft.tender.bidClosingTime} onChange={event => updateTender('bidClosingTime', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Technical evaluation date">
-              <input type="date" value={draft.tender.technicalEvaluationDate} onChange={event => updateTender('technicalEvaluationDate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Financial evaluation date">
-              <input type="date" value={draft.tender.financialEvaluationDate} onChange={event => updateTender('financialEvaluationDate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Award date">
-              <input type="date" value={draft.tender.awardDate} onChange={event => updateTender('awardDate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Delivery location" className="lg:col-span-2">
-              <input value={draft.tender.deliveryLocation} onChange={event => updateTender('deliveryLocation', event.target.value)} className={inputClass} placeholder="Full delivery or execution address" />
-            </Field>
-            <Field label="Delivery type">
-              <SelectWithOther value={draft.tender.deliveryType} options={DELIVERY_TYPES} onChange={value => updateTender('deliveryType', value)} placeholder="Select delivery type" otherPlaceholder="Enter delivery type" />
-            </Field>
-            <Field label="Delivery timeline">
-              <input value={draft.tender.deliveryTimeline} onChange={event => updateTender('deliveryTimeline', event.target.value)} className={inputClass} placeholder="Within 30 days from PO" />
-            </Field>
-            <Toggle label="Installation required" checked={draft.tender.installationRequired} onChange={value => updateTender('installationRequired', value)} />
-            <Toggle label="Training required" checked={draft.tender.trainingRequired} onChange={value => updateTender('trainingRequired', value)} />
-            <Field label="Special instructions" className="lg:col-span-4">
-              <textarea value={draft.tender.specialInstructions} onChange={event => updateTender('specialInstructions', event.target.value)} rows={4} className={textareaClass} placeholder="Site access, packaging, delivery window, installation dependencies, inspection instructions." />
-            </Field>
-          </>
-        )}
-      </div>
-      <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200">
-        <table className="min-w-[760px] w-full text-left text-xs">
-          <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-            <tr>
-              {['Consignee / office', 'Delivery location', 'Contact', 'Quantity', 'Action'].map(head => <th key={head} className="px-3 py-2">{head}</th>)}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {draft.consigneeDetails.map(consignee => (
-              <tr key={consignee.id} className="align-top">
-                <td className="px-3 py-2"><input value={consignee.name} onChange={event => updateConsignee(consignee.id, { name: event.target.value })} className={tableInputClass} placeholder="Stores / department / site" /></td>
-                <td className="px-3 py-2"><input value={consignee.location} onChange={event => updateConsignee(consignee.id, { location: event.target.value })} className={tableInputClass} placeholder="Delivery address" /></td>
-                <td className="px-3 py-2"><input value={consignee.contact} onChange={event => updateConsignee(consignee.id, { contact: event.target.value })} className={tableInputClass} placeholder="Name / phone" /></td>
-                <td className="px-3 py-2"><input type="number" min={0} value={consignee.quantity || ''} onChange={event => updateConsignee(consignee.id, { quantity: Number(event.target.value || 0) })} className={tableInputClass} /></td>
-                <td className="px-3 py-2">
-                  <button type="button" onClick={() => removeConsignee(consignee.id)} className="rounded-md p-2 text-rose-600 hover:bg-rose-50" aria-label="Remove consignee">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Metric label="Procurement quantity" value={String(totalItemQuantity)} />
-        <Metric label="Consignee quantity" value={String(totalConsigneeQuantity)} />
-        <Metric label="Quantity check" value={totalItemQuantity === totalConsigneeQuantity ? 'Matched' : 'Mismatch'} />
-      </div>
-    </Panel>
-  );
-}
-
-function RulesStep({ draft, updateDraft }: StepProps) {
-  const updateRules = (key: keyof Draft['rules'], value: string | number | boolean) =>
-    updateDraft(current => ({ ...current, rules: { ...current.rules, [key]: value } }));
-  const updateTender = (key: keyof Draft['tender'], value: string | boolean | PaymentMilestone[]) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
-  const updateMilestone = (id: string, patch: Partial<PaymentMilestone>) => {
-    updateTender('milestones', draft.tender.milestones.map(milestone => milestone.id === id ? { ...milestone, ...patch } : milestone));
+    });
+    setShowItemDrawer(true);
   };
 
-  return (
-    <Panel title={isAuctionMethod(draft.type) ? 'Auction Rules' : 'Bid & Evaluation Rules'} icon={<ShieldCheck className="h-4 w-4" />}>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Field label="Bid type" required>
-          <SelectWithOther value={draft.rules.bidType} options={BID_TYPE_OPTIONS} onChange={value => updateRules('bidType', value)} otherPlaceholder="Enter bid type" />
-        </Field>
-        <Field label="Evaluation method" required>
-          <SelectWithOther value={draft.rules.evaluation} options={EVALUATION_OPTIONS} onChange={value => updateRules('evaluation', value)} otherPlaceholder="Enter evaluation method" />
-        </Field>
-        <Field label="EMD amount" required={draft.rules.emdRequired}>
-          <input type="number" min={0} value={draft.rules.emdAmount || ''} onChange={event => updateRules('emdAmount', Number(event.target.value || 0))} className={inputClass} />
-        </Field>
-        <Toggle label="EMD required" checked={draft.rules.emdRequired} onChange={value => updateRules('emdRequired', value)} />
-        <Toggle label="Performance security" checked={draft.rules.performanceSecurity} onChange={value => updateRules('performanceSecurity', value)} />
-        <Toggle label="Reverse auction intent" checked={draft.rules.reverseAuctionIntent} onChange={value => updateRules('reverseAuctionIntent', value)} />
-        {(isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent) && (
-          <>
-            <Field label="Start / ceiling price">
-              <input type="number" min={0} value={draft.rules.startPrice || ''} onChange={event => updateRules('startPrice', Number(event.target.value || 0))} className={inputClass} />
-            </Field>
-            <Field label="Reserve price">
-              <input type="number" min={0} value={draft.rules.reservePrice || ''} onChange={event => updateRules('reservePrice', Number(event.target.value || 0))} className={inputClass} />
-            </Field>
-            <Field label="Minimum decrement">
-              <input type="number" min={0} value={draft.rules.minimumDecrement || ''} onChange={event => updateRules('minimumDecrement', Number(event.target.value || 0))} className={inputClass} />
-            </Field>
-            <Toggle label="Auto extension" checked={draft.rules.autoExtension} onChange={value => updateRules('autoExtension', value)} />
-            <Toggle label="Hide vendor identity" checked={draft.rules.hideVendorIdentity} onChange={value => updateRules('hideVendorIdentity', value)} />
-          </>
-        )}
-        {isTenderMethod(draft.type) && (
-          <>
-            <Field label="Currency">
-              <SelectWithOther value={draft.tender.currency} options={CURRENCY_OPTIONS} onChange={value => updateTender('currency', value)} otherPlaceholder="Enter currency" />
-            </Field>
-            <Field label="Price type" required>
-              <SelectWithOther value={draft.tender.priceType} options={PRICE_TYPE_OPTIONS} onChange={value => updateTender('priceType', value)} otherPlaceholder="Enter price type" />
-            </Field>
-            <Field label="Tax type" required>
-              <SelectWithOther value={draft.tender.taxType} options={TAX_TYPE_OPTIONS} onChange={value => updateTender('taxType', value)} otherPlaceholder="Enter tax type" />
-            </Field>
-            <Toggle label="GST included" checked={draft.tender.gstIncluded} onChange={value => updateTender('gstIncluded', value)} />
-            <Field label="GST rate">
-              <input type="number" value={draft.tender.gstRate} onChange={event => updateTender('gstRate', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Payment terms">
-              <SelectWithOther value={draft.tender.paymentTerms} options={PAYMENT_TERMS} onChange={value => updateTender('paymentTerms', value)} placeholder="Select payment terms" otherPlaceholder="Enter payment terms" />
-            </Field>
-            <Field label="Performance security amount" required={draft.rules.performanceSecurity}>
-              <input type="number" value={draft.tender.performanceSecurityAmount} onChange={event => updateTender('performanceSecurityAmount', event.target.value)} disabled={!draft.rules.performanceSecurity} className={inputClass} />
-            </Field>
-            <Field label="Tender evaluation method">
-              <SelectWithOther value={draft.tender.evaluationMethod} options={TENDER_EVALUATION_OPTIONS} onChange={value => updateTender('evaluationMethod', value)} otherPlaceholder="Enter tender evaluation method" />
-            </Field>
-            <Field label="Technical weightage" required>
-              <input type="number" value={draft.tender.technicalWeightage} onChange={event => updateTender('technicalWeightage', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Price weightage" required>
-              <input type="number" value={draft.tender.priceWeightage} onChange={event => updateTender('priceWeightage', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Experience score">
-              <input type="number" value={draft.tender.experienceScore} onChange={event => updateTender('experienceScore', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Certification score">
-              <input type="number" value={draft.tender.certificationScore} onChange={event => updateTender('certificationScore', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Compliance score">
-              <input type="number" value={draft.tender.complianceScore} onChange={event => updateTender('complianceScore', event.target.value)} className={inputClass} />
-            </Field>
-            <div className="space-y-3 lg:col-span-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-slate-950">Payment milestones</h3>
-                  <p className="text-xs font-semibold text-slate-500">Define payable percentages and release triggers.</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => updateTender('milestones', [...draft.tender.milestones, emptyMilestone()])}>Add milestone</Button>
-              </div>
-              {draft.tender.milestones.map(milestone => (
-                <div key={milestone.id} className="grid gap-3 rounded-lg border border-slate-200 p-3 lg:grid-cols-[1fr_120px_1.5fr_auto]">
-                  <input value={milestone.label} onChange={event => updateMilestone(milestone.id, { label: event.target.value })} className={inputClass} placeholder="Advance / delivery / acceptance" />
-                  <input type="number" value={milestone.percentage} onChange={event => updateMilestone(milestone.id, { percentage: event.target.value })} className={inputClass} placeholder="%" />
-                  <input value={milestone.trigger} onChange={event => updateMilestone(milestone.id, { trigger: event.target.value })} className={inputClass} placeholder="Payment trigger" />
-                  <button type="button" onClick={() => updateTender('milestones', draft.tender.milestones.length > 1 ? draft.tender.milestones.filter(row => row.id !== milestone.id) : draft.tender.milestones)} className="rounded-md p-2 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-function DocumentsStep({ draft, updateDraft, onDocumentUpload }: StepProps) {
-  const updateDocument = (id: string, patch: Partial<DocumentRow>) => updateDraft(current => ({
-    ...current,
-    documents: current.documents.map(document => document.id === id ? { ...document, ...patch } : document),
-  }));
-
-  const handleFile = (documentId: string, event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      void onDocumentUpload?.(documentId, file);
-    }
-    event.target.value = '';
+  const handleRemoveItem = (id: string) => {
+    updateDraft(current => {
+      const nextItems = current.items.filter(item => item.id !== id);
+      const totalSum = nextItems.reduce((acc, row) => acc + (row.quantity * row.unitPrice), 0);
+      return {
+        ...current,
+        items: nextItems,
+        basics: { ...current.basics, estimatedValue: totalSum }
+      };
+    });
   };
 
-  return (
-    <Panel title="Documents & Compliance" icon={<Upload className="h-4 w-4" />}>
+  // Service details handlers
+  const updateService = (key: keyof Draft['serviceDetails'], val: string) => {
+    updateDraft(current => ({
+      ...current,
+      serviceDetails: { ...current.serviceDetails, [key]: val }
+    }));
+  };
+
+  // BOQ Handlers
+  const handleAddBOQRow = () => {
+    updateDraft(c => {
+      const nextTable = [...c.boqTable, {
+        srNo: c.boqTable.length + 1,
+        description: '',
+        category: 'General',
+        quantity: 1,
+        uom: 'Nos',
+        estimatedRate: 0,
+        taxPercent: 18,
+        total: 0,
+        remarks: ''
+      }];
+      const sum = nextTable.reduce((acc, r) => acc + (r.quantity * r.estimatedRate), 0);
+      return { ...c, boqTable: nextTable, basics: { ...c.basics, estimatedValue: sum } };
+    });
+  };
+
+  const handleBOQDuplicateRow = (idx: number) => {
+    updateDraft(c => {
+      const target = c.boqTable[idx];
+      const nextTable = [...c.boqTable];
+      nextTable.splice(idx + 1, 0, {
+        ...target,
+        srNo: nextTable.length + 1
+      });
+      const reindexed = nextTable.map((row, i) => ({ ...row, srNo: i + 1 }));
+      const sum = reindexed.reduce((acc, r) => acc + (r.quantity * r.estimatedRate), 0);
+      return { ...c, boqTable: reindexed, basics: { ...c.basics, estimatedValue: sum } };
+    });
+  };
+
+  const handleRemoveBOQRow = (idx: number) => {
+    updateDraft(c => {
+      const nextTable = c.boqTable.filter((_, i) => i !== idx).map((row, i) => ({ ...row, srNo: i + 1 }));
+      const sum = nextTable.reduce((acc, r) => acc + (r.quantity * r.estimatedRate), 0);
+      return { ...c, boqTable: nextTable, basics: { ...c.basics, estimatedValue: sum } };
+    });
+  };
+
+  const handleBOQCellChange = (idx: number, key: keyof BOQRow, val: any) => {
+    updateDraft(c => {
+      const nextTable = [...c.boqTable];
+      const row = { ...nextTable[idx], [key]: val } as BOQRow;
+      if (key === 'quantity' || key === 'estimatedRate' || key === 'taxPercent') {
+        const qty = Number(key === 'quantity' ? val : row.quantity || 0);
+        const rate = Number(key === 'estimatedRate' ? val : row.estimatedRate || 0);
+        const tax = Number(key === 'taxPercent' ? val : row.taxPercent || 0);
+        row.total = qty * rate * (1 + tax / 100);
+      }
+      nextTable[idx] = row;
+      const sum = nextTable.reduce((acc, r) => acc + (r.quantity * r.estimatedRate), 0);
+      return { ...c, boqTable: nextTable, basics: { ...c.basics, estimatedValue: sum } };
+    });
+  };
+
+  // 1. BOQ Table Mode
+  if (whatBuying === 'BOQ') {
+    return (
       <div className="space-y-4">
-        {isTenderMethod(draft.type) && (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="rounded-md bg-white p-3 text-[#12335f] shadow-sm"><Upload className="h-5 w-5" /></div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-950">Tender Specification File</h3>
-                  <p className="text-xs font-semibold text-slate-500">Primary supplier-facing tender document.</p>
-                </div>
-              </div>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-[#12335f] px-3 py-2 text-xs font-black text-white">
-                <Upload className="h-4 w-4" /> {draft.tender.documentUrl ? 'Change file' : 'Upload file'}
-                <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={event => handleFile(draft.documents[0]?.id || '', event)} />
-              </label>
-            </div>
-            {draft.tender.documentUrl && (
-              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">{draft.tender.documentUrl}</p>
-            )}
-          </div>
-        )}
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-[860px] w-full text-left text-xs">
-            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-              <tr>
-                <th className="px-3 py-3">Document</th>
-                <th className="px-3 py-3">Requirement</th>
-                <th className="px-3 py-3">Version</th>
-                <th className="px-3 py-3">File preview</th>
-                <th className="px-3 py-3">Upload</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {draft.documents.map(document => (
-                <tr key={document.id}>
-                  <td className="px-3 py-3 font-bold text-slate-900">{document.name}</td>
-                  <td className="px-3 py-3">
-                    <select value={document.requirement} onChange={event => updateDocument(document.id, { requirement: event.target.value as DocumentRow['requirement'] })} className={tableInputClass}>
-                      {DOCUMENT_REQUIREMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-3 py-3 font-black text-slate-700">v{document.version}</td>
-                  <td className="px-3 py-3 text-slate-600">
-                    <div className="max-w-[260px] space-y-1">
-                      <p className="truncate font-bold text-slate-700">{document.fileName || 'No file attached'}</p>
-                      {document.uploadStatus === 'uploading' && (
-                        <div className="space-y-1">
-                          <div className="h-1.5 rounded-full bg-slate-100">
-                            <div className="h-1.5 rounded-full bg-[#12335f]" style={{ width: `${Math.max(1, Math.min(100, document.uploadProgress || 1))}%` }} />
-                          </div>
-                          <p className="text-[10px] font-black uppercase text-slate-500">Uploading {document.uploadProgress || 1}%</p>
-                        </div>
-                      )}
-                      {document.uploadStatus === 'uploaded' && (
-                        <p className="text-[10px] font-black uppercase text-emerald-700">Uploaded asset #{document.fileAssetId}</p>
-                      )}
-                      {document.uploadStatus === 'failed' && (
-                        <p className="text-[10px] font-bold text-rose-600">{document.uploadError || 'Upload failed'}</p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-black text-slate-700">
-                      <Paperclip className="h-4 w-4" /> Select
-                      <input type="file" multiple className="hidden" onChange={event => handleFile(document.id, event)} />
-                    </label>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function ApprovalStep({ draft, updateDraft }: StepProps) {
-  const updateApproval = (key: keyof Draft['approval'], value: string) =>
-    updateDraft(current => ({ ...current, approval: { ...current.approval, [key]: value } }));
-  const updateTender = (key: keyof Draft['tender'], value: string | boolean) =>
-    updateDraft(current => ({ ...current, tender: { ...current.tender, [key]: value } }));
-
-  return (
-    <Panel title="Approval Workflow" icon={<BadgeCheck className="h-4 w-4" />}>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Field label="Workflow" required>
-          <SelectWithOther value={draft.approval.workflow} options={APPROVAL_WORKFLOW_OPTIONS} onChange={value => updateApproval('workflow', value)} otherPlaceholder="Enter approval workflow" />
-        </Field>
-        <Field label="Approver">
-          <input value={draft.approval.approver} onChange={event => updateApproval('approver', event.target.value)} className={inputClass} placeholder="Name / role" />
-        </Field>
-        <Field label="Approval note" className="lg:col-span-3">
-          <textarea value={draft.approval.notes} onChange={event => updateApproval('notes', event.target.value)} rows={4} className={textareaClass} placeholder="Approval context, special conditions, exceptions and publication notes." />
-        </Field>
-        {isTenderMethod(draft.type) && (
-          <>
-            <Field label="Contact name">
-              <input value={draft.tender.contactName} onChange={event => updateTender('contactName', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Contact email">
-              <input value={draft.tender.contactEmail} onChange={event => updateTender('contactEmail', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Contact mobile">
-              <input value={draft.tender.contactMobile} onChange={event => updateTender('contactMobile', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Phone / landline">
-              <input value={draft.tender.contactPhone} onChange={event => updateTender('contactPhone', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Department-wise contact">
-              <input value={draft.tender.departmentContact} onChange={event => updateTender('departmentContact', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Escalation contact">
-              <input value={draft.tender.escalationContact} onChange={event => updateTender('escalationContact', event.target.value)} className={inputClass} />
-            </Field>
-            <Toggle label="Approval required" checked={draft.tender.approvalRequired} onChange={value => updateTender('approvalRequired', value)} />
-            <Field label="Approval status">
-              <SelectWithOther value={draft.tender.approvalStatus} options={APPROVAL_STATUS_OPTIONS} onChange={value => updateTender('approvalStatus', value)} otherPlaceholder="Enter approval status" />
-            </Field>
-            <Field label="Approver name">
-              <input value={draft.tender.approverName} onChange={event => updateTender('approverName', event.target.value)} disabled={!draft.tender.approvalRequired} className={inputClass} />
-            </Field>
-            <Field label="Multi-level approval chain" className="lg:col-span-2">
-              <input value={draft.tender.approvalChain} onChange={event => updateTender('approvalChain', event.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Approver remarks" className="lg:col-span-3">
-              <textarea value={draft.tender.approverRemarks} onChange={event => updateTender('approverRemarks', event.target.value)} rows={4} className={textareaClass} />
-            </Field>
-          </>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-function ReviewStep({ draft, readiness }: { draft: Draft; readiness: Array<{ label: string; ok: boolean }> }) {
-  const submissionLabel = isTenderMethod(draft.type)
-    ? `${draft.tender.bidClosingDate || 'Date not set'} ${draft.tender.bidClosingTime || ''}`.trim()
-    : draft.schedule.submissionDate || 'Not set';
-
-  return (
-    <Panel title="Review & Handoff Readiness" icon={<CheckCircle2 className="h-4 w-4" />}>
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="space-y-3">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Selected route</p>
-            <h3 className="mt-1 text-xl font-black text-slate-950">{methodLabel(draft.type)}</h3>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{draft.basics.title || 'Untitled procurement'}</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Estimated value" value={money(draft.basics.estimatedValue || grandTotal(draft.items))} />
-            <Metric label="Line items" value={String(draft.items.length)} />
-            <Metric label={isTenderMethod(draft.type) ? 'Bid closing' : 'Submission'} value={submissionLabel} />
-          </div>
-          {isTenderMethod(draft.type) && (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Metric label="Tender type" value={draft.tender.tenderType || 'Not set'} />
-              <Metric label="Tender mode" value={draft.tender.tenderMode || 'Not set'} />
-              <Metric label="Visibility" value={draft.tender.visibility || 'Not set'} />
-            </div>
-          )}
-        </div>
-        <div className="space-y-2">
-          {readiness.map(item => (
-            <div key={item.label} className={cn('flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold', item.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800')}>
-              {item.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-              {item.label}
-            </div>
-          ))}
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function GuidanceBand({ draft, method }: { draft: Draft; method: MethodConfig }) {
-  const value = draft.basics.estimatedValue || grandTotal(draft.items);
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/20 p-4 border-l-4 border-l-[#ff9933]">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between font-sans">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-amber-200 shadow-sm text-[#ff9933] shrink-0">
-            <Info className="h-5 w-5" />
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-2.5 gap-2">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-black text-slate-900">{method.title} Setup Protocol</p>
-              <span className="text-[9px] font-black bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded uppercase">GFR 2017 Regulatory Guide</span>
-            </div>
-            <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-600">
-              {isDirectMethod(draft.type)
-                ? 'Under Rule 154 of GFR 2017, Direct Purchase is admissible for goods/services up to Rs. 25,000 without tenders. Ensure bank details and items are verified.'
-                : isAuctionMethod(draft.type)
-                  ? 'Reverse Auction is triggered when technical evaluations are finalized. The lowest bidding seller (L1) is determined dynamically via active price decrements.'
-                  : isTenderMethod(draft.type)
-                    ? `${method.title} follows the formal bid workbench path with documents, eligibility, schedule, approval and seller visibility controls.`
-                    : isComparisonMethod(draft.type)
-                      ? 'L1 Comparison is used for procurement up to Rs. 2.5 Lakhs by comparing at least three distinct sellers to establish a competitive price record.'
-                      : 'Request for Quotation (RFQ) is deployed to solicit sealed bids from verified micro and small enterprise suppliers in the local registry.'}
-            </p>
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Structured Bill of Quantities (BOQ)</h3>
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Invite quotes using a itemized spreadsheet schedule</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => toast.info('BOQ Sourcing template downloaded')}
+              className="h-8 text-xs font-bold text-slate-700"
+            >
+              Download Template
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => toast.info('Excel validation check completed successfully')}
+              className="h-8 text-xs font-bold text-slate-700"
+            >
+              Validate File
+            </Button>
           </div>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-white px-4 py-2 text-right shrink-0 shadow-sm">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Sanction Value</p>
-          <p className="text-lg font-mono font-black text-[#12335f]">{money(value)}</p>
-        </div>
+
+        {/* Use BOQTable Component from Loop 3 */}
+        <BOQTable
+          rows={draft.boqTable}
+          onChange={handleBOQCellChange}
+          onAddRow={handleAddBOQRow}
+          onDuplicateRow={handleBOQDuplicateRow}
+          onDeleteRow={handleRemoveBOQRow}
+          estimatedTotal={draft.basics.estimatedValue}
+        />
       </div>
-    </div>
-  );
-}
-
-function SummaryCard({ draft, readiness, method }: { draft: Draft; readiness: Array<{ label: string; ok: boolean }>; method: MethodConfig }) {
-  const ready = readiness.filter(item => item.ok).length;
-  const workflow = isTenderMethod(draft.type)
-    ? draft.tender.approvalChain || draft.approval.workflow
-    : draft.approval.workflow;
-  const deadline = isTenderMethod(draft.type)
-    ? draft.tender.bidClosingDate || 'Not set'
-    : draft.schedule.submissionDate || 'Not set';
-
-  return (
-    <Panel title="Summary" icon={<FileText className="h-4 w-4" />}>
-      <div className="space-y-3">
-        <div className={cn('rounded-lg border p-3', method.accent)}>
-          <p className="text-[10px] font-black uppercase tracking-widest">Method</p>
-          <p className="mt-1 text-base font-black">{method.title}</p>
-        </div>
-        <Metric label="Estimated value" value={money(draft.basics.estimatedValue || grandTotal(draft.items))} />
-        <Metric label="Grand total from BOQ" value={money(grandTotal(draft.items))} />
-        <Metric label="Readiness" value={`${ready}/${readiness.length}`} />
-        <Metric label={isTenderMethod(draft.type) ? 'Bid closing' : 'Submission'} value={deadline} />
-        <Metric label="Workflow" value={workflow} />
-      </div>
-    </Panel>
-  );
-}
-
-function getReadiness(draft: Draft) {
-  const value = draft.basics.estimatedValue || grandTotal(draft.items);
-  const hasItems = draft.items.some(item => item.name.trim() && item.quantity > 0);
-  const requiredDocs = draft.documents.filter(document => document.requirement === 'Mandatory');
-  const totalItemQuantity = draft.items.reduce((total, item) => total + Number(item.quantity || 0), 0);
-  const totalConsigneeQuantity = draft.consigneeDetails.reduce((total, consignee) => total + Number(consignee.quantity || 0), 0);
-  const hasConsigneeDetails = draft.consigneeDetails.some(consignee => consignee.location.trim() || consignee.name.trim());
-  const hasAllRequiredDocs = requiredDocs.length === 0 || requiredDocs.every(document => document.fileName);
-  const hasAnyBoqFile = draft.documents.some(document => /boq|price schedule|specification/i.test(document.name) && document.fileName);
-  const hasPacCertificate = draft.documents.some(document => /pac certificate/i.test(document.name) && document.fileName);
-  const hasCustomSpecification = draft.items.some(item => item.specification.trim().length >= 10 || item.technicalSpecification.trim().length >= 10 || item.specificationFileName);
-  const bidStart = draft.tender.bidStartDate || draft.schedule.publishDate;
-  const bidEnd = draft.tender.bidClosingDate || draft.schedule.submissionDate;
-  const technicalDate = draft.tender.technicalEvaluationDate || draft.schedule.openingDate;
-  const financialDate = draft.tender.financialEvaluationDate;
-  const isAfter = (later?: string, earlier?: string) => {
-    if (!later || !earlier) return true;
-    return new Date(later).getTime() > new Date(earlier).getTime();
-  };
-  const hasContact = Boolean(draft.tender.contactName || draft.tender.contactEmail || draft.tender.contactMobile);
-  const baseChecks = [
-    { label: 'Requirement title', ok: draft.basics.title.trim().length >= 3 },
-    { label: 'Budget estimate', ok: value > 0 },
-    { label: 'Line item details', ok: hasItems },
-    { label: 'Consignee allocation', ok: hasConsigneeDetails && totalItemQuantity > 0 && totalItemQuantity === totalConsigneeQuantity },
-    { label: 'Supplier path', ok: Boolean(draft.vendors.selection) },
-  ];
-  const methodChecks = [
-    ...(isDirectMethod(draft.type) ? [{ label: 'Selected vendor', ok: Boolean(draft.vendors.selectedSellerId) }] : []),
-    ...(draft.type === 'boq' ? [{ label: 'BOQ file or line schedule', ok: hasAnyBoqFile || hasItems }] : []),
-    ...(draft.type === 'pac' ? [
-      { label: 'PAC certificate', ok: hasPacCertificate },
-      { label: 'PAC justification', ok: draft.basics.justification.trim().length >= 20 },
-    ] : []),
-    ...(draft.type === 'custom-product' ? [
-      { label: 'Catalogue unavailability reason', ok: draft.basics.justification.trim().length >= 20 },
-      { label: 'Custom specification', ok: hasCustomSpecification },
-    ] : []),
-    ...(draft.type === 'custom-service' ? [
-      { label: 'Scope of work', ok: (draft.tender.scopeOfWork || draft.basics.justification).trim().length >= 20 },
-      { label: 'Service milestone', ok: draft.tender.milestones.some(milestone => milestone.label.trim() && Number(milestone.percentage) > 0) },
-    ] : []),
-    ...(draft.type === 'emergency' ? [{ label: 'Emergency audit justification', ok: draft.basics.justification.trim().length >= 30 }] : []),
-    ...(draft.type === 'repeat-order' ? [{ label: 'Previous order reference', ok: draft.basics.justification.trim().length >= 10 || draft.approval.notes.trim().length >= 10 }] : []),
-    ...(isAuctionMethod(draft.type) || draft.rules.reverseAuctionIntent ? [
-      { label: 'Auction start price', ok: draft.rules.startPrice > 0 },
-      { label: 'Auction decrement', ok: draft.rules.minimumDecrement > 0 },
-    ] : []),
-    ...(draft.rules.emdRequired ? [{ label: 'EMD amount', ok: draft.rules.emdAmount > 0 }] : []),
-    ...(draft.rules.performanceSecurity ? [{ label: 'ePBG / performance security amount', ok: Number(draft.tender.performanceSecurityAmount || 0) > 0 }] : []),
-  ];
-
-  if (isTenderMethod(draft.type)) {
-    const technicalWeightage = Number(draft.tender.technicalWeightage);
-    const priceWeightage = Number(draft.tender.priceWeightage);
-    return [
-      ...baseChecks,
-      { label: 'Tender scope', ok: draft.tender.shortDescription.trim().length >= 10 && draft.tender.scopeOfWork.trim().length >= 10 },
-      { label: 'Bid closing', ok: Boolean(draft.tender.bidClosingDate && draft.tender.bidClosingTime) },
-      { label: 'Bid end after start', ok: isAfter(bidEnd, bidStart) },
-      { label: 'Technical opening after bid end', ok: isAfter(technicalDate, bidEnd) },
-      { label: 'Financial opening after technical', ok: isAfter(financialDate, technicalDate) },
-      { label: 'Delivery details', ok: Boolean(draft.tender.deliveryLocation || draft.tender.deliveryTimeline || draft.schedule.deliveryDate) },
-      { label: 'Commercial basis', ok: Boolean(draft.tender.priceType && draft.tender.taxType) },
-      { label: 'Evaluation weights', ok: Number.isFinite(technicalWeightage) && Number.isFinite(priceWeightage) && technicalWeightage + priceWeightage === 100 },
-      { label: 'Buyer contact', ok: hasContact },
-      { label: 'Approval workflow', ok: !draft.tender.approvalRequired || Boolean(draft.tender.approverName || draft.tender.approvalChain) },
-      { label: 'Primary documents', ok: hasAllRequiredDocs },
-      ...methodChecks,
-    ];
+    );
   }
 
-  return [
-    ...baseChecks,
-    { label: 'Schedule date', ok: Boolean(draft.schedule.submissionDate || draft.schedule.deliveryDate) },
-    { label: 'Submission after publish', ok: isAfter(draft.schedule.submissionDate, draft.schedule.publishDate) },
-    { label: 'Approval workflow', ok: Boolean(draft.approval.workflow) },
-    { label: 'Supporting documents', ok: hasAllRequiredDocs },
-    ...methodChecks,
-  ];
+  // 2. Service SOW Mode
+  if (whatBuying === 'Service') {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-2">Service Contract Parameters</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Service Contract Title" required className="sm:col-span-2">
+            <input
+              value={draft.serviceDetails.serviceTitle}
+              onChange={e => updateService('serviceTitle', e.target.value)}
+              className={inputClass}
+              placeholder="e.g. Annual Support Services..."
+            />
+          </Field>
+
+          <Field label="Scope of Work (SOW)" required className="sm:col-span-2">
+            <textarea
+              value={draft.serviceDetails.scopeOfWork}
+              onChange={e => updateService('scopeOfWork', e.target.value)}
+              rows={4}
+              className={textareaClass}
+              placeholder="Provide detail out tasks, milestones, deliverables, requirements..."
+            />
+          </Field>
+
+          <Field label="Key Deliverables" required>
+            <textarea
+              value={draft.serviceDetails.deliverables}
+              onChange={e => updateService('deliverables', e.target.value)}
+              rows={3}
+              className={textareaClass}
+              placeholder="Reports, uptime, outcomes..."
+            />
+          </Field>
+
+          <Field label="Exclusions / Inclusions">
+            <textarea
+              value={draft.serviceDetails.exclusions}
+              onChange={e => updateService('exclusions', e.target.value)}
+              rows={3}
+              className={textareaClass}
+              placeholder="Resources or tools not included in bidding scope..."
+            />
+          </Field>
+
+          <Field label="SLA response time">
+            <input
+              value={draft.serviceDetails.slaResponseTime}
+              onChange={e => updateService('slaResponseTime', e.target.value)}
+              className={inputClass}
+              placeholder="e.g. 4 hours response, 24 hours resolution"
+            />
+          </Field>
+
+          <Field label="Service Duration" required>
+            <input
+              value={draft.serviceDetails.duration}
+              onChange={e => updateService('duration', e.target.value)}
+              className={inputClass}
+              placeholder="e.g. 1 Year, 6 Months"
+            />
+          </Field>
+
+          <Field label="Manpower Count required">
+            <input
+              type="number"
+              value={draft.serviceDetails.manpowerRequired}
+              onChange={e => updateService('manpowerRequired', e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Penalty terms for delay">
+            <input
+              value={draft.serviceDetails.penaltyClause}
+              onChange={e => updateService('penaltyClause', e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Product Mode
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Line Items Schedule</h3>
+          <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Specify products or items to buy.</p>
+        </div>
+        <Button type="button" size="sm" onClick={handleAddNewItem} className="h-8.5 font-bold">
+          <Plus className="h-4 w-4 mr-1" /> Add Product Item
+        </Button>
+      </div>
+
+      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+        <table className="w-full min-w-[800px] border-collapse text-left text-xs">
+          <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
+            <tr>
+              <th className="px-3 py-2.5">Item Name</th>
+              <th className="px-3 py-2.5">Specifications</th>
+              <th className="px-3 py-2.5 w-24">Quantity</th>
+              <th className="px-3 py-2.5 w-24">Unit</th>
+              <th className="px-3 py-2.5 w-28">Est Price (INR)</th>
+              <th className="px-3 py-2.5 w-20">GST %</th>
+              <th className="px-3 py-2.5 w-32 text-right">Landed Total</th>
+              <th className="px-3 py-2.5 w-28 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+            {draft.items.map(item => {
+              const itemTotal = item.quantity * item.unitPrice * (1 + item.gst / 100);
+              return (
+                <tr key={item.id} className="align-middle hover:bg-slate-50/50">
+                  <td className="px-3 py-3 font-extrabold text-slate-900">{item.name || <span className="text-rose-500">Unnamed Item</span>}</td>
+                  <td className="px-3 py-3 text-slate-450 truncate max-w-[200px] font-medium">{item.specification || 'No spec set'}</td>
+                  <td className="px-3 py-3">{item.quantity}</td>
+                  <td className="px-3 py-3">{item.unit}</td>
+                  <td className="px-3 py-3">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.unitPrice)}</td>
+                  <td className="px-3 py-3">{item.gst}%</td>
+                  <td className="px-3 py-3 text-right font-black text-slate-900">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(itemTotal)}</td>
+                  <td className="px-3 py-3 text-right space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedItemForEdit(item);
+                        setShowItemDrawer(true);
+                      }}
+                      className="text-[#12335f] hover:underline text-[10px] uppercase font-bold"
+                    >
+                      Edit
+                    </button>
+                    <span className="text-slate-200">|</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={draft.items.length === 1}
+                      className="text-rose-500 hover:underline text-[10px] uppercase font-bold disabled:opacity-40"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-right font-extrabold text-[#12335f] text-sm bg-slate-50 border border-slate-200 rounded-lg p-3">
+        Total Estimated Value: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(draft.basics.estimatedValue)}
+      </div>
+
+      {/* Edit Drawer Overlay */}
+      {showItemDrawer && selectedItemForEdit && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex justify-end z-[9999]">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Item Specifications</h3>
+                <button type="button" onClick={() => setShowItemDrawer(false)} className="p-1 rounded-full hover:bg-slate-50"><X className="h-5 w-5" /></button>
+              </div>
+
+              <div className="space-y-4">
+                <Field label="Item / Product Name" required>
+                  <input
+                    value={selectedItemForEdit.name}
+                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, name: e.target.value })}
+                    className={inputClass}
+                    placeholder="Laptop, Steel rod..."
+                  />
+                </Field>
+
+                <Field label="Technical Description" required>
+                  <textarea
+                    value={selectedItemForEdit.specification}
+                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, specification: e.target.value })}
+                    rows={3}
+                    className={textareaClass}
+                    placeholder="Describe specific standards, dimensions, etc..."
+                  />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Quantity" required>
+                    <input
+                      type="number"
+                      min={1}
+                      value={selectedItemForEdit.quantity}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, quantity: Number(e.target.value || 1) })}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="UOM Unit" required>
+                    <select
+                      value={selectedItemForEdit.unit}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, unit: e.target.value })}
+                      className={inputClass}
+                    >
+                      {QUANTITY_UNITS.map((u: any) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Est. Unit Price (INR)" required>
+                    <input
+                      type="number"
+                      value={selectedItemForEdit.unitPrice || ''}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, unitPrice: Number(e.target.value || 0) })}
+                      className={inputClass}
+                      placeholder="0"
+                    />
+                  </Field>
+                  <Field label="GST Rate %" required>
+                    <select
+                      value={selectedItemForEdit.gst}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, gst: Number(e.target.value || 18) })}
+                      className={inputClass}
+                    >
+                      <option value={0}>0%</option>
+                      <option value={5}>5%</option>
+                      <option value={12}>12%</option>
+                      <option value={18}>18%</option>
+                      <option value={28}>28%</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <Field label="Brand / OEM Preference">
+                  <input
+                    value={selectedItemForEdit.brandPolicy}
+                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, brandPolicy: e.target.value })}
+                    className={inputClass}
+                    placeholder="Brand model or equivalent allowed..."
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4 flex gap-2">
+              <Button variant="outline" onClick={() => setShowItemDrawer(false)} className="w-1/2">Cancel</Button>
+              <Button
+                type="button"
+                onClick={() => handleSaveItem(selectedItemForEdit)}
+                disabled={!selectedItemForEdit.name}
+                className="w-1/2 bg-[#12335f] text-white"
+              >
+                Save Item
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-type StepProps = {
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4 Form components: Supplier Selection
+// ─────────────────────────────────────────────────────────────────────────────
+function VendorsStepForm({
+  draft,
+  updateDraft
+}: {
   draft: Draft;
   updateDraft: (updater: (current: Draft) => Draft) => void;
-  onDocumentUpload?: (documentId: string, file: File) => Promise<void>;
-};
-
-type SelectWithOtherOption = string | { value: string; label: string };
-
-const getOptionValue = (option: SelectWithOtherOption) => typeof option === 'string' ? option : option.value;
-const getOptionLabel = (option: SelectWithOtherOption) => typeof option === 'string' ? option : option.label;
-
-function SelectWithOther({
-  value,
-  options,
-  onChange,
-  placeholder = 'Select option',
-  otherPlaceholder = 'Enter other value',
-  className = inputClass,
-}: {
-  value: string;
-  options: readonly SelectWithOtherOption[];
-  onChange: (value: string) => void;
-  placeholder?: string;
-  otherPlaceholder?: string;
-  className?: string;
 }) {
-  const optionValues = options.map(getOptionValue);
-  const isOtherSelected = Boolean(value) && !optionValues.includes(value);
-  const selectValue = isOtherSelected ? OTHER_OPTION : value;
+  const [sellers, setSellers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [msmeOnly, setMsmeOnly] = useState(false);
+
+  const fetchSellersList = () => {
+    setLoading(true);
+    const params: Record<string, string | number> = { pageSize: 50 };
+    if (search) params.q = search;
+    marketplaceApi.getSellers(params)
+      .then(res => {
+        // Map API response to Supplier interface
+        const items = (res?.sellers || []).map((s: any) => ({
+          id: s.id || s.sellerUserId,
+          organizationName: s.organizationName || s.name || 'Vendor',
+          msmeCategory: s.msmeCategory || 'General',
+          officeCity: s.officeCity || s.city || 'N/A',
+          rating: s.rating || '4.0',
+          pastOrdersCount: s.pastOrdersCount || 0,
+          onTimeDeliveryRate: s.onTimeDeliveryRate || 95,
+          gstVerified: true
+        }));
+        setSellers(items);
+      })
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchSellersList();
+  }, [search]);
+
+  const toggleInviteSeller = (id: number, name: string) => {
+    updateDraft(current => {
+      const invited = current.vendors.invitedSellers || [];
+      const exists = invited.includes(id);
+      let nextInvites = [...invited];
+      if (exists) {
+        nextInvites = nextInvites.filter(x => x !== id);
+      } else {
+        nextInvites.push(id);
+      }
+      return {
+        ...current,
+        vendors: {
+          ...current.vendors,
+          invitedSellers: nextInvites,
+          selectedSellerId: nextInvites[0] || null,
+          selectedSellerName: nextInvites[0] ? name : '',
+        }
+      };
+    });
+  };
+
+  const handleSelectionModeChange = (mode: 'Open' | 'Selected' | 'Category' | 'Past') => {
+    updateDraft(c => ({
+      ...c,
+      vendors: { ...c.vendors, selection: mode }
+    }));
+  };
 
   return (
-    <div className="space-y-2">
-      <select
-        value={selectValue}
-        onChange={event => onChange(event.target.value === OTHER_OPTION ? OTHER_OPTION : event.target.value)}
-        className={className}
-      >
-        {placeholder && <option value="">{placeholder}</option>}
-        {options.map(option => {
-          const optionValue = getOptionValue(option);
-          return <option key={optionValue} value={optionValue}>{getOptionLabel(option)}</option>;
-        })}
-        <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
-      </select>
-      {selectValue === OTHER_OPTION && (
-        <input
-          value={value === OTHER_OPTION ? '' : value}
-          onChange={event => onChange(event.target.value)}
-          className={className}
-          placeholder={otherPlaceholder}
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Supplier Sourcing Strategy" required>
+          <select
+            value={draft.vendors.selection}
+            onChange={e => handleSelectionModeChange(e.target.value as any)}
+            className={inputClass}
+          >
+            <option value="Open">Open Advertised / Public Sourcing</option>
+            <option value="Selected">Invite selected verified suppliers pool</option>
+            <option value="Category">Invite category-matched registered vendors</option>
+            <option value="Past">Invite prior order vendors</option>
+          </select>
+        </Field>
+
+        <Field label="Minimum Sourcing bids required">
+          <input
+            type="number"
+            value={draft.schedule.minimumBidders || 3}
+            onChange={e => updateDraft(c => ({ ...c, schedule: { ...c.schedule, minimumBidders: Number(e.target.value || 3) } }))}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">MSME & Preference Parameters</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.vendors.msmePreference}
+              onChange={e => updateDraft(c => ({ ...c, vendors: { ...c.vendors, msmePreference: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>MSME pricing preference?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.vendors.localVendorPreference}
+              onChange={e => updateDraft(c => ({ ...c, vendors: { ...c.vendors, localVendorPreference: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Local supplier preference?</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.vendors.excludeBlacklisted}
+              onChange={e => updateDraft(c => ({ ...c, vendors: { ...c.vendors, excludeBlacklisted: e.target.checked } }))}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Auto-exclude blacklisted?</span>
+          </label>
+        </div>
+      </div>
+
+      {draft.vendors.selection !== 'Open' && (
+        <SupplierSelector
+          suppliers={sellers}
+          invitedIds={draft.vendors.invitedSellers}
+          onToggleInvite={toggleInviteSeller}
+          isLoading={loading}
+          searchQuery={search}
+          onSearchChange={setSearch}
+          msmeOnly={msmeOnly}
+          onMsmeOnlyChange={setMsmeOnly}
         />
       )}
     </div>
   );
 }
 
-function Panel({ title, icon, action, children }: { title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 5 Form components: Timeline rules & deadlines
+// ─────────────────────────────────────────────────────────────────────────────
+function ScheduleStepForm({
+  draft,
+  updateDraft
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+}) {
+  const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
+  const isTwoPacket = draft.schedule.packetType === 'Two';
+
+  const updateSchedule = (key: keyof Draft['schedule'], val: any) => {
+    updateDraft(c => ({ ...c, schedule: { ...c.schedule, [key]: val } }));
+  };
+
+  // Warnings collection
+  const warnings: string[] = [];
+  if (draft.schedule.submissionDate && draft.schedule.submissionStartDate) {
+    if (new Date(draft.schedule.submissionDate) <= new Date(draft.schedule.submissionStartDate)) {
+      warnings.push('Submission closing date must be schedule after submission start date.');
+    }
+  }
+  if (draft.basics.isTechnicalEvaluationNeeded && draft.schedule.technicalOpeningDate && draft.schedule.submissionDate) {
+    if (new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)) {
+      warnings.push('Technical opening date cannot be scheduled before submission deadline.');
+    }
+  }
+  if (isTwoPacket && draft.schedule.financialOpeningDate && draft.schedule.technicalOpeningDate) {
+    if (new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)) {
+      warnings.push('Financial opening date must be scheduled on or after technical envelope opening.');
+    }
+  }
+
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-t-2 border-t-[#12335f]">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-150 bg-slate-50/70 px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-[#12335f]">{icon}</span>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">{title}</h2>
+    <div className="space-y-6">
+      {warnings.length > 0 && (
+        <div className="border border-rose-250 bg-rose-50 text-rose-800 p-4 rounded-xl text-xs space-y-1.5">
+          <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-rose-955">
+            <Info className="h-4.5 w-4.5" /> Sourcing Validation Warning
+          </div>
+          <ul className="list-disc list-inside font-semibold space-y-0.5">
+            {warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
         </div>
-        {action}
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Packet envelope configuration" required>
+          <select
+            value={draft.schedule.packetType}
+            onChange={e => updateSchedule('packetType', e.target.value as any)}
+            className={inputClass}
+          >
+            <option value="Single">Single Packet Envelope (Commercial Only)</option>
+            <option value="Two">Two Packet Envelope (Technical + Commercial Separated)</option>
+          </select>
+          <p className="text-[10px] text-slate-500 font-semibold mt-1">
+            Single packet evaluates technical/commercial together. Two packet evaluates technical first, then opens commercial quotes for qualified bidders.
+          </p>
+        </Field>
+
+        <Field label="Submission Start Date" required>
+          <input
+            type="date"
+            value={draft.schedule.submissionStartDate}
+            onChange={e => updateSchedule('submissionStartDate', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Submission End Date (Deadline)" required>
+          <input
+            type="date"
+            value={draft.schedule.submissionDate}
+            onChange={e => updateSchedule('submissionDate', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Bid Validity Period (Days)">
+          <input
+            type="number"
+            value={draft.schedule.validityDays || 90}
+            onChange={e => updateSchedule('validityDays', Number(e.target.value || 90))}
+            className={inputClass}
+          />
+        </Field>
+
+        {draft.basics.isTechnicalEvaluationNeeded && (
+          <Field label="Technical Opening Date" required>
+            <input
+              type="date"
+              value={draft.schedule.technicalOpeningDate}
+              onChange={e => updateSchedule('technicalOpeningDate', e.target.value)}
+              className={inputClass}
+            />
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              Technical envelope unlocking date. Must be after submission closing.
+            </p>
+          </Field>
+        )}
+
+        {isTwoPacket && (
+          <Field label="Financial Opening Date" required>
+            <input
+              type="date"
+              value={draft.schedule.financialOpeningDate}
+              onChange={e => updateSchedule('financialOpeningDate', e.target.value)}
+              className={inputClass}
+            />
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              Financial envelope unlocking date for technically qualified bidders. Must be after technical opening.
+            </p>
+          </Field>
+        )}
       </div>
-      <div className="p-5">{children}</div>
-    </section>
+
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Clarification & Visibility Rules</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.schedule.clarificationAllowed}
+              onChange={e => updateSchedule('clarificationAllowed', e.target.checked)}
+              className="h-4 w-4 rounded accent-[#12335f]"
+            />
+            <span>Allow bidder clarifications?</span>
+          </label>
+
+          {draft.schedule.clarificationAllowed && (
+            <Field label="Clarification Deadline Date">
+              <input
+                type="date"
+                value={draft.schedule.clarificationDeadline}
+                onChange={e => updateSchedule('clarificationDeadline', e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 6 Form components: Commercial Terms
+// ─────────────────────────────────────────────────────────────────────────────
+function CommercialTermsForm({
+  draft,
+  updateDraft
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+}) {
+  const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
+  const updateTerms = (key: keyof Draft['terms'], val: any) => {
+    updateDraft(c => ({ ...c, terms: { ...c.terms, [key]: val } }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Pricing & Commercial terms card */}
+        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-2">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Payment & Delivery Terms</h3>
+          </div>
+
+          <Field label="Payment terms" required>
+            <select
+              value={draft.terms.paymentTerms}
+              onChange={e => updateTerms('paymentTerms', e.target.value)}
+              className={inputClass}
+            >
+              {PAYMENT_TERMS.map((t: any) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Delivery terms location" required>
+            <select
+              value={draft.terms.deliveryTerms}
+              onChange={e => updateTerms('deliveryTerms', e.target.value)}
+              className={inputClass}
+            >
+              {DELIVERY_TYPES.map((t: any) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={draft.terms.freightIncluded}
+                onChange={e => updateTerms('freightIncluded', e.target.checked)}
+                className="h-4 w-4 rounded accent-[#12335f]"
+              />
+              <span>Freight included?</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={draft.terms.gstIncluded}
+                onChange={e => updateTerms('gstIncluded', e.target.checked)}
+                className="h-4 w-4 rounded accent-[#12335f]"
+              />
+              <span>GST included in budget?</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Guarantees card */}
+        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-2">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Guarantees & Compliance Fees</h3>
+          </div>
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none mt-3.5">
+                <input
+                  type="checkbox"
+                  checked={draft.terms.emdRequired}
+                  onChange={e => updateTerms('emdRequired', e.target.checked)}
+                  className="h-4 w-4 rounded accent-[#12335f]"
+                />
+                <span>EMD deposit required?</span>
+              </label>
+
+              {draft.terms.emdRequired && (
+                <Field label="EMD Amount (INR)">
+                  <input
+                    type="number"
+                    value={draft.terms.emdAmount || ''}
+                    onChange={e => updateTerms('emdAmount', Number(e.target.value || 0))}
+                    className={inputClass}
+                  />
+                </Field>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-500 font-semibold leading-normal">
+              Earnest Money Deposit (Bid Security) ensures serious bidder participation.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none mt-3.5">
+                <input
+                  type="checkbox"
+                  checked={draft.terms.pbgRequired}
+                  onChange={e => updateTerms('pbgRequired', e.target.checked)}
+                  className="h-4 w-4 rounded accent-[#12335f]"
+                />
+                <span>PBG Guarantee?</span>
+              </label>
+
+              <Field label="Document cost fee (INR)">
+                <input
+                  type="number"
+                  value={draft.terms.documentFee || ''}
+                  onChange={e => updateTerms('documentFee', Number(e.target.value || 0))}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <p className="text-[10px] text-slate-500 font-semibold leading-normal">
+              Performance Bank Guarantee secures contract delivery and warranty performance.
+            </p>
+          </div>
+
+          <Field label="Late Delivery (LD) Penalty Clause" required>
+            <input
+              value={draft.terms.penaltyClause}
+              onChange={e => updateTerms('penaltyClause', e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 7 Form components: Required Documents Checklist
+// ─────────────────────────────────────────────────────────────────────────────
+function DocumentsStepForm({
+  draft,
+  updateDraft
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+}) {
+  const handleToggleDocRequired = (id: string) => {
+    updateDraft(c => ({
+      ...c,
+      requiredDocs: c.requiredDocs.map(d => d.id === id ? { ...d, required: !d.required } : d)
+    }));
+  };
+
+  const handleRemoveDoc = (id: string) => {
+    updateDraft(c => ({
+      ...c,
+      requiredDocs: c.requiredDocs.filter(d => d.id !== id)
+    }));
+  };
+
+  const handleAddCustomDoc = (name: string, required: boolean) => {
+    updateDraft(c => ({
+      ...c,
+      requiredDocs: [
+        ...c.requiredDocs,
+        { id: makeId(), name, required, fileType: 'pdf', maxSize: 5, instructions: 'Additional custom document.' }
+      ]
+    }));
+    toast.success('Custom document added to checklist');
+  };
+
+  return (
+    <DocumentRequirementBuilder
+      documents={draft.requiredDocs}
+      onToggleRequired={handleToggleDocRequired}
+      onRemove={handleRemoveDoc}
+      onAddCustomDoc={handleAddCustomDoc}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 8 Form components: Evaluation criteria weightages
+// ─────────────────────────────────────────────────────────────────────────────
+function EvaluationBasisForm({
+  draft,
+  updateDraft
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+}) {
+  const updateEval = (key: keyof Draft['evaluation'], val: any) => {
+    updateDraft(c => ({ ...c, evaluation: { ...c.evaluation, [key]: val } }));
+  };
+
+  const handleAddCriteria = () => {
+    updateDraft(c => ({
+      ...c,
+      evaluation: {
+        ...c.evaluation,
+        technicalCriteria: [
+          ...c.evaluation.technicalCriteria,
+          { id: makeId(), name: '', description: '', maxScore: 20, weightage: 20, mandatory: false, minMarks: 0 }
+        ]
+      }
+    }));
+  };
+
+  const handleRemoveCriteria = (id: string) => {
+    updateDraft(c => ({
+      ...c,
+      evaluation: {
+        ...c.evaluation,
+        technicalCriteria: c.evaluation.technicalCriteria.filter(x => x.id !== id)
+      }
+    }));
+  };
+
+  const handleCriteriaChange = (id: string, key: keyof EvalCriteria, val: any) => {
+    updateDraft(c => ({
+      ...c,
+      evaluation: {
+        ...c.evaluation,
+        technicalCriteria: c.evaluation.technicalCriteria.map(x => x.id === id ? { ...x, [key]: val } : x)
+      }
+    }));
+  };
+
+  const isQCBS = draft.evaluation.method === 'QCBS / weighted technical-commercial score';
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Evaluation Method basis" required>
+          <select
+            value={draft.evaluation.method}
+            onChange={e => updateEval('method', e.target.value)}
+            className={inputClass}
+          >
+            <option value="L1 total value">L1 Total Value basis</option>
+            <option value="Item-wise L1">Item-wise L1 rates basis</option>
+            <option value="Package-wise L1">Package-wise L1 rates basis</option>
+            <option value="Technical qualification then L1">Technical Qualification then L1 Sourcing</option>
+            <option value="QCBS / weighted technical-commercial score">Quality and Cost Based Selection (QCBS)</option>
+            <option value="Reverse auction final rank">Reverse Auction Final Bid Rank</option>
+            <option value="Lowest landed cost">Lowest Landed Cost</option>
+          </select>
+          <p className="text-[10px] text-slate-500 font-semibold mt-1">
+            QCBS evaluates both technical capabilities (e.g. 70% weight) and commercial offer rates. L1 total value selects purely the lowest total landed cost.
+          </p>
+        </Field>
+
+        {isQCBS && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tech weightage %">
+              <input
+                type="number"
+                value={draft.evaluation.techWeight || 70}
+                onChange={e => updateEval('techWeight', Number(e.target.value || 0))}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Financial weightage %">
+              <input
+                type="number"
+                value={draft.evaluation.commWeight || 30}
+                onChange={e => updateEval('commWeight', Number(e.target.value || 0))}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        )}
+      </div>
+
+      {/* Render Criteria Builder */}
+      <EvaluationCriteriaBuilder
+        criteria={draft.evaluation.technicalCriteria}
+        onChange={handleCriteriaChange}
+        onAddRow={handleAddCriteria}
+        onDeleteRow={handleRemoveCriteria}
+        isQCBS={isQCBS}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 9 Form components: Preview summary panels
+// ─────────────────────────────────────────────────────────────────────────────
+function PreviewPublishForm({
+  draft,
+  updateDraft,
+  readiness
+}: {
+  draft: Draft;
+  updateDraft: (updater: (current: Draft) => Draft) => void;
+  readiness: Array<{ label: string; ok: boolean; severity: 'error' | 'warning' | 'info' }>;
+}) {
+  const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
+  
+  const approvalHandoff = isGov
+    ? ['Requester Sourcing Officer', 'Department Head (DH)', 'Finance & Audit Team', 'Competent Authority (Sanction)', 'Govt Admin Audit']
+    : ['Requester Sourcing Officer', 'Department Head (DH)', 'Finance Controller', 'Procurement Head Approval'];
+
+  const errors = readiness.filter(r => r.severity === 'error');
+  const warnings = readiness.filter(r => r.severity === 'warning');
+  const infos = readiness.filter(r => r.severity === 'info');
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-2 pl-0.5">Final Sourcing Summary</h3>
+
+      {/* Sourcing summary panel from Loop 3 */}
+      <ProcurementSummaryPanel
+        title={draft.basics.title}
+        buyerType={draft.basics.buyerType}
+        method={draft.type}
+        estimatedValue={draft.basics.estimatedValue}
+        priority={draft.basics.priority}
+        requiredBy={draft.basics.requiredByDate}
+        location={draft.basics.deliveryLocation}
+        itemsCount={draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable.length : draft.items.length}
+        suppliersCount={draft.vendors.invitedSellers.length}
+        docsCount={draft.requiredDocs.length}
+      />
+
+      <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-4">
+        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-2">Readiness & Validation Summary</h4>
+        
+        {/* Required Fields Section */}
+        <div className="space-y-2">
+          <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Required Sourcing Inputs</h5>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {errors.map((r, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-xs font-semibold leading-normal">
+                <span className={cn(
+                  "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white text-[9px] font-black",
+                  r.ok ? "bg-emerald-500" : "bg-rose-500"
+                )}>
+                  {r.ok ? '✓' : '✗'}
+                </span>
+                <span className={r.ok ? 'text-slate-700 font-medium' : 'text-rose-600 font-bold'}>{r.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Warnings Section */}
+        {warnings.length > 0 && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Compliance Warnings & Advisories</h5>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {warnings.map((r, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-xs font-semibold leading-normal">
+                  <span className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white text-[9px] font-black",
+                    r.ok ? "bg-emerald-500" : "bg-amber-500"
+                  )}>
+                    {r.ok ? '✓' : '!'}
+                  </span>
+                  <span className={r.ok ? 'text-slate-700 font-medium' : 'text-amber-600 font-bold'}>{r.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Custom Overrides Section */}
+        {infos.length > 0 && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Sourcing Customizations</h5>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {infos.map((r, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-xs font-semibold leading-normal">
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-white text-[9px] font-black">
+                    i
+                  </span>
+                  <span className="text-slate-700 font-semibold">{r.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide pl-0.5">Approval Sourcing Flow Path</h4>
+        <ApprovalTimeline
+          stages={approvalHandoff}
+          currentIdx={0}
+        />
+      </div>
+
+      <Field label="Approval notes / Submission Remarks">
+        <textarea
+          value={draft.approval.notes}
+          onChange={e => updateDraft(c => ({ ...c, approval: { ...c.approval, notes: e.target.value } }))}
+          className={textareaClass}
+          rows={3}
+          placeholder="Enter remarks for the approval authority..."
+        />
+      </Field>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REUSABLE FORM FIELD
+// ─────────────────────────────────────────────────────────────────────────────
 function Field({ label, required, className, children }: { label: string; required?: boolean; className?: string; children: ReactNode }) {
   return (
     <label className={cn('block space-y-1.5', className)}>
-      <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
         {label} {required && <span className="text-rose-600">*</span>}
       </span>
       {children}
@@ -2848,37 +2762,115 @@ function Field({ label, required, className, children }: { label: string; requir
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return (
-    <label className="flex min-h-[74px] cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <span className="text-xs font-black text-slate-700">{label}</span>
-      <input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-[#12335f]" />
-    </label>
-  );
-}
-
-function Checklist({ rows }: { rows: string[] }) {
-  return (
-    <div className="space-y-2">
-      {rows.map(row => (
-        <div key={row} className="flex gap-2 text-xs font-semibold leading-5 text-slate-600">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          <span>{row}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-sm font-black text-slate-950">{value}</p>
-    </div>
-  );
-}
-
 const inputClass = 'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
 const textareaClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
-const tableInputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10';
+
+// Compatibility payload mapping helper
+const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
+  const dbMethod = mapToDatabaseMethod(draft.type);
+  const title = draft.basics.title || `${draft.type} draft`;
+  const estimatedValue = draft.basics.estimatedValue || 0;
+
+  // Handle BOQ item list vs Standard item list
+  const rawItems = draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable : draft.items;
+  const mappedItems = rawItems.map(item => ({
+    itemName: item.name,
+    description: item.specification || item.technicalSpecification || '',
+    quantity: item.quantity,
+    unitOfMeasure: item.unit,
+    estimatedUnitPrice: item.unitPrice,
+  }));
+
+  // Build default consignee matching total quantity
+  const totalQty = rawItems.reduce((acc, item) => acc + Number(item.quantity || 0), 0);
+  const deliveryLocation = draft.basics.deliveryLocation || draft.internal.orgName || 'Primary Delivery Location';
+  const consigneeDetails = [
+    {
+      name: draft.internal.contactPerson || 'Default Consignee',
+      location: deliveryLocation,
+      quantity: totalQty
+    }
+  ];
+
+  // Map compliance required documents checklist to document formats expected by backend file validators
+  const mappedDocuments = draft.requiredDocs.map(doc => ({
+    name: doc.name,
+    fileName: doc.name.toLowerCase().includes('boq') && draft.boqFileName 
+      ? draft.boqFileName 
+      : (doc.name.toLowerCase().includes('specification') && draft.items?.[0]?.specificationFileName 
+        ? draft.items[0].specificationFileName 
+        : 'attached_doc.pdf'),
+    fileAssetId: doc.name.toLowerCase().includes('boq') ? draft.boqFileAssetId : null,
+    required: doc.required
+  }));
+
+  // Map rules and timelines matching backend validator nested structures
+  const tender = {
+    bidStartDate: draft.schedule.submissionStartDate || new Date().toISOString(),
+    bidClosingDate: draft.schedule.submissionDate || draft.basics.requiredByDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+    technicalEvaluationDate: draft.schedule.technicalOpeningDate || undefined,
+    financialEvaluationDate: draft.schedule.financialOpeningDate || undefined,
+    performanceSecurityAmount: draft.terms.securityDeposit || 0,
+    scopeOfWork: draft.serviceDetails.scopeOfWork || draft.basics.justification || '',
+  };
+
+  const rules = {
+    emdRequired: draft.terms.emdRequired,
+    emdAmount: draft.terms.emdAmount,
+    performanceSecurity: draft.terms.pbgRequired,
+    startPrice: draft.basics.estimatedValue || 0,
+    minimumDecrement: 1
+  };
+
+  const basics = {
+    title,
+    justification: draft.basics.justification || draft.internal.justification || '',
+    description: `Sourcing Method: ${draft.type}\nValue: INR ${estimatedValue.toLocaleString('en-IN')}\nUrgency: ${draft.basics.priority}`,
+    buyerType: draft.basics.buyerType,
+    whatAreYouBuying: draft.basics.whatAreYouBuying,
+  };
+
+  // Run suggestion engine to capture recommendation result
+  const recommendation = suggestProcurementMethod({
+    buyerType: draft.basics.buyerType,
+    estimatedValue: draft.basics.estimatedValue,
+    whatAreYouBuying: draft.basics.whatAreYouBuying,
+    isCatalogueAvailable: draft.basics.isCatalogueAvailable,
+    isOnlyOneVendor: draft.basics.isOnlyOneVendor,
+    isReverseAuctionNeeded: draft.basics.isReverseAuctionNeeded,
+    isTechnicalEvaluationNeeded: draft.basics.isTechnicalEvaluationNeeded,
+    urgency: draft.basics.priority,
+    lineItemsCount: draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable.length : draft.items.length,
+    isSpecClear: draft.basics.isSpecClear,
+    isRepeatedSupply: draft.basics.isRepeatedSupply,
+    marketResearchOnly: draft.basics.marketResearchOnly,
+  });
+
+  const payloadJson = {
+    ...draft,
+    fullProcurementMethod: draft.type, // canonical method name inside payload JSON
+    buyerType: draft.basics.buyerType,
+    buyingType: draft.basics.whatAreYouBuying,
+    recommendation,
+    consigneeDetails,
+    documents: mappedDocuments,
+    tender,
+    rules,
+    basics
+  };
+
+  return {
+    id: draft.id,
+    methodSlug: draft.type,
+    procurementMethod: dbMethod,
+    title,
+    description: basics.description,
+    estimatedValue,
+    requiredBy: draft.basics.requiredByDate || undefined,
+    draftStep,
+    workflowStatus: 'DRAFT',
+    approvalStatus: draft.approval?.workflow || 'DRAFT',
+    payload: payloadJson,
+    items: mappedItems
+  };
+};

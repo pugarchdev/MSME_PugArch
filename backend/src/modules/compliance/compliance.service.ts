@@ -2,6 +2,8 @@ import prisma from '../../config/prisma.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import { createHashFingerprint, sha256 } from '../../utils/crypto.js';
 import { normalizeSpaces } from '../../utils/sanitize.js';
+import { logger } from '../../config/logger.js';
+
 
 export type ComplianceFlagInput = {
   userId?: number | null;
@@ -81,11 +83,11 @@ export const flagDuplicateSellerIdentifiers = async (payload: {
   try {
     const dupRule = await prisma.complianceRule.findUnique({ where: { code: 'DUPLICATE_IDENTIFIER' } });
     if (dupRule && !dupRule.isActive) {
-      console.log('[Compliance] Skipping duplicate identifier checks because DUPLICATE_IDENTIFIER rule is inactive.');
+      logger.info('[Compliance] Skipping duplicate identifier checks because DUPLICATE_IDENTIFIER rule is inactive.');
       return [];
     }
   } catch (err) {
-    console.error('[Compliance] Error checking compliance rule DUPLICATE_IDENTIFIER:', err);
+    logger.error({ err }, '[Compliance] Error checking compliance rule DUPLICATE_IDENTIFIER');
   }
 
   const flags: ComplianceFlagInput[] = [];
@@ -182,11 +184,11 @@ export const flagDuplicateBankAccount = async (payload: {
       }
     });
     if (!dupRule) {
-      console.log('[Compliance] Skipping duplicate bank account checks because bank rules are inactive.');
+      logger.info('[Compliance] Skipping duplicate bank account checks because bank rules are inactive.');
       return null;
     }
   } catch (err) {
-    console.error('[Compliance] Error checking compliance rules for bank accounts:', err);
+    logger.error({ err }, '[Compliance] Error checking compliance rules for bank accounts');
   }
 
   const accountHash = hashIdentifier(`${payload.ifsc}:${payload.accountNumber}`);

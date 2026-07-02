@@ -2621,6 +2621,7 @@ router.put('/master-admin/email-settings', ...masterOnly, requirePermission(PERM
     secure: Boolean(req.body?.secure ?? currentValue.secure),
     username: textOrNull(req.body?.username) || textOrNull(req.body?.user) || currentValue.username || '',
     passwordConfigured: Boolean(password || currentValue.passwordConfigured),
+    password: password || currentValue.password || '',
     passwordUpdatedAt: password ? new Date().toISOString() : currentValue.passwordUpdatedAt,
     fromEmail: textOrNull(req.body?.fromEmail) || currentValue.fromEmail || '',
     fromName: textOrNull(req.body?.fromName) || currentValue.fromName || 'JsgSmile Portal',
@@ -2670,12 +2671,60 @@ const DEFAULT_TEMPLATE_VARIABLES = [
   'userName', 'userEmail', 'organizationName', 'portalName',
   'companyName', 'actionUrl', 'supportEmail', 'loginUrl',
   'invoiceNumber', 'orderNumber', 'tenderTitle', 'bidReference',
-  'amount', 'currency', 'dueDate', 'currentDate'
+  'amount', 'currency', 'dueDate', 'currentDate', 'otp'
 ];
 
 const buildDefaultTemplates = (): EmailTemplate[] => {
   const now = new Date().toISOString();
   return [
+    {
+      id: 'default_registration_otp',
+      slug: 'registration-otp',
+      name: 'Registration OTP',
+      subject: 'Welcome to {{portalName}}! Verification Code',
+      htmlBody: '<html><body><h1>Welcome to {{portalName}}!</h1><p>Use the following verification code to complete your registration:</p><h2 style="font-size: 28px; letter-spacing: 5px; color: #12335f; font-family: monospace;">{{otp}}</h2><p>This code is valid for 10 minutes.</p></body></html>',
+      textBody: 'Welcome to {{portalName}}! Use the following verification code to complete your registration: {{otp}}. This code is valid for 10 minutes.',
+      isActive: true,
+      variables: ['portalName', 'otp'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_forgot_password_otp',
+      slug: 'forgot-password-otp',
+      name: 'Forgot Password OTP',
+      subject: '[SECURE AUTH] Password reset code',
+      htmlBody: '<html><body><h1>Password Reset Request</h1><p>Use the following code to reset your password:</p><h2 style="font-size: 28px; letter-spacing: 5px; color: #12335f; font-family: monospace;">{{otp}}</h2><p>This code is valid for 10 minutes.</p></body></html>',
+      textBody: 'Password Reset Request: Use the following code to reset your password: {{otp}}. This code is valid for 10 minutes.',
+      isActive: true,
+      variables: ['otp'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_login_otp',
+      slug: 'login-otp',
+      name: '2FA Login OTP',
+      subject: '[SECURE AUTH] Two-factor login code',
+      htmlBody: '<html><body><h1>Two-Factor Login Code</h1><p>Use the following verification code to sign in:</p><h2 style="font-size: 28px; letter-spacing: 5px; color: #12335f; font-family: monospace;">{{otp}}</h2><p>This code is valid for 10 minutes.</p></body></html>',
+      textBody: 'Two-Factor Login Code: Use the following verification code to sign in: {{otp}}. This code is valid for 10 minutes.',
+      isActive: true,
+      variables: ['otp'],
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'default_common_otp',
+      slug: 'common-otp',
+      name: 'Common Verification OTP',
+      subject: '[JsgSmile Portal] Secure Verification',
+      htmlBody: '<html><body><h1>Secure Verification</h1><p>Use the following verification code to continue:</p><h2 style="font-size: 28px; letter-spacing: 5px; color: #12335f; font-family: monospace;">{{otp}}</h2><p>This code is valid for 10 minutes.</p></body></html>',
+      textBody: 'Secure Verification: Use the following verification code to continue: {{otp}}. This code is valid for 10 minutes.',
+      isActive: true,
+      variables: ['otp'],
+      createdAt: now,
+      updatedAt: now
+    },
     {
       id: 'default_user_registration',
       slug: 'user-registration',

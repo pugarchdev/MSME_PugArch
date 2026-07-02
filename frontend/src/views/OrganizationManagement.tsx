@@ -975,7 +975,7 @@ export default function OrganizationManagement() {
                   <div className="p-4 grid gap-3 sm:grid-cols-2">
                     <div>
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Provider</p>
-                      <p className="mt-0.5 text-xs font-bold text-slate-700">MeriPehchaan / API Setu</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700">MeriPehchaan</p>
                     </div>
                     <div>
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Verified Name</p>

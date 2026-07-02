@@ -62,7 +62,6 @@ export const VENDOR_TYPES = [
 // ── Registration Type ───────────────────────────────────────────────────────
 export const REGISTRATION_TYPES = [
   { value: 'GST_REGISTERED', label: 'GST Registered' },
-  { value: 'UDYAM_REGISTERED', label: 'UDYAM Registered' },
   { value: 'NSIC_REGISTERED', label: 'NSIC Registered' },
   { value: 'ISO_CERTIFIED', label: 'ISO Certified' },
   { value: 'PAN_AVAILABLE', label: 'PAN Available' },

@@ -804,7 +804,7 @@ router.post('/admin/organizations/:id/status', authenticate, authorize('admin'),
         where: { id: updated.organizationId },
         data: {
           verificationStatus: status as any,
-          organizationOnboardingStatus: status === 'VERIFIED' ? 'approved_for_procurement' : undefined
+          organizationOnboardingStatus: status === 'VERIFIED' ? 'approved_for_procurement' : 'pending'
         }
       });
     }

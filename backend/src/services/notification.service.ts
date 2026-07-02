@@ -1,6 +1,6 @@
 import prisma from '../config/prisma.js';
 import { publishNotificationEvent } from './realtime.service.js';
-import { getTransporter } from './mail.service.js';
+import { getTransporter, getTransporterForCompany, compileEmailTemplate } from './mail.service.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { smsService, type SmsPurpose } from './sms.service.js';
@@ -18,6 +18,8 @@ interface NotifyOpts {
 interface EmailOpts {
   subject: string;
   html: string;
+  templateSlug?: string;
+  variables?: Record<string, string>;
 }
 
 interface SmsOpts {
@@ -184,37 +186,98 @@ export const notificationService = {
       const pref = await db.notificationPreference.findUnique({ where: { userId } });
       if (pref && !pref.emailNotifications) return null;
 
-      const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+      const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true, companyId: true } });
       if (!user?.email) return null;
 
-      if (!env.SMTP_USER || !env.SMTP_PASS) {
-        logger.warn({ userId }, 'SMTP credentials missing; email not sent');
+      const companyId = user.companyId || 1;
+
+      // 1. Resolve company portal details (branding)
+      const company = await db.company.findUnique({
+        where: { id: companyId },
+        select: { portalDisplayName: true, name: true }
+      });
+      const portalName = company?.portalDisplayName || company?.name || 'JsgSmile Portal';
+
+      // 2. Resolve dynamic SMTP credentials & sender details
+      const settings = await db.companySetting.findUnique({
+        where: { companyId_key: { companyId, key: 'portal-email-settings' } }
+      });
+      const val = settings?.value || {};
+      const fromEmail = val.fromEmail || env.SMTP_USER;
+      const fromName = val.fromName || portalName;
+
+      // Verify if email is actually enabled for this tenant
+      const emailEnabled = val.emailEnabled ?? Boolean(env.SMTP_USER && env.SMTP_PASS);
+      if (!emailEnabled) {
+        logger.warn({ userId }, `Email sending is disabled for company ${companyId}. Notification: ${opts.subject}`);
         return null;
       }
 
-      const wrappedHtml = `
-        <div style="font-family: 'Noto Sans', Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-          <div style="background: #0c2340; padding: 24px; text-align: center; border-bottom: 4px solid #c5a556;">
-            <h1 style="color: #ffffff; font-size: 20px; margin: 0; font-weight: 700; letter-spacing: 0.5px;">MSME Government Procurement Portal</h1>
-            <p style="color: #c5a556; font-size: 12px; margin: 6px 0 0; letter-spacing: 1px; font-weight: 600; text-transform: uppercase;">Government of India - Procurement System</p>
-          </div>
-          <div style="padding: 32px 24px; color: #1e293b; line-height: 1.6; font-size: 15px;">
-            <p style="margin-top: 0; font-weight: 600; color: #0c2340;">Dear ${user.name || 'User'},</p>
-            ${opts.html}
-          </div>
-          <div style="background: #f8fafc; padding: 20px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
-            <p style="margin: 0; font-weight: 500;">This is an automated system notification from the MSME Procurement Portal.</p>
-            <p style="margin: 4px 0 0;">Please do not reply to this email directly.</p>
-            <p style="margin: 12px 0 0; font-size: 11px; opacity: 0.8;">© ${new Date().getFullYear()} MSME Procurement Portal. All rights reserved.</p>
-          </div>
-        </div>
-      `;
+      // 3. Resolve template
+      const templateSlug = opts.templateSlug || 'notification';
+      const templatesSetting = await db.companySetting.findUnique({
+        where: { companyId_key: { companyId, key: 'email-templates' } }
+      });
+      const templates = Array.isArray(templatesSetting?.value) ? templatesSetting.value : [];
+      const template = templates.find((t: any) => t.slug === templateSlug && t.isActive);
 
-      const info = await getTransporter().sendMail({
-        from: `"MSME Procurement Portal" <${env.SMTP_USER}>`,
+      let finalSubject = opts.subject;
+      let finalHtml = '';
+
+      const portalUrl = (env.FRONTEND_URL || env.CORS_ALLOWED_ORIGINS?.split(',')[0] || '').replace(/\/$/, '');
+      const relativeActionUrl = opts.variables?.actionUrl || '';
+      const actionUrl = portalUrl && relativeActionUrl ? `${portalUrl}${relativeActionUrl.startsWith('/') ? relativeActionUrl : `/${relativeActionUrl}`}` : portalUrl;
+
+      const templateVars = {
+        userName: user.name || 'User',
+        userEmail: user.email,
+        portalName,
+        companyName: company?.name || portalName,
+        actionUrl,
+        currentDate: new Date().toLocaleDateString(),
+        title: opts.variables?.title || opts.subject,
+        message: opts.variables?.message || '',
+        ...opts.variables
+      };
+
+      if (template) {
+        const compiled = compileEmailTemplate(template.subject, template.htmlBody, templateVars);
+        finalSubject = compiled.subject;
+        finalHtml = compiled.html;
+      } else {
+        // Fallback wrapped html layout
+        finalHtml = `
+          <div style="font-family: 'Noto Sans', Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            <div style="background: #0c2340; padding: 24px; text-align: center; border-bottom: 4px solid #c5a556;">
+              <h1 style="color: #ffffff; font-size: 20px; margin: 0; font-weight: 700; letter-spacing: 0.5px;">${portalName}</h1>
+              <p style="color: #c5a556; font-size: 12px; margin: 6px 0 0; letter-spacing: 1px; font-weight: 600; text-transform: uppercase;">Portal Automated Notification</p>
+            </div>
+            <div style="padding: 32px 24px; color: #1e293b; line-height: 1.6; font-size: 15px;">
+              <p style="margin-top: 0; font-weight: 600; color: #0c2340;">Dear ${user.name || 'User'},</p>
+              ${opts.html}
+            </div>
+            <div style="background: #f8fafc; padding: 20px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-weight: 500;">This is an automated system notification from the ${portalName}.</p>
+              <p style="margin: 4px 0 0;">Please do not reply to this email directly.</p>
+              <p style="margin: 12px 0 0; font-size: 11px; opacity: 0.8;">© ${new Date().getFullYear()} ${portalName}. All rights reserved.</p>
+            </div>
+          </div>
+        `;
+      }
+
+      const transporter = await getTransporterForCompany(companyId);
+
+      const hasAuth = val.username || (env.SMTP_USER && env.SMTP_PASS);
+      if (!hasAuth) {
+        logger.warn({ userId }, 'No SMTP credentials configured; email not sent');
+        return null;
+      }
+
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
         to: user.email,
-        subject: opts.subject,
-        html: wrappedHtml
+        subject: finalSubject,
+        html: finalHtml
       });
 
       // Log delivery
@@ -251,7 +314,13 @@ export const notificationService = {
       await this.notifyNow(userId, opts);
       await this.sendEmail(userId, {
         subject: opts.emailSubject || `${opts.title} - MSME Procurement Portal`,
-        html: opts.emailHtml || buildNotificationEmailHtml(opts)
+        html: opts.emailHtml || buildNotificationEmailHtml(opts),
+        templateSlug: opts.type?.replace(/_/g, '-'),
+        variables: {
+          title: opts.title,
+          message: opts.message,
+          actionUrl: opts.redirectUrl || ''
+        }
       });
       await this.sendSmsNotificationForUser(userId, {
         message: `${opts.title}: ${opts.message}`,

@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X, ShoppingCart, Gavel, ClipboardList, TrendingDown } from 'lucide-react';
 import { useCategories } from '../../catalogue/hooks';
 import { toast } from 'sonner';
@@ -124,8 +125,27 @@ const parseProcurementIntakeSummary = (description?: string | null) => {
 };
 
 export default function RequirementsPage() {
+    const router = useRouter();
     const isCreateRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
-    if (isCreateRoute) return <RequirementCreationWorkbench />;
+    if (isCreateRoute) {
+        return (
+            <div className="mx-auto max-w-xl py-20 px-6 text-center space-y-6 bg-white border border-slate-200 rounded-xl shadow-xs mt-10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-200 mx-auto animate-pulse">
+                    <AlertCircle className="h-6 w-6" />
+                </div>
+                <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Legacy Creation Flow Replaced</h2>
+                <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                    This old requirement creation flow has been replaced by the unified guided Create Procurement wizard.
+                </p>
+                <Button
+                    onClick={() => router.push('/buyer/procurement/create')}
+                    className="bg-[#12335f] text-white hover:bg-[#0e2a4f] text-[10px] uppercase font-black tracking-wide h-10 px-6 rounded-lg shadow-sm"
+                >
+                    Open Create Procurement
+                </Button>
+            </div>
+        );
+    }
 
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -243,8 +263,15 @@ export default function RequirementsPage() {
                     >
                         <RefreshCw className={cn('mr-2 h-4 w-4', list.isFetching && 'animate-spin')} /> Refresh
                     </Button>
+                    {/* LEGACY PROCUREMENT UI - hidden because unified Create Procurement flow is now active. */}
+                    {/* Do not delete. Restore only if required. */}
+                    {/*
                     <Button onClick={() => setCreating(true)} className="bg-[#12335f] text-white hover:bg-[#0e2a4f]">
                         <Plus className="mr-2 h-4 w-4" /> New Requirement
+                    </Button>
+                    */}
+                    <Button onClick={() => router.push('/buyer/procurement/create')} className="bg-[#12335f] text-white hover:bg-[#0e2a4f]">
+                        <Plus className="mr-2 h-4 w-4" /> Create Procurement
                     </Button>
                 </div>
             </div>

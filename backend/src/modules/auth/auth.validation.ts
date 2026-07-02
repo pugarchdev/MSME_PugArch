@@ -46,7 +46,7 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().min(3).max(254),
   password: z.string().min(1).max(128)
 });
 
@@ -71,7 +71,8 @@ export const resetPasswordSchema = z.object({
   email: z.string().email().max(254).optional(),
   identifier: identifierSchema.optional(),
   channel: otpChannelSchema.optional(),
-  otp: z.string().regex(/^\d{6}$/),
+  otp: z.string().regex(/^\d{6}$/).optional(),
+  otpToken: z.string().optional(),
   newPassword: z.string().min(12).max(128)
 });
 

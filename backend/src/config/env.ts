@@ -110,9 +110,15 @@ const envSchema = z.object({
   MSG91_SENDER_ID: optionalString(),
   MSG91_BASE_URL: z.string().url().default('https://control.msg91.com'),
   MSG91_COMMON_OTP_TEMPLATE_ID: optionalString(),
+  MSG91_OTP_BRAND_NAME: z.string().default('JsgSMILE Portal'),
   APISETU_API_KEY: z.string().optional(),
   APISETU_CLIENT_ID: z.string().optional(),
-  APISETU_GST_URL: z.string().url().default('https://apisetu.gov.in/gstn/v2/taxpayers/{gstin}'),
+  APISETU_GST_URL: z.string().url().default('https://apisetu.gov.in/gstn/v1/taxpayers/{gstin}'),
+  APISETU_GST_EMAIL: optionalString(),
+  APISETU_GST_MOBILE: optionalString(),
+  APISETU_CONTACT_EMAIL: optionalString(),
+  APISETU_CONTACT_MOBILE: optionalString(),
+  APISETU_GST_CERTIFICATE_FALLBACK: envBoolean(false),
   APISETU_ALLOW_INSECURE_TLS: envBoolean(false),
   MERIPEHCHAAN_CLIENT_ID: optionalString(),
   MERIPEHCHAAN_CLIENT_SECRET: optionalString(),
@@ -233,19 +239,16 @@ const kycConfigReport = () => {
     missingRequired.push('MERIPEHCHAAN_JWKS_URL');
   }
 
-  console.log('[MeriPehchaan KYC] Configuration status:');
-  lines.forEach(l => console.log(l));
-
   if (missingRequired.length > 0) {
+    console.log('[MeriPehchaan KYC] Configuration status:');
+    lines.forEach(l => console.log(l));
     console.warn(`[MeriPehchaan KYC] WARNING: The following required variable(s) are missing. Aadhaar KYC will return KYC_NOT_CONFIGURED (503) until they are set: ${missingRequired.join(', ')}`);
-  } else {
+  } else if (process.env.NODE_ENV !== 'development') {
     console.log('[MeriPehchaan KYC] All required variables are present. Service is ready.');
-  }
-
-  if (env.MERIPEHCHAAN_REDIRECT_URI) {
-    // Log the redirect URI (not a secret) so it is easy to cross-check against the API Setu dashboard.
-    console.log(`[MeriPehchaan KYC] Callback URL: ${env.MERIPEHCHAAN_REDIRECT_URI}`);
-    console.log('[MeriPehchaan KYC] Ensure this exact URL is registered as the redirect/callback URI in the API Setu / MeriPehchaan Auth Partner dashboard.');
+    if (env.MERIPEHCHAAN_REDIRECT_URI) {
+      console.log(`[MeriPehchaan KYC] Callback URL: ${env.MERIPEHCHAAN_REDIRECT_URI}`);
+      console.log('[MeriPehchaan KYC] Ensure this exact URL is registered as the redirect/callback URI in the API Setu / MeriPehchaan Auth Partner dashboard.');
+    }
   }
 };
 

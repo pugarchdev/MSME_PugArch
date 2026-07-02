@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Eye, FileText, ImageIcon, Plus, Trash2, Upload, FileUp, Loader2, ArrowLeft, Sparkles, Package, Wrench, ShieldCheck, BadgeCheck } from 'lucide-react';
+import { Eye, FileText, ImageIcon, Plus, Trash2, Upload, FileUp, Loader2, ArrowLeft, Sparkles, Package, Wrench, ShieldCheck, BadgeCheck, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -211,6 +211,7 @@ export default function CatalogueFormPage() {
   const [uploading, setUploading] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [specifications, setSpecifications] = useState<SpecRow[]>([]);
+  const [activeTab, setActiveTab] = useState<'basic' | 'attributes' | 'pricing' | 'specs'>('basic');
 
   useEffect(() => {
     const initPage = async () => {
@@ -438,501 +439,605 @@ export default function CatalogueFormPage() {
   const taxBreakdown = calculateGstBreakdown(taxableAmount, form.splitTaxRate, form.igstTaxRate, form.otherTaxRate);
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0b2447] via-[#12335f] to-[#2f6db4] p-5 text-white shadow-sm sm:p-6">
+    <div className="space-y-6 min-w-0">
+      {/* Premium Gradient Banner Header */}
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0c1a30] via-[#122b4f] to-[#1d447d] p-6 text-white shadow-lg relative">
+        <div className="absolute right-0 top-0 h-40 w-40 bg-emerald-500/10 rounded-full blur-3xl" />
         <button
           type="button"
           onClick={handleCancel}
-          className="group flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/80 transition-colors hover:text-white"
+          className="group flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-white/80 transition-colors hover:text-white"
         >
           <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
-          Back to Marketplace
+          Back to Catalogue
         </button>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between relative z-10">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/85">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
               <Sparkles className="h-3.5 w-3.5" /> {kind === 'product' ? 'product onboarding' : 'service onboarding'}
             </div>
-            <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{title}</h1>
-            <p className="mt-2 text-sm font-medium text-white/80">{descriptionText}</p>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h1>
+            <p className="mt-2 text-xs font-semibold text-white/70">{descriptionText}</p>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-white/15 bg-white/10 p-3 text-sm backdrop-blur sm:grid-cols-3">
+          <div className="grid gap-2 rounded-2xl border border-white/15 bg-white/10 p-3 text-xs backdrop-blur-md sm:grid-cols-3">
             <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
                 <Package className="h-3.5 w-3.5" /> {kind === 'product' ? 'SKU' : 'Scope'}
               </div>
-              <p className="mt-1 text-sm font-bold text-white">Ready to publish</p>
+              <p className="mt-1 text-xs font-bold text-white">Ready to publish</p>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verification
               </div>
-              <p className="mt-1 text-sm font-bold text-white">Fast review</p>
+              <p className="mt-1 text-xs font-bold text-white">Fast review</p>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/80">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
                 <BadgeCheck className="h-3.5 w-3.5" /> Buyer ready
               </div>
-              <p className="mt-1 text-sm font-bold text-white">RFQ enabled</p>
+              <p className="mt-1 text-xs font-bold text-white">RFQ enabled</p>
             </div>
           </div>
         </div>
       </div>
 
-      <Card className="border-emerald-100 bg-white shadow-sm max-w-4xl">
-        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3">
-          <CardTitle className="text-sm font-black text-neutral-900 font-sans tracking-tight">
-            {isEdit ? 'Update Details' : 'Specifications & Assets'}
-          </CardTitle>
-          <Badge className={kind === 'product' ? 'bg-[#059669] text-white' : 'bg-emerald-600 text-white'}>
-            {kind.toUpperCase()}
-          </Badge>
-        </CardHeader>
-        <CardContent className="pt-5">
-          <form onSubmit={submitForm} className="grid gap-4 lg:grid-cols-2">
-            <Input
-              label={`${kind === 'product' ? 'Product' : 'Service'} Name`}
-              value={form.name}
-              onChange={event => updateForm('name', event.target.value)}
-              required
-              placeholder="e.g. Structural Steel Beams, IT Advisory Services"
-              className="bg-white"
-            />
-            <Select
-              label="Visibility Status"
-              value={form.status}
-              onChange={event => updateForm('status', event.target.value)}
-              className="bg-white"
-            >
-              <option value="ACTIVE">Active</option>
-              <option value="DRAFT">Draft</option>
-              <option value="INACTIVE">Inactive</option>
-            </Select>
-            <Select
-              label="Category"
-              value={form.categoryId}
-              onChange={event => updateForm('categoryId', event.target.value)}
-              className="bg-white"
-            >
-              <option value="">Select Category</option>
-              {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
-            </Select>
+      <form onSubmit={submitForm} className="grid gap-6 lg:grid-cols-3 items-start">
+        {/* Left Side: Form Controls (Col Span 2) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Custom Tabs Navigation */}
+          <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 shadow-inner border border-slate-200/50">
+            {[
+              { id: 'basic', label: 'Basic Info', icon: FileText },
+              { id: 'attributes', label: kind === 'product' ? 'Attributes' : 'Service Specs', icon: Wrench },
+              { id: 'pricing', label: 'Pricing & GST', icon: Tag },
+              { id: 'specs', label: 'Specifications', icon: Plus }
+            ].map(t => {
+              const Icon = t.icon;
+              const isActive = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id as any)}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200",
+                    isActive 
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200" 
+                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4", isActive ? "text-emerald-500" : "text-slate-400")} />
+                  <span className="hidden sm:inline">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-            {kind === 'product' ? (
-              <>
-                <Input
-                  label="Price (INR)"
-                  type="number"
-                  min="0"
-                  value={form.price}
-                  onChange={event => updateForm('price', event.target.value)}
-                  placeholder="0.00"
-                  className="bg-white"
-                />
-                <Input
-                  label="Discount (%)"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.discount}
-                  onChange={event => updateForm('discount', event.target.value)}
-                  placeholder="0.00"
-                  className="bg-white"
-                />
-                <Select
-                  label="Unit Of Measure"
-                  value={form.unitOfMeasure}
-                  onChange={event => updateForm('unitOfMeasure', event.target.value)}
-                  className="bg-white"
-                >
-                  <option value="">Select Unit</option>
-                  {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                </Select>
-                <Select
-                  label="Item Condition"
-                  value={form.itemCondition}
-                  onChange={event => updateForm('itemCondition', event.target.value)}
-                  className="bg-white"
-                >
-                  <option value="">Select Condition</option>
-                  {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </Select>
-                <Input
-                  label="HSN Code"
-                  value={form.hsnCode}
-                  onChange={event => updateForm('hsnCode', event.target.value)}
-                  placeholder="8-digit HSN code"
-                  className="bg-white"
-                />
-                <Input label="SKU" value={form.sku} onChange={e => updateForm('sku', e.target.value)} placeholder="Unique product code" className="bg-white" />
-                <Input label="Brand" value={form.brand} onChange={e => updateForm('brand', e.target.value)} placeholder="Brand name" className="bg-white" />
-                <Input label="Model Number" value={form.modelNumber} onChange={e => updateForm('modelNumber', e.target.value)} placeholder="Model / variant" className="bg-white" />
-                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 lg:col-span-2">
-                  <input type="checkbox" checked={Boolean(form.isMsmeMade)} onChange={e => updateForm('isMsmeMade', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
-                  MSME Made Product
-                </label>
-              </>
-            ) : (
-              <>
-                <Input
-                  label="Base Price (INR)"
-                  type="number"
-                  min="0"
-                  value={form.basePrice}
-                  onChange={event => updateForm('basePrice', event.target.value)}
-                  placeholder="0.00"
-                  className="bg-white"
-                />
-                <Input
-                  label="Discount (%)"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.discount}
-                  onChange={event => updateForm('discount', event.target.value)}
-                  placeholder="0.00"
-                  className="bg-white"
-                />
-                <Select
-                  label="Pricing Model"
-                  value={form.pricingModel}
-                  onChange={event => updateForm('pricingModel', event.target.value)}
-                  className="bg-white"
-                >
-                  <option value="FIXED">Fixed</option>
-                  <option value="HOURLY">Hourly</option>
-                  <option value="DAILY">Daily</option>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="PER_PROJECT">Per Project</option>
-                  <option value="CUSTOM">Custom</option>
-                </Select>
-                <Input
-                  label="Service Area"
-                  value={form.serviceArea}
-                  onChange={event => updateForm('serviceArea', event.target.value)}
-                  placeholder="e.g. Delhi NCR, Pan-India"
-                  className="bg-white"
-                />
-                <Input label="Duration" value={form.duration} onChange={e => updateForm('duration', e.target.value)} placeholder="e.g. 30 days" className="bg-white" />
-                <Input label="SLA / Response Time" value={form.slaResponseTime} onChange={e => updateForm('slaResponseTime', e.target.value)} placeholder="e.g. 24 hours" className="bg-white" />
-                <div className="lg:col-span-2 grid gap-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Scope of Work</label>
-                    <textarea value={form.scopeOfWork} onChange={e => updateForm('scopeOfWork', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Deliverables</label>
-                    <textarea value={form.deliverables} onChange={e => updateForm('deliverables', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Inclusions</label>
-                    <textarea value={form.inclusions} onChange={e => updateForm('inclusions', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Exclusions</label>
-                    <textarea value={form.exclusions} onChange={e => updateForm('exclusions', e.target.value)} rows={2} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+          <Card className="border-slate-200/80 shadow-sm bg-white p-6 rounded-3xl">
+            <CardContent className="p-0 space-y-6">
+              {/* Tab 1: Basic Information */}
+              {activeTab === 'basic' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-800 border-b border-slate-100 pb-2">General Details</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <Input
+                        label={`${kind === 'product' ? 'Product' : 'Service'} Name`}
+                        value={form.name}
+                        onChange={event => updateForm('name', event.target.value)}
+                        required
+                        placeholder="e.g. Structural Steel Beams, IT Advisory Services"
+                        className="bg-white"
+                      />
+                    </div>
+                    <Select
+                      label="Visibility Status"
+                      value={form.status}
+                      onChange={event => updateForm('status', event.target.value)}
+                      className="bg-white"
+                    >
+                      <option value="ACTIVE">Active</option>
+                      <option value="DRAFT">Draft</option>
+                      <option value="INACTIVE">Inactive</option>
+                    </Select>
+                    <Select
+                      label="Category"
+                      value={form.categoryId}
+                      onChange={event => updateForm('categoryId', event.target.value)}
+                      className="bg-white"
+                    >
+                      <option value="">Select Category</option>
+                      {categoryList.map(cat => <option key={cat.id} value={String(cat.id)}>{cat.name}</option>)}
+                    </Select>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
+                      <textarea
+                        value={form.description}
+                        onChange={event => updateForm('description', event.target.value)}
+                        rows={6}
+                        placeholder="Provide descriptive details, technical specifications, and delivery terms..."
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
                   </div>
                 </div>
-              </>
-            )}
+              )}
 
-            <div className="lg:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Specifications</h3>
-                <Button type="button" variant="outline" className="h-8 text-[10px] font-black uppercase" onClick={() => setSpecifications(prev => [...prev, { name: '', value: '', unit: '' }])}>
-                  <Plus className="mr-1 h-3 w-3" /> Add Row
-                </Button>
-              </div>
-              {specifications.length === 0 ? (
-                <p className="text-[11px] font-semibold text-slate-500">Add technical specifications (optional).</p>
+              {/* Tab 2: Attributes */}
+              {activeTab === 'attributes' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-800 border-b border-slate-100 pb-2">
+                    {kind === 'product' ? 'Product Specifications' : 'Service Scope & SLA'}
+                  </h3>
+                  {kind === 'product' ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Select
+                        label="Unit Of Measure"
+                        value={form.unitOfMeasure}
+                        onChange={event => updateForm('unitOfMeasure', event.target.value)}
+                        className="bg-white"
+                      >
+                        <option value="">Select Unit</option>
+                        {QUANTITY_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                      </Select>
+                      <Select
+                        label="Item Condition"
+                        value={form.itemCondition}
+                        onChange={event => updateForm('itemCondition', event.target.value)}
+                        className="bg-white"
+                      >
+                        <option value="">Select Condition</option>
+                        {ITEM_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </Select>
+                      <Input
+                        label="HSN Code"
+                        value={form.hsnCode}
+                        onChange={event => updateForm('hsnCode', event.target.value)}
+                        placeholder="8-digit HSN code"
+                        className="bg-white"
+                      />
+                      <Input label="SKU" value={form.sku} onChange={e => updateForm('sku', e.target.value)} placeholder="Unique product code" className="bg-white" />
+                      <Input label="Brand" value={form.brand} onChange={e => updateForm('brand', e.target.value)} placeholder="Brand name" className="bg-white" />
+                      <Input label="Model Number" value={form.modelNumber} onChange={e => updateForm('modelNumber', e.target.value)} placeholder="Model / variant" className="bg-white" />
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 sm:col-span-2 py-2">
+                        <input type="checkbox" checked={Boolean(form.isMsmeMade)} onChange={e => updateForm('isMsmeMade', e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-emerald-600" />
+                        MSME Made Product
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Input
+                        label="Service Area"
+                        value={form.serviceArea}
+                        onChange={event => updateForm('serviceArea', event.target.value)}
+                        placeholder="e.g. Delhi NCR, Pan-India"
+                        className="bg-white"
+                      />
+                      <Input label="Duration" value={form.duration} onChange={e => updateForm('duration', e.target.value)} placeholder="e.g. 30 days" className="bg-white" />
+                      <Input label="SLA / Response Time" value={form.slaResponseTime} onChange={e => updateForm('slaResponseTime', e.target.value)} placeholder="e.g. 24 hours" className="bg-white" />
+                      <Select
+                        label="Pricing Model"
+                        value={form.pricingModel}
+                        onChange={event => updateForm('pricingModel', event.target.value)}
+                        className="bg-white"
+                      >
+                        <option value="FIXED">Fixed</option>
+                        <option value="HOURLY">Hourly</option>
+                        <option value="DAILY">Daily</option>
+                        <option value="MONTHLY">Monthly</option>
+                        <option value="PER_PROJECT">Per Project</option>
+                        <option value="CUSTOM">Custom</option>
+                      </Select>
+                      <div className="sm:col-span-2 space-y-3 pt-2">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Scope of Work</label>
+                          <textarea value={form.scopeOfWork} onChange={e => updateForm('scopeOfWork', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Deliverables</label>
+                            <textarea value={form.deliverables} onChange={e => updateForm('deliverables', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Inclusions</label>
+                            <textarea value={form.inclusions} onChange={e => updateForm('inclusions', e.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Exclusions</label>
+                          <textarea value={form.exclusions} onChange={e => updateForm('exclusions', e.target.value)} rows={2} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3: Pricing & GST */}
+              {activeTab === 'pricing' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-800 border-b border-slate-100 pb-2">Pricing Structure</h3>
+                    <div className="grid gap-4 sm:grid-cols-2 mt-4">
+                      <Input
+                        label={`${kind === 'product' ? 'Price' : 'Base Price'} (INR)`}
+                        type="number"
+                        min="0"
+                        value={kind === 'product' ? form.price : form.basePrice}
+                        onChange={event => updateForm(kind === 'product' ? 'price' : 'basePrice', event.target.value)}
+                        placeholder="0.00"
+                        className="bg-white"
+                      />
+                      <Input
+                        label="General Discount (%)"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={form.discount}
+                        onChange={event => updateForm('discount', event.target.value)}
+                        placeholder="0.00"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-800 border-b border-slate-100 pb-2">GST & Taxation</h3>
+                    <div className="mt-3">
+                      <GstTaxPicker
+                        splitRate={form.splitTaxRate}
+                        igstRate={form.igstTaxRate}
+                        additionalRate={form.otherTaxRate}
+                        taxableAmount={taxableAmount}
+                        onChange={next => {
+                          updateForm('splitTaxRate', next.splitRate);
+                          updateForm('igstTaxRate', next.igstRate);
+                          updateForm('otherTaxRate', next.additionalRate);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-wide text-[#12335f]">Special Offer & Bulk Deal Settings</h4>
+                        <p className="mt-1 text-[10px] text-slate-500">Enable promotional prices and bulk ordering discounts.</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-[#12335f] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.isOfferActive)}
+                          onChange={event => updateForm('isOfferActive', event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 accent-[#12335f]"
+                        />
+                        Enable Offer
+                      </label>
+                    </div>
+                    {form.isOfferActive && (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 animate-in slide-in-from-top-2 duration-200">
+                        <Input
+                          label="Original Price"
+                          type="number"
+                          min="0"
+                          value={form.originalPrice}
+                          onChange={event => updateForm('originalPrice', event.target.value)}
+                          placeholder="Before offer price"
+                          className="bg-white"
+                        />
+                        <Input
+                          label="Discount Price"
+                          type="number"
+                          min="0"
+                          value={form.discountPrice}
+                          onChange={event => updateForm('discountPrice', event.target.value)}
+                          placeholder="Current offer price"
+                          className="bg-white"
+                        />
+                        <Input
+                          label="Discount Percent"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={form.discountPercent}
+                          onChange={event => updateForm('discountPercent', event.target.value)}
+                          placeholder="Optional"
+                          className="bg-white"
+                        />
+                        <Input
+                          label="Offer Label"
+                          value={form.offerLabel}
+                          onChange={event => updateForm('offerLabel', event.target.value)}
+                          placeholder="Special Offer, Bulk Deal"
+                          className="bg-white"
+                        />
+                        <Input
+                          label="Offer Start"
+                          type="date"
+                          value={form.offerStartAt}
+                          onChange={event => updateForm('offerStartAt', event.target.value)}
+                          className="bg-white"
+                        />
+                        <Input
+                          label="Offer End"
+                          type="date"
+                          value={form.offerEndAt}
+                          onChange={event => updateForm('offerEndAt', event.target.value)}
+                          className="bg-white"
+                        />
+                      </div>
+                    )}
+                    <div className="mt-4 pt-3 border-t border-slate-200/65 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.bulkDealAvailable)}
+                          onChange={event => updateForm('bulkDealAvailable', event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 accent-slate-800"
+                        />
+                        Bulk Deal Available
+                      </label>
+                      {form.bulkDealAvailable && (
+                        <div className="sm:w-56 animate-in slide-in-from-left-2 duration-200">
+                          <Input
+                            label="Bulk Min Quantity"
+                            type="number"
+                            min="0"
+                            value={form.bulkMinQuantity}
+                            onChange={event => updateForm('bulkMinQuantity', event.target.value)}
+                            placeholder="e.g. 10"
+                            className="bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Specifications */}
+              {activeTab === 'specs' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Technical Specifications</h3>
+                    <Button type="button" variant="outline" className="h-8 text-[10px] font-black uppercase border-slate-200" onClick={() => setSpecifications(prev => [...prev, { name: '', value: '', unit: '' }])}>
+                      <Plus className="mr-1 h-3 w-3" /> Add Row
+                    </Button>
+                  </div>
+                  {specifications.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                      <p className="text-xs font-semibold text-slate-400">No specifications added yet. Add rows to define technical properties.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {specifications.map((spec, index) => (
+                        <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto] items-end bg-slate-50 p-3 rounded-xl border border-slate-100 relative">
+                          <Input label={index === 0 ? 'Name' : undefined} value={spec.name} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="e.g. Material" className="bg-white" />
+                          <Input label={index === 0 ? 'Value' : undefined} value={spec.value} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, value: e.target.value } : row))} placeholder="e.g. Grade A Steel" className="bg-white" />
+                          <Input label={index === 0 ? 'Unit' : undefined} value={spec.unit} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, unit: e.target.value } : row))} placeholder="e.g. kg" className="bg-white" />
+                          <button type="button" onClick={() => setSpecifications(prev => prev.filter((_, i) => i !== index))} className="h-9 flex items-center justify-center rounded-lg border border-red-200 p-2.5 text-red-600 hover:bg-red-50 bg-white"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Form Actions */}
+          <div className="flex justify-end gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              className="h-10 rounded-xl text-xs font-black uppercase border-slate-200 text-slate-700 hover:bg-slate-50 px-5"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={saving || uploading}
+              className={cn("h-10 rounded-xl text-xs font-black uppercase text-white shadow-md px-6", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Saving...
+                </>
               ) : (
-                <div className="space-y-2">
-                  {specifications.map((spec, index) => (
-                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto]">
-                      <Input label={index === 0 ? 'Name' : undefined} value={spec.name} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Spec name" className="bg-white" />
-                      <Input label={index === 0 ? 'Value' : undefined} value={spec.value} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, value: e.target.value } : row))} placeholder="Value" className="bg-white" />
-                      <Input label={index === 0 ? 'Unit' : undefined} value={spec.unit} onChange={e => setSpecifications(prev => prev.map((row, i) => i === index ? { ...row, unit: e.target.value } : row))} placeholder="Unit" className="bg-white" />
-                      <button type="button" onClick={() => setSpecifications(prev => prev.filter((_, i) => i !== index))} className="self-end rounded border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                <>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  {isEdit ? 'Save Changes' : `Add ${kind}`}
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Right Side: Preview & Assets (Col Span 1) */}
+        <div className="space-y-6">
+          {/* Live Preview Card */}
+          <Card className="overflow-hidden border-slate-200 shadow-sm rounded-3xl bg-white">
+            <div className="relative aspect-video bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-400 group">
+              {uploadedImages.length > 0 ? (
+                <img 
+                  src={uploadedImages[0].localUrl || getCatalogueImageUrl(uploadedImages[0].id)} 
+                  alt="Primary Preview" 
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="text-center p-4">
+                  <ImageIcon className="h-10 w-10 mx-auto text-slate-300" />
+                  <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">No Image Uploaded</p>
+                </div>
+              )}
+              <div className="absolute left-3 top-3">
+                <Badge className={kind === 'product' ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'}>
+                  {kind.toUpperCase()}
+                </Badge>
+              </div>
+            </div>
+            <CardContent className="p-5 space-y-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{form.brand || 'No Brand'}</p>
+                <h4 className="mt-1 text-sm font-black text-slate-900 line-clamp-1">{form.name || 'Untitled Marketplace Item'}</h4>
+                <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">{form.description || 'No description provided.'}</p>
+              </div>
+
+              {/* Price Calculation Display */}
+              <div className="border-t border-slate-100 pt-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                  <span>Base Price:</span>
+                  <span>₹{rawPrice.toLocaleString('en-IN')}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-600">
+                    <span>Discount ({form.discount}%):</span>
+                    <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {taxBreakdown.totalTaxAmount > 0 && (
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-550">
+                    <span>GST ({taxBreakdown.totalRate}%):</span>
+                    <span>+₹{taxBreakdown.totalTaxAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm font-black text-slate-900 border-t border-dashed border-slate-200 pt-2">
+                  <span>Final Price:</span>
+                  <span className="text-emerald-700">₹{(taxableAmount + taxBreakdown.totalTaxAmount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Upload Card */}
+          <Card className="border-slate-200 shadow-sm rounded-3xl bg-white p-5 space-y-4">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">Media & Assets</h4>
+
+            {/* Images Dropzone */}
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Product Images</label>
+              {uploadedImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {uploadedImages.map(img => (
+                    <div key={img.id} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-slate-50">
+                      <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              setPreviewDocument(await getFileAssetPreview({
+                                id: img.id,
+                                fileId: img.id,
+                                url: img.localUrl || getCatalogueImageUrl(img.id),
+                                originalName: img.originalName,
+                                mimeType: img.mimeType || 'image/png'
+                              }, img.originalName));
+                            } catch (err) {
+                              toast.error('Unable to preview image');
+                            }
+                          }}
+                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeUploadedFile(img.id, 'image')}
+                          className="p-1 rounded bg-red-650 hover:bg-red-750 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
+              <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-emerald-400 rounded-2xl p-4 bg-slate-50/50 cursor-pointer hover:bg-slate-50 transition-all duration-200">
+                <Upload className="h-5 w-5 text-slate-400 mb-1" />
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Upload Images</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={uploading}
+                  onChange={(e) => handleFileUpload(e, 'image')}
+                  className="hidden"
+                />
+              </label>
             </div>
 
-            <div className="lg:col-span-2 rounded-lg border border-blue-100 bg-blue-50/40 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[#12335f]">Offer and bulk deal</h3>
-                  <p className="mt-1 text-[11px] font-semibold text-slate-500">Optional. Offers show publicly only when active and valid.</p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-[#12335f]">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form.isOfferActive)}
-                    onChange={event => updateForm('isOfferActive', event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  Active Offer
-                </label>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Input
-                  label="Original Price"
-                  type="number"
-                  min="0"
-                  value={form.originalPrice}
-                  onChange={event => updateForm('originalPrice', event.target.value)}
-                  placeholder="Before offer price"
-                  className="bg-white"
-                />
-                <Input
-                  label="Discount Price"
-                  type="number"
-                  min="0"
-                  value={form.discountPrice}
-                  onChange={event => updateForm('discountPrice', event.target.value)}
-                  placeholder="Current offer price"
-                  className="bg-white"
-                />
-                <Input
-                  label="Discount Percent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.discountPercent}
-                  onChange={event => updateForm('discountPercent', event.target.value)}
-                  placeholder="Optional"
-                  className="bg-white"
-                />
-                <Input
-                  label="Offer Label"
-                  value={form.offerLabel}
-                  onChange={event => updateForm('offerLabel', event.target.value)}
-                  placeholder="Special Offer, Bulk Deal"
-                  className="bg-white"
-                />
-                <Input
-                  label="Offer Start"
-                  type="date"
-                  value={form.offerStartAt}
-                  onChange={event => updateForm('offerStartAt', event.target.value)}
-                  className="bg-white"
-                />
-                <Input
-                  label="Offer End"
-                  type="date"
-                  value={form.offerEndAt}
-                  onChange={event => updateForm('offerEndAt', event.target.value)}
-                  className="bg-white"
-                />
-              </div>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form.bulkDealAvailable)}
-                    onChange={event => updateForm('bulkDealAvailable', event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  Bulk Deal Available
-                </label>
-                <div className="sm:w-56">
-                  <Input
-                    label="Bulk Min Quantity"
-                    type="number"
-                    min="0"
-                    value={form.bulkMinQuantity}
-                    onChange={event => updateForm('bulkMinQuantity', event.target.value)}
-                    placeholder="e.g. 10"
-                    className="bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-2">
-              <GstTaxPicker
-                splitRate={form.splitTaxRate}
-                igstRate={form.igstTaxRate}
-                additionalRate={form.otherTaxRate}
-                taxableAmount={taxableAmount}
-                onChange={next => {
-                  updateForm('splitTaxRate', next.splitRate);
-                  updateForm('igstTaxRate', next.igstRate);
-                  updateForm('otherTaxRate', next.additionalRate);
-                }}
-              />
-              <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Taxable {taxableAmount.toLocaleString('en-IN')} | GST {taxBreakdown.totalRate}% = {taxBreakdown.totalTaxAmount.toLocaleString('en-IN')}
-              </p>
-            </div>
-
-            <div className="lg:col-span-2">
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Description</label>
-              <textarea
-                value={form.description}
-                onChange={event => updateForm('description', event.target.value)}
-                rows={4}
-                placeholder="Provide descriptive details, technical specifications, and delivery terms..."
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </div>
-
-            <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 border-t border-slate-100 pt-4 mt-2">
-              {/* Image upload section */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Images (Optional)
-                </label>
-
-                {uploadedImages.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {uploadedImages.map(img => (
-                      <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
-                        <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                setPreviewDocument(await getFileAssetPreview({
-                                  id: img.id,
-                                  fileId: img.id,
-                                  url: img.localUrl || getCatalogueImageUrl(img.id),
-                                  originalName: img.originalName,
-                                  mimeType: img.mimeType || 'image/png'
-                                }, img.originalName));
-                              } catch (err) {
-                                toast.error(err instanceof Error ? err.message : 'Unable to view image');
-                              }
-                            }}
-                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
-                            title="View image"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeUploadedFile(img.id, 'image')}
-                            className="p-1.5 rounded bg-red-650 hover:bg-red-700 transition-colors cursor-pointer"
-                            title="Delete image"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+            {/* Documents Dropzone */}
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Specification Documents</label>
+              {uploadedDocuments.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {uploadedDocuments.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors">
-                  <Upload className="h-5 w-5 text-slate-400 mb-1" />
-                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Image</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={uploading}
-                    onChange={(e) => handleFileUpload(e, 'image')}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              {/* Document upload section */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Specification Documents (Optional)
-                </label>
-
-                {uploadedDocuments.length > 0 && (
-                  <div className="space-y-1.5 mb-2">
-                    {uploadedDocuments.map(doc => (
-                      <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <FileText className="h-3.5 w-3.5 text-[#059669] shrink-0" />
-                          <span className="text-[10px] font-bold text-slate-700 truncate">{doc.originalName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                setPreviewDocument(await getFileAssetPreview({
-                                  id: doc.id,
-                                  fileId: doc.id,
-                                  url: doc.localUrl || getCatalogueImageUrl(doc.id),
-                                  originalName: doc.originalName,
-                                  mimeType: doc.mimeType
-                                }, doc.originalName));
-                              } catch (err) {
-                                toast.error(err instanceof Error ? err.message : 'Unable to view document');
-                              }
-                            }}
-                            className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
-                            title="View document"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeUploadedFile(doc.id, 'document')}
-                            className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              setPreviewDocument(await getFileAssetPreview({
+                                id: doc.id,
+                                fileId: doc.id,
+                                url: doc.localUrl || getCatalogueImageUrl(doc.id),
+                                originalName: doc.originalName,
+                                mimeType: doc.mimeType
+                              }, doc.originalName));
+                            } catch (err) {
+                              toast.error('Unable to view document');
+                            }
+                          }}
+                          className="text-[#059669] hover:text-emerald-800 p-0.5 cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeUploadedFile(doc.id, 'document')}
+                          className="text-red-500 hover:text-red-750 p-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 rounded-lg p-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors">
-                  <FileUp className="h-5 w-5 text-slate-400 mb-1" />
-                  <span className="text-[10px] font-bold text-slate-500">Click to Upload Document</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                    multiple
-                    disabled={uploading}
-                    onChange={(e) => handleFileUpload(e, 'document')}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-emerald-400 rounded-2xl p-4 bg-slate-50/50 cursor-pointer hover:bg-slate-50 transition-all duration-200">
+                <FileUp className="h-5 w-5 text-slate-400 mb-1" />
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Upload Documents</span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                  multiple
+                  disabled={uploading}
+                  onChange={(e) => handleFileUpload(e, 'document')}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             {uploading && (
-              <div className="lg:col-span-2 flex items-center justify-center gap-2 py-2 text-xs text-[#059669] font-bold bg-emerald-50 rounded-lg mt-2">
+              <div className="flex items-center justify-center gap-2 py-2 text-xs text-emerald-600 font-bold bg-emerald-50 rounded-xl mt-2 animate-pulse">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Uploading assets...</span>
+                <span>Uploading files...</span>
               </div>
             )}
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 mt-2 lg:col-span-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCancel}
-                className="h-10 rounded-lg text-xs font-black uppercase border-slate-200 text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={saving || uploading}
-                className={cn("h-10 rounded-lg text-xs font-black uppercase text-white shadow-sm", kind === 'product' ? 'bg-[#059669] hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700')}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                {saving ? 'Saving...' : isEdit ? `Save Changes` : `Create ${kind}`}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </Card>
+        </div>
+      </form>
 
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
     </div>

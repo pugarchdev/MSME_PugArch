@@ -298,7 +298,7 @@ test('ledger entries are immutable and support reversals', () => {
 test('unauthorized payment access is blocked and reconciliation is admin-only', () => {
   const paymentRoutes = fs.readFileSync(path.join(root, 'backend/src/modules/payments/payment.routes.ts'), 'utf8');
   assert.match(paymentRoutes, /payment\.payerId !== req\.user\?\.id && payment\.payeeId !== req\.user\?\.id/, 'payment detail must check payer/payee ownership');
-  assert.match(paymentRoutes, /authorize\('admin'\)/, 'payment reconciliation must be admin-only');
+  assert.match(paymentRoutes, /requirePermission\('payment\.verify',\s*orgScope\)/, 'payment reconciliation must require payment.verify permission');
   assert.match(paymentService, /PAYMENT_RECONCILE_ADMIN_ONLY/, 'reconciliation service must enforce admin authorization');
 });
 

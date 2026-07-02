@@ -167,53 +167,48 @@ router.get('/kyc/aadhaar/pre-register/status', rateLimit(30, 10 * 60_000), async
   }
 }));
 
-router.get('/kyc/aadhaar/status', asyncRoute(async (req, res) => {
+router.get('/kyc/aadhaar/status', (req, res, next) => {
   const token = typeof req.query.token === 'string' ? req.query.token : '';
   if (token) {
-    try {
-      const result = await aadhaarKycService.preRegisterStatus(token);
-      
-      return apiResponse.success(res, {
-        verified: result.status === 'VERIFIED' && result.isValid,
-        verificationId: token,
-        maskedAadhaar: result.aadhaarLast4 ? `XXXX XXXX ${result.aadhaarLast4}` : 'XXXX XXXX 5417',
-        firstName: result.verifiedName ? result.verifiedName.split(' ')[0] : '',
-        lastName: result.verifiedName ? result.verifiedName.split(' ').slice(1).join(' ') : '',
-        status: result.status,
-        isValid: result.isValid,
-        used: result.used
-      });
-    } catch (err: any) {
-      return apiResponse.error(
-        res,
-        err.statusCode || 500,
-        err.message || 'Unable to check verification status',
-        err.code || 'AADHAAR_KYC_STATUS_FAILED'
-      );
-    }
+    (async () => {
+      try {
+        const result = await aadhaarKycService.preRegisterStatus(token);
+        
+        return apiResponse.success(res, {
+          verified: result.status === 'VERIFIED' && result.isValid,
+          verificationId: token,
+          maskedAadhaar: result.aadhaarLast4 ? `XXXX XXXX ${result.aadhaarLast4}` : 'XXXX XXXX 5417',
+          firstName: result.verifiedName ? result.verifiedName.split(' ')[0] : '',
+          lastName: result.verifiedName ? result.verifiedName.split(' ').slice(1).join(' ') : '',
+          status: result.status,
+          isValid: result.isValid,
+          used: result.used
+        });
+      } catch (err: any) {
+        return apiResponse.error(
+          res,
+          err.statusCode || 500,
+          err.message || 'Unable to check verification status',
+          err.code || 'AADHAAR_KYC_STATUS_FAILED'
+        );
+      }
+    })().catch(next);
+    return;
   }
 
-  let authenticated = false;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      authenticate(req, res, (err) => {
-        if (err) reject(err);
-        else {
-          authenticated = true;
-          resolve();
-        }
-      });
-    });
-  } catch (err) {
-    // Auth middleware handles response errors
-  }
-
-  if (!authenticated) return;
-
-  if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
-  const status = await aadhaarKycService.status(req.user);
-  return apiResponse.success(res, status);
-}));
+  authenticate(req, res, (err) => {
+    if (err) return next(err);
+    (async () => {
+      try {
+        if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
+        const status = await aadhaarKycService.status(req.user);
+        return apiResponse.success(res, status);
+      } catch (error) {
+        next(error);
+      }
+    })().catch(next);
+  });
+});
 
 router.post('/kyc/aadhaar/reset', authenticate, rateLimit(5, 10 * 60_000), asyncRoute(async (req, res) => {
   if (!req.user) return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');

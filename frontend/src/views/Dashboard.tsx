@@ -437,9 +437,9 @@ export default function Dashboard() {
     const registrationGstVerified = Boolean(user?.registrationDetails?.gstVerified && validators.gstin(registrationGstin));
     const organizationGstin = String((user?.organization as any)?.gstin || profileData?.user?.organization?.gstin || '').trim().toUpperCase();
     const profileGstin = String(user?.buyerProfile?.gst || profile?.buyerProfile?.gst || profile?.gst || '').trim().toUpperCase();
-    const sellerOfficeHasGst = user?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
-      || profile?.sellerProfile?.offices?.some((o: any) => o.gstNumber)
-      || profile?.offices?.some((o: any) => o.gstNumber);
+    const sellerOfficeHasGst = (Array.isArray(user?.sellerProfile?.offices) && user.sellerProfile.offices.some((o: any) => o.gstNumber))
+      || (Array.isArray(profile?.sellerProfile?.offices) && profile.sellerProfile.offices.some((o: any) => o.gstNumber))
+      || (Array.isArray(profile?.offices) && profile.offices.some((o: any) => o.gstNumber));
     return user?.role === 'seller'
       ? (sellerOfficeHasGst || registrationGstVerified || validators.gstin(organizationGstin))
       : (validators.gstin(profileGstin) || registrationGstVerified || validators.gstin(organizationGstin));

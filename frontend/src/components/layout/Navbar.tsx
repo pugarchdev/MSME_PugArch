@@ -187,11 +187,31 @@ const HIGH_PRIORITY_PREFETCH_ROUTES = [
   '/settings/notifications'
 ] as const;
 
+const ALL_MENU_PATHS = [
+  '/buyer/procurement/create',
+  '/buyer/procurement/drafts',
+  '/buyer/procurement/responses',
+  '/buyer/procurement/approvals',
+  '/seller/procurement/events',
+  '/orders/delivery-confirmation',
+  '/orders/tracking',
+  '/admin/marketplace/home-sections',
+];
+
 const isSidebarRouteActive = (targetPath: string | undefined, pathname?: string | null, currentPathWithQuery?: string) => {
   if (!targetPath || !pathname) return false;
   const [targetBase] = targetPath.split('?');
   if (targetPath.includes('?')) return currentPathWithQuery === targetPath;
   if (targetBase === '/orders') return pathname === '/orders' || pathname === '/seller/orders' || pathname === '/buyer/orders';
+
+  // Prevent parent routes (e.g. /buyer/procurement) from matching active when a distinct sub-item menu path is current
+  const isPrefixOfOtherMenu = ALL_MENU_PATHS.some(menuPath => 
+    menuPath.startsWith(`${targetBase}/`) && pathname === menuPath
+  );
+  if (isPrefixOfOtherMenu) {
+    return false;
+  }
+
   return currentPathWithQuery === targetBase || Boolean(targetBase && pathname.startsWith(`${targetBase}/`));
 };
 

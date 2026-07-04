@@ -79,7 +79,7 @@ export function AadhaarVerificationCard({ compact = false }: { compact?: boolean
   }, [queryClient, searchParams]);
 
   const status = query.data?.status || 'NOT_STARTED';
-  const copy = statusCopy[status];
+  const copy = statusCopy[status as keyof typeof statusCopy] || statusCopy.NOT_STARTED;
   const canRetry = status === 'FAILED' || status === 'EXPIRED' || status === 'PENDING';
   const verifiedAt = useMemo(() => {
     if (!query.data?.verifiedAt) return '';

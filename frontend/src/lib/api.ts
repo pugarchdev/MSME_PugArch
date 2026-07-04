@@ -203,6 +203,16 @@ const invalidatePrefixFor = (endpoint: string) => {
     prefixesToInvalidate.add('/api/marketplace/home');
   }
 
+  if (
+    cleanPrefix.includes('/auth/') ||
+    cleanPrefix.includes('/onboarding') ||
+    cleanPrefix.includes('/profile') ||
+    cleanPrefix.startsWith('/api/seller/register') ||
+    cleanPrefix.startsWith('/api/buyer/register')
+  ) {
+    prefixesToInvalidate.add('/api/auth/me');
+  }
+
   if (cleanPrefix.startsWith('/api/cart')) {
     prefixesToInvalidate.add('/api/cart');
     prefixesToInvalidate.add('/api/approvals');

@@ -90,7 +90,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
         <AlertTriangle className="h-10 w-10 text-rose-500 mx-auto" />
         <p className="text-sm font-bold text-rose-600">{error || 'Opportunity details not found'}</p>
         <Button type="button" variant="outline" onClick={() => router.push('/seller/procurement/events')}>
-          Back to Events List
+          Back to Bids & Tenders
         </Button>
       </div>
     );
@@ -109,7 +109,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
           onClick={() => router.push('/seller/procurement/events')}
           className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to Opportunities
+          <ArrowLeft className="h-4 w-4" /> Back to Bidding Opportunities
         </button>
 
         <div className="flex items-center gap-2">
@@ -144,7 +144,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             </p>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Estimated Sourcing Value</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Estimated Bid / Tender Value</p>
             <p className="font-bold text-slate-800 mt-0.5">
               {bid.estimatedValue ? `₹${bid.estimatedValue.toLocaleString('en-IN')}` : 'Value not shown'}
             </p>
@@ -166,7 +166,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
       <div className="border-b border-slate-200">
         <div className="flex gap-4 overflow-x-auto">
           {[
-            { id: 'overview', label: '1. Event Overview & Timeline' },
+            { id: 'overview', label: '1. Overview & Timeline' },
             { id: 'items', label: '2. Items & Technical Specs' },
             { id: 'documents', label: '3. Required Documents' },
             { id: 'clarifications', label: '4. Clarifications Board' },
@@ -194,7 +194,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Event Description</h3>
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Description</h3>
               <p className="text-xs font-semibold leading-relaxed text-slate-600 mt-2 whitespace-pre-wrap">{bid.description}</p>
             </div>
 
@@ -248,7 +248,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                 <div className="flex gap-2 text-indigo-800">
                   <ClipboardList className="h-5 w-5 shrink-0" />
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider">BOQ-Based Excel Sourcing</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider">BOQ-Based Bidding</h4>
                     <p className="text-[11px] font-semibold mt-1">This is a spreadsheet-based BOQ bid. Sellers must download the buyer BOQ sheet, fill in individual rates, and upload the completed workbook.</p>
                   </div>
                 </div>
@@ -369,7 +369,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
               ) : (
                 <div className="text-center p-6 text-xs text-slate-400 font-semibold">
                   <MessageSquare className="h-6 w-6 mx-auto mb-1 text-slate-350" />
-                  No clarification logs found for this event.
+                  No clarification logs found for this bid / tender.
                 </div>
               )}
             </div>
@@ -378,7 +378,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
 
         {activeTab === 'packets' && (
           <div className="space-y-6">
-            <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Sourcing Response Packets</h3>
+            <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Bid Submission Packets</h3>
 
             {/* Technical Packet */}
             <div className="border rounded-lg p-4 space-y-3">
@@ -424,7 +424,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                   className="h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f] mt-0.5"
                 />
                 <span className="text-xs font-semibold text-slate-650 leading-relaxed">
-                  We certify that we have reviewed all documents, specifications, timelines, and clarifications of this event and accept the terms and conditions outlined by the buyer organization.
+                  We certify that we have reviewed all documents, specifications, timelines, and clarifications of this bid / tender and accept the terms and conditions outlined by the buyer organization.
                 </span>
               </label>
 

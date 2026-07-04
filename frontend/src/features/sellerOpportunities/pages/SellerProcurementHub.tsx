@@ -57,33 +57,33 @@ export default function SellerProcurementHub() {
 
   // Primary Metrics Banner (Unified Row Layout)
   const summaryMetrics = useMemo(() => [
-    { label: 'Marketplace Leads', value: data.sellerOpportunitiesCount || 0, color: 'text-blue-600' },
-    { label: 'Submitted Responses', value: data.sellerQuotationsCount || 0, color: 'text-emerald-600' },
+    { label: 'Bidding Opportunities', value: data.sellerOpportunitiesCount || 0, color: 'text-blue-600' },
+    { label: 'Submitted Bids', value: data.sellerQuotationsCount || 0, color: 'text-emerald-600' },
     { label: 'Active POs', value: data.sellerActivePOsCount || 0, color: 'text-indigo-600' },
     { label: 'Pending Invoices', value: data.sellerPendingInvoicesCount || 0, color: 'text-rose-600' },
   ], [data]);
 
-  // Group 1: Opportunities and Sourcing Leads
+  // Group 1: Opportunities and Bidding Leads
   const opportunityActions = useMemo(() => [
     {
-      label: 'Invited Events',
-      desc: 'Sourcing events and auctions where buyers have explicitly invited your organization.',
+      label: 'Invited Bids',
+      desc: 'Bids and auctions where buyers have explicitly invited your organization.',
       count: data.reverseAuctionInvites || 0,
       href: '/seller/procurement/events?filter=invited',
       icon: UserCheck,
       tone: 'indigo'
     },
     {
-      label: 'Marketplace Sourcing Leads',
-      desc: 'Review marketplace quote requests, direct inquiries, and leads matching your product category.',
+      label: 'Bidding Opportunities',
+      desc: 'Review marketplace quote requests, direct inquiries, and active bidding opportunities.',
       count: data.sellerOpportunitiesCount || 0,
       href: '/seller/opportunities',
       icon: Globe,
       tone: 'blue'
     },
     {
-      label: 'Unified Sourcing Events',
-      desc: 'All wizard-based procurement events, RFQs, RFPs, tenders, and rate contracts.',
+      label: 'All Bids & Tenders',
+      desc: 'All wizard-based procurement bids, RFQs, RFPs, public tenders, and rate contracts.',
       count: 0,
       href: '/seller/procurement/events',
       icon: ClipboardList,
@@ -98,8 +98,8 @@ export default function SellerProcurementHub() {
       tone: 'rose'
     },
     {
-      label: 'Legacy / Public Tenders',
-      desc: 'Search and participate in older public buyer bids and tender publications.',
+      label: 'Public Tenders',
+      desc: 'Search and participate in active public buyer bids and tender publications.',
       count: 0,
       href: '/seller/tenders',
       icon: Globe,
@@ -110,7 +110,7 @@ export default function SellerProcurementHub() {
   // Group 2: Bid Proposals & Execution Fulfillment
   const fulfillmentActions = useMemo(() => [
     {
-      label: 'My Submissions',
+      label: 'Submitted Bids',
       desc: 'Manage your active quotations, bidding proposals, and technical packages.',
       count: data.sellerQuotationsCount || 0,
       href: '/quotations',
@@ -118,7 +118,7 @@ export default function SellerProcurementHub() {
       tone: 'purple'
     },
     {
-      label: 'Clarifications Desk',
+      label: 'Bid Clarifications',
       desc: 'Respond to buyer-initiated queries or submit request details on active bids.',
       count: 0,
       href: '/seller/procurement/events?filter=clarifications',
@@ -126,16 +126,16 @@ export default function SellerProcurementHub() {
       tone: 'cyan'
     },
     {
-      label: 'Technical Packet Pending',
-      desc: 'Proposals requiring technical parameters, spec compliance files, or certifications.',
+      label: 'Technical Bid Pending',
+      desc: 'Bids requiring technical parameters, spec compliance files, or certifications.',
       count: data.techReviewCount || 0,
       href: '/quotations',
       icon: FileText,
       tone: 'amber'
     },
     {
-      label: 'Financial Packet Pending',
-      desc: 'Proposals requiring commercial breakdowns, price sheets, and final rate submissions.',
+      label: 'Financial Bid Pending',
+      desc: 'Bids requiring commercial breakdowns, price sheets, and final rate submissions.',
       count: 0,
       href: '/quotations',
       icon: Landmark,
@@ -187,9 +187,9 @@ export default function SellerProcurementHub() {
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#12335f]/10 text-[#12335f] border border-[#12335f]/10 mb-2 uppercase tracking-wider">
             <ClipboardList className="h-3 w-3" /> Supplier Portal
           </span>
-          <h1 className="text-xl font-black uppercase text-slate-900 tracking-tight">Procurement Sourcing Hub</h1>
+          <h1 className="text-xl font-black uppercase text-slate-900 tracking-tight">Bidding & Tenders Dashboard</h1>
           <p className="mt-1 text-xs font-semibold text-slate-500 max-w-2xl leading-relaxed">
-            Access buyer sourcing requirements, submit Quotations / RFPs, participate in downward price Auctions, and manage your delivery fulfillment.
+            Access buyer bidding requirements, submit Bid Proposals / RFPs, participate in downward price Auctions, and manage your delivery fulfillment.
           </p>
         </div>
         <Button 
@@ -201,7 +201,7 @@ export default function SellerProcurementHub() {
           <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isLoading && 'animate-spin')} /> Refresh
         </Button>
       </div>
-
+ 
       {/* Unified Key Metrics Banner (Less Boxy) */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-150 grid grid-cols-2 md:grid-cols-4">
         {summaryMetrics.map((metric) => (
@@ -217,14 +217,14 @@ export default function SellerProcurementHub() {
           </div>
         ))}
       </div>
-
+ 
       {/* Modern categorized opportunity and operations list rows */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Left Side: Opportunities */}
         <div className="space-y-3">
           <h3 className="text-[10px] font-black uppercase tracking-widest text-[#12335f] pl-1 flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
-            Sourcing & Opportunities
+            Bids & Opportunities
           </h3>
           <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden divide-y divide-slate-100">
             {opportunityActions.map((card) => {

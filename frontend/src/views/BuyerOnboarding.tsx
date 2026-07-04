@@ -231,7 +231,8 @@ const readBuyerDraft = () => {
 
 const buildBuyerFormData = (data: any, storedDraft: any, fallback: any = DEFAULT_BUYER_FORM_DATA) => {
   const regDetails = data?.user?.registrationDetails || {};
-  const resolvedBusinessType = data?.profile?.businessType || regDetails.businessType || fallback.businessType;
+  const seller = data?.user?.sellerProfile || {};
+  const resolvedBusinessType = data?.profile?.businessType || seller.organizationType || regDetails.businessType || fallback.businessType;
   const primaryUser = isPrimaryUserType(resolvedBusinessType);
   const registrationState = cleanPlaceholder(regDetails.state);
   const registrationDistrict = cleanPlaceholder(regDetails.district);
@@ -282,11 +283,11 @@ const buildBuyerFormData = (data: any, storedDraft: any, fallback: any = DEFAULT
             designation: hasDraftPresetDesignation ? storedDraft.formData.designation : 'Others',
             customDesignation: !hasDraftPresetDesignation ? storedDraft.formData.designation : (storedDraft.formData.customDesignation || '')
         } : {}),
-        email: storedDraft?.formData?.email || data?.user?.email || fallback.email,
-        organizationName: data?.profile?.organizationName || org.organizationName || regDetails.businessName || data?.user?.name || fallback.organizationName,
-        businessType: data?.profile?.businessType || org.organizationType || resolvedBusinessType,
-        mobile: data?.profile?.mobile || data?.user?.mobile || fallback.mobile,
-        representativeName: data?.profile?.representativeName || data?.user?.name || fallback.representativeName,
+        email: storedDraft?.formData?.email || data?.profile?.email || data?.user?.email || fallback.email,
+        organizationName: data?.profile?.organizationName || org.organizationName || seller.businessName || regDetails.businessName || data?.user?.name || fallback.organizationName,
+        businessType: data?.profile?.businessType || org.organizationType || seller.organizationType || resolvedBusinessType,
+        mobile: data?.profile?.mobile || seller.mobile || data?.user?.mobile || fallback.mobile,
+        representativeName: data?.profile?.representativeName || seller.nameAsInPan || data?.user?.name || fallback.representativeName,
         officeZoneName: data?.profile?.officeZoneName || org.addressLine1 || regDetails.officeZoneName || fallback.officeZoneName,
         aadhaarNumber: data?.profile?.aadhaarNumber || regDetails.aadhaarNumber || fallback.aadhaarNumber,
         aadhaarVerified: data?.profile?.aadhaarVerified || regDetails.isAadhaarVerified || fallback.aadhaarVerified,
@@ -308,9 +309,12 @@ export default function BuyerOnboarding() {
   const sectionParam = searchParams?.get('section');
   const authHeaders = { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } };
   const cachedProfile = api.peek('/api/auth/me', authHeaders);
+  const isStale = !cachedProfile || cachedProfile.user?.role !== 'buyer';
+  const org = !isStale && cachedProfile?.user?.organization || {};
+  const orgVerified = org.verificationStatus === 'VERIFIED';
   const selectedDocs: string[] = user?.registrationDetails?.selectedDocuments || cachedProfile?.user?.registrationDetails?.selectedDocuments || ['panCard', 'regCert', 'addressProof'];
   const initialDraft = readBuyerDraft();
-  const initialFormData = buildBuyerFormData(cachedProfile, initialDraft);
+  const initialFormData = buildBuyerFormData(isStale ? {} : cachedProfile, initialDraft);
   const [activeSection, setActiveSection] = useState(
     initialDraft?.activeSection && SIDEBAR_SECTIONS.some(section => section.id === initialDraft.activeSection)
       ? initialDraft.activeSection
@@ -324,7 +328,7 @@ export default function BuyerOnboarding() {
 
   const [isUploading, setIsUploading] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetching, setIsFetching] = useState(!cachedProfile && !initialDraft?.formData);
+  const [isFetching, setIsFetching] = useState(isStale);
   const [isProfileLocked, setIsProfileLocked] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
   const [isFetchingGst, setIsFetchingGst] = useState(false);
@@ -335,7 +339,7 @@ export default function BuyerOnboarding() {
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
   const initialStatus = getProfileStatus(cachedProfile?.user, cachedProfile?.profile);
   const [onboardingStatus, setOnboardingStatus] = useState(initialStatus || 'pending');
-  const [profileGstVerified, setProfileGstVerified] = useState(Boolean(cachedProfile?.profile?.gstFingerprint || cachedProfile?.profile?.gstMasked));
+  const [profileGstVerified, setProfileGstVerified] = useState(Boolean(cachedProfile?.profile?.gstFingerprint || cachedProfile?.profile?.gstMasked || (orgVerified && org.gstin)));
   const [hasFinalSubmission, setHasFinalSubmission] = useState(hasSubmittedApplication(cachedProfile?.user));
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(shouldShowSubmissionOverlay(cachedProfile?.user, cachedProfile?.profile));
   const isSubmittedOrApproved = shouldLockBuyerProfile({
@@ -353,7 +357,8 @@ export default function BuyerOnboarding() {
     profileGstVerified ||
     Boolean(cachedProfile?.profile?.gstFingerprint) ||
     Boolean(registrationDetails.gstVerified && registrationVerifiedGstin) ||
-    Boolean(profileVerifiedGstin && cachedProfile?.profile?.gstMasked);
+    Boolean(profileVerifiedGstin && cachedProfile?.profile?.gstMasked) ||
+    Boolean(orgVerified && org.gstin);
 
   useEffect(() => {
     const mappedSection = sectionParam ? DASHBOARD_SECTION_TO_BUYER_SECTION[sectionParam] : null;
@@ -399,8 +404,10 @@ export default function BuyerOnboarding() {
         const currentStatus = userRecord.onboardingStatus || 'pending';
         const submitted = hasSubmittedApplication(userRecord);
         const profileLocked = shouldLockBuyerProfile(userRecord, data.profile);
+        const orgRecord = userRecord.organization || {};
+        const orgVerified = orgRecord.verificationStatus === 'VERIFIED';
         setOnboardingStatus(currentStatus);
-        setProfileGstVerified(Boolean(data?.profile?.gstFingerprint || data?.profile?.gstMasked || data?.user?.registrationDetails?.gstVerified));
+        setProfileGstVerified(Boolean(data?.profile?.gstFingerprint || data?.profile?.gstMasked || data?.user?.registrationDetails?.gstVerified || (orgVerified && orgRecord.gstin)));
         setHasFinalSubmission(submitted);
         setIsProfileLocked(profileLocked);
         setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord, data.profile));
@@ -930,10 +937,12 @@ export default function BuyerOnboarding() {
       return { valid: errorFields.length === 0, errorFields };
     }
     if (sectionId === 'docs') {
-      const isMissingPan = selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
-      const isMissingReg = selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
-      const isMissingGst = selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
-      const isMissingAddr = selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
+      const orgRecord = cachedProfile?.user?.organization || {};
+      const orgVerified = orgRecord.verificationStatus === 'VERIFIED';
+      const isMissingPan = !orgVerified && selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
+      const isMissingReg = !orgVerified && selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
+      const isMissingGst = !orgVerified && selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
+      const isMissingAddr = !orgVerified && selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
       const isMissingAuth = selectedDocs.includes('authLetter') && !hasUploadedDocument(formData.documents?.authLetter);
 
       setErrors(prev => ({
@@ -1098,7 +1107,14 @@ export default function BuyerOnboarding() {
 
     if (sectionId === 'docs') {
       if (selectedDocs.length === 0) return false;
-      return selectedDocs.every((docId: string) => hasUploadedDocument(formData.documents?.[docId]));
+      const orgRecord = cachedProfile?.user?.organization || {};
+      const orgVerified = orgRecord.verificationStatus === 'VERIFIED';
+      return selectedDocs.every((docId: string) => {
+        if (orgVerified && ['panCard', 'regCert', 'gstCert', 'addressProof'].includes(docId)) {
+          return true;
+        }
+        return hasUploadedDocument(formData.documents?.[docId]);
+      });
     }
 
     if (sectionId === 'account') {
@@ -1738,7 +1754,9 @@ export default function BuyerOnboarding() {
                         const hasFile = documentFiles.length > 0;
                         const isFieldUploading = isUploading === `documents.${doc.field}`;
                         const displayLabel = isRequired ? `${doc.label} (Required)` : `${doc.label} (Optional)`;
-                        const isInvalid = submitAttempted && isRequired && !hasFile;
+                        const isOrgDoc = ['panCard', 'regCert', 'gstCert', 'addressProof'].includes(doc.field);
+                        const isVerifiedOrgDoc = orgVerified && isOrgDoc;
+                        const isInvalid = submitAttempted && isRequired && !hasFile && !isVerifiedOrgDoc;
 
                         return (
                           <div
@@ -1752,10 +1770,16 @@ export default function BuyerOnboarding() {
                           >
                             <div className="flex items-start justify-between">
                               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{displayLabel}</span>
-                              {isRequired && <span className="text-[8px] font-extrabold uppercase text-red-500 tracking-wider">Required</span>}
+                              {isVerifiedOrgDoc ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-green-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-green-700 border border-green-200">
+                                  <Check className="h-3 w-3" /> Verified Org Document
+                                </span>
+                              ) : isRequired ? (
+                                <span className="text-[8px] font-extrabold uppercase text-red-500 tracking-wider">Required</span>
+                              ) : null}
                             </div>
                             <div className="flex items-center justify-between gap-3">
-                              {!isSubmittedOrApproved && (
+                              {!isSubmittedOrApproved && !isVerifiedOrgDoc && (
                                 <>
                                   <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => handleFileUpload(e, `documents.${doc.field}`)} id={`upload-${doc.field}`} className="hidden" />
                                   <label htmlFor={`upload-${doc.field}`} className="cursor-pointer text-[11px] font-bold text-[#12335f] hover:text-[#12335f] underline">

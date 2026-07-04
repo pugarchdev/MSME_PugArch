@@ -140,12 +140,12 @@ const completedSellerSectionsFromUser = (userRecord: any, profileRecord: any) =>
   return completedSellerSectionsFromStatus(userRecord?.sectionStatus);
 };
 
-const inferCompletedSellerSections = (profile: any) => {
+const inferCompletedSellerSections = (profile: any, orgVerified = false) => {
   const completed = new Set<string>();
-  if (profile?.panVerified) completed.add('pan');
-  if (profile?.detailsUpdated) completed.add('details');
+  if (profile?.panVerified || orgVerified) completed.add('pan');
+  if (profile?.detailsUpdated || orgVerified) completed.add('details');
   if (profile?.isStartup || profile?.isUdyamCertified || profile?.participateInBid || profile?.msmeType || profile?.vendorType) completed.add('additional');
-  if (hasItems(profile?.offices)) completed.add('offices');
+  if (hasItems(profile?.offices) || orgVerified) completed.add('offices');
   if (hasItems(profile?.bankAccounts)) completed.add('bank');
   if (profile?.ownershipDeclarationAccepted || profile?.ownershipVerified) completed.add('ownership');
   return Array.from(completed);
@@ -157,8 +157,10 @@ export default function SellerOnboarding() {
   const getAuthHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
 
   const cachedMe = api.peek('/api/auth/me', { headers: getAuthHeaders() });
-  const cachedProfile = cachedMe?.profile || {};
-  const cachedRegDetails = cachedMe?.user?.registrationDetails || {};
+  const isStale = !cachedMe || cachedMe.user?.role !== 'seller';
+  const cachedProfile = isStale ? {} : (cachedMe?.profile || {});
+  const cachedRegDetails = isStale ? {} : (cachedMe?.user?.registrationDetails || {});
+  const orgVerified = !isStale && cachedMe?.user?.organization?.verificationStatus === 'VERIFIED';
   const router = useRouter();
   const sectionParam = searchParams?.get('section');
 
@@ -169,9 +171,9 @@ export default function SellerOnboarding() {
   const [officeSortKey, setOfficeSortKey] = useState<'name' | 'address' | 'gst'>('name');
   const [bankSortKey, setBankSortKey] = useState<'ifsc' | 'bankName' | 'accountNumber' | 'holderName' | 'pfms' | 'primary'>('bankName');
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetching, setIsFetching] = useState(!cachedMe);
+  const [isFetching, setIsFetching] = useState(isStale);
   const initialSavedSections = Array.from(new Set([
-    ...inferCompletedSellerSections(cachedProfile),
+    ...inferCompletedSellerSections(cachedProfile, orgVerified),
     ...completedSellerSectionsFromUser(cachedMe?.user, cachedProfile)
   ]));
   const [savedSections, setSavedSections] = useState<string[]>(initialSavedSections);
@@ -336,6 +338,8 @@ export default function SellerOnboarding() {
     return {
       ...sellerFormDefaults,
       ...cachedProfile,
+      panVerified: cachedProfile.panVerified || orgVerified,
+      detailsUpdated: cachedProfile.detailsUpdated || orgVerified,
       organizationType: cachedProfile.organizationType || cachedOrg.organizationType || cachedRegDetails.businessType || 'Proprietorship',
       businessName: cachedProfile.businessName || cachedOrg.organizationName || cachedRegDetails.businessName || cachedMe?.user?.name || '',
       nameAsInPan: cachedProfile.nameAsInPan || cachedOrg.organizationName || cachedRegDetails.businessName || cachedMe?.user?.name || '',
@@ -462,8 +466,13 @@ export default function SellerOnboarding() {
   const areAllDocumentsUploaded = useCallback(() => {
     const required = getRequiredDocuments();
     const uploadedTypes = sellerDocuments.map((d: any) => d.documentType);
-    return required.filter(doc => doc.required).every(reqDoc => uploadedTypes.includes(reqDoc.id));
-  }, [getRequiredDocuments, sellerDocuments]);
+    return required.filter(doc => doc.required).every(reqDoc => {
+      if (orgVerified && ['pan_copy', 'gst_certificate', 'address_proof', 'business_registration_proof'].includes(reqDoc.id)) {
+        return true;
+      }
+      return uploadedTypes.includes(reqDoc.id);
+    });
+  }, [getRequiredDocuments, sellerDocuments, orgVerified]);
 
   const submittedOnboardingDocuments = useMemo(() => {
     const allDocIds = new Set(getRequiredDocuments().map(doc => doc.id));
@@ -519,9 +528,11 @@ export default function SellerOnboarding() {
       setRegDetails(regDetails);
       setSellerDocuments(profile.sellerDocuments || []);
 
+      const org = data.user?.organization || {};
+      const orgVerified = org.verificationStatus === 'VERIFIED';
       const serverCompletedSections = completedSellerSectionsFromUser(data.user, profile);
 
-      const inferredSections = inferCompletedSellerSections(profile);
+      const inferredSections = inferCompletedSellerSections(profile, orgVerified);
       setSavedSections(Array.from(new Set([...inferredSections, ...serverCompletedSections])));
       const userRecord = data.user || {};
       const currentStatus = getProfileStatus(userRecord, profile);
@@ -529,11 +540,12 @@ export default function SellerOnboarding() {
       setIsProfileLocked(shouldLockSellerProfile(userRecord, profile));
       setShowSuccessOverlay(shouldShowSubmissionOverlay(userRecord, profile));
 
-      const org = data.user?.organization || {};
       const hasAdditionalCompleted = data.user?.sectionStatus?.additional === 'completed' || data.user?.sectionStatus?.additional === 'approved';
       setFormData((prev: any) => ({
         ...prev,
         ...profile,
+        panVerified: profile.panVerified || orgVerified,
+        detailsUpdated: profile.detailsUpdated || orgVerified,
         organizationType: profile.organizationType || org.organizationType || regDetails.businessType || prev.organizationType,
         businessName: profile.businessName || org.organizationName || regDetails.businessName || data.user?.name || prev.businessName,
         nameAsInPan: profile.nameAsInPan || org.organizationName || regDetails.businessName || data.user?.name || prev.nameAsInPan || '',
@@ -2106,7 +2118,9 @@ export default function SellerOnboarding() {
                           const uploadedDoc = submittedOnboardingDocuments.find((d: any) => d.documentType === doc.id);
                           const fileAsset = uploadedDoc?.fileAsset;
                           const isUploading = isUploadingMap[doc.id];
-                          const status = uploadedDoc?.verificationStatus || 'NOT_UPLOADED'; // PENDING, APPROVED, REJECTED, NOT_UPLOADED
+                          const status = (orgVerified && ['pan_copy', 'gst_certificate', 'address_proof', 'business_registration_proof'].includes(doc.id))
+                            ? 'APPROVED'
+                            : (uploadedDoc?.verificationStatus || 'NOT_UPLOADED'); // PENDING, APPROVED, REJECTED, NOT_UPLOADED
                           const remarks = uploadedDoc?.remarks;
                           const isRequired = Boolean(doc.required);
 

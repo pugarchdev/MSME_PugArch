@@ -1564,15 +1564,16 @@ export const authController = {
       const currentSectionStatus = asObject(user.sectionStatus);
       const updatedSectionStatus = { ...currentSectionStatus };
       if (createdProfile) {
+        const orgVerified = org.verificationStatus === 'VERIFIED';
         if (roleToActivate === 'seller') {
           const sellerSections = ['pan', 'details', 'additional', 'offices', 'bank', 'ownership', 'documents'];
           for (const sec of sellerSections) {
-            updatedSectionStatus[sec] = 'pending';
+            updatedSectionStatus[sec] = orgVerified && ['pan', 'details', 'offices'].includes(sec) ? 'completed' : 'pending';
           }
         } else if (roleToActivate === 'buyer') {
           const buyerSections = ['org', 'rep', 'address', 'procurement', 'docs'];
           for (const sec of buyerSections) {
-            updatedSectionStatus[sec] = 'pending';
+            updatedSectionStatus[sec] = orgVerified && ['org', 'address'].includes(sec) ? 'completed' : 'pending';
           }
         }
         updatedSectionStatus.submitted = false;

@@ -494,15 +494,15 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       { label: 'Messages', path: '/buyer/messages', icon: MessageSquare, roles: ['buyer'] },
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
-    { label: 'Procurement Sourcing', icon: FileSearch, roles: ['seller'], children: [
-      { label: 'Unified Sourcing Hub', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
-      { label: 'Marketplace Sourcing Leads', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
-      { label: 'Unified Sourcing Events', path: '/seller/procurement/events', icon: ClipboardList, roles: ['seller'] },
-      { label: 'Invited Sourcing Events', path: '/seller/procurement/events?filter=invited', icon: UserCheck, roles: ['seller'] },
-      { label: 'My Submissions', path: '/quotations', icon: ClipboardCheck, roles: ['seller'] },
+    { label: 'Bids & Tenders', icon: FileSearch, roles: ['seller'], children: [
+      { label: 'Bidding Dashboard', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
+      { label: 'Bidding Opportunities', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
+      { label: 'All Bids & Tenders', path: '/seller/procurement/events', icon: ClipboardList, roles: ['seller'] },
+      { label: 'Invited Bids', path: '/seller/procurement/events?filter=invited', icon: UserCheck, roles: ['seller'] },
+      { label: 'Submitted Bids', path: '/quotations', icon: ClipboardCheck, roles: ['seller'] },
       { label: 'Clarifications', path: '/seller/procurement/events?filter=clarifications', icon: MessageSquare, roles: ['seller'] },
       { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['seller'] },
-      { label: 'Legacy/Public Tenders', path: '/seller/tenders', icon: Globe, roles: ['seller'] },
+      { label: 'Public Tenders', path: '/seller/tenders', icon: Globe, roles: ['seller'] },
     ] },
     { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
     { label: 'Orders & Deliveries', icon: Truck, roles: ['seller'], children: [
@@ -719,6 +719,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [roleAction, setRoleAction] = useState<'buyer' | 'seller' | null>(null);
+  const [pendingActivateRole, setPendingActivateRole] = useState<'buyer' | 'seller' | null>(null);
 
   const isShgAccount = isShgUser(user);
   const displayRole = isShgAccount ? 'SHG' : user?.role || 'user';
@@ -1142,7 +1143,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
                       <button
                         onClick={() => {
                           setIsProfileDropdownOpen(false);
-                          handleActivateRole(user?.role === 'seller' ? 'buyer' : 'seller');
+                          setPendingActivateRole(user?.role === 'seller' ? 'buyer' : 'seller');
                         }}
                         disabled={Boolean(roleAction)}
                         className="w-full text-left px-4 py-2.5 text-sm font-bold text-amber-700 hover:bg-amber-50 hover:text-amber-800 transition-colors flex items-center gap-2"
@@ -1179,6 +1180,42 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
           </div>
         </div>
       </div>
+      {pendingActivateRole && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 flex flex-col items-center text-center space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">
+                Complete Onboarding Process
+              </h3>
+              <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                For accessing the {pendingActivateRole} portal, complete the onboarding process.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full pt-2">
+              <Button
+                onClick={() => {
+                  const role = pendingActivateRole;
+                  setPendingActivateRole(null);
+                  handleActivateRole(role);
+                }}
+                className="w-full bg-[#12335f] hover:bg-[#0b2445] text-white rounded h-10 px-4 font-bold uppercase text-[11px] tracking-wide transition-all"
+              >
+                Complete Onboarding
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setPendingActivateRole(null)}
+                className="w-full border-slate-200 hover:bg-slate-50 rounded h-10 px-4 font-bold uppercase text-[11px] tracking-wide text-slate-750 transition-all text-slate-700"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

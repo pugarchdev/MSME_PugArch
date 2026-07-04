@@ -129,16 +129,23 @@ export default function SellerEventListPage() {
     return <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-650 border border-slate-200 text-[9px] font-bold">PENDING</span>;
   };
 
+  const isInvitedFilter = filterParam === 'invited';
+  const pageTitle = isInvitedFilter ? 'Invited Bids & Tenders' : 'Bids & Tenders Portal';
+  const pageLabel = isInvitedFilter ? 'Invited Bids' : 'All Bids & Tenders';
+  const pageDesc = isInvitedFilter 
+    ? 'Procurement bids and auctions where your organization has been explicitly invited by the buyer.'
+    : 'Live procurement bids, RFQs, RFPs, reverse auctions, and rate contracts open for participation.';
+
   return (
     <div className="mx-auto max-w-7xl space-y-4 pb-12">
       {/* Header Panel */}
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Unified Sourcing Events</p>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950">Unified Procurement Sourcing</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">{pageLabel}</p>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">{pageTitle}</h1>
             <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">
-              Live wizard-created events, RFQs, RFPs, reverse auctions, and rate contracts open for participation.
+              {pageDesc}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -155,7 +162,7 @@ export default function SellerEventListPage() {
       {/* Filters Panel */}
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center gap-1.5 pl-0.5 text-xs font-bold text-slate-700">
-          <Filter className="h-4 w-4 text-[#12335f]" /> Filter Events
+          <Filter className="h-4 w-4 text-[#12335f]" /> Filter Bids & Tenders
         </div>
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
           <div className="relative">
@@ -192,7 +199,7 @@ export default function SellerEventListPage() {
             className="h-10 rounded-md border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#12335f]"
           >
             <option value="">All Submissions</option>
-            <option value="invited">Invited Events</option>
+            <option value="invited">Invited Bids</option>
             <option value="submitted">Submitted Only</option>
           </select>
 
@@ -208,7 +215,7 @@ export default function SellerEventListPage() {
 
         <div className="flex items-center justify-between pt-1">
           <p className="text-[10px] font-bold text-slate-500">
-            Showing {filteredBids.length} of {bids.length} events found.
+            Showing {filteredBids.length} of {bids.length} bids & tenders found.
           </p>
           <Button type="button" variant="ghost" onClick={resetFilters} className="h-8 px-3 text-xs text-rose-600 hover:text-rose-700 font-bold">
             Reset Filters
@@ -216,12 +223,12 @@ export default function SellerEventListPage() {
         </div>
       </div>
 
-      {/* Events Table */}
+      {/* Bids & Tenders Table */}
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-8 text-center space-y-2">
             <RefreshCw className="h-6 w-6 animate-spin mx-auto text-[#12335f]" />
-            <p className="text-xs text-slate-500 font-bold">Loading events list...</p>
+            <p className="text-xs text-slate-500 font-bold">Loading bids & tenders...</p>
           </div>
         ) : error ? (
           <div className="p-8 text-center text-rose-600 font-bold text-xs">{error}</div>
@@ -238,12 +245,12 @@ export default function SellerEventListPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-150 bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-3">Event Number</th>
+                  <th className="px-4 py-3">Bid / Tender ID</th>
                   <th className="px-4 py-3">Title & Org</th>
                   <th className="px-4 py-3">Method</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Deadline</th>
-                  <th className="px-4 py-3">Event Status</th>
+                  <th className="px-4 py-3">Tender Status</th>
                   <th className="px-4 py-3">My Status</th>
                   <th className="px-4 py-3 text-center">Action</th>
                 </tr>

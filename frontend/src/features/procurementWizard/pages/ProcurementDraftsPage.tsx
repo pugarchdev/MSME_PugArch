@@ -34,6 +34,7 @@ import { procurementWizardApi, fetchProcurementDrafts, deleteProcurementDraft } 
 import { bidWizardApi } from '../../bidCreationWizardV2/api';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
+import { formatDate } from '../../shared/format';
 
 
 
@@ -728,7 +729,7 @@ export default function ProcurementDraftsPage() {
                       <DraftMetric label="Estimated Value" value={selectedDraft.estimatedValue ? formatCurrency(selectedDraft.estimatedValue) : '-'} />
                       <DraftMetric label="Quantity" value={[selectedDraft.quantity, selectedDraft.unit].filter(Boolean).join(' ') || '-'} />
                       <DraftMetric label="Delivery Location" value={selectedDraft.deliveryLocation || '-'} />
-                      <DraftMetric label="Required Date" value={selectedDraft.requiredDeliveryDate || '-'} />
+                      <DraftMetric label="Required Date" value={selectedDraft.requiredDeliveryDate ? formatDate(selectedDraft.requiredDeliveryDate) : '-'} />
                       <DraftMetric label="Type" value={selectedDraft.isLocal ? 'Local Browser Cache' : 'Database Server Draft'} />
                     </div>
                     <div className="border-t border-slate-200 p-5">
@@ -859,7 +860,7 @@ function DraftDetailDialog({
           <DetailRow icon={IndianRupee} label="Estimated Value" value={d.estimatedValue ? formatCurrency(d.estimatedValue) : undefined} />
           <DetailRow icon={Layers} label="Quantity" value={[d.quantity, d.unit].filter(Boolean).join(' ') || undefined} />
           <DetailRow icon={MapPin} label="Delivery Location" value={d.deliveryLocation} />
-          <DetailRow icon={CalendarDays} label="Required Date" value={d.requiredDeliveryDate} />
+          <DetailRow icon={CalendarDays} label="Required Date" value={d.requiredDeliveryDate ? formatDate(d.requiredDeliveryDate) : undefined} />
           <DetailRow icon={Info} label="Specifications snapshot" value={d.specifications} />
           {d.specificationDocumentName && (
             <DetailRow icon={FileText} label="Specification Document" value={d.specificationDocumentName} />

@@ -496,10 +496,24 @@ export default function CreateProcurementPage() {
       .then((res) => {
         const payload = res?.payload;
         if (!payload) return;
+
+        const base = defaultDraft(payload.type || 'RFQ', payload.basics?.buyerType || initialBuyerType);
+
         setDraft({
-          ...defaultDraft(payload.type || 'RFQ', payload.basics?.buyerType || initialBuyerType),
+          ...base,
           ...payload,
           id: res.id,
+          basics: { ...base.basics, ...(payload.basics || {}) },
+          internal: { ...base.internal, ...(payload.internal || {}) },
+          serviceDetails: { ...base.serviceDetails, ...(payload.serviceDetails || {}) },
+          vendors: { ...base.vendors, ...(payload.vendors || {}) },
+          schedule: { ...base.schedule, ...(payload.schedule || {}) },
+          terms: { ...base.terms, ...(payload.terms || {}) },
+          evaluation: { ...base.evaluation, ...(payload.evaluation || {}) },
+          approval: { ...base.approval, ...(payload.approval || {}) },
+          items: Array.isArray(payload.items) ? payload.items : base.items,
+          boqTable: Array.isArray(payload.boqTable) ? payload.boqTable : base.boqTable,
+          requiredDocs: Array.isArray(payload.requiredDocs) ? payload.requiredDocs : base.requiredDocs,
         });
         setActiveStep(res.draftStep || 0);
       })

@@ -1513,59 +1513,136 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                             )}
 
                             {/* Section 7: Items from payload */}
-                            {payloadItems && payloadItems.length > 0 && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
-                                    <SectionTitle>📦 Line Items ({payloadItems.length})</SectionTitle>
-                                    <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
-                                        <table className="w-full text-xs">
-                                            <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
-                                                <tr>
-                                                    <th className="px-3 py-2 text-left">Item</th>
-                                                    <th className="px-3 py-2 text-left w-20">Qty</th>
-                                                    <th className="px-3 py-2 text-left w-20">Unit</th>
-                                                    <th className="px-3 py-2 text-right w-28">Unit Price</th>
-                                                    <th className="px-3 py-2 text-right w-20">GST%</th>
-                                                    <th className="px-3 py-2 text-right w-28">Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {payloadItems.map((item, idx) => {
-                                                    const qty = Number(item.quantity || 0);
-                                                    const price = Number(item.unitPrice || 0);
-                                                    const gst = Number(item.gst || 0);
-                                                    const lineTotal = qty * price * (1 + gst / 100);
-                                                    return (
-                                                        <tr key={idx} className="hover:bg-slate-50/60">
-                                                            <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
-                                                                {item.name || 'Unnamed'}
-                                                                {(item.specification || item.technicalSpecification) && (
-                                                                    <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">
-                                                                        {item.specification || item.technicalSpecification}
-                                                                    </p>
-                                                                )}
-                                                                {item.brandPolicy && (
-                                                                    <p className="mt-0.5 text-[9px] font-bold text-indigo-500">Brand: {item.brandPolicy}</p>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
-                                                            <td className="px-3 py-2 font-bold text-slate-700">{item.unit}</td>
-                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(price)}</td>
-                                                            <td className="px-3 py-2 text-right font-bold text-slate-700">{gst > 0 ? `${gst}%` : '-'}</td>
-                                                            <td className="px-3 py-2 text-right font-black text-slate-900">{formatCurrency(lineTotal)}</td>
+                            {payloadItems && payloadItems.length > 0 && (() => {
+                                const isBOQ = payload?.basics?.whatAreYouBuying === 'BOQ';
+                                if (isBOQ) {
+                                    return (
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                            <SectionTitle>📦 Line Items ({payloadItems.length})</SectionTitle>
+                                            <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left">Item</th>
+                                                            <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                            <th className="px-3 py-2 text-left w-20">Unit</th>
+                                                            <th className="px-3 py-2 text-right w-28">Unit Price</th>
+                                                            <th className="px-3 py-2 text-right w-20">GST%</th>
+                                                            <th className="px-3 py-2 text-right w-28">Total</th>
                                                         </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                                                <tr>
-                                                    <td colSpan={5} className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Grand Total</td>
-                                                    <td className="px-3 py-2 text-right text-sm font-black text-[#12335f]">{formatCurrency(requirement.estimatedValue)}</td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {payloadItems.map((item, idx) => {
+                                                            const qty = Number(item.quantity || 0);
+                                                            const price = Number(item.unitPrice || item.estimatedUnitPrice || 0);
+                                                            const gst = Number(item.gst || 0);
+                                                            const lineTotal = qty * price * (1 + gst / 100);
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-slate-50/60 animate-fadeIn">
+                                                                    <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                        {item.name || item.itemName || 'Unnamed'}
+                                                                        {(item.specification || item.technicalSpecification || item.description) && (
+                                                                            <p className="mt-0.5 text-[10px] font-semibold text-slate-500 text-wrap-anywhere">
+                                                                                {item.specification || item.technicalSpecification || item.description}
+                                                                            </p>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 font-bold text-slate-900">{qty}</td>
+                                                                    <td className="px-3 py-2 font-bold text-slate-700">{item.unit || item.unitOfMeasure}</td>
+                                                                    <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(price)}</td>
+                                                                    <td className="px-3 py-2 text-right font-bold text-slate-700">{gst > 0 ? `${gst}%` : '-'}</td>
+                                                                    <td className="px-3 py-2 text-right font-black text-slate-900">{formatCurrency(lineTotal)}</td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                                                        <tr>
+                                                            <td colSpan={5} className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Grand Total</td>
+                                                            <td className="px-3 py-2 text-right text-sm font-black text-[#12335f]">{formatCurrency(requirement.estimatedValue)}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                } else {
+                                    return (
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
+                                            <SectionTitle>📦 Line Items ({payloadItems.length})</SectionTitle>
+                                            <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left">Item Name</th>
+                                                            <th className="px-3 py-2 text-left">Description</th>
+                                                            <th className="px-3 py-2 text-left w-16">Qty</th>
+                                                            <th className="px-3 py-2 text-left w-16">Unit</th>
+                                                            <th className="px-3 py-2 text-left w-24">HSN/SAC</th>
+                                                            <th className="px-3 py-2 text-left w-28">Pref. Brand</th>
+                                                            <th className="px-3 py-2 text-left w-20">Flexible?</th>
+                                                            <th className="px-3 py-2 text-left w-36">Technical Specs</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {payloadItems.map((item, idx) => {
+                                                            const hsn = item.hsn_sac_code || item.specifications?.hsn_sac_code || '—';
+                                                            const brandPref = item.brand_preference || item.specifications?.brand_preference || '—';
+                                                            const brandFlex = item.brand_flexible || item.specifications?.brand_flexible || 'Yes';
+                                                            const specFile = item.specificationFileName || item.specifications?.specificationFileName || '';
+                                                            const fileId = item.fileAssetId || item.specifications?.fileAssetId || null;
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-slate-50/60 align-middle">
+                                                                    <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
+                                                                        {item.name || item.itemName || 'Unnamed'}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-slate-500 text-wrap-anywhere font-medium">
+                                                                        {item.specification || item.description || '—'}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 font-bold text-slate-900">{item.quantity}</td>
+                                                                    <td className="px-3 py-2 font-bold text-slate-700">{item.unit || item.unitOfMeasure}</td>
+                                                                    <td className="px-3 py-2 font-medium text-slate-500">{hsn}</td>
+                                                                    <td className="px-3 py-2 font-medium text-slate-750">{brandPref}</td>
+                                                                    <td className="px-3 py-2 font-bold">
+                                                                        {brandFlex === 'No' ? (
+                                                                            <span className="text-amber-605 bg-amber-50/10 border border-amber-200/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-black">No</span>
+                                                                        ) : (
+                                                                            <span className="text-emerald-700 bg-emerald-50/10 border border-emerald-250/20 px-1.5 py-0.5 rounded text-[9px] uppercase font-black">Yes</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-3 py-2">
+                                                                        {specFile && fileId ? (
+                                                                            <a
+                                                                                href={`/api/files/${fileId}/view`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="inline-flex items-center text-[#12335f] hover:underline gap-1 text-[11px] font-bold"
+                                                                            >
+                                                                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                                                                <span className="truncate max-w-[120px]" title={specFile}>
+                                                                                    {specFile}
+                                                                                </span>
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span className="text-slate-400">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                    <tfoot className="bg-slate-50 border-t border-slate-200">
+                                                        <tr>
+                                                            <td colSpan={7} className="px-3 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Estimated Sourcing Budget</td>
+                                                            <td className="px-3 py-2.5 text-right text-xs font-black text-[#12335f]">{formatCurrency(requirement.estimatedValue)}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                            })()}
 
                             {/* Section 8: Consignee Allocation */}
                             {payloadConsignees && payloadConsignees.length > 0 && payloadConsignees.some(c => c.name || c.location) && (

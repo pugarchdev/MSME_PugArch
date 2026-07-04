@@ -20,7 +20,8 @@ import {
   BadgeCheck,
   ArrowRight,
   ChevronRight,
-  Info
+  Info,
+  Trash2
 } from 'lucide-react';
 
 import { Button } from '../../../components/ui/button';
@@ -34,6 +35,8 @@ import {
   saveProcurementDraft,
   submitProcurementDraft
 } from '../api';
+import { api } from '../../../lib/api';
+import { authHeaders, unwrap } from '../../shared/apiClient';
 import { fetchDeliveryAddresses, createDeliveryAddress, type DeliveryAddressDto } from '../../directPurchase/api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { Input } from '../../../components/ui/input';
@@ -84,6 +87,9 @@ type ItemRow = {
   technicalSpecification: string;
   specificationFileName: string;
   fileAssetId?: number | null;
+  hsn_sac_code?: string;
+  brand_preference?: string;
+  brand_flexible?: string;
 };
 
 type DocumentRow = {
@@ -321,21 +327,7 @@ const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 
     justification: '',
     budgetConfirmed: false,
   },
-  items: [
-    {
-      id: makeId(),
-      name: '',
-      specification: '',
-      quantity: 1,
-      unit: 'Nos',
-      unitPrice: 0,
-      gst: 18,
-      deliveryDate: nextFortnight,
-      brandPolicy: 'Equivalent allowed',
-      technicalSpecification: '',
-      specificationFileName: '',
-    },
-  ],
+  items: [],
   serviceDetails: {
     serviceTitle: '',
     scopeOfWork: '',
@@ -2077,6 +2069,33 @@ function InternalDetailsForm({
           </div>
         </label>
       </div>
+
+      {/* Guidance Note Section */}
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+        <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+          <Info className="h-3.5 w-3.5 text-[#12335f]" /> Guidance on Accounting Codes & Project References
+        </h4>
+        <div className="grid gap-4 md:grid-cols-3 text-[11px] text-slate-600 font-medium leading-relaxed">
+          <div className="space-y-1">
+            <span className="font-bold text-slate-800 uppercase text-[9px] tracking-wide block">Cost Center *</span>
+            <p>
+              An internal unit or department code (e.g., <code className="bg-slate-100/80 px-1 py-0.5 rounded text-slate-700 font-semibold">CC-MKTG-102</code>) responsible for the expense. Required for ERP routing and tracking department-level spending.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <span className="font-bold text-slate-800 uppercase text-[9px] tracking-wide block">Budget Head / Code</span>
+            <p>
+              The specific budget category or ledger line item (e.g., <code className="bg-slate-100/80 px-1 py-0.5 rounded text-slate-700 font-semibold">BH-CAPEX-IT</code>) to deduct funds from. Standard for category-wise limit control.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <span className="font-bold text-slate-800 uppercase text-[9px] tracking-wide block">Project Code Reference</span>
+            <p>
+              The unique code for a temporary project or initiative (e.g., <code className="bg-slate-100/80 px-1 py-0.5 rounded text-slate-700 font-semibold">PROJ-2026-CLOUD</code>). Used to aggregate and monitor total project expenditure.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2100,6 +2119,101 @@ function ItemsDetailsForm({
   setSelectedItemForEdit: (item: ItemRow | null) => void;
 }) {
   const whatBuying = draft.basics.whatAreYouBuying;
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const handleSaveItemWithValidation = (item: ItemRow) => {
+    const errs: Record<string, string> = {};
+    if (!item.name.trim()) {
+      errs.name = 'Item Name is required';
+    } else if (item.name.length > 150) {
+      errs.name = 'Item Name must be at most 150 characters';
+    }
+
+    if (!item.specification.trim()) {
+      errs.specification = 'Item Description is required';
+    } else if (item.specification.length > 500) {
+      errs.specification = 'Item Description must be at most 500 characters';
+    }
+
+    const qty = Number(item.quantity);
+    if (!item.quantity || isNaN(qty) || qty <= 0 || !Number.isInteger(qty)) {
+      errs.quantity = 'Quantity must be a positive integer';
+    } else if (String(qty).length > 9) {
+      errs.quantity = 'Quantity must be at most 9 digits';
+    }
+
+    if (!item.unit) {
+      errs.unit = 'Unit is required';
+    }
+
+    if (item.hsn_sac_code) {
+      if (!/^\d+$/.test(item.hsn_sac_code)) {
+        errs.hsn_sac_code = 'HSN/SAC Code must contain digits only';
+      } else if (item.hsn_sac_code.length > 10) {
+        errs.hsn_sac_code = 'HSN/SAC Code must be at most 10 digits';
+      }
+    }
+
+    if (item.brand_preference && item.brand_preference.length > 100) {
+      errs.brand_preference = 'Preferred Brand must be at most 100 characters';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setValidationErrors(errs);
+      toast.error('Please fix validation errors before saving.');
+      return;
+    }
+
+    setValidationErrors({});
+    handleSaveItem(item);
+  };
+
+  const handleItemFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+    const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!allowedExtensions.includes(extension)) {
+      toast.error('Invalid file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, JPEG');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be 5MB or less');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entityType', 'procurement_draft');
+      const response = await api.fetch('/api/files/upload', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+      });
+      const resData = await unwrap<any>(response);
+      const asset = resData.file || resData;
+      const fileId = Number(resData.fileId || asset.id || 0);
+
+      if (selectedItemForEdit) {
+        setSelectedItemForEdit({
+          ...selectedItemForEdit,
+          fileAssetId: fileId,
+          specificationFileName: asset.originalName || file.name
+        });
+      }
+      toast.success('Technical Specs uploaded successfully');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to upload file');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   // Item list handlers
   const handleSaveItem = (item: ItemRow) => {
@@ -2111,11 +2225,9 @@ function ItemsDetailsForm({
       } else {
         nextItems.push(item);
       }
-      const totalSum = nextItems.reduce((acc, row) => acc + (row.quantity * row.unitPrice), 0);
       return {
         ...current,
-        items: nextItems,
-        basics: { ...current.basics, estimatedValue: totalSum }
+        items: nextItems
       };
     });
     toast.success('Item details saved');
@@ -2136,6 +2248,10 @@ function ItemsDetailsForm({
       brandPolicy: 'Equivalent allowed',
       technicalSpecification: '',
       specificationFileName: '',
+      hsn_sac_code: '',
+      brand_preference: '',
+      brand_flexible: 'Yes',
+      fileAssetId: null,
     });
     setShowItemDrawer(true);
   };
@@ -2143,11 +2259,9 @@ function ItemsDetailsForm({
   const handleRemoveItem = (id: string) => {
     updateDraft(current => {
       const nextItems = current.items.filter(item => item.id !== id);
-      const totalSum = nextItems.reduce((acc, row) => acc + (row.quantity * row.unitPrice), 0);
       return {
         ...current,
-        items: nextItems,
-        basics: { ...current.basics, estimatedValue: totalSum }
+        items: nextItems
       };
     });
   };
@@ -2363,51 +2477,86 @@ function ItemsDetailsForm({
           <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-3 py-2.5">Item Name</th>
-              <th className="px-3 py-2.5">Specifications</th>
+              <th className="px-3 py-2.5">Description</th>
               <th className="px-3 py-2.5 w-24">Quantity</th>
               <th className="px-3 py-2.5 w-24">Unit</th>
-              <th className="px-3 py-2.5 w-28">Est Price (INR)</th>
-              <th className="px-3 py-2.5 w-20">GST %</th>
-              <th className="px-3 py-2.5 w-32 text-right">Landed Total</th>
-              <th className="px-3 py-2.5 w-28 text-right">Action</th>
+              <th className="px-3 py-2.5 w-28">HSN/SAC</th>
+              <th className="px-3 py-2.5 w-32">Pref. Brand</th>
+              <th className="px-3 py-2.5 w-24">Flexible?</th>
+              <th className="px-3 py-2.5 w-36">Technical Specs</th>
+              <th className="px-3 py-2.5 w-24 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-            {draft.items.map(item => {
-              const itemTotal = item.quantity * item.unitPrice * (1 + item.gst / 100);
-              return (
-                <tr key={item.id} className="align-middle hover:bg-slate-50/50">
-                  <td className="px-3 py-3 font-extrabold text-slate-900">{item.name || <span className="text-rose-500">Unnamed Item</span>}</td>
-                  <td className="px-3 py-3 text-slate-450 truncate max-w-[200px] font-medium">{item.specification || 'No spec set'}</td>
-                  <td className="px-3 py-3">{item.quantity}</td>
-                  <td className="px-3 py-3">{item.unit}</td>
-                  <td className="px-3 py-3">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.unitPrice)}</td>
-                  <td className="px-3 py-3">{item.gst}%</td>
-                  <td className="px-3 py-3 text-right font-black text-slate-900">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(itemTotal)}</td>
-                  <td className="px-3 py-3 text-right space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedItemForEdit(item);
-                        setShowItemDrawer(true);
-                      }}
-                      className="text-[#12335f] hover:underline text-[10px] uppercase font-bold"
-                    >
-                      Edit
-                    </button>
-                    <span className="text-slate-200">|</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItem(item.id)}
-                      disabled={draft.items.length === 1}
-                      className="text-rose-500 hover:underline text-[10px] uppercase font-bold disabled:opacity-40"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {draft.items.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <Package className="h-8 w-8 text-slate-350" />
+                    <p className="text-xs font-bold text-slate-500">No items added yet</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">Click the &quot;Add Product Item&quot; button above to specify your procurement items.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              draft.items.map(item => {
+                return (
+                  <tr key={item.id} className="align-middle hover:bg-slate-50/50">
+                    <td className="px-3 py-3 font-extrabold text-slate-900">{item.name || <span className="text-rose-500">Unnamed Item</span>}</td>
+                    <td className="px-3 py-3 text-slate-450 truncate max-w-[180px] font-medium" title={item.specification}>{item.specification || 'No spec set'}</td>
+                    <td className="px-3 py-3">{item.quantity}</td>
+                    <td className="px-3 py-3">{item.unit}</td>
+                    <td className="px-3 py-3 font-medium text-slate-500">{item.hsn_sac_code || '—'}</td>
+                    <td className="px-3 py-3 font-medium text-slate-700">{item.brand_preference || '—'}</td>
+                    <td className="px-3 py-3 font-bold">
+                      {item.brand_flexible === 'No' ? (
+                        <span className="text-amber-600 bg-amber-50/10 border border-amber-200/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-black">No</span>
+                      ) : (
+                        <span className="text-emerald-750 bg-emerald-50/10 border border-emerald-250/20 px-1.5 py-0.5 rounded text-[9px] uppercase font-black">Yes</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {item.specificationFileName ? (
+                        <a
+                          href={`/api/files/${item.fileAssetId}/view`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-[#12335f] hover:underline gap-1 text-[11px] font-bold"
+                        >
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate max-w-[80px]" title={item.specificationFileName}>
+                            {item.specificationFileName}
+                          </span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedItemForEdit(item);
+                          setValidationErrors({});
+                          setShowItemDrawer(true);
+                        }}
+                        className="text-[#12335f] hover:underline text-[10px] uppercase font-bold"
+                      >
+                        Edit
+                      </button>
+                      <span className="text-slate-200">|</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.id)}
+                        className="text-rose-500 hover:underline text-[10px] uppercase font-bold"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -2421,7 +2570,7 @@ function ItemsDetailsForm({
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex justify-end z-[9999]">
           <div className="w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-5">
                 <h3 className="text-sm font-black text-slate-950 uppercase tracking-wide">Item Specifications</h3>
                 <button type="button" onClick={() => setShowItemDrawer(false)} className="p-1 rounded-full hover:bg-slate-50"><X className="h-5 w-5" /></button>
               </div>
@@ -2430,20 +2579,34 @@ function ItemsDetailsForm({
                 <Field label="Item / Product Name" required>
                   <input
                     value={selectedItemForEdit.name}
-                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, name: e.target.value })}
-                    className={inputClass}
-                    placeholder="Laptop, Steel rod..."
+                    onChange={e => {
+                      setSelectedItemForEdit({ ...selectedItemForEdit, name: e.target.value });
+                      if (validationErrors.name) setValidationErrors(prev => ({ ...prev, name: '' }));
+                    }}
+                    className={cn(inputClass, validationErrors.name && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
+                    placeholder="Dell Latitude 7440, Office Desk, etc."
+                    maxLength={150}
                   />
+                  {validationErrors.name && (
+                    <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.name}</p>
+                  )}
                 </Field>
 
-                <Field label="Technical Description" required>
+                <Field label="Item Description specs / details (Internal)" required>
                   <textarea
                     value={selectedItemForEdit.specification}
-                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, specification: e.target.value })}
+                    onChange={e => {
+                      setSelectedItemForEdit({ ...selectedItemForEdit, specification: e.target.value });
+                      if (validationErrors.specification) setValidationErrors(prev => ({ ...prev, specification: '' }));
+                    }}
                     rows={3}
-                    className={textareaClass}
-                    placeholder="Describe specific standards, dimensions, etc..."
+                    className={cn(textareaClass, validationErrors.specification && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
+                    placeholder="e.g. 16GB RAM, 512GB SSD, Windows 11 Pro, 3 Years Onsite Warranty"
+                    maxLength={500}
                   />
+                  {validationErrors.specification && (
+                    <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.specification}</p>
+                  )}
                 </Field>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -2452,53 +2615,134 @@ function ItemsDetailsForm({
                       type="number"
                       min={1}
                       value={selectedItemForEdit.quantity}
-                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, quantity: Number(e.target.value || 1) })}
-                      className={inputClass}
+                      onChange={e => {
+                        setSelectedItemForEdit({ ...selectedItemForEdit, quantity: Number(e.target.value || 1) });
+                        if (validationErrors.quantity) setValidationErrors(prev => ({ ...prev, quantity: '' }));
+                      }}
+                      className={cn(inputClass, validationErrors.quantity && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
                     />
+                    {validationErrors.quantity && (
+                      <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.quantity}</p>
+                    )}
                   </Field>
-                  <Field label="UOM Unit" required>
+                  <Field label="Unit (UOM)" required>
                     <select
                       value={selectedItemForEdit.unit}
-                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, unit: e.target.value })}
-                      className={inputClass}
+                      onChange={e => {
+                        setSelectedItemForEdit({ ...selectedItemForEdit, unit: e.target.value });
+                        if (validationErrors.unit) setValidationErrors(prev => ({ ...prev, unit: '' }));
+                      }}
+                      className={cn(inputClass, validationErrors.unit && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
                     >
                       {QUANTITY_UNITS.map((u: any) => <option key={u.value} value={u.value}>{u.label}</option>)}
                     </select>
+                    {validationErrors.unit && (
+                      <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.unit}</p>
+                    )}
                   </Field>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Est. Unit Price (INR)" required>
+                  <Field label="HSN / SAC Code">
                     <input
-                      type="number"
-                      value={selectedItemForEdit.unitPrice || ''}
-                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, unitPrice: Number(e.target.value || 0) })}
-                      className={inputClass}
-                      placeholder="0"
+                      value={selectedItemForEdit.hsn_sac_code || ''}
+                      onChange={e => {
+                        setSelectedItemForEdit({ ...selectedItemForEdit, hsn_sac_code: e.target.value });
+                        if (validationErrors.hsn_sac_code) setValidationErrors(prev => ({ ...prev, hsn_sac_code: '' }));
+                      }}
+                      className={cn(inputClass, validationErrors.hsn_sac_code && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
+                      placeholder="e.g. 847130"
+                      maxLength={10}
                     />
+                    {validationErrors.hsn_sac_code && (
+                      <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.hsn_sac_code}</p>
+                    )}
                   </Field>
-                  <Field label="GST Rate %" required>
-                    <select
-                      value={selectedItemForEdit.gst}
-                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, gst: Number(e.target.value || 18) })}
-                      className={inputClass}
-                    >
-                      <option value={0}>0%</option>
-                      <option value={5}>5%</option>
-                      <option value={12}>12%</option>
-                      <option value={18}>18%</option>
-                      <option value={28}>28%</option>
-                    </select>
+                  <Field label="Preferred Brand">
+                    <input
+                      value={selectedItemForEdit.brand_preference || ''}
+                      onChange={e => {
+                        setSelectedItemForEdit({ ...selectedItemForEdit, brand_preference: e.target.value });
+                        if (validationErrors.brand_preference) setValidationErrors(prev => ({ ...prev, brand_preference: '' }));
+                      }}
+                      className={cn(inputClass, validationErrors.brand_preference && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/15")}
+                      placeholder="e.g. Dell, HP"
+                      maxLength={100}
+                    />
+                    {validationErrors.brand_preference && (
+                      <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.brand_preference}</p>
+                    )}
                   </Field>
                 </div>
 
-                <Field label="Brand / OEM Preference">
-                  <input
-                    value={selectedItemForEdit.brandPolicy}
-                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, brandPolicy: e.target.value })}
+                <Field label="Are alternate brands allowed? (Brand Flexibility)">
+                  <select
+                    value={selectedItemForEdit.brand_flexible || 'Yes'}
+                    onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, brand_flexible: e.target.value })}
                     className={inputClass}
-                    placeholder="Brand model or equivalent allowed..."
-                  />
+                  >
+                    <option value="Yes">Yes (Alternate brands allowed)</option>
+                    <option value="No">No (Strict brand lock, no alternates)</option>
+                  </select>
+                </Field>
+
+                <Field label="Technical Specs File Attachment">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        id="item-file-upload"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                        onChange={handleItemFileChange}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="item-file-upload"
+                        className={cn(
+                          "cursor-pointer inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all",
+                          uploadingFile && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        {uploadingFile ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+                            <span>Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 text-slate-500" />
+                            <span>Choose Spec File</span>
+                          </>
+                        )}
+                      </label>
+                      <span className="text-[10px] text-slate-500">PDF, DOC, XLS or Image up to 5MB</span>
+                    </div>
+
+                    {selectedItemForEdit.specificationFileName && (
+                      <div className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs font-semibold text-slate-800 animate-fadeIn">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 shrink-0 text-emerald-600" />
+                          <span className="truncate max-w-[220px]" title={selectedItemForEdit.specificationFileName}>
+                            {selectedItemForEdit.specificationFileName}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedItemForEdit({
+                              ...selectedItemForEdit,
+                              fileAssetId: null,
+                              specificationFileName: ''
+                            });
+                          }}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-50 transition-all ml-2"
+                          title="Remove file"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </Field>
               </div>
             </div>
@@ -2507,9 +2751,8 @@ function ItemsDetailsForm({
               <Button variant="outline" onClick={() => setShowItemDrawer(false)} className="w-1/2">Cancel</Button>
               <Button
                 type="button"
-                onClick={() => handleSaveItem(selectedItemForEdit)}
-                disabled={!selectedItemForEdit.name}
-                className="w-1/2 bg-[#12335f] text-white"
+                onClick={() => handleSaveItemWithValidation(selectedItemForEdit)}
+                className="w-1/2 bg-[#12335f] text-white hover:bg-[#0b2445]"
               >
                 Save Item
               </Button>
@@ -2847,7 +3090,7 @@ function CommercialTermsForm({
               onChange={e => updateTerms('paymentTerms', e.target.value)}
               className={inputClass}
             >
-              {PAYMENT_TERMS.map((t: any) => <option key={t} value={t}>{t}</option>)}
+              {PAYMENT_TERMS.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </Field>
 
@@ -2857,7 +3100,7 @@ function CommercialTermsForm({
               onChange={e => updateTerms('deliveryTerms', e.target.value)}
               className={inputClass}
             >
-              {DELIVERY_TYPES.map((t: any) => <option key={t} value={t}>{t}</option>)}
+              {DELIVERY_TYPES.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </Field>
 
@@ -3250,17 +3493,34 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
   const estimatedValue = draft.basics.estimatedValue || 0;
 
   // Handle BOQ item list vs Standard item list
-  const rawItems = draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable : draft.items;
-  const mappedItems = rawItems.map(item => ({
-    itemName: item.name,
-    description: item.specification || item.technicalSpecification || '',
-    quantity: item.quantity,
-    unitOfMeasure: item.unit,
-    estimatedUnitPrice: item.unitPrice,
-  }));
+  const mappedItems = draft.basics.whatAreYouBuying === 'BOQ'
+    ? draft.boqTable.map(item => ({
+        itemName: item.description,
+        description: item.remarks || '',
+        quantity: item.quantity,
+        unitOfMeasure: item.uom,
+        estimatedUnitPrice: item.estimatedRate,
+      }))
+    : draft.items.map(item => ({
+        itemName: item.name,
+        description: item.specification || '',
+        quantity: item.quantity,
+        unitOfMeasure: item.unit,
+        estimatedUnitPrice: 0,
+        specifications: {
+          hsn_sac_code: item.hsn_sac_code || '',
+          brand_preference: item.brand_preference || '',
+          brand_flexible: item.brand_flexible || 'Yes',
+          fileAssetId: item.fileAssetId || null,
+          specificationFileName: item.specificationFileName || '',
+        }
+      }));
 
   // Build default consignee matching total quantity
-  const totalQty = rawItems.reduce((acc, item) => acc + Number(item.quantity || 0), 0);
+  const totalQty = draft.basics.whatAreYouBuying === 'BOQ'
+    ? draft.boqTable.reduce((acc, item) => acc + Number(item.quantity || 0), 0)
+    : draft.items.reduce((acc, item) => acc + Number(item.quantity || 0), 0);
+
   const deliveryLocation = draft.basics.deliveryLocation || draft.internal.orgName || 'Primary Delivery Location';
   const consigneeDetails = [
     {

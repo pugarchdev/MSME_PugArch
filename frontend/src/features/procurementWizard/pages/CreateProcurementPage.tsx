@@ -34,6 +34,10 @@ import {
   saveProcurementDraft,
   submitProcurementDraft
 } from '../api';
+import { fetchDeliveryAddresses, createDeliveryAddress, type DeliveryAddressDto } from '../../directPurchase/api';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { Input } from '../../../components/ui/input';
+import { STATE_OPTIONS, getDistrictOptions } from '../../../data/indianLocations';
 import {
   suggestProcurementMethod,
   mapToDatabaseMethod,
@@ -444,6 +448,32 @@ export default function CreateProcurementPage() {
   const [submittingDraft, setSubmittingDraft] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<ItemRow | null>(null);
+  const [hasAutofilled, setHasAutofilled] = useState(false);
+
+  // Auto-fill buyer details and organization on load for new drafts
+  useEffect(() => {
+    if (user && !draftIdParam && !hasAutofilled) {
+      const u = user as any;
+      const orgName = u.organization?.organizationName || u.buyerProfile?.organizationName || '';
+      const department = u.buyerProfile?.department || '';
+      const contactPerson = u.buyerProfile?.representativeName || u.name || '';
+      const email = u.buyerProfile?.email || u.email || '';
+      const mobile = u.buyerProfile?.mobile || u.mobile || '';
+
+      setDraft(current => ({
+        ...current,
+        internal: {
+          ...current.internal,
+          orgName: current.internal.orgName || orgName,
+          department: current.internal.department || department,
+          contactPerson: current.internal.contactPerson || contactPerson,
+          email: current.internal.email || email,
+          mobile: current.internal.mobile || mobile,
+        }
+      }));
+      setHasAutofilled(true);
+    }
+  }, [user, draftIdParam, hasAutofilled]);
 
   // Auto-fill buyer type on load
   useEffect(() => {
@@ -1058,6 +1088,113 @@ function BasicsStepForm({
     toast.success(`Applied recommended method: ${recommendedMethod.id}`);
   };
 
+  // Delivery address dropdown and modal states
+  const [deliveryAddressesList, setDeliveryAddressesList] = useState<DeliveryAddressDto[]>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+
+  // Address form fields state
+  const [addressLabel, setAddressLabel] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
+  const [addressType, setAddressType] = useState('OFFICE');
+  const [contactPersonName, setContactPersonName] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [alternateMobileNumber, setAlternateMobileNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [state, setState] = useState('');
+  const [district, setDistrict] = useState('');
+  const [city, setCity] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [gstState, setGstState] = useState('');
+  const [placeOfSupply, setPlaceOfSupply] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setLoadingAddresses(true);
+    fetchDeliveryAddresses()
+      .then(res => {
+        if (active) setDeliveryAddressesList(res || []);
+      })
+      .catch(err => {
+        console.warn('Failed to load saved addresses:', err);
+      })
+      .finally(() => {
+        if (active) setLoadingAddresses(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleStateChange = (val: string) => {
+    setState(val);
+    setDistrict('');
+  };
+
+  const handleDistrictChange = (val: string) => {
+    setDistrict(val);
+  };
+
+  const handleCreateAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const newAddr = await createDeliveryAddress({
+        addressLabel,
+        organizationName: organizationName || null,
+        contactPersonName,
+        mobileNumber,
+        alternateMobileNumber: alternateMobileNumber || null,
+        email: email || null,
+        addressLine1,
+        addressLine2: addressLine2 || null,
+        city,
+        district,
+        state,
+        pincode,
+        landmark: landmark || null,
+        gstState: gstState || null,
+        placeOfSupply: placeOfSupply || null,
+        addressType,
+        isDefault: deliveryAddressesList.length === 0
+      });
+      toast.success('New delivery address added.');
+      setIsAddressModalOpen(false);
+      
+      // Update delivery address list
+      setDeliveryAddressesList(prev => [newAddr, ...prev]);
+      
+      // Autofetch and populate delivery location
+      const fullAddr = `${newAddr.addressLabel}: ${newAddr.addressLine1}${newAddr.addressLine2 ? ', ' + newAddr.addressLine2 : ''}, ${newAddr.city}, ${newAddr.district}, ${newAddr.state} - ${newAddr.pincode}. Contact: ${newAddr.contactPersonName} (${newAddr.mobileNumber})`;
+      updateDraft(c => ({
+        ...c,
+        basics: { ...c.basics, deliveryLocation: fullAddr }
+      }));
+
+      // Reset address form fields
+      setAddressLabel('');
+      setOrganizationName('');
+      setAddressType('OFFICE');
+      setContactPersonName('');
+      setMobileNumber('');
+      setAlternateMobileNumber('');
+      setEmail('');
+      setAddressLine1('');
+      setAddressLine2('');
+      setState('');
+      setDistrict('');
+      setCity('');
+      setPincode('');
+      setLandmark('');
+      setGstState('');
+      setPlaceOfSupply('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add address.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -1166,14 +1303,70 @@ function BasicsStepForm({
           />
         </Field>
 
-        <Field label="Delivery location" required>
-          <input
-            value={draft.basics.deliveryLocation}
-            onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, deliveryLocation: e.target.value } }))}
-            className={inputClass}
-            placeholder="Warehouse yard, Central office..."
-          />
-        </Field>
+        <div className="sm:col-span-2 space-y-4">
+          <div>
+            {deliveryAddressesList.length > 0 ? (
+              <div className="mb-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">
+                  Select From Saved Addresses
+                </label>
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      placeholder={loadingAddresses ? "Loading addresses..." : "Search and select a saved address..."}
+                      options={deliveryAddressesList.map(addr => ({
+                        value: String(addr.id),
+                        label: `${addr.addressLabel}: ${addr.addressLine1}, ${addr.city} (${addr.contactPersonName})`
+                      }))}
+                      value=""
+                      onChange={(val) => {
+                        if (!val) return;
+                        const selected = deliveryAddressesList.find(a => String(a.id) === String(val));
+                        if (selected) {
+                          const fullAddr = `${selected.addressLabel}: ${selected.addressLine1}${selected.addressLine2 ? ', ' + selected.addressLine2 : ''}, ${selected.city}, ${selected.district}, ${selected.state} - ${selected.pincode}. Contact: ${selected.contactPersonName} (${selected.mobileNumber})`;
+                          updateDraft(c => ({
+                            ...c,
+                            basics: { ...c.basics, deliveryLocation: fullAddr }
+                          }));
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAddressModalOpen(true)}
+                    className="h-10 text-xs font-bold shrink-0 border-slate-300 hover:bg-slate-50 text-slate-700"
+                  >
+                    + Add Address
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-semibold">No saved addresses found.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddressModalOpen(true)}
+                  className="h-8 text-xs font-bold border-slate-300 hover:bg-slate-50 text-slate-700"
+                >
+                  + Add Address
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <Field label="Delivery location" required>
+            <textarea
+              value={draft.basics.deliveryLocation}
+              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, deliveryLocation: e.target.value } }))}
+              rows={2}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+              placeholder="Warehouse yard, Central office..."
+            />
+          </Field>
+        </div>
       </div>
 
       {/* Sourcing parameters checkboxes */}
@@ -1413,8 +1606,6 @@ function BasicsStepForm({
               complexity={method.complexity}
               estimatedTime={method.estimatedTime}
               isSelected={draft.type === method.id}
-              isRecommended={method.id === recommendedMethod.id}
-              fitCriteria={method.fit}
               onSelect={() => {
                 updateDraft(current => ({
                   ...current,
@@ -1426,6 +1617,279 @@ function BasicsStepForm({
           ))}
         </div>
       </div>
+
+      {isAddressModalOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <h2 className="text-lg font-bold text-[#12335f]">
+                Add New Delivery Address
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsAddressModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAddress} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Address Label *
+                  </label>
+                  <Input
+                    required
+                    placeholder="e.g. Headquarters, Warehouse A"
+                    value={addressLabel}
+                    onChange={e => setAddressLabel(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Organisation Name
+                  </label>
+                  <Input
+                    placeholder="Company / Department Name"
+                    value={organizationName}
+                    onChange={e => setOrganizationName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Address Type *
+                  </label>
+                  <select
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                    value={['OFFICE', 'WAREHOUSE', 'PROJECT_SITE', 'FACTORY'].includes(addressType) ? addressType : 'OTHER'}
+                    onChange={e => setAddressType(e.target.value)}
+                  >
+                    <option value="OFFICE">Office</option>
+                    <option value="WAREHOUSE">Warehouse</option>
+                    <option value="PROJECT_SITE">Project Site</option>
+                    <option value="FACTORY">Factory</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                {!['OFFICE', 'WAREHOUSE', 'PROJECT_SITE', 'FACTORY'].includes(addressType) && (
+                  <div className="space-y-1.5 animate-in slide-in-from-top-1 duration-150">
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                      Specify Address Type *
+                    </label>
+                    <Input
+                      required
+                      placeholder="e.g. Temporary, SHG Center, Hub"
+                      value={addressType === 'OTHER' ? '' : addressType}
+                      onChange={e => setAddressType(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Contact Person Name *
+                  </label>
+                  <Input
+                    required
+                    placeholder="Receiver Name"
+                    value={contactPersonName}
+                    onChange={e => setContactPersonName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Mobile Number *
+                  </label>
+                  <Input
+                    required
+                    type="tel"
+                    pattern="[0-9]{10,15}"
+                    minLength={10}
+                    maxLength={15}
+                    title="Mobile number must be between 10 and 15 digits"
+                    placeholder="10-digit Mobile Number"
+                    value={mobileNumber}
+                    onChange={e => setMobileNumber(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Alternate Mobile
+                  </label>
+                  <Input
+                    type="tel"
+                    pattern="[0-9]{10,15}"
+                    maxLength={15}
+                    title="Alternate mobile number must be between 10 and 15 digits"
+                    placeholder="Optional Mobile"
+                    value={alternateMobileNumber}
+                    onChange={e => setAlternateMobileNumber(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Email Address
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="Receiver Email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                  Address Line 1 *
+                </label>
+                <Input
+                  required
+                  placeholder="Building/Flat/Plot Number, Street Name"
+                  value={addressLine1}
+                  onChange={e => setAddressLine1(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                  Address Line 2
+                </label>
+                <Input
+                  placeholder="Locality, Sector, Area (Optional)"
+                  value={addressLine2}
+                  onChange={e => setAddressLine2(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    State *
+                  </label>
+                  <select
+                    required
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                    value={state}
+                    onChange={e => handleStateChange(e.target.value)}
+                  >
+                    <option value="">Select State</option>
+                    {STATE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    District *
+                  </label>
+                  <select
+                    required
+                    disabled={!state}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                    value={district}
+                    onChange={e => handleDistrictChange(e.target.value)}
+                  >
+                    <option value="">Select District</option>
+                    {getDistrictOptions(state).map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    City *
+                  </label>
+                  <Input
+                    required
+                    placeholder="Enter city / town / village"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Pincode *
+                  </label>
+                  <Input
+                    required
+                    pattern="[0-9]{6,10}"
+                    minLength={6}
+                    maxLength={10}
+                    title="Pincode must be between 6 and 10 digits"
+                    placeholder="6 digits"
+                    value={pincode}
+                    onChange={e => setPincode(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Landmark
+                  </label>
+                  <Input
+                    placeholder="Nearby popular spot"
+                    value={landmark}
+                    onChange={e => setLandmark(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    GST State Code
+                  </label>
+                  <Input
+                    placeholder="e.g. 27-Maharashtra"
+                    value={gstState}
+                    onChange={e => setGstState(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Place of Supply
+                  </label>
+                  <Input
+                    placeholder="e.g. Maharashtra"
+                    value={placeOfSupply}
+                    onChange={e => setPlaceOfSupply(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 mt-6">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddressModalOpen(false)}
+                  className="h-10 text-xs font-bold border-slate-300 hover:bg-slate-50 text-slate-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="h-10 text-xs font-bold bg-[#12335f] hover:bg-[#12335f]/90 text-white"
+                >
+                  Save Address
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

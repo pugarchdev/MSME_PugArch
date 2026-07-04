@@ -787,10 +787,10 @@ const procurementDraftBody = z.object({
   payload: z.record(z.string(), z.unknown()).optional(),
   items: z.array(z.object({
     productId: z.coerce.number().int().positive().optional(),
-    itemName: z.string().trim().min(2).max(200),
+    itemName: z.string().trim().max(200).optional().or(z.literal('')),
     description: z.string().trim().max(2000).optional(),
-    quantity: z.coerce.number().positive(),
-    unitOfMeasure: z.string().trim().min(1).max(40),
+    quantity: z.coerce.number().optional(),
+    unitOfMeasure: z.string().trim().max(40).optional().or(z.literal('')),
     estimatedUnitPrice: z.coerce.number().nonnegative().optional(),
     specifications: z.record(z.string(), z.unknown()).optional()
   })).optional()
@@ -929,6 +929,23 @@ const validateProcurementDraftForSubmit = (draft: any) => {
   };
   if (estimatedValue <= 0) throw new ApiError(400, 'Estimated procurement value must be positive', 'PROCUREMENT_VALUE_REQUIRED');
   if (items.length === 0) throw new ApiError(400, 'At least one item or service line is required', 'PROCUREMENT_ITEM_REQUIRED');
+
+  // Verify that all items have valid names, quantities, and units when submitting if buying a Product
+  const whatAreYouBuying = basics.whatAreYouBuying || 'Product';
+  if (whatAreYouBuying === 'Product') {
+    for (const item of items) {
+      if (!item.itemName || String(item.itemName).trim().length < 2) {
+        throw new ApiError(400, 'Item name must be at least 2 characters long', 'PROCUREMENT_ITEM_NAME_INVALID');
+      }
+      if (typeof item.quantity !== 'number' || item.quantity <= 0) {
+        throw new ApiError(400, 'Item quantity must be positive', 'PROCUREMENT_ITEM_QUANTITY_INVALID');
+      }
+      if (!item.unitOfMeasure || String(item.unitOfMeasure).trim().length < 1) {
+        throw new ApiError(400, 'Item unit of measure is required', 'PROCUREMENT_ITEM_UOM_INVALID');
+      }
+    }
+  }
+
   if (!hasConsigneeLocation || totalItemQuantity <= 0 || totalItemQuantity !== totalConsigneeQuantity) {
     throw new ApiError(400, 'Total consignee quantity must equal total procurement quantity', 'PROCUREMENT_CONSIGNEE_QUANTITY_INVALID');
   }

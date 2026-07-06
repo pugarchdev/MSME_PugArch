@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { indiaStates, indiaStatesDistricts } from '../../data/indiaStatesDistricts';
 import { aadhaarKycApi, type AadhaarKycStatus } from '../../features/kyc/aadhaarKycApi';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../../lib/validation';
 
 interface RegistrationDetailsFlowProps {
   businessType: string;
@@ -492,9 +493,9 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   const isAadhaarNumberValid = /^\d{12}$/.test(aadhaarValue);
   const isVirtualIdValid = /^\d{16}$/.test(aadhaarValue);
   const isAadhaarOrVidValid = isAadhaarNumberValid || isVirtualIdValid;
-  const isMobileValid = /^[6-9]\d{9}$/.test(mobileValue) && !/^(\d)\1{9}$/.test(mobileValue);
+  const isMobileValid = !validateIndianMobile(mobileValue, 'Mobile number');
   const panNumberValid = /^[A-Z]{5}\d{4}[A-Z]$/.test(formData.panNumber);
-  const panNameValid = /^[A-Za-z .-]{2,100}$/.test(formData.personalName.trim());
+  const panNameValid = !validatePersonName(formData.personalName, 'Name as on PAN');
   const dobDate = formData.dob ? new Date(formData.dob) : null;
   const today = new Date();
   const age = dobDate
@@ -529,7 +530,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     personalName: !formData.personalName.trim()
       ? 'Name as on PAN is required.'
       : !panNameValid
-        ? 'Use 2-100 characters: alphabets, spaces, dots, and hyphens only.'
+        ? 'Use only alphabets, single spaces, periods, hyphens, or apostrophes.'
         : '',
     dob: !formData.dob
       ? 'Date of birth is required.'
@@ -574,7 +575,13 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   }, [isMobileValid, mobileValue]);
 
   const handleAadhaarFieldChange = (patch: Partial<typeof formData>) => {
-    setFormData({ ...formData, ...patch });
+    const sanitizedPatch = {
+      ...patch,
+      ...('mobile' in patch ? { mobile: sanitizeIndianMobileInput(patch.mobile) } : {}),
+      ...('personalName' in patch ? { personalName: sanitizePersonNameInput(patch.personalName) } : {}),
+      ...('personalLastName' in patch ? { personalLastName: sanitizePersonNameInput(patch.personalLastName) } : {})
+    };
+    setFormData({ ...formData, ...sanitizedPatch });
     if ('aadhaarNumber' in patch) setAadhaarTouched(true);
     if ('mobile' in patch) setMobileTouched(true);
     if ('mobile' in patch || 'aadhaarNumber' in patch) {
@@ -858,7 +865,8 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
 
   const handleSendMobileOtp = async () => {
     const mobile = formData.mobile.trim();
-    if (!/^[6-9]\d{9}$/.test(mobile)) return toast.error('Enter a valid 10 digit mobile number.');
+    const mobileError = validateIndianMobile(mobile, 'Mobile number');
+    if (mobileError) return toast.error(mobileError);
     setIsSendingMobileOtp(true);
     try {
       const res = await api.post('/api/auth/send-mobile-otp', { mobile });
@@ -913,6 +921,25 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       }
     }
 
+    const personalAccountName = [formData.personalName, formData.personalLastName].map(v => v.trim()).filter(Boolean).join(' ');
+    if (personalAccountName) {
+      const accountNameError = validatePersonName(personalAccountName, 'Full name');
+      if (accountNameError) {
+        setSubmitErrors(prev => ({ ...prev, name: accountNameError }));
+        toast.error(accountNameError);
+        return;
+      }
+    }
+    const accountNameForValidation = personalAccountName || formData.userId.trim() || formData.businessName.trim();
+    if (formData.mobile.trim()) {
+      const mobileError = validateIndianMobile(formData.mobile, 'Mobile number');
+      if (mobileError) {
+        setSubmitErrors(prev => ({ ...prev, mobile: mobileError }));
+        toast.error(mobileError);
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       let res;
@@ -949,7 +976,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           isAadhaarVerified,
           verificationMethod: formData.personalVerificationMethod
         });
-        const accountName = [formData.personalName, formData.personalLastName].map(v => v.trim()).filter(Boolean).join(' ') || formData.userId.trim() || formData.businessName.trim();
+        const accountName = accountNameForValidation;
         const payload: any = {
           name: accountName,
           email: formData.email || formData.userId,
@@ -1514,7 +1541,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 placeholder="Enter mobile number linked with Aadhaar"
                                 maxLength={10}
                                 value={formData.mobile}
-                                onChange={(e) => handleAadhaarFieldChange({ mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                onChange={(e) => handleAadhaarFieldChange({ mobile: e.target.value })}
                                 disabled={isAadhaarVerified}
                                 error={submitErrors.mobile || aadhaarErrors.mobile || (mobileAlreadyRegistered ? 'This mobile number is already registered.' : undefined)}
                                 className={cn(
@@ -1654,7 +1681,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 placeholder="Enter name as on PAN"
                                 onChange={(event) => {
                                   setIsPanVerified(false);
-                                  setFormData({ ...formData, personalName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) });
+                                  setFormData({ ...formData, personalName: sanitizePersonNameInput(event.target.value) });
                                 }}
                                 className={cn(
                                   "h-11 w-full rounded-lg border bg-white px-4 text-xs focus:outline-none focus:ring-2",
@@ -1704,7 +1731,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                   <label className="text-xs font-bold text-slate-700">First Name*</label>
                                   <input
                                     value={formData.personalName}
-                                    onChange={(event) => setFormData({ ...formData, personalName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) })}
+                                    onChange={(event) => setFormData({ ...formData, personalName: sanitizePersonNameInput(event.target.value) })}
                                     placeholder="Enter first name"
                                     className="h-11 w-full rounded-lg border border-slate-200 bg-white px-4 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                   />
@@ -1714,7 +1741,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                   <label className="text-xs font-bold text-slate-700">Last Name</label>
                                   <input
                                     value={formData.personalLastName}
-                                    onChange={(event) => setFormData({ ...formData, personalLastName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) })}
+                                    onChange={(event) => setFormData({ ...formData, personalLastName: sanitizePersonNameInput(event.target.value) })}
                                     placeholder="Enter last name"
                                     className="h-11 w-full rounded-lg border border-slate-200 bg-white px-4 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                   />
@@ -1830,7 +1857,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 placeholder="Enter mobile number linked with Aadhaar"
                                 maxLength={10}
                                 value={formData.mobile}
-                                onChange={(event) => handleAadhaarFieldChange({ mobile: event.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                onChange={(event) => handleAadhaarFieldChange({ mobile: event.target.value })}
                                 disabled={isAadhaarVerified}
                                 className={cn(
                                   "h-11 w-full rounded border bg-white px-4 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60",
@@ -1958,7 +1985,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                                 value={formData.personalName}
                                 onChange={(event) => {
                                   setIsPanVerified(false);
-                                  setFormData({ ...formData, personalName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) });
+                                  setFormData({ ...formData, personalName: sanitizePersonNameInput(event.target.value) });
                                 }}
                                 className={cn(
                                   "h-11 w-full rounded border bg-white px-4 text-sm focus:outline-none focus:ring-1",
@@ -2465,7 +2492,7 @@ function SellerRoleDetails({
           <label className="text-sm font-semibold text-slate-800">First Name*</label>
           <input
             value={firstName}
-            onChange={(event) => onChange({ personalName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) })}
+            onChange={(event) => onChange({ personalName: sanitizePersonNameInput(event.target.value) })}
             placeholder="Enter first name"
             className="h-11 w-full rounded border border-slate-300 bg-white px-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]"
           />
@@ -2475,7 +2502,7 @@ function SellerRoleDetails({
           <label className="text-sm font-semibold text-slate-800">Last Name</label>
           <input
             value={lastName}
-            onChange={(event) => onChange({ personalLastName: event.target.value.replace(/[^A-Za-z .-]/g, '').slice(0, 100) })}
+            onChange={(event) => onChange({ personalLastName: sanitizePersonNameInput(event.target.value) })}
             placeholder="Enter last name"
             className="h-11 w-full rounded border border-slate-300 bg-white px-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#12335f]"
           />

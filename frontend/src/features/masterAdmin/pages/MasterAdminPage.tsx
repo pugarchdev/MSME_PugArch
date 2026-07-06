@@ -47,6 +47,7 @@ import { Loader2 } from '../../../components/ui/loader';
 import { api } from '../../../lib/api';
 import { openFileAsset } from '../../../lib/files';
 import { cn } from '../../../lib/utils';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../../../lib/validation';
 import PremiumLoader from '../../../components/PremiumLoader';
 import { Pagination } from '../../shared/Pagination';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
@@ -3401,6 +3402,35 @@ function EntityEditor({
   };
 
   const title = `${editor.mode === 'create' ? 'Add' : 'Edit'} ${labelize(editor.type)}`;
+  const validateAndSave = () => {
+    const nextValues = { ...values };
+    if (editor.type === 'user') {
+      const nameError = validatePersonName(values.name, 'Name');
+      if (nameError) {
+        toast.error(nameError);
+        return;
+      }
+      nextValues.name = sanitizePersonNameInput(values.name).trim().replace(/\s+/g, ' ');
+      if (String(values.mobile || '').trim()) {
+        nextValues.mobile = sanitizeIndianMobileInput(values.mobile);
+        const mobileError = validateIndianMobile(nextValues.mobile, 'Mobile');
+        if (mobileError) {
+          toast.error(mobileError);
+          return;
+        }
+      }
+    }
+    if (editor.type === 'organization' && String(values.mobile || '').trim()) {
+      nextValues.mobile = sanitizeIndianMobileInput(values.mobile);
+      const mobileError = validateIndianMobile(nextValues.mobile, 'Mobile');
+      if (mobileError) {
+        toast.error(mobileError);
+        return;
+      }
+    }
+    onSave(nextValues);
+  };
+
   return (
     <ModalShell title={title} onCancel={onCancel} wide>
       <div className="grid gap-3 md:grid-cols-2">
@@ -3440,7 +3470,7 @@ function EntityEditor({
             <FormField label="GSTN" value={values.gstin} onChange={value => set('gstin', value)} />
             <FormField label="PAN" value={values.panNumber} onChange={value => set('panNumber', value)} />
             <FormField label="Email" value={values.email} onChange={value => set('email', value)} />
-            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', value)} />
+            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', sanitizeIndianMobileInput(value))} inputMode="numeric" maxLength={10} />
             <FormField label="Address" value={values.addressLine1} onChange={value => set('addressLine1', value)} />
             <FormField label="State" value={values.state} onChange={value => set('state', value)} />
             <FormField label="District" value={values.district} onChange={value => set('district', value)} />
@@ -3451,9 +3481,9 @@ function EntityEditor({
         )}
         {editor.type === 'user' && (
           <>
-            <FormField label="Name" value={values.name} onChange={value => set('name', value)} required />
+            <FormField label="Name" value={values.name} onChange={value => set('name', sanitizePersonNameInput(value))} maxLength={100} required />
             <FormField label="Email" value={values.email} onChange={value => set('email', value)} required />
-            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', value)} />
+            <FormField label="Mobile" value={values.mobile} onChange={value => set('mobile', sanitizeIndianMobileInput(value))} inputMode="numeric" maxLength={10} />
             <SelectField label="Role" value={values.role} onChange={value => set('role', value)} options={['buyer', 'seller', 'admin', 'master_admin']} />
             <SelectField label="Status" value={values.accountStatus} onChange={value => set('accountStatus', value)} options={['PENDING', 'ACTIVE', 'BLOCKED', 'SUSPENDED', 'DELETED']} />
             <OrganizationSelectField organizations={organizations} value={values.organizationId} onChange={value => set('organizationId', value)} />
@@ -3611,7 +3641,7 @@ function EntityEditor({
       <FormField label="Audit reason" value={values.reason} onChange={value => set('reason', value)} required />
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" className="h-10 rounded-md text-xs font-black" onClick={onCancel}>Cancel</Button>
-        <Button type="button" disabled={busy || !String(values.reason || '').trim()} className="h-10 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={() => onSave(values)}>
+        <Button type="button" disabled={busy || !String(values.reason || '').trim()} className="h-10 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]" onClick={validateAndSave}>
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Save
         </Button>
@@ -3634,11 +3664,13 @@ function ModalShell({ title, children, onCancel, wide }: { title: string; childr
   );
 }
 
-function FormField({ label, value, onChange, placeholder, required }: { label: string; value: any; onChange: (value: string) => void; placeholder?: string; required?: boolean }) {
+type InputMode = 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+
+function FormField({ label, value, onChange, placeholder, required, inputMode, maxLength }: { label: string; value: any; onChange: (value: string) => void; placeholder?: string; required?: boolean; inputMode?: InputMode; maxLength?: number }) {
   return (
     <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">
       {label}{required ? ' *' : ''}
-      <input value={value ?? ''} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]" />
+      <input value={value ?? ''} onChange={event => onChange(event.target.value)} placeholder={placeholder} inputMode={inputMode} maxLength={maxLength} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-[#12335f]" />
     </label>
   );
 }

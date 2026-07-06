@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../hooks/useAuth';
 import { api } from '../../../lib/api';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../../../lib/validation';
 
 type InviteInfo = {
     email: string;
@@ -111,27 +112,34 @@ export default function InviteSignupPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (name.trim().length < 2) {
-            toast.error('Please enter your full name.');
+        const nameError = validatePersonName(name, 'Full name');
+        if (nameError) {
+            toast.error(nameError);
             return;
         }
         if (passwordErrors.length > 0) {
             toast.error(`Password must include ${passwordErrors.join(', ')}.`);
             return;
         }
-        if (mobile && !/^\d{7,15}$/.test(mobile.trim())) {
-            toast.error('Please enter a valid mobile number, or leave it blank.');
-            return;
+        if (mobile.trim()) {
+            const mobileError = validateIndianMobile(mobile, 'Mobile number');
+            if (mobileError) {
+                toast.error(mobileError);
+                return;
+            }
         }
+
+        const normalizedName = name.trim().replace(/\s+/g, ' ');
+        const normalizedMobile = mobile.trim();
 
         setSubmitting(true);
         const loadingToast = toast.loading('Creating your account...');
         try {
             const res = await api.post('/api/org/invite/signup', {
                 token: inviteToken,
-                name: name.trim(),
+                name: normalizedName,
                 password,
-                ...(mobile.trim() ? { mobile: mobile.trim() } : {})
+                ...(normalizedMobile ? { mobile: normalizedMobile } : {})
             });
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -257,7 +265,8 @@ export default function InviteSignupPage() {
                                     type="text"
                                     placeholder="e.g. Priya Sharma"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => setName(sanitizePersonNameInput(e.target.value))}
+                                    maxLength={100}
                                     required
                                     className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm font-semibold focus:border-[#12335f] focus:outline-none focus:ring-2 focus:ring-[#12335f]/20"
                                 />
@@ -272,8 +281,8 @@ export default function InviteSignupPage() {
                                 inputMode="numeric"
                                 placeholder="10-digit mobile number"
                                 value={mobile}
-                                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ''))}
-                                maxLength={15}
+                                onChange={(e) => setMobile(sanitizeIndianMobileInput(e.target.value))}
+                                maxLength={10}
                                 className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm font-semibold focus:border-[#12335f] focus:outline-none focus:ring-2 focus:ring-[#12335f]/20"
                             />
                         </div>

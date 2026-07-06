@@ -4,6 +4,7 @@ import { Check, FileClock, LockKeyhole, Plus, RefreshCw, Save, Search, Shield, U
 import { api, unwrapApiData } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../hooks/useAuth';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName, validateRequiredText } from '../lib/validation';
 
 type ScopeType = 'PLATFORM' | 'DISTRICT' | 'ORGANIZATION';
 
@@ -177,14 +178,22 @@ export default function RbacPanel() {
   };
 
   const saveRole = async () => {
-    if (!draft.name.trim()) {
-      toast.error('Role name is required.');
+    const roleNameError = validateRequiredText(draft.name, 'Role name', {
+      min: 2,
+      max: 80,
+      pattern: /^[A-Za-z0-9][A-Za-z0-9 _./&()'-]*$/,
+      patternMessage: 'Role name can contain letters, numbers, spaces, and common separators'
+    });
+    if (roleNameError) {
+      toast.error(roleNameError);
       return;
     }
+    const normalizedRoleName = draft.name.trim().replace(/\s+/g, ' ');
     setSaving(true);
     try {
       const res = await api.post('/api/rbac/roles', {
         ...draft,
+        name: normalizedRoleName,
         scopeId: defaultScope.scopeId
       }, { headers: authHeaders() });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Unable to create role');
@@ -235,10 +244,24 @@ export default function RbacPanel() {
   };
 
   const sendInvite = async () => {
+    const cleanName = sanitizePersonNameInput(invite.name).trim();
+    const cleanMobile = sanitizeIndianMobileInput(invite.mobile);
+    if (cleanName) {
+      const nameError = validatePersonName(cleanName, 'Name');
+      if (nameError) return toast.error(nameError);
+    }
+    if (cleanMobile) {
+      const mobileError = validateIndianMobile(cleanMobile, 'Mobile number');
+      if (mobileError) return toast.error(mobileError);
+    }
     if (!invite.email.trim()) return toast.error('Email is required.');
     setSaving(true);
     try {
-      const res = await api.post('/api/team/invite', invite, { headers: authHeaders() });
+      const res = await api.post('/api/team/invite', {
+        ...invite,
+        name: cleanName || undefined,
+        mobile: cleanMobile || undefined
+      }, { headers: authHeaders() });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Unable to create invite');
       toast.success('Invite created.');
       setInvite({ name: '', email: '', mobile: '', roleIds: [] });
@@ -309,7 +332,7 @@ export default function RbacPanel() {
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-black text-slate-950">Create Role</h2>
               <div className="mt-4 space-y-3">
-                <input value={draft.name} onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-slate-500" placeholder="Role name" />
+                <input value={draft.name} onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))} maxLength={80} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-slate-500" placeholder="Role name" />
                 <textarea value={draft.description} onChange={e => setDraft(prev => ({ ...prev, description: e.target.value }))} className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" placeholder="Description" />
                 <div className="grid grid-cols-2 gap-2">
                   <select value={draft.scopeType} onChange={e => setDraft(prev => ({ ...prev, scopeType: e.target.value as ScopeType }))} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
@@ -420,9 +443,9 @@ export default function RbacPanel() {
               <h2 className="text-sm font-black text-slate-950">Invite User</h2>
             </div>
             <div className="mt-4 space-y-3">
-              <input value={invite.name} onChange={e => setInvite(prev => ({ ...prev, name: e.target.value }))} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" placeholder="Name" />
+              <input value={invite.name} onChange={e => setInvite(prev => ({ ...prev, name: sanitizePersonNameInput(e.target.value) }))} maxLength={100} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" placeholder="Name" />
               <input value={invite.email} onChange={e => setInvite(prev => ({ ...prev, email: e.target.value }))} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" placeholder="Email" />
-              <input value={invite.mobile} onChange={e => setInvite(prev => ({ ...prev, mobile: e.target.value }))} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" placeholder="Mobile" />
+              <input value={invite.mobile} onChange={e => setInvite(prev => ({ ...prev, mobile: sanitizeIndianMobileInput(e.target.value) }))} inputMode="numeric" maxLength={10} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" placeholder="Mobile" />
               <div className="max-h-44 overflow-y-auto rounded-md border border-slate-200 p-2">
                 {roles.map(role => (
                   <label key={role.id} className="flex items-center gap-2 px-2 py-1 text-sm">

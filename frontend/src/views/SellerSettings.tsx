@@ -10,6 +10,7 @@ import { ShieldCheck, Mail, Lock, UserX, Info, AlertTriangle, PlayCircle, Buildi
 import { Loader2 } from '@/components/ui/loader';
 import { GeMSettingsSidebar } from '../components/GeMSettingsSidebar';
 import { GeMProfileHeader } from '../components/GeMProfileHeader';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../lib/validation';
 
 export default function SellerSettings() {
   const { user, refreshUser, logout } = useAuth();
@@ -256,6 +257,8 @@ export default function SellerSettings() {
 
   const handleUpdateAadhaar = async () => {
     if (!aadhaarForm.number || !aadhaarForm.mobile) return toast.error("Please fill all required fields");
+    const mobileError = validateIndianMobile(aadhaarForm.mobile, 'Mobile number linked with Aadhaar');
+    if (mobileError) return toast.error(mobileError);
     if (!aadhaarForm.consent) return toast.error("Please provide your consent");
 
     setIsLoading(true);
@@ -395,6 +398,12 @@ export default function SellerSettings() {
     if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.mobile.trim()) {
       return toast.error("Please fill in First Name, Last Name, and Mobile number");
     }
+    const firstNameError = validatePersonName(profileForm.firstName, 'First name');
+    if (firstNameError) return toast.error(firstNameError);
+    const lastNameError = validatePersonName(profileForm.lastName, 'Last name');
+    if (lastNameError) return toast.error(lastNameError);
+    const mobileError = validateIndianMobile(profileForm.mobile, 'Mobile number');
+    if (mobileError) return toast.error(mobileError);
     
     setIsLoading(true);
     try {
@@ -418,6 +427,12 @@ export default function SellerSettings() {
 
   const handleUpdateProfile = async () => {
     if (!profileOtp) return toast.error("Please enter the OTP");
+    const firstNameError = validatePersonName(profileForm.firstName, 'First name');
+    if (firstNameError) return toast.error(firstNameError);
+    const lastNameError = validatePersonName(profileForm.lastName, 'Last name');
+    if (lastNameError) return toast.error(lastNameError);
+    const mobileError = validateIndianMobile(profileForm.mobile, 'Mobile number');
+    if (mobileError) return toast.error(mobileError);
 
     setIsLoading(true);
     try {
@@ -426,7 +441,7 @@ export default function SellerSettings() {
         body: JSON.stringify({
           firstName: profileForm.firstName,
           lastName: profileForm.lastName,
-          mobile: profileForm.mobile,
+          mobile: sanitizeIndianMobileInput(profileForm.mobile),
           otp: profileOtp
         }),
         headers: {
@@ -550,19 +565,23 @@ export default function SellerSettings() {
                         label="First Name*"
                         placeholder="Enter first name"
                         value={profileForm.firstName}
-                        onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                        onChange={(e) => setProfileForm({ ...profileForm, firstName: sanitizePersonNameInput(e.target.value) })}
+                        maxLength={100}
                       />
                       <Input
                         label="Last Name*"
                         placeholder="Enter last name"
                         value={profileForm.lastName}
-                        onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                        onChange={(e) => setProfileForm({ ...profileForm, lastName: sanitizePersonNameInput(e.target.value) })}
+                        maxLength={100}
                       />
                       <Input
                         label="Mobile*"
                         placeholder="Enter mobile number"
                         value={profileForm.mobile}
-                        onChange={(e) => setProfileForm({ ...profileForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        onChange={(e) => setProfileForm({ ...profileForm, mobile: sanitizeIndianMobileInput(e.target.value) })}
+                        inputMode="numeric"
+                        maxLength={10}
                       />
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-gray-700 uppercase tracking-tight">Email Id</label>
@@ -639,7 +658,7 @@ export default function SellerSettings() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8">
                   <Input label="Aadhaar Number / Virtual ID*" placeholder="Enter Aadhaar number / Virtual ID" value={aadhaarForm.number} onChange={e => setAadhaarForm({...aadhaarForm, number: e.target.value})} />
-                  <Input label="Mobile number linked with Aadhaar*" placeholder="Enter mobile number linked with Aadhaar" value={aadhaarForm.mobile} onChange={e => setAadhaarForm({...aadhaarForm, mobile: e.target.value})} />
+                  <Input label="Mobile number linked with Aadhaar*" placeholder="Enter mobile number linked with Aadhaar" value={aadhaarForm.mobile} onChange={e => setAadhaarForm({...aadhaarForm, mobile: sanitizeIndianMobileInput(e.target.value)})} inputMode="numeric" maxLength={10} />
                 </div>
 
                 <div className="border border-gray-100 rounded-lg p-4 sm:p-6 bg-gray-50/50 space-y-4">

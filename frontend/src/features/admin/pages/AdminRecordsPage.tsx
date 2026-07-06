@@ -12,6 +12,7 @@ import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../../../lib/validation';
 
 
 
@@ -896,15 +897,23 @@ function UserEditModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      toast.error("Name is required");
+    const nameError = validatePersonName(name, 'Full name');
+    if (nameError) {
+      toast.error(nameError);
       return;
     }
     if (!email.trim() || !email.includes('@')) {
       toast.error("A valid email is required");
       return;
     }
-    onSave({ name, email, mobile, role });
+    if (mobile.trim()) {
+      const mobileError = validateIndianMobile(mobile, 'Mobile number');
+      if (mobileError) {
+        toast.error(mobileError);
+        return;
+      }
+    }
+    onSave({ name: name.trim().replace(/\s+/g, ' '), email: email.trim(), mobile: mobile.trim(), role });
   };
 
   return (
@@ -926,9 +935,10 @@ function UserEditModal({
             <input
               type="text"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => setName(sanitizePersonNameInput(e.target.value))}
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900"
               placeholder="Enter full name"
+              maxLength={100}
               required
             />
           </div>
@@ -950,9 +960,11 @@ function UserEditModal({
             <input
               type="text"
               value={mobile}
-              onChange={e => setMobile(e.target.value)}
+              onChange={e => setMobile(sanitizeIndianMobileInput(e.target.value))}
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all text-slate-900"
               placeholder="10-digit mobile number"
+              inputMode="numeric"
+              maxLength={10}
             />
           </div>
 

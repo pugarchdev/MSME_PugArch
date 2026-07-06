@@ -13,6 +13,14 @@ export type ReverseAuction = {
   referenceNo?: string | null;
   title?: string;
   description?: string;
+  procurementMethod?: 'REVERSE_AUCTION' | 'BID_WITH_REVERSE_AUCTION' | string | null;
+  category?: string | null;
+  subCategory?: string | null;
+  auctionType?: 'ENGLISH_REVERSE' | 'RANK_BASED_REVERSE' | string | null;
+  auctionMode?: 'ONLINE' | string | null;
+  auctionDurationMinutes?: number | null;
+  purchaseGroup?: string | null;
+  purchaseOrganization?: string | null;
   status: string;
   statusEnum?: string;
   startTime: string;
@@ -36,8 +44,15 @@ export type ReverseAuction = {
   buyerOrgId?: number | null;
   linkedBidId?: number | null;
   tenderId?: number | null;
-  category?: string | null;
   currency?: string | null;
+  rankVisibility?: 'SHOW_RANK_ONLY' | 'SHOW_LOWEST_PRICE' | 'HIDDEN' | string | null;
+  minimumQualifiedBidders?: number | null;
+  termsDocumentFileId?: number | null;
+  termsDocumentName?: string | null;
+  buyerMonitorSettings?: Record<string, unknown> | null;
+  auctionConfig?: Record<string, unknown> | null;
+  preBidStage?: Record<string, unknown> | null;
+  auctionTrigger?: string | null;
 };
 
 export type ReverseAuctionParticipant = {

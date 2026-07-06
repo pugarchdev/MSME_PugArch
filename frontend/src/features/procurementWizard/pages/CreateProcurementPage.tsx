@@ -101,6 +101,89 @@ type DocumentRow = {
   instructions: string;
 };
 
+type AuctionConfig = {
+  auctionNumber: string;
+  auctionTitle: string;
+  auctionDescription: string;
+  procurementMethod: 'REVERSE_AUCTION' | 'BID_WITH_REVERSE_AUCTION';
+  auctionCategory: string;
+  auctionSubCategory: string;
+  currency: string;
+  auctionStatus: 'DRAFT';
+  buyerOrganization: string;
+  department: string;
+  purchaseGroup: string;
+  purchaseOrganization: string;
+  auctionType: 'ENGLISH_REVERSE' | 'RANK_BASED_REVERSE';
+  auctionMode: 'ONLINE';
+  startDateTime: string;
+  endDateTime: string;
+  durationMinutes: number;
+  startingBidPrice: number;
+  reservePrice: number | null;
+  minimumBidDecrement: number;
+  autoExtensionEnabled: boolean;
+  extensionTriggerMinutes: number;
+  extensionDurationMinutes: number;
+  maximumExtensions: number;
+  rankVisibility: 'SHOW_RANK_ONLY' | 'SHOW_LOWEST_PRICE' | 'HIDDEN';
+  minimumQualifiedBidders: number;
+  termsDocumentFileId: number | null;
+  termsDocumentName: string;
+  buyerMonitorSettings: {
+    showLiveRank: boolean;
+    alertOnReserveBreach: boolean;
+    allowManualExtension: boolean;
+  };
+  triggerConfiguration: {
+    trigger: 'AFTER_TECHNICAL_QUALIFICATION' | 'TOP_N_BIDDERS' | 'ALL_TECHNICALLY_QUALIFIED';
+    topN: number;
+    preBidStageRequired: boolean;
+  };
+};
+
+type RateContractItem = {
+  id: string;
+  itemName: string;
+  specification: string;
+  uom: string;
+  estimatedAnnualQuantity: number;
+  baseRate: number;
+  gst: number;
+  discount: number;
+  slabPricingEnabled: boolean;
+  slabPricing: Array<{ id: string; minQuantity: number; maxQuantity: number | null; rate: number }>;
+};
+
+type RateContractConfig = {
+  rateContractNumber: string;
+  contractTitle: string;
+  contractDescription: string;
+  contractCategory: string;
+  contractSubCategory: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  rateValidityPeriod: string;
+  supplierSelectionStrategy: 'SINGLE_SUPPLIER' | 'MULTI_SUPPLIER' | 'PANEL_RATE_CONTRACT' | 'ITEM_WISE_L1';
+  selectedSuppliers: Array<{ supplierId: number; supplierUserId?: number | null; supplierName?: string | null }>;
+  itemRateSchedule: RateContractItem[];
+  priceVariationClause: 'FIXED_PRICE' | 'INDEX_BASED_VARIATION' | 'MUTUALLY_AGREED_REVISION';
+  callOffOrderAllowed: boolean;
+  maximumOrderQuantityPerCallOff: number;
+  minimumOrderQuantity: number;
+  deliverySla: string;
+  penaltyClause: string;
+  securityDepositRequired: boolean;
+  securityDepositAmount: number;
+  pbgRequired: boolean;
+  pbgAmount: number;
+  approvalWorkflow: string;
+  contractDocument: {
+    fileAssetId: number | null;
+    fileName: string;
+  };
+};
+
 type Draft = {
   id?: number;
   type: ProcurementMethodId;
@@ -217,6 +300,14 @@ type Draft = {
     approver: string;
     notes: string;
   };
+  auctionConfig: AuctionConfig;
+  rateContractConfig: RateContractConfig;
+  rfqType?: 'OPEN' | 'LIMITED' | '';
+  questionnaire?: Array<{ id: string; type: 'TEXT' | 'YES_NO' | 'ATTACHMENT'; text: string }>;
+  requireDemo?: boolean;
+  tenderType?: 'OPEN' | 'LIMITED' | 'SEALED' | '';
+  limitedTenderJustification?: string;
+  sealedSubmissionFlag?: boolean;
 };
 
 const DRAFT_KEY = 'msme:guided-procurement-create:v2';
@@ -224,8 +315,194 @@ const DRAFT_KEY = 'msme:guided-procurement-create:v2';
 const today = new Date().toISOString().split('T')[0];
 const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 const nextFortnight = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+const toDateTimeLocal = (date: Date) => date.toISOString().slice(0, 16);
+const nextWeekDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000));
+const nextWeekPlusOneHourDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000 + 60 * 60000));
 
 const makeId = () => Math.random().toString(36).substring(2, 9);
+const isReverseAuctionMethod = (method: ProcurementMethodId) => method === 'REVERSE_AUCTION' || method === 'BID_WITH_REVERSE_AUCTION';
+const isRateContractMethod = (method: ProcurementMethodId) => method === 'RATE_CONTRACT';
+
+const defaultAuctionConfig = (method: ProcurementMethodId): AuctionConfig => ({
+  auctionNumber: `RA-${Date.now()}`,
+  auctionTitle: '',
+  auctionDescription: '',
+  procurementMethod: method === 'BID_WITH_REVERSE_AUCTION' ? 'BID_WITH_REVERSE_AUCTION' : 'REVERSE_AUCTION',
+  auctionCategory: '',
+  auctionSubCategory: '',
+  currency: 'INR',
+  auctionStatus: 'DRAFT',
+  buyerOrganization: '',
+  department: '',
+  purchaseGroup: '',
+  purchaseOrganization: '',
+  auctionType: 'ENGLISH_REVERSE',
+  auctionMode: 'ONLINE',
+  startDateTime: nextWeekDateTime,
+  endDateTime: nextWeekPlusOneHourDateTime,
+  durationMinutes: 60,
+  startingBidPrice: 0,
+  reservePrice: null,
+  minimumBidDecrement: 0,
+  autoExtensionEnabled: false,
+  extensionTriggerMinutes: 5,
+  extensionDurationMinutes: 5,
+  maximumExtensions: 3,
+  rankVisibility: 'SHOW_RANK_ONLY',
+  minimumQualifiedBidders: 2,
+  termsDocumentFileId: null,
+  termsDocumentName: '',
+  buyerMonitorSettings: {
+    showLiveRank: true,
+    alertOnReserveBreach: true,
+    allowManualExtension: true,
+  },
+  triggerConfiguration: {
+    trigger: 'AFTER_TECHNICAL_QUALIFICATION',
+    topN: 3,
+    preBidStageRequired: method === 'BID_WITH_REVERSE_AUCTION',
+  },
+});
+
+const syncAuctionDefaults = (draft: Draft, method: ProcurementMethodId): Draft => {
+  if (!isReverseAuctionMethod(method)) {
+    return { ...draft, type: method };
+  }
+
+  const base = draft.auctionConfig || defaultAuctionConfig(method);
+  return {
+    ...draft,
+    type: method,
+    basics: {
+      ...draft.basics,
+      isReverseAuctionNeeded: true,
+      isTechnicalEvaluationNeeded: method === 'BID_WITH_REVERSE_AUCTION' ? true : draft.basics.isTechnicalEvaluationNeeded,
+    },
+    schedule: {
+      ...draft.schedule,
+      packetType: method === 'BID_WITH_REVERSE_AUCTION' ? 'Two' : draft.schedule.packetType,
+      minimumBidders: Math.max(draft.schedule.minimumBidders || 0, base.minimumQualifiedBidders || 2),
+    },
+    auctionConfig: {
+      ...base,
+      procurementMethod: method === 'BID_WITH_REVERSE_AUCTION' ? 'BID_WITH_REVERSE_AUCTION' : 'REVERSE_AUCTION',
+      auctionTitle: base.auctionTitle || draft.basics.title,
+      auctionDescription: base.auctionDescription || draft.basics.justification,
+      auctionCategory: base.auctionCategory || draft.basics.category,
+      auctionSubCategory: base.auctionSubCategory || draft.basics.subCategory,
+      buyerOrganization: base.buyerOrganization || draft.internal.orgName,
+      department: base.department || draft.internal.department || draft.basics.department,
+      startingBidPrice: base.startingBidPrice || draft.basics.estimatedValue || 0,
+      triggerConfiguration: {
+        ...base.triggerConfiguration,
+        preBidStageRequired: method === 'BID_WITH_REVERSE_AUCTION',
+      },
+    },
+  };
+};
+
+const defaultRateContractConfig = (): RateContractConfig => ({
+  rateContractNumber: `RC-${Date.now()}`,
+  contractTitle: '',
+  contractDescription: '',
+  contractCategory: '',
+  contractSubCategory: '',
+  periodStartDate: today,
+  periodEndDate: nextFortnight,
+  rateValidityPeriod: 'Contract period',
+  supplierSelectionStrategy: 'SINGLE_SUPPLIER',
+  selectedSuppliers: [],
+  itemRateSchedule: [],
+  priceVariationClause: 'FIXED_PRICE',
+  callOffOrderAllowed: true,
+  maximumOrderQuantityPerCallOff: 0,
+  minimumOrderQuantity: 0,
+  deliverySla: 'Delivery within agreed SLA from call-off order date',
+  penaltyClause: 'As per agreed contract terms',
+  securityDepositRequired: false,
+  securityDepositAmount: 0,
+  pbgRequired: false,
+  pbgAmount: 0,
+  approvalWorkflow: 'Finance + Procurement',
+  contractDocument: {
+    fileAssetId: null,
+    fileName: '',
+  },
+});
+
+const rateScheduleFromDraftItems = (draft: Draft): RateContractItem[] => {
+  const source = draft.basics.whatAreYouBuying === 'BOQ'
+    ? draft.boqTable.map(row => ({
+      name: row.description,
+      specification: row.remarks || row.category || '',
+      unit: row.uom,
+      quantity: row.quantity,
+      rate: row.estimatedRate,
+      gst: row.taxPercent || 0,
+    }))
+    : draft.items.map(item => ({
+      name: item.name,
+      specification: item.specification || item.technicalSpecification || '',
+      unit: item.unit,
+      quantity: item.quantity,
+      rate: item.unitPrice,
+      gst: item.gst || 0,
+    }));
+
+  return source
+    .filter(item => String(item.name || '').trim())
+    .map(item => ({
+      id: makeId(),
+      itemName: String(item.name || ''),
+      specification: String(item.specification || ''),
+      uom: String(item.unit || 'Nos'),
+      estimatedAnnualQuantity: Number(item.quantity || 1),
+      baseRate: Number(item.rate || 0),
+      gst: Number(item.gst || 0),
+      discount: 0,
+      slabPricingEnabled: false,
+      slabPricing: [],
+    }));
+};
+
+const syncRateContractDefaults = (draft: Draft): Draft => {
+  const base = draft.rateContractConfig || defaultRateContractConfig();
+  const itemRateSchedule = base.itemRateSchedule.length ? base.itemRateSchedule : rateScheduleFromDraftItems(draft);
+  const selectedSuppliers = base.selectedSuppliers.length
+    ? base.selectedSuppliers
+    : draft.vendors.invitedSellers.map(supplierId => ({ supplierId }));
+
+  return {
+    ...draft,
+    type: 'RATE_CONTRACT',
+    basics: {
+      ...draft.basics,
+      isRepeatedSupply: true,
+    },
+    rateContractConfig: {
+      ...base,
+      contractTitle: base.contractTitle || draft.basics.title,
+      contractDescription: base.contractDescription || draft.basics.justification,
+      contractCategory: base.contractCategory || draft.basics.category,
+      contractSubCategory: base.contractSubCategory || draft.basics.subCategory,
+      selectedSuppliers,
+      itemRateSchedule,
+      deliverySla: base.deliverySla || draft.terms.deliveryTerms,
+      penaltyClause: base.penaltyClause || draft.terms.penaltyClause,
+      securityDepositRequired: base.securityDepositRequired || draft.terms.emdRequired,
+      securityDepositAmount: base.securityDepositAmount || draft.terms.securityDeposit || draft.terms.emdAmount || 0,
+      pbgRequired: base.pbgRequired || draft.terms.pbgRequired,
+      pbgAmount: base.pbgAmount || draft.terms.securityDeposit || 0,
+      approvalWorkflow: base.approvalWorkflow || draft.approval.workflow,
+    },
+  };
+};
+
+const applyMethodDefaults = (draft: Draft, method: ProcurementMethodId): Draft => {
+  if (isReverseAuctionMethod(method)) return syncAuctionDefaults(draft, method);
+  if (isRateContractMethod(method)) return syncRateContractDefaults(draft);
+  return { ...draft, type: method };
+};
 
 const CATEGORY_OPTIONS = [
   'Raw Materials',
@@ -414,6 +691,14 @@ const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 
     approver: '',
     notes: '',
   },
+  auctionConfig: defaultAuctionConfig(type),
+  rateContractConfig: defaultRateContractConfig(),
+  rfqType: '',
+  questionnaire: [],
+  requireDemo: false,
+  tenderType: '',
+  limitedTenderJustification: '',
+  sealedSubmissionFlag: false,
 });
 
 export default function CreateProcurementPage() {
@@ -503,6 +788,14 @@ export default function CreateProcurementPage() {
           terms: { ...base.terms, ...(payload.terms || {}) },
           evaluation: { ...base.evaluation, ...(payload.evaluation || {}) },
           approval: { ...base.approval, ...(payload.approval || {}) },
+          auctionConfig: {
+            ...base.auctionConfig,
+            ...(payload.auctionConfig || payload.rules?.auctionConfig || {}),
+          },
+          rateContractConfig: {
+            ...base.rateContractConfig,
+            ...(payload.rateContractConfig || payload.rateContract || {}),
+          },
           items: Array.isArray(payload.items) ? payload.items : base.items,
           boqTable: Array.isArray(payload.boqTable) ? payload.boqTable : base.boqTable,
           requiredDocs: Array.isArray(payload.requiredDocs) ? payload.requiredDocs : base.requiredDocs,
@@ -781,6 +1074,14 @@ export default function CreateProcurementPage() {
         toast.error('Please invite at least 1 supplier or change sourcing scope to Open.');
         return false;
       }
+      if (isReverseAuctionMethod(d.type) && d.vendors.invitedSellers.length < d.auctionConfig.minimumQualifiedBidders) {
+        toast.error(`Reverse auction requires at least ${d.auctionConfig.minimumQualifiedBidders} qualified suppliers.`);
+        return false;
+      }
+      if (isRateContractMethod(d.type) && d.rateContractConfig.selectedSuppliers.length === 0 && d.vendors.invitedSellers.length === 0) {
+        toast.error('Rate Contract requires at least one selected supplier.');
+        return false;
+      }
     } else if (stepIdx === 4) {
       // Step 5 Event timeline
       if (!d.schedule.submissionDate) {
@@ -810,6 +1111,96 @@ export default function CreateProcurementPage() {
         }
         if (new Date(d.schedule.financialOpeningDate) < new Date(d.schedule.technicalOpeningDate)) {
           toast.error('Financial opening date must be scheduled on or after technical envelope opening.');
+          return false;
+        }
+      }
+      if (isReverseAuctionMethod(d.type)) {
+        const auction = d.auctionConfig;
+        const start = new Date(auction.startDateTime).getTime();
+        const end = new Date(auction.endDateTime).getTime();
+        if (!auction.auctionTitle.trim()) {
+          toast.error('Auction title is required.');
+          return false;
+        }
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+          toast.error('Auction start datetime must be before auction end datetime.');
+          return false;
+        }
+        if (auction.durationMinutes <= 0) {
+          toast.error('Auction duration must be greater than 0 minutes.');
+          return false;
+        }
+        if (auction.startingBidPrice <= 0) {
+          toast.error('Starting bid price must be greater than 0.');
+          return false;
+        }
+        if (auction.reservePrice !== null && auction.reservePrice > auction.startingBidPrice) {
+          toast.error('Reserve price cannot exceed starting bid price.');
+          return false;
+        }
+        if (auction.minimumBidDecrement <= 0) {
+          toast.error('Minimum bid decrement must be greater than 0.');
+          return false;
+        }
+        if (auction.autoExtensionEnabled && (
+          auction.extensionTriggerMinutes <= 0 ||
+          auction.extensionDurationMinutes <= 0 ||
+          auction.maximumExtensions <= 0
+        )) {
+          toast.error('Auto extension trigger, duration, and maximum extensions are required.');
+          return false;
+        }
+        if (d.type === 'BID_WITH_REVERSE_AUCTION' && !auction.triggerConfiguration.trigger) {
+          toast.error('Bid with Reverse Auction requires an auction trigger configuration.');
+          return false;
+        }
+      }
+      if (isRateContractMethod(d.type)) {
+        const contract = d.rateContractConfig;
+        const start = new Date(contract.periodStartDate).getTime();
+        const end = new Date(contract.periodEndDate).getTime();
+        if (!contract.contractTitle.trim()) {
+          toast.error('Contract title is required.');
+          return false;
+        }
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+          toast.error('Rate Contract start date must be before end date.');
+          return false;
+        }
+        if (!contract.rateValidityPeriod.trim()) {
+          toast.error('Rate validity period is required.');
+          return false;
+        }
+        if (contract.itemRateSchedule.length === 0) {
+          toast.error('Rate Contract requires at least one item in the rate schedule.');
+          return false;
+        }
+        if (contract.itemRateSchedule.some(item => !item.itemName.trim() || !item.uom.trim() || item.estimatedAnnualQuantity <= 0 || item.baseRate <= 0)) {
+          toast.error('Every rate schedule item must have item name, UOM, annual quantity, and base rate.');
+          return false;
+        }
+        if (contract.itemRateSchedule.some(item => item.slabPricingEnabled && item.slabPricing.some(slab => slab.minQuantity <= 0 || (slab.maxQuantity !== null && slab.maxQuantity < slab.minQuantity) || slab.rate <= 0))) {
+          toast.error('Slab pricing rows must have valid quantity ranges and positive rates.');
+          return false;
+        }
+        if (contract.callOffOrderAllowed && contract.maximumOrderQuantityPerCallOff > 0 && contract.maximumOrderQuantityPerCallOff < contract.minimumOrderQuantity) {
+          toast.error('Maximum call-off quantity cannot be lower than minimum order quantity.');
+          return false;
+        }
+        if (!contract.deliverySla.trim()) {
+          toast.error('Delivery SLA is required.');
+          return false;
+        }
+        if (!contract.penaltyClause.trim()) {
+          toast.error('Penalty clause is required.');
+          return false;
+        }
+        if (contract.securityDepositRequired && contract.securityDepositAmount <= 0) {
+          toast.error('Security deposit amount is required.');
+          return false;
+        }
+        if (contract.pbgRequired && contract.pbgAmount <= 0) {
+          toast.error('PBG amount is required.');
           return false;
         }
       }
@@ -1238,6 +1629,44 @@ function BasicsStepForm({
           </p>
         </Field>
 
+        {['RFQ', 'RFI', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'SEALED_TENDER', 'TWO_PACKET_BID', 'BOQ_BASED_BID'].includes(draft.type) && (
+          <Field label={`${draft.type.includes('TENDER') || draft.type === 'TWO_PACKET_BID' || draft.type === 'BOQ_BASED_BID' ? 'Tender' : draft.type} Number`}>
+            <input
+              type="text"
+              value={draft.id ? `${draft.type === 'TWO_PACKET_BID' || draft.type === 'BOQ_BASED_BID' ? 'TDR' : draft.type}-${draft.id}` : 'Auto-generated after first save'}
+              disabled
+              className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none cursor-not-allowed"
+            />
+          </Field>
+        )}
+
+        {draft.type === 'RFQ' && (
+          <Field label="RFQ Type" required>
+            <select
+              value={draft.rfqType || 'OPEN'}
+              onChange={e => updateDraft(c => ({ ...c, rfqType: e.target.value as any }))}
+              className={inputClass}
+            >
+              <option value="OPEN">Open RFQ (All registered sellers can quote)</option>
+              <option value="LIMITED">Limited RFQ (Only invited/selected sellers can quote)</option>
+            </select>
+          </Field>
+        )}
+
+        {(draft.type === 'LIMITED_TENDER' || (draft.type === 'RFQ' && draft.rfqType === 'LIMITED')) && (
+          <div className="sm:col-span-2">
+            <Field label="Limited Tender / RFQ Justification" required>
+              <textarea
+                value={draft.limitedTenderJustification || ''}
+                onChange={e => updateDraft(c => ({ ...c, limitedTenderJustification: e.target.value }))}
+                rows={2}
+                className={textareaClass}
+                placeholder="Explain why this event is restricted to a limited vendor list (minimum 15 characters)..."
+              />
+            </Field>
+          </div>
+        )}
+
         <Field label="Procurement title" required>
           <input
             value={draft.basics.title}
@@ -1451,6 +1880,87 @@ function BasicsStepForm({
         </div>
       </div>
 
+      {draft.type === 'RFI' && (
+        <div className="border border-slate-200 bg-white p-5 rounded-xl space-y-4 shadow-sm mb-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">RFI Questionnaire Builder</h3>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Add market research questions for responding vendors (at least 1 question is required).</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                updateDraft(c => ({
+                  ...c,
+                  questionnaire: [
+                    ...(c.questionnaire || []),
+                    { id: makeId(), type: 'TEXT', text: '' }
+                  ]
+                }));
+              }}
+              className="h-8 text-xs font-bold text-[#12335f] border-slate-300 hover:bg-slate-50"
+            >
+              + Add Question
+            </Button>
+          </div>
+
+          {(draft.questionnaire || []).length === 0 ? (
+            <div className="text-center py-6 text-xs text-slate-400 font-semibold">
+              No questions added yet. Click "+ Add Question" to start building your RFI survey.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(draft.questionnaire || []).map((q, idx) => (
+                <div key={q.id} className="flex gap-3 items-start border border-slate-100 p-3 rounded-lg bg-slate-50/50">
+                  <span className="text-xs font-bold text-slate-400 mt-2.5">Q{idx + 1}.</span>
+                  <div className="flex-1 grid gap-3 sm:grid-cols-[1fr_160px]">
+                    <input
+                      type="text"
+                      value={q.text}
+                      onChange={e => {
+                        const newQ = [...(draft.questionnaire || [])];
+                        newQ[idx].text = e.target.value;
+                        updateDraft(c => ({ ...c, questionnaire: newQ }));
+                      }}
+                      placeholder="Type your market research or capability question..."
+                      className={inputClass}
+                    />
+                    <select
+                      value={q.type}
+                      onChange={e => {
+                        const newQ = [...(draft.questionnaire || [])];
+                        newQ[idx].type = e.target.value as any;
+                        updateDraft(c => ({ ...c, questionnaire: newQ }));
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="TEXT">Text Answer</option>
+                      <option value="YES_NO">Yes / No Option</option>
+                      <option value="ATTACHMENT">Document Attachment</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateDraft(c => ({
+                        ...c,
+                        questionnaire: (c.questionnaire || []).filter(x => x.id !== q.id)
+                      }));
+                    }}
+                    className="p-2 rounded text-rose-500 hover:bg-rose-50 transition-all mt-1"
+                    title="Delete question"
+                  >
+                    <Trash2 className="h-4.5 w-4.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Suggested method banner */}
       <div className="border border-amber-250 bg-amber-50/40 p-5 rounded-xl space-y-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -1614,8 +2124,7 @@ function BasicsStepForm({
               isSelected={draft.type === method.id}
               onSelect={() => {
                 updateDraft(current => ({
-                  ...current,
-                  type: method.id,
+                  ...applyMethodDefaults(current, method.id),
                   requiredDocs: defaultRequiredDocs(current.basics.buyerType, method.id)
                 }));
               }}
@@ -2274,6 +2783,36 @@ function ItemsDetailsForm({
     }));
   };
 
+  const handleBOQUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entityType', 'procurement_draft');
+      const response = await api.fetch('/api/files/upload', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+      });
+      const resData = await unwrap<any>(response);
+      const asset = resData.file || resData;
+      const fileId = Number(resData.fileId || asset.id || 0);
+
+      updateDraft(c => ({
+        ...c,
+        boqFileAssetId: fileId,
+        boqFileName: asset.originalName || file.name
+      }));
+      toast.success('BOQ file uploaded successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload BOQ');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
   // BOQ Handlers
   const handleAddBOQRow = () => {
     updateDraft(c => {
@@ -2340,27 +2879,53 @@ function ItemsDetailsForm({
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Structured Bill of Quantities (BOQ)</h3>
             <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Invite quotes using a itemized spreadsheet schedule</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => toast.info('BOQ Sourcing template downloaded')}
+              onClick={() => {
+                toast.info('Downloading BOQ Excel Template...');
+              }}
               className="h-8 text-xs font-bold text-slate-700"
             >
               Download Template
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => toast.info('Excel validation check completed successfully')}
-              className="h-8 text-xs font-bold text-slate-700"
-            >
-              Validate File
-            </Button>
+            
+            <div className="relative">
+              <input
+                type="file"
+                id="boq-upload"
+                accept=".xls,.xlsx,.csv"
+                onChange={handleBOQUpload}
+                className="hidden"
+                disabled={uploadingFile}
+              />
+              <label
+                htmlFor="boq-upload"
+                className={cn(
+                  "cursor-pointer inline-flex items-center justify-center h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-all",
+                  uploadingFile && "opacity-50 pointer-events-none"
+                )}
+              >
+                {uploadingFile ? 'Uploading...' : 'Upload BOQ'}
+              </label>
+            </div>
           </div>
         </div>
+
+        {draft.boqFileName && (
+          <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 p-2 rounded-lg max-w-md animate-fadeIn">
+            <span>Uploaded BOQ: <strong>{draft.boqFileName}</strong></span>
+            <button
+              type="button"
+              onClick={() => updateDraft(c => ({ ...c, boqFileName: '', boqFileAssetId: null }))}
+              className="text-rose-500 hover:text-rose-700 font-bold ml-auto"
+            >
+              Remove
+            </button>
+          </div>
+        )}
 
         {/* Use BOQTable Component from Loop 3 */}
         <BOQTable
@@ -2828,6 +3393,13 @@ function VendorsStepForm({
     });
   };
 
+  useEffect(() => {
+    const isLimited = draft.type === 'LIMITED_TENDER' || (draft.type === 'RFQ' && draft.rfqType === 'LIMITED');
+    if (isLimited && draft.vendors.selection !== 'Selected') {
+      updateDraft(c => ({ ...c, vendors: { ...c.vendors, selection: 'Selected' } }));
+    }
+  }, [draft.type, draft.rfqType, draft.vendors.selection]);
+
   const handleSelectionModeChange = (mode: 'Open' | 'Selected' | 'Category' | 'Past') => {
     updateDraft(c => ({
       ...c,
@@ -2839,16 +3411,22 @@ function VendorsStepForm({
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Supplier Sourcing Strategy" required>
-          <select
-            value={draft.vendors.selection}
-            onChange={e => handleSelectionModeChange(e.target.value as any)}
-            className={inputClass}
-          >
-            <option value="Open">Open Advertised / Public Sourcing</option>
-            <option value="Selected">Invite selected verified suppliers pool</option>
-            <option value="Category">Invite category-matched registered vendors</option>
-            <option value="Past">Invite prior order vendors</option>
-          </select>
+          {draft.type === 'LIMITED_TENDER' || (draft.type === 'RFQ' && draft.rfqType === 'LIMITED') ? (
+            <div className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 flex items-center text-sm font-semibold text-slate-700 select-none">
+              Invite selected verified suppliers pool (Locked for Limited methods)
+            </div>
+          ) : (
+            <select
+              value={draft.vendors.selection}
+              onChange={e => handleSelectionModeChange(e.target.value as any)}
+              className={inputClass}
+            >
+              <option value="Open">Open Advertised / Public Sourcing</option>
+              <option value="Selected">Invite selected verified suppliers pool</option>
+              <option value="Category">Invite category-matched registered vendors</option>
+              <option value="Past">Invite prior order vendors</option>
+            </select>
+          )}
         </Field>
 
         <Field label="Minimum Sourcing bids required">
@@ -2924,9 +3502,82 @@ function ScheduleStepForm({
 }) {
   const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
   const isTwoPacket = draft.schedule.packetType === 'Two';
+  const isAuction = isReverseAuctionMethod(draft.type);
+  const isRateContract = isRateContractMethod(draft.type);
 
   const updateSchedule = (key: keyof Draft['schedule'], val: any) => {
     updateDraft(c => ({ ...c, schedule: { ...c.schedule, [key]: val } }));
+  };
+  const updateAuction = <K extends keyof AuctionConfig>(key: K, val: AuctionConfig[K]) => {
+    updateDraft(c => ({ ...c, auctionConfig: { ...c.auctionConfig, [key]: val } }));
+  };
+  const updateTrigger = <K extends keyof AuctionConfig['triggerConfiguration']>(
+    key: K,
+    val: AuctionConfig['triggerConfiguration'][K]
+  ) => {
+    updateDraft(c => ({
+      ...c,
+      auctionConfig: {
+        ...c.auctionConfig,
+        triggerConfiguration: { ...c.auctionConfig.triggerConfiguration, [key]: val },
+      },
+    }));
+  };
+  const updateMonitor = <K extends keyof AuctionConfig['buyerMonitorSettings']>(
+    key: K,
+    val: AuctionConfig['buyerMonitorSettings'][K]
+  ) => {
+    updateDraft(c => ({
+      ...c,
+      auctionConfig: {
+        ...c.auctionConfig,
+        buyerMonitorSettings: { ...c.auctionConfig.buyerMonitorSettings, [key]: val },
+      },
+    }));
+  };
+  const updateRateContract = <K extends keyof RateContractConfig>(key: K, val: RateContractConfig[K]) => {
+    updateDraft(c => ({ ...c, rateContractConfig: { ...c.rateContractConfig, [key]: val } }));
+  };
+  const updateRateItem = <K extends keyof RateContractItem>(id: string, key: K, val: RateContractItem[K]) => {
+    updateDraft(c => ({
+      ...c,
+      rateContractConfig: {
+        ...c.rateContractConfig,
+        itemRateSchedule: c.rateContractConfig.itemRateSchedule.map(item => item.id === id ? { ...item, [key]: val } : item),
+      },
+    }));
+  };
+  const addRateItem = () => {
+    updateDraft(c => ({
+      ...c,
+      rateContractConfig: {
+        ...c.rateContractConfig,
+        itemRateSchedule: [
+          ...c.rateContractConfig.itemRateSchedule,
+          {
+            id: makeId(),
+            itemName: '',
+            specification: '',
+            uom: 'Nos',
+            estimatedAnnualQuantity: 1,
+            baseRate: 0,
+            gst: 18,
+            discount: 0,
+            slabPricingEnabled: false,
+            slabPricing: [],
+          },
+        ],
+      },
+    }));
+  };
+  const removeRateItem = (id: string) => {
+    updateDraft(c => ({
+      ...c,
+      rateContractConfig: {
+        ...c.rateContractConfig,
+        itemRateSchedule: c.rateContractConfig.itemRateSchedule.filter(item => item.id !== id),
+      },
+    }));
   };
 
   // Warnings collection
@@ -2957,6 +3608,320 @@ function ScheduleStepForm({
           <ul className="list-disc list-inside font-semibold space-y-0.5">
             {warnings.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
+        </div>
+      )}
+
+      {isAuction && (
+        <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50/40 space-y-4">
+          <div>
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Reverse Auction Configuration</h3>
+            <p className="text-[11px] text-slate-600 font-semibold mt-1">
+              Saved auction rules are shown to qualified sellers and used by live bidding.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Auction Number">
+              <input value={draft.auctionConfig.auctionNumber} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Procurement Method">
+              <input value={draft.auctionConfig.procurementMethod} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Auction Title" required>
+              <input value={draft.auctionConfig.auctionTitle} onChange={e => updateAuction('auctionTitle', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Auction Description">
+              <textarea value={draft.auctionConfig.auctionDescription} onChange={e => updateAuction('auctionDescription', e.target.value)} className={cn(inputClass, 'min-h-[76px]')} />
+            </Field>
+            <Field label="Auction Category">
+              <input value={draft.auctionConfig.auctionCategory} onChange={e => updateAuction('auctionCategory', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Auction Subcategory">
+              <input value={draft.auctionConfig.auctionSubCategory} onChange={e => updateAuction('auctionSubCategory', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Currency" required>
+              <input value={draft.auctionConfig.currency} onChange={e => updateAuction('currency', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Estimated Value">
+              <input value={draft.basics.estimatedValue || 0} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Auction Status">
+              <input value={draft.auctionConfig.auctionStatus} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Buyer Organization">
+              <input value={draft.auctionConfig.buyerOrganization} onChange={e => updateAuction('buyerOrganization', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Department">
+              <input value={draft.auctionConfig.department} onChange={e => updateAuction('department', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Purchase Group">
+              <input value={draft.auctionConfig.purchaseGroup} onChange={e => updateAuction('purchaseGroup', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Purchase Organization">
+              <input value={draft.auctionConfig.purchaseOrganization} onChange={e => updateAuction('purchaseOrganization', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Auction Type" required>
+              <select value={draft.auctionConfig.auctionType} onChange={e => updateAuction('auctionType', e.target.value as AuctionConfig['auctionType'])} className={inputClass}>
+                <option value="ENGLISH_REVERSE">English Reverse</option>
+                <option value="RANK_BASED_REVERSE">Rank Based Reverse</option>
+              </select>
+            </Field>
+            <Field label="Auction Mode" required>
+              <input value={draft.auctionConfig.auctionMode} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Auction Start DateTime" required>
+              <input type="datetime-local" value={draft.auctionConfig.startDateTime} onChange={e => updateAuction('startDateTime', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Auction End DateTime" required>
+              <input type="datetime-local" value={draft.auctionConfig.endDateTime} onChange={e => updateAuction('endDateTime', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Auction Duration (Minutes)" required>
+              <input type="number" min={1} value={draft.auctionConfig.durationMinutes || ''} onChange={e => updateAuction('durationMinutes', Number(e.target.value || 0))} className={inputClass} />
+            </Field>
+            <Field label="Starting Bid Price" required>
+              <input type="number" min={0} value={draft.auctionConfig.startingBidPrice || ''} onChange={e => updateAuction('startingBidPrice', Number(e.target.value || 0))} className={inputClass} />
+            </Field>
+            <Field label="Reserve Price">
+              <input type="number" min={0} value={draft.auctionConfig.reservePrice ?? ''} onChange={e => updateAuction('reservePrice', e.target.value ? Number(e.target.value) : null)} className={inputClass} />
+            </Field>
+            <Field label="Minimum Bid Decrement" required>
+              <input type="number" min={0} value={draft.auctionConfig.minimumBidDecrement || ''} onChange={e => updateAuction('minimumBidDecrement', Number(e.target.value || 0))} className={inputClass} />
+            </Field>
+            <Field label="Rank Visibility" required>
+              <select value={draft.auctionConfig.rankVisibility} onChange={e => updateAuction('rankVisibility', e.target.value as AuctionConfig['rankVisibility'])} className={inputClass}>
+                <option value="SHOW_RANK_ONLY">Show Rank Only</option>
+                <option value="SHOW_LOWEST_PRICE">Show Lowest Price</option>
+                <option value="HIDDEN">Hidden</option>
+              </select>
+            </Field>
+            <Field label="Minimum Qualified Bidders" required>
+              <input
+                type="number"
+                min={2}
+                value={draft.auctionConfig.minimumQualifiedBidders || ''}
+                onChange={e => {
+                  const value = Number(e.target.value || 0);
+                  updateAuction('minimumQualifiedBidders', value);
+                  updateSchedule('minimumBidders', value);
+                }}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Auction Terms Document">
+              <input value={draft.auctionConfig.termsDocumentName} onChange={e => updateAuction('termsDocumentName', e.target.value)} className={inputClass} placeholder="Document name or reference" />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 border-t border-indigo-100 pt-4">
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.auctionConfig.autoExtensionEnabled} onChange={e => updateAuction('autoExtensionEnabled', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Auto Extension Enabled?</span>
+            </label>
+            {draft.auctionConfig.autoExtensionEnabled && (
+              <>
+                <Field label="Extension Trigger Minutes" required>
+                  <input type="number" min={1} value={draft.auctionConfig.extensionTriggerMinutes || ''} onChange={e => updateAuction('extensionTriggerMinutes', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+                <Field label="Extension Duration Minutes" required>
+                  <input type="number" min={1} value={draft.auctionConfig.extensionDurationMinutes || ''} onChange={e => updateAuction('extensionDurationMinutes', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+                <Field label="Maximum Extensions" required>
+                  <input type="number" min={1} value={draft.auctionConfig.maximumExtensions || ''} onChange={e => updateAuction('maximumExtensions', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+              </>
+            )}
+          </div>
+
+          {draft.type === 'BID_WITH_REVERSE_AUCTION' && (
+            <div className="grid gap-4 sm:grid-cols-2 border-t border-indigo-100 pt-4">
+              <Field label="Auction Trigger Configuration" required>
+                <select value={draft.auctionConfig.triggerConfiguration.trigger} onChange={e => updateTrigger('trigger', e.target.value as AuctionConfig['triggerConfiguration']['trigger'])} className={inputClass}>
+                  <option value="AFTER_TECHNICAL_QUALIFICATION">After Technical Qualification</option>
+                  <option value="TOP_N_BIDDERS">Among Top N Bidders</option>
+                  <option value="ALL_TECHNICALLY_QUALIFIED">All Technically Qualified Bidders</option>
+                </select>
+              </Field>
+              {draft.auctionConfig.triggerConfiguration.trigger === 'TOP_N_BIDDERS' && (
+                <Field label="Top N Bidders" required>
+                  <input type="number" min={2} value={draft.auctionConfig.triggerConfiguration.topN || ''} onChange={e => updateTrigger('topN', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+              )}
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-3 border-t border-indigo-100 pt-4">
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.auctionConfig.buyerMonitorSettings.showLiveRank} onChange={e => updateMonitor('showLiveRank', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Show Live Rank</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.auctionConfig.buyerMonitorSettings.alertOnReserveBreach} onChange={e => updateMonitor('alertOnReserveBreach', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Alert On Reserve Breach</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.auctionConfig.buyerMonitorSettings.allowManualExtension} onChange={e => updateMonitor('allowManualExtension', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Allow Manual Extension</span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {isRateContract && (
+        <div className="border border-teal-200 rounded-xl p-4 bg-teal-50/40 space-y-4">
+          <div>
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Rate Contract Configuration</h3>
+            <p className="text-[11px] text-slate-600 font-semibold mt-1">
+              Define recurring purchase rates, validity, selected suppliers, and call-off order controls.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Rate Contract Number">
+              <input value={draft.rateContractConfig.rateContractNumber} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+            </Field>
+            <Field label="Contract Title" required>
+              <input value={draft.rateContractConfig.contractTitle} onChange={e => updateRateContract('contractTitle', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Contract Description">
+              <textarea value={draft.rateContractConfig.contractDescription} onChange={e => updateRateContract('contractDescription', e.target.value)} className={cn(inputClass, 'min-h-[76px]')} />
+            </Field>
+            <Field label="Contract Category">
+              <input value={draft.rateContractConfig.contractCategory} onChange={e => updateRateContract('contractCategory', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Contract Subcategory">
+              <input value={draft.rateContractConfig.contractSubCategory} onChange={e => updateRateContract('contractSubCategory', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Contract Start Date" required>
+              <input type="date" value={draft.rateContractConfig.periodStartDate} onChange={e => updateRateContract('periodStartDate', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Contract End Date" required>
+              <input type="date" value={draft.rateContractConfig.periodEndDate} onChange={e => updateRateContract('periodEndDate', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Rate Validity Period" required>
+              <input value={draft.rateContractConfig.rateValidityPeriod} onChange={e => updateRateContract('rateValidityPeriod', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Supplier Selection Strategy" required>
+              <select value={draft.rateContractConfig.supplierSelectionStrategy} onChange={e => updateRateContract('supplierSelectionStrategy', e.target.value as RateContractConfig['supplierSelectionStrategy'])} className={inputClass}>
+                <option value="SINGLE_SUPPLIER">Single Supplier</option>
+                <option value="MULTI_SUPPLIER">Multiple Suppliers</option>
+                <option value="PANEL_RATE_CONTRACT">Panel Rate Contract</option>
+                <option value="ITEM_WISE_L1">Item-wise L1</option>
+              </select>
+            </Field>
+            <Field label="Selected Supplier(s)" required>
+              <input
+                value={`${draft.rateContractConfig.selectedSuppliers.length || draft.vendors.invitedSellers.length} supplier(s) selected from Supplier step`}
+                readOnly
+                className={cn(inputClass, 'bg-slate-100 text-slate-500')}
+              />
+            </Field>
+          </div>
+
+          <div className="rounded-lg border border-teal-100 bg-white p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[11px] font-black uppercase tracking-wide text-slate-800">Item / Rate Schedule</h4>
+              <Button type="button" variant="outline" size="sm" onClick={addRateItem} className="h-8 text-[10px] font-black">
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add Item
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {draft.rateContractConfig.itemRateSchedule.map(item => (
+                <div key={item.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <Field label="Item Name" required>
+                      <input value={item.itemName} onChange={e => updateRateItem(item.id, 'itemName', e.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Specification">
+                      <input value={item.specification} onChange={e => updateRateItem(item.id, 'specification', e.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="UOM" required>
+                      <input value={item.uom} onChange={e => updateRateItem(item.id, 'uom', e.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Estimated Annual Quantity" required>
+                      <input type="number" min={0} value={item.estimatedAnnualQuantity || ''} onChange={e => updateRateItem(item.id, 'estimatedAnnualQuantity', Number(e.target.value || 0))} className={inputClass} />
+                    </Field>
+                    <Field label="Base Rate" required>
+                      <input type="number" min={0} value={item.baseRate || ''} onChange={e => updateRateItem(item.id, 'baseRate', Number(e.target.value || 0))} className={inputClass} />
+                    </Field>
+                    <Field label="GST %">
+                      <input type="number" min={0} max={100} value={item.gst} onChange={e => updateRateItem(item.id, 'gst', Number(e.target.value || 0))} className={inputClass} />
+                    </Field>
+                    <Field label="Discount %">
+                      <input type="number" min={0} max={100} value={item.discount} onChange={e => updateRateItem(item.id, 'discount', Number(e.target.value || 0))} className={inputClass} />
+                    </Field>
+                    <div className="flex items-end justify-between gap-2">
+                      <label className="flex items-center gap-2 pb-2 text-xs font-semibold cursor-pointer select-none">
+                        <input type="checkbox" checked={item.slabPricingEnabled} onChange={e => updateRateItem(item.id, 'slabPricingEnabled', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+                        <span>Slab pricing optional</span>
+                      </label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeRateItem(item.id)} className="h-8 px-2 text-rose-700">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {draft.rateContractConfig.itemRateSchedule.length === 0 && (
+                <p className="rounded-lg border border-dashed border-slate-300 p-4 text-xs font-semibold text-slate-500">
+                  Add at least one item and rate for this contract.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Price Variation Clause" required>
+              <select value={draft.rateContractConfig.priceVariationClause} onChange={e => updateRateContract('priceVariationClause', e.target.value as RateContractConfig['priceVariationClause'])} className={inputClass}>
+                <option value="FIXED_PRICE">Fixed Price</option>
+                <option value="INDEX_BASED_VARIATION">Index-based Variation</option>
+                <option value="MUTUALLY_AGREED_REVISION">Mutually Agreed Revision</option>
+              </select>
+            </Field>
+            <label className="flex items-center gap-2 pt-6 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.rateContractConfig.callOffOrderAllowed} onChange={e => updateRateContract('callOffOrderAllowed', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Call-off Order Allowed?</span>
+            </label>
+            {draft.rateContractConfig.callOffOrderAllowed && (
+              <>
+                <Field label="Maximum Order Quantity Per Call-off">
+                  <input type="number" min={0} value={draft.rateContractConfig.maximumOrderQuantityPerCallOff || ''} onChange={e => updateRateContract('maximumOrderQuantityPerCallOff', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+                <Field label="Minimum Order Quantity">
+                  <input type="number" min={0} value={draft.rateContractConfig.minimumOrderQuantity || ''} onChange={e => updateRateContract('minimumOrderQuantity', Number(e.target.value || 0))} className={inputClass} />
+                </Field>
+              </>
+            )}
+            <Field label="Delivery SLA" required>
+              <input value={draft.rateContractConfig.deliverySla} onChange={e => updateRateContract('deliverySla', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Penalty Clause" required>
+              <input value={draft.rateContractConfig.penaltyClause} onChange={e => updateRateContract('penaltyClause', e.target.value)} className={inputClass} />
+            </Field>
+            <label className="flex items-center gap-2 pt-6 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.rateContractConfig.securityDepositRequired} onChange={e => updateRateContract('securityDepositRequired', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Security Deposit Required?</span>
+            </label>
+            {draft.rateContractConfig.securityDepositRequired && (
+              <Field label="Security Deposit Amount" required>
+                <input type="number" min={0} value={draft.rateContractConfig.securityDepositAmount || ''} onChange={e => updateRateContract('securityDepositAmount', Number(e.target.value || 0))} className={inputClass} />
+              </Field>
+            )}
+            <label className="flex items-center gap-2 pt-6 text-xs font-semibold cursor-pointer select-none">
+              <input type="checkbox" checked={draft.rateContractConfig.pbgRequired} onChange={e => updateRateContract('pbgRequired', e.target.checked)} className="h-4 w-4 rounded accent-[#12335f]" />
+              <span>Performance Bank Guarantee Required?</span>
+            </label>
+            {draft.rateContractConfig.pbgRequired && (
+              <Field label="PBG Amount" required>
+                <input type="number" min={0} value={draft.rateContractConfig.pbgAmount || ''} onChange={e => updateRateContract('pbgAmount', Number(e.target.value || 0))} className={inputClass} />
+              </Field>
+            )}
+            <Field label="Approval Workflow" required>
+              <input value={draft.rateContractConfig.approvalWorkflow} onChange={e => updateRateContract('approvalWorkflow', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Contract Document Upload">
+              <input value={draft.rateContractConfig.contractDocument.fileName} onChange={e => updateRateContract('contractDocument', { ...draft.rateContractConfig.contractDocument, fileName: e.target.value })} className={inputClass} placeholder="Document name or uploaded file reference" />
+            </Field>
+          </div>
         </div>
       )}
 
@@ -3293,6 +4258,15 @@ function EvaluationBasisForm({
 
   const isQCBS = draft.evaluation.method === 'QCBS / weighted technical-commercial score';
 
+  useEffect(() => {
+    if (draft.type === 'RFI') {
+      const rfiMethods = ['INFORMATION_ONLY', 'MARKET_CAPABILITY_REVIEW', 'TECHNICAL_FEASIBILITY_REVIEW'];
+      if (!rfiMethods.includes(draft.evaluation.method)) {
+        updateDraft(c => ({ ...c, evaluation: { ...c.evaluation, method: 'INFORMATION_ONLY' } }));
+      }
+    }
+  }, [draft.type, draft.evaluation.method]);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -3302,16 +4276,28 @@ function EvaluationBasisForm({
             onChange={e => updateEval('method', e.target.value)}
             className={inputClass}
           >
-            <option value="L1 total value">L1 Total Value basis</option>
-            <option value="Item-wise L1">Item-wise L1 rates basis</option>
-            <option value="Package-wise L1">Package-wise L1 rates basis</option>
-            <option value="Technical qualification then L1">Technical Qualification then L1 Sourcing</option>
-            <option value="QCBS / weighted technical-commercial score">Quality and Cost Based Selection (QCBS)</option>
-            <option value="Reverse auction final rank">Reverse Auction Final Bid Rank</option>
-            <option value="Lowest landed cost">Lowest Landed Cost</option>
+            {draft.type === 'RFI' ? (
+              <>
+                <option value="INFORMATION_ONLY">Information Only (Market Research)</option>
+                <option value="MARKET_CAPABILITY_REVIEW">Market Capability Review</option>
+                <option value="TECHNICAL_FEASIBILITY_REVIEW">Technical Feasibility Review</option>
+              </>
+            ) : (
+              <>
+                <option value="L1 total value">L1 Total Value basis</option>
+                <option value="Item-wise L1">Item-wise L1 rates basis</option>
+                <option value="Package-wise L1">Package-wise L1 rates basis</option>
+                <option value="Technical qualification then L1">Technical Qualification then L1 Sourcing</option>
+                <option value="QCBS / weighted technical-commercial score">Quality and Cost Based Selection (QCBS)</option>
+                <option value="Reverse auction final rank">Reverse Auction Final Bid Rank</option>
+                <option value="Lowest landed cost">Lowest Landed Cost</option>
+              </>
+            )}
           </select>
           <p className="text-[10px] text-slate-500 font-semibold mt-1">
-            QCBS evaluates both technical capabilities (e.g. 70% weight) and commercial offer rates. L1 total value selects purely the lowest total landed cost.
+            {draft.type === 'RFI' 
+              ? 'RFI submissions are only evaluated for capability and feasibility review. Sourcing does not request commercial bids.' 
+              : 'QCBS evaluates both technical capabilities (e.g. 70% weight) and commercial offer rates. L1 total value selects purely the lowest total landed cost.'}
           </p>
         </Field>
 
@@ -3335,7 +4321,36 @@ function EvaluationBasisForm({
             </Field>
           </div>
         )}
+
+        {draft.type === 'RFP' && (
+          <div className="sm:col-span-2">
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none border border-slate-200 p-3 rounded-lg bg-slate-50/50">
+              <input
+                type="checkbox"
+                checked={draft.requireDemo || false}
+                onChange={e => updateDraft(c => ({ ...c, requireDemo: e.target.checked }))}
+                className="h-4 w-4 rounded accent-[#12335f]"
+              />
+              <div>
+                <span className="font-bold text-slate-800">Proposal presentation / Demo required?</span>
+                <span className="block text-[10px] text-slate-500 font-medium mt-0.5">Require shortlisted bidders to present their solution/demo.</span>
+              </div>
+            </label>
+          </div>
+        )}
       </div>
+
+      {draft.type === 'RFI' && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs mt-4">
+          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
+          <div>
+            <span className="text-amber-900 font-black uppercase text-[9px] tracking-wider block">RFI (Request for Information) Notice</span>
+            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
+              RFIs are strictly for market research and vendor capability assessment. You cannot directly award a Purchase Order (PO) from an RFI. You must convert it to an RFQ, RFP, or Tender later to seek commercial bids.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Render Criteria Builder */}
       <EvaluationCriteriaBuilder
@@ -3552,20 +4567,48 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     scopeOfWork: draft.serviceDetails.scopeOfWork || draft.basics.justification || '',
   };
 
-  const rules = {
-    emdRequired: draft.terms.emdRequired,
-    emdAmount: draft.terms.emdAmount,
-    performanceSecurity: draft.terms.pbgRequired,
-    startPrice: draft.basics.estimatedValue || 0,
-    minimumDecrement: 1
-  };
-
   const basics = {
     title,
     justification: draft.basics.justification || draft.internal.justification || '',
     description: `Sourcing Method: ${draft.type}\nValue: INR ${estimatedValue.toLocaleString('en-IN')}\nUrgency: ${draft.basics.priority}`,
     buyerType: draft.basics.buyerType,
     whatAreYouBuying: draft.basics.whatAreYouBuying,
+  };
+
+  const auctionConfigPayload = isReverseAuctionMethod(draft.type) ? {
+    ...draft.auctionConfig,
+    auctionTitle: draft.auctionConfig.auctionTitle || title,
+    auctionDescription: draft.auctionConfig.auctionDescription || draft.basics.justification || basics.description,
+    auctionCategory: draft.auctionConfig.auctionCategory || draft.basics.category,
+    auctionSubCategory: draft.auctionConfig.auctionSubCategory || draft.basics.subCategory,
+    buyerOrganization: draft.auctionConfig.buyerOrganization || draft.internal.orgName,
+    department: draft.auctionConfig.department || draft.internal.department || draft.basics.department,
+    estimatedValue,
+    qualifiedVendors: draft.vendors.invitedSellers,
+  } : null;
+
+  const rateContractConfigPayload = isRateContractMethod(draft.type) ? {
+    ...draft.rateContractConfig,
+    contractTitle: draft.rateContractConfig.contractTitle || title,
+    contractDescription: draft.rateContractConfig.contractDescription || draft.basics.justification || basics.description,
+    contractCategory: draft.rateContractConfig.contractCategory || draft.basics.category,
+    contractSubCategory: draft.rateContractConfig.contractSubCategory || draft.basics.subCategory,
+    selectedSuppliers: draft.rateContractConfig.selectedSuppliers.length
+      ? draft.rateContractConfig.selectedSuppliers
+      : draft.vendors.invitedSellers.map(supplierId => ({ supplierId })),
+    itemRateSchedule: draft.rateContractConfig.itemRateSchedule.map(item => ({
+      ...item,
+      slabPricing: item.slabPricingEnabled ? item.slabPricing : []
+    })),
+  } : null;
+
+  const rules = {
+    emdRequired: draft.terms.emdRequired,
+    emdAmount: draft.terms.emdAmount,
+    performanceSecurity: draft.terms.pbgRequired,
+    startPrice: auctionConfigPayload?.startingBidPrice ?? draft.basics.estimatedValue ?? 0,
+    minimumDecrement: auctionConfigPayload?.minimumBidDecrement ?? 0,
+    auctionConfig: auctionConfigPayload
   };
 
   // Run suggestion engine to capture recommendation result
@@ -3594,13 +4637,18 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     documents: mappedDocuments,
     tender,
     rules,
-    basics
+    basics,
+    auctionConfig: auctionConfigPayload,
+    rateContractConfig: rateContractConfigPayload,
+    rateContract: rateContractConfigPayload
   };
 
   return {
     id: draft.id,
     methodSlug: draft.type,
     procurementMethod: dbMethod,
+    canonicalMethod: draft.type,
+    sealedSubmission: draft.sealedSubmissionFlag || draft.type === 'SEALED_TENDER',
     title,
     description: basics.description,
     estimatedValue,

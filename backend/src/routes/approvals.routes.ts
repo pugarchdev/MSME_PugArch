@@ -307,6 +307,7 @@ async function getEntitySummary(type: ApprovalEntityType, id: number) {
                         title: true,
                         description: true,
                         procurementMethod: true,
+                        canonicalMethod: true,
                         estimatedValue: true,
                         status: true,
                         items: {
@@ -383,7 +384,7 @@ async function getEntitySummary(type: ApprovalEntityType, id: number) {
                 requirement: {
                     select: {
                         id: true, requirementNumber: true, title: true, description: true,
-                        procurementMethod: true, estimatedValue: true,
+                        procurementMethod: true, canonicalMethod: true, estimatedValue: true,
                         status: true, payload: true,
                         items: {
                             select: {

@@ -313,7 +313,9 @@ export const tenderWorkflow = {
           await tx.auction.update({ where: { id: auctionId }, data: { status: 'active', statusEnum: 'LIVE' } });
         }
         const current = Number(auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice);
-        const maxAllowed = current - Number(auction.minDecrement || 1);
+        const decrement = Number(auction.minDecrementAmount ?? auction.minDecrement ?? 0);
+        if (!Number.isFinite(decrement) || decrement <= 0) throw new ApiError(400, 'Auction minimum decrement is not configured', 'AUCTION_MIN_DECREMENT_REQUIRED');
+        const maxAllowed = current - decrement;
         if (input.bidAmount > maxAllowed) throw new ApiError(400, 'Auction bid does not satisfy minimum decrement', 'AUCTION_MIN_DECREMENT');
         const bid = await tx.auctionBid.create({
           data: {

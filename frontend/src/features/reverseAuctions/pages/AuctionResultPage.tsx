@@ -25,6 +25,9 @@ export default function AuctionResultPage({ id }: { id: number }) {
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Reverse Auction Result</p>
           <h1 className="text-2xl font-black text-slate-950">{query.data?.auction?.title || `Auction #${id}`}</h1>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            {query.data?.auction?.procurementMethod || 'REVERSE_AUCTION'} · Rank visibility: {query.data?.auction?.rankVisibility || 'SHOW_RANK_ONLY'} · Award basis: final L1 auction rank
+          </p>
         </div>
         <Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
       </div>

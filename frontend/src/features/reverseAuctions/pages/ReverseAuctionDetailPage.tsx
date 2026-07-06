@@ -162,6 +162,8 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
                 <InfoRow label="End Time" value={formatDateTime(auction.data.endTime)} />
                 <InfoRow label="Duration" value={`${durationMin} minutes`} />
                 <InfoRow label="Status" value={status} />
+                <InfoRow label="Auction Type" value={auction.data.auctionType || 'ENGLISH_REVERSE'} />
+                <InfoRow label="Auction Mode" value={auction.data.auctionMode || 'ONLINE'} />
               </div>
             </CardContent>
           </Card>
@@ -172,8 +174,10 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               <div className="grid gap-2 text-xs">
                 <InfoRow label="Opening Price" value={formatCurrency(auction.data.startPrice)} />
                 <InfoRow label="Min Decrement" value={auction.data.minDecrementAmount ? formatCurrency(auction.data.minDecrementAmount) : `${auction.data.minDecrementPercent}%`} />
-                <InfoRow label="Freight/Tax" value="Excluded / Excluded" />
+                <InfoRow label="Rank Visibility" value={auction.data.rankVisibility || 'SHOW_RANK_ONLY'} />
+                <InfoRow label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} />
                 <InfoRow label="Auto-Extension" value={autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
+                {auction.data.termsDocumentName && <InfoRow label="Terms Document" value={auction.data.termsDocumentName} />}
               </div>
             </CardContent>
           </Card>
@@ -236,9 +240,12 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
                 <FileText className="h-4 w-4" /> 1. Auction Overview
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-                <MetricCard label="Procurement Method" value={auction.data.tenderId ? 'Bid with Reverse Auction' : 'Standalone Reverse Auction'} icon={Scale} />
+                <MetricCard label="Procurement Method" value={auction.data.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'Bid with Reverse Auction' : 'Reverse Auction'} icon={Scale} />
                 <MetricCard label="Buyer Organization" value={auction.data.buyerOrgId ? `Buyer Org #${auction.data.buyerOrgId}` : 'Verified Buyer'} icon={Building2} />
                 <MetricCard label="Category" value={auction.data.category || 'Not specified'} icon={Tag} />
+                <MetricCard label="Auction Type" value={auction.data.auctionType || 'ENGLISH_REVERSE'} icon={Settings} />
+                <MetricCard label="Auction Mode" value={auction.data.auctionMode || 'ONLINE'} icon={Activity} />
+                <MetricCard label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} icon={Users} />
                 <MetricCard label="Start Time" value={formatDateTime(auction.data.startTime)} icon={Clock} />
                 <MetricCard label="End Time" value={formatDateTime(auction.data.endTime)} icon={Clock} />
                 <MetricCard label="Calculated Duration" value={`${durationMin} mins`} icon={Clock} />
@@ -282,12 +289,14 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
                 <InfoRow label="Opening Price" value={formatCurrency(auction.data.startPrice)} />
                 <InfoRow label="Reserve Price" value={auction.data.reservePrice ? formatCurrency(auction.data.reservePrice) : 'Not configured'} />
                 <InfoRow label="Minimum Decrement" value={auction.data.minDecrementAmount ? formatCurrency(auction.data.minDecrementAmount) : `${auction.data.minDecrementPercent}%`} />
-                <InfoRow label="Visibility Rule" value={auction.data.allowCompetitorNames ? 'Names Visible' : 'Rank & Lowest Price Only'} />
+                <InfoRow label="Rank Visibility" value={auction.data.rankVisibility || (auction.data.allowCompetitorNames ? 'SHOW_LOWEST_PRICE' : 'SHOW_RANK_ONLY')} />
                 <InfoRow label="Auto Extension" value={autoExtensionEnabled ? `Trigger window: ${auction.data.autoExtensionWindowMinutes}m` : 'Disabled'} />
                 <InfoRow label="Extension Length" value={autoExtensionEnabled ? `${auction.data.autoExtensionByMinutes} mins` : 'N/A'} />
                 <InfoRow label="Max Auto-Extensions" value={autoExtensionEnabled ? String(auction.data.maxAutoExtensions) : 'N/A'} />
                 <InfoRow label="Extension Count" value={String(extensionCount)} />
                 <InfoRow label="Currency" value={auction.data.currency || 'INR'} />
+                <InfoRow label="Terms Document" value={auction.data.termsDocumentName || 'Not attached'} />
+                <InfoRow label="Auction Trigger" value={auction.data.auctionTrigger || (auction.data.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'TECHNICAL_QUALIFICATION' : 'DIRECT_AUCTION')} />
                 <InfoRow label="Taxes Rule" value="Excluded from bid values" />
                 <InfoRow label="Freight Rule" value="Excluded from bid values" />
                 <InfoRow label="Award Basis" value="L1 lowest bid amount" />

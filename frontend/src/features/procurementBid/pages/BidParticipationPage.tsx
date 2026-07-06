@@ -148,6 +148,33 @@ export default function BidParticipationPage() {
   const [declaration, setDeclaration] = useState(false);
   const previewUrlsRef = React.useRef<string[]>([]);
 
+  const [rfiAnswers, setRfiAnswers] = useState<Record<string, string>>({});
+  const [rateContractData, setRateContractData] = useState({ validityDate: '', notes: '' });
+  const [rfqData, setRfqData] = useState({ notes: '' });
+  const [savingRfi, setSavingRfi] = useState(false);
+
+  const activeSteps = useMemo(() => {
+    const list = [
+      { id: 0, label: 'View Bid' },
+      { id: 1, label: 'Check Eligibility' },
+      { id: 2, label: bid?.procurementType === 'RFI' ? 'Capability Answers' : 'Technical Offer' },
+      { id: 3, label: 'Upload Technical Documents' },
+      { id: 4, label: 'Financial Quote' },
+      { id: 5, label: 'Review & Declaration' },
+      { id: 6, label: 'Submit Bid' },
+      { id: 7, label: 'Track Status' },
+    ];
+    if (bid?.procurementType === 'RFI') {
+      return list.filter(item => item.id !== 4);
+    }
+    return list;
+  }, [bid?.procurementType]);
+
+  const questionnaire = useMemo(() => {
+    const pkt = bid?.technicalPacket as any;
+    return Array.isArray(pkt?.questionnaire) ? pkt.questionnaire : [];
+  }, [bid?.technicalPacket]);
+
   const loadBid = React.useCallback(() => {
     let alive = true;
     setLoading(true);
@@ -162,6 +189,27 @@ export default function BidParticipationPage() {
             if (!alive) return;
             if (status?.participation) {
               setParticipation(status.participation);
+              if (status.participation.offeredItemDescription) {
+                try {
+                  const parsedDesc = JSON.parse(status.participation.offeredItemDescription);
+                  if (parsedDesc?.rfiAnswers) {
+                    setRfiAnswers(parsedDesc.rfiAnswers);
+                  }
+                  if (parsedDesc?.rateContractValidityDate) {
+                    setRateContractData({
+                      validityDate: parsedDesc.rateContractValidityDate,
+                      notes: parsedDesc.rateContractNotes || '',
+                    });
+                  }
+                  if (parsedDesc?.rfqNotes) {
+                    setRfqData({
+                      notes: parsedDesc.rfqNotes || '',
+                    });
+                  }
+                } catch (e) {
+                  // Fallback for non-JSON offeredItemDescription
+                }
+              }
               setStep(7);
             }
           } catch {
@@ -205,7 +253,7 @@ export default function BidParticipationPage() {
   const isSubmitted = participation?.submissionStatus === 'SUBMITTED';
   const allEligibilityChecked = Object.values(eligibility).every(Boolean);
   const canUpload = Boolean(participation?.id && !closed && !isSubmitted);
-  const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
+  const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (bid?.procurementType === 'RFI' || uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
 
   const guard = useMemo(() => {
     if (!user) return { tone: 'amber', message: 'Please login as a verified seller/vendor to participate in this bid.', action: 'Login to Participate' };
@@ -308,12 +356,40 @@ export default function BidParticipationPage() {
         documents: [...(prev?.documents || []), ...uploaded],
       }));
       toast.success('Technical documents uploaded.');
-      setStep(4);
+      setStep(bid?.procurementType === 'RFI' ? 5 : 4);
     } catch (err: any) {
       setTechnicalFiles(prev => prev.map(item => item.status === 'uploading' ? { ...item, status: 'error', error: err?.message || 'Upload failed' } : item));
       toast.error(err?.message || 'Technical document upload failed.');
     } finally {
       setUploadingTechnical(false);
+    }
+  };
+
+  const saveRfiAnswers = async () => {
+    if (!bid || !participation?.id) return;
+    setSavingRfi(true);
+    try {
+      const data = await procurementBidApi.uploadFinancialQuote(
+        bid.id,
+        participation.id,
+        {
+          quotedAmount: '0',
+          gstPercentage: '0',
+          totalAmount: '0',
+          offeredItemDescription: JSON.stringify({
+            rfiAnswers
+          })
+        }
+      );
+      setParticipation(prev => ({
+        ...(prev || participation),
+        ...(data?.participation || {})
+      }));
+      toast.success('RFI questionnaire answers saved successfully.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save RFI answers.');
+    } finally {
+      setSavingRfi(false);
     }
   };
 
@@ -326,6 +402,19 @@ export default function BidParticipationPage() {
     setSavingFinancial(true);
     if (financialFile) setFinancialFile(prev => prev ? { ...prev, status: 'uploading', progress: 0 } : prev);
     try {
+      let description = technicalOffer.offeredItemDescription;
+      if (bid.procurementType === 'RATE_CONTRACT') {
+        description = JSON.stringify({
+          rateContractValidityDate: rateContractData.validityDate,
+          rateContractNotes: rateContractData.notes,
+        });
+      } else if (bid.procurementType === 'RFQ') {
+        description = JSON.stringify({
+          rfqNotes: rfqData.notes,
+          deliveryTimeline: technicalOffer.deliveryTimeline,
+        });
+      }
+
       const data = await procurementBidApi.uploadFinancialQuote(
         bid.id,
         participation.id,
@@ -336,7 +425,7 @@ export default function BidParticipationPage() {
           totalAmount: quote.totalAmount,
           makeBrand: technicalOffer.makeBrand,
           model: technicalOffer.model,
-          offeredItemDescription: technicalOffer.offeredItemDescription,
+          offeredItemDescription: description,
         },
         percent => setFinancialFile(prev => prev ? { ...prev, progress: percent } : prev)
       );
@@ -452,20 +541,20 @@ export default function BidParticipationPage() {
                 <p className="text-sm font-black text-[#0b2447]">Submission Steps</p>
               </div>
               <div className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-4 lg:block lg:space-y-1">
-                {steps.map((label, index) => {
-                  const locked = index >= 3 && !participation?.id;
-                  const active = step === index;
-                  const done = index < step || (index === 7 && isSubmitted);
+                {activeSteps.map((s) => {
+                  const locked = s.id >= 3 && !participation?.id;
+                  const active = step === s.id;
+                  const done = s.id < step || (s.id === 7 && isSubmitted);
                   return (
                     <button
-                      key={label}
+                      key={s.label}
                       type="button"
                       disabled={locked}
-                      onClick={() => setStep(index)}
+                      onClick={() => setStep(s.id)}
                       className={`flex min-h-12 items-center gap-2 rounded-md border p-2 text-left text-[11px] font-black transition ${active ? 'border-[#0b2447] bg-blue-50 text-[#0b2447]' : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                     >
                       {locked ? <Lock className="h-3.5 w-3.5" /> : done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-                      <span>{label}</span>
+                      <span>{s.label}</span>
                     </button>
                   );
                 })}
@@ -476,7 +565,21 @@ export default function BidParticipationPage() {
           <section className="min-w-0 border border-slate-200 bg-white p-4">
             {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => setStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
             {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} />}
-            {step === 2 && <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => setStep(3)} disabled={!participation?.id || isSubmitted} />}
+            {step === 2 && (
+              bid?.procurementType === 'RFI' ? (
+                <RfiQuestionnaireForm
+                  questionnaire={questionnaire}
+                  answers={rfiAnswers}
+                  onChange={(qId, val) => setRfiAnswers(prev => ({ ...prev, [qId]: val }))}
+                  onNext={() => setStep(3)}
+                  disabled={!participation?.id || isSubmitted}
+                  saving={savingRfi}
+                  onSave={saveRfiAnswers}
+                />
+              ) : (
+                <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => setStep(3)} disabled={!participation?.id || isSubmitted} />
+              )
+            )}
             {step === 3 && (
               <TechnicalDocumentsStep
                 canUpload={canUpload}
@@ -487,7 +590,7 @@ export default function BidParticipationPage() {
                 onRemove={removeTechnicalFile}
                 onPreview={openPreview}
                 onUpload={uploadTechnical}
-                onNext={() => setStep(4)}
+                onNext={() => setStep(bid?.procurementType === 'RFI' ? 5 : 4)}
               />
             )}
             {step === 4 && (
@@ -503,6 +606,11 @@ export default function BidParticipationPage() {
                 onPreview={item => item && openPreview(item)}
                 onSave={saveFinancial}
                 onNext={() => setStep(5)}
+                bid={bid}
+                rateContractData={rateContractData}
+                setRateContractData={setRateContractData}
+                rfqData={rfqData}
+                setRfqData={setRfqData}
               />
             )}
             {step === 5 && (
@@ -628,6 +736,107 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
   );
 }
 
+function RfiQuestionnaireForm({
+  questionnaire,
+  answers,
+  onChange,
+  onNext,
+  disabled,
+  saving,
+  onSave
+}: {
+  questionnaire: Array<{ id: string; type: string; text: string; questionText?: string }>;
+  answers: Record<string, string>;
+  onChange: (questionId: string, value: string) => void;
+  onNext: () => void;
+  disabled: boolean;
+  saving: boolean;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <div>
+      <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="RFI Questionnaire" subtitle="Please provide detailed answers to the buyer's questionnaire." />
+      {questionnaire.length === 0 ? (
+        <div className="mt-4 border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs font-bold text-slate-500 rounded">
+          No questionnaire configured for this Request for Information.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {questionnaire.map((q, idx) => {
+            const qId = q.id || `q-${idx}`;
+            const label = q.text || q.questionText || `Question ${idx + 1}`;
+            const type = String(q.type).toUpperCase();
+
+            return (
+              <div key={qId} className="border border-slate-100 bg-slate-50 p-4 rounded">
+                <span className="mb-2 block text-xs font-black text-slate-700">{idx + 1}. {label}</span>
+                {type === 'YES_NO' || type === 'YESNO' ? (
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                      <input
+                        type="radio"
+                        disabled={disabled}
+                        name={qId}
+                        value="Yes"
+                        checked={answers[qId] === 'Yes'}
+                        onChange={() => onChange(qId, 'Yes')}
+                        className="h-4 w-4 accent-[#0b2447]"
+                      />
+                      Yes
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                      <input
+                        type="radio"
+                        disabled={disabled}
+                        name={qId}
+                        value="No"
+                        checked={answers[qId] === 'No'}
+                        onChange={() => onChange(qId, 'No')}
+                        className="h-4 w-4 accent-[#0b2447]"
+                      />
+                      No
+                    </label>
+                  </div>
+                ) : type === 'ATTACHMENT' ? (
+                  <div>
+                    <input
+                      type="text"
+                      disabled={disabled}
+                      value={answers[qId] || ''}
+                      onChange={e => onChange(qId, e.target.value)}
+                      placeholder="Specify uploaded filename or detail reference..."
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-[10px] text-slate-400 font-bold">Please upload the supporting file in the next step and mention its name here.</p>
+                  </div>
+                ) : (
+                  <textarea
+                    disabled={disabled}
+                    value={answers[qId] || ''}
+                    onChange={e => onChange(qId, e.target.value)}
+                    placeholder="Provide your response..."
+                    className={textAreaClass}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={onSave}
+          disabled={disabled || saving}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save Answers
+        </button>
+        <button onClick={onNext} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Continue</button>
+      </div>
+    </div>
+  );
+}
+
 function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, onAdd, onRemove, onPreview, onUpload, onNext }: {
   canUpload: boolean;
   files: PendingFile[];
@@ -655,7 +864,24 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, onA
   );
 }
 
-function FinancialQuoteStep({ canUpload, quote, setQuote, file, uploadedDocs, saving, onFile, onRemoveFile, onPreview, onSave, onNext }: {
+function FinancialQuoteStep({
+  canUpload,
+  quote,
+  setQuote,
+  file,
+  uploadedDocs,
+  saving,
+  onFile,
+  onRemoveFile,
+  onPreview,
+  onSave,
+  onNext,
+  bid,
+  rateContractData,
+  setRateContractData,
+  rfqData,
+  setRfqData
+}: {
   canUpload: boolean;
   quote: { quotedAmount: string; gstPercentage: string; totalAmount: string };
   setQuote: React.Dispatch<React.SetStateAction<{ quotedAmount: string; gstPercentage: string; totalAmount: string }>>;
@@ -667,22 +893,120 @@ function FinancialQuoteStep({ canUpload, quote, setQuote, file, uploadedDocs, sa
   onPreview: (item: PendingFile | null) => void;
   onSave: () => void;
   onNext: () => void;
+  bid: ProcurementBid;
+  rateContractData: { validityDate: string; notes: string };
+  setRateContractData: React.Dispatch<React.SetStateAction<{ validityDate: string; notes: string }>>;
+  rfqData: { notes: string };
+  setRfqData: React.Dispatch<React.SetStateAction<{ notes: string }>>;
 }) {
+  const isBoq = bid?.procurementType === 'BOQ_BASED_BID';
+  const isRateContract = bid?.procurementType === 'RATE_CONTRACT';
+  const isRfq = bid?.procurementType === 'RFQ';
+
+  const boqTemplates = useMemo(() => {
+    return (bid?.documents || []).filter(doc => 
+      String(doc.fileName || '').toUpperCase().includes('BOQ') || 
+      String(doc.documentType || '').toUpperCase().includes('BOQ')
+    );
+  }, [bid?.documents]);
+
   return (
     <div>
       <StepTitle icon={<IndianRupee className="h-5 w-5" />} title="Financial Quote" subtitle="Upload the commercial quote and save sealed quotation values before final submission." />
+      
+      {isBoq && (
+        <div className="mt-4 border border-blue-100 bg-blue-50 p-4 rounded">
+          <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider">BOQ Excel Template Download</h4>
+          <p className="mt-1 text-xs text-blue-700 font-bold">Please download the template, fill in your line-item rates, and upload the completed sheet below.</p>
+          <div className="mt-3">
+            {boqTemplates.length > 0 ? boqTemplates.map(doc => (
+              <a
+                key={doc.id}
+                href={doc.fileUrl || `/api/files/${doc.fileAssetId}/view`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center gap-2 rounded bg-[#0b2447] px-4 text-xs font-black text-white hover:bg-[#0b2447]/90"
+              >
+                Download {doc.fileName || 'BOQ Template'}
+              </a>
+            )) : (
+              <span className="text-xs font-bold text-slate-500">No BOQ template found in attachments. Please contact the buyer.</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <Input label="Quoted amount" value={quote.quotedAmount} onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))} disabled={!canUpload} required />
-        <Input label="GST percentage" value={quote.gstPercentage} onChange={next => setQuote(prev => ({ ...prev, gstPercentage: next.replace(/[^\d.]/g, '') }))} disabled={!canUpload} required />
-        <Input label="Total amount" value={quote.totalAmount} onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))} disabled={!canUpload} />
+        <Input
+          label={isBoq ? "Total Quoted Amount (from BOQ sheet)" : "Quoted amount"}
+          value={quote.quotedAmount}
+          onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))}
+          disabled={!canUpload}
+          required
+        />
+        <Input
+          label="GST percentage"
+          value={quote.gstPercentage}
+          onChange={next => setQuote(prev => ({ ...prev, gstPercentage: next.replace(/[^\d.]/g, '') }))}
+          disabled={!canUpload}
+          required
+        />
+        <Input
+          label="Total amount"
+          value={quote.totalAmount}
+          onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))}
+          disabled={!canUpload}
+        />
       </div>
+
+      {isRateContract && (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label>
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">Rate Validity Date <span className="text-red-500">*</span></span>
+            <input
+              type="date"
+              value={rateContractData.validityDate}
+              onChange={e => setRateContractData(prev => ({ ...prev, validityDate: e.target.value }))}
+              disabled={!canUpload}
+              className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400`}
+            />
+          </label>
+          <Field
+            label="Rate Schedule / Commercial Notes"
+            value={rateContractData.notes}
+            onChange={val => setRateContractData(prev => ({ ...prev, notes: val }))}
+            disabled={!canUpload}
+          />
+        </div>
+      )}
+
+      {isRfq && (
+        <div className="mt-4">
+          <Field
+            label="RFQ Commercial Notes / Deviations"
+            value={rfqData.notes}
+            onChange={val => setRfqData(prev => ({ ...prev, notes: val }))}
+            disabled={!canUpload}
+          />
+        </div>
+      )}
+
       <div className="mt-4">
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+          {isBoq ? "Upload Completed BOQ Excel sheet *" : "Upload Financial Proposal / Quote Document"}
+        </span>
         <UploadDropZone disabled={!canUpload} onFiles={files => onFile(Array.from(files)[0])} />
         {file && <FileList files={[file]} onRemove={onRemoveFile} onPreview={onPreview} />}
       </div>
+
       <UploadedList docs={uploadedDocs} title="Uploaded financial quote documents" />
+
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onSave} disabled={!canUpload || saving || !quote.quotedAmount} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">
+        <button
+          onClick={onSave}
+          disabled={!canUpload || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50"
+        >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save quote
         </button>
         <button onClick={onNext} disabled={!uploadedDocs.length && !quote.quotedAmount} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50">Continue</button>
@@ -709,7 +1033,9 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         <Info label="Participation" value={participation?.id ? `#${participation.id}` : 'Not started'} />
         <Info label="Eligibility checklist" value={allEligibilityChecked ? 'Completed' : 'Incomplete'} />
         <Info label="Technical documents" value={`${technicalDocs.length} uploaded`} />
-        <Info label="Financial quote" value={financialDocs.length || participation?.quotedAmount ? 'Saved' : 'Pending'} />
+        {bid?.procurementType !== 'RFI' && (
+          <Info label="Financial quote" value={financialDocs.length || participation?.quotedAmount ? 'Saved' : 'Pending'} />
+        )}
         <Info label="Current status" value={participation?.submissionStatus || 'Draft'} />
       </div>
       <label className={`mt-5 flex items-start gap-3 border p-4 text-xs font-bold ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
@@ -743,14 +1069,24 @@ function SubmitStep({ canSubmit, submitted, submitting, onSubmit, onTrack }: { c
 }
 
 function TrackStep({ bid, participation }: { bid: ProcurementBid; participation: ParticipationState | null }) {
+  const isTwoPacket = bid?.procurementType === 'TWO_PACKET_BID';
+  const showFinancial = !isTwoPacket || participation?.technicalStatus === 'QUALIFIED';
+
   return (
     <div>
       <StepTitle icon={<ShieldCheck className="h-5 w-5" />} title="Track Status" subtitle="Follow the submitted bid through technical and financial evaluation." />
       <div className="mt-4"><LifecycleTracker current={bid.currentStage} /></div>
+      
+      {isTwoPacket && participation?.technicalStatus !== 'QUALIFIED' && (
+        <div className="mt-4 border border-amber-100 bg-amber-50 p-4 text-xs font-bold text-amber-800 rounded">
+          ⚠️ Financial packet is sealed. It will only be opened and evaluated if you qualify the Technical Evaluation.
+        </div>
+      )}
+
       <div className="mt-5 grid gap-3 md:grid-cols-4">
         <Info label="Submission" value={participation?.submissionStatus || 'Draft'} />
         <Info label="Technical" value={participation?.technicalStatus || 'Pending'} />
-        <Info label="Financial" value={participation?.financialStatus || 'Locked'} />
+        <Info label="Financial" value={showFinancial ? (participation?.financialStatus || 'Locked') : 'Sealed & Locked'} />
         <Info label="Final" value={participation?.finalStatus || 'Pending'} />
       </div>
     </div>

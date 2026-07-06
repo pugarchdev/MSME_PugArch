@@ -162,6 +162,37 @@ export default function SellerOpportunitiesPage() {
       bids.forEach((bid: any) => {
         const documents = asTextList(bid.requiredDocuments);
         const terms = asTextList(bid.terms);
+        
+        const method = String(bid.procurementType || bid.bidType || '').toUpperCase();
+        let actionLabel = bid.participated ? 'Track Status' : 'Submit Bid';
+        let href = `/bids/${bid.id}/participate`;
+        let detailsHref = `/bids/${bid.id}`;
+
+        if (bid.sourceModel === 'TENDER' && bid.sourceId) {
+          href = `/seller/tenders/${bid.sourceId}/bid`;
+          detailsHref = `/tenders?tender=${bid.sourceId}`;
+          actionLabel = bid.participated ? 'Track Status' : 'Submit Quote';
+        } else {
+          if (method === 'RFI') {
+            actionLabel = bid.participated ? 'Track Info Request' : 'Submit Information';
+          } else if (method === 'REVERSE_AUCTION') {
+            actionLabel = 'Enter Auction Lobby';
+            href = `/reverse-auctions/${bid.id}/live`;
+            detailsHref = `/reverse-auctions/${bid.id}`;
+          } else if (method === 'BID_WITH_REVERSE_AUCTION') {
+            actionLabel = bid.participated ? 'Enter Auction Lobby' : 'Submit Bid & Participate';
+            if (bid.participated) {
+              href = `/reverse-auctions/${bid.id}/live`;
+            }
+          } else if (['DIRECT_PURCHASE', 'PAC', 'SINGLE_SOURCE', 'EMERGENCY_PURCHASE'].includes(method)) {
+            actionLabel = bid.participated ? 'Track Order/Quote' : 'Submit Quotation';
+          } else if (method === 'BOQ_BASED_BID') {
+            actionLabel = bid.participated ? 'Track BOQ Bid' : 'Submit BOQ Rates';
+          } else if (method === 'RATE_CONTRACT') {
+            actionLabel = bid.participated ? 'Track Rate Contract' : 'Submit Rate Schedule';
+          }
+        }
+
         const opportunity: SellerOpportunity = {
           id: `bid-${bid.id}`,
           type: bid.sourceModel === 'TENDER' ? 'Large Procurement' : 'Large Procurement',
@@ -173,9 +204,9 @@ export default function SellerOpportunitiesPage() {
           estimatedValue: toNumber(bid.estimatedValue),
           eligibility: bid.participated ? 'Already participated' : 'Check documents',
           status: bid.status || 'Open',
-          actionLabel: bid.participated ? 'View Bid' : 'Submit Bid',
-          href: bid.sourceModel === 'TENDER' && bid.sourceId ? `/seller/tenders/${bid.sourceId}/bid` : `/bids/${bid.id}`,
-          detailsHref: bid.sourceModel === 'TENDER' && bid.sourceId ? `/tenders?tender=${bid.sourceId}` : `/bids/${bid.id}`,
+          actionLabel,
+          href,
+          detailsHref,
           sourceRef: bid.id || `BID-${bid.sourceId || ''}`,
           publishedAt: bid.startDate,
           quantity: bid.quantity,

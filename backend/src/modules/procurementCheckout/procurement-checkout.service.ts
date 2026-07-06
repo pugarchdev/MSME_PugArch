@@ -5,6 +5,7 @@ import { createApprovalChain } from '../../services/approval-chain.service.js';
 import { numberSeries } from '../../services/workflow/workflow-common.js';
 import { getProcurementModeSettings } from '../procurementMode/procurement-mode.service.js';
 import { notificationService } from '../../services/notification.service.js';
+import { broadMethodForCanonical, normalizeCanonicalMethod } from '../../utils/procurement-methods.js';
 
 const generatePoNumber = () => numberSeries('PO');
 
@@ -194,6 +195,7 @@ export const finalizeDirectPurchaseFromCheckout = async (
 
       const deliveryDetails = (request.deliveryDetails || {}) as Record<string, unknown>;
       const budgetSanction = (request.budgetSanction || {}) as Record<string, unknown>;
+      const canonicalMethod = normalizeCanonicalMethod(request.selectedMethod || 'DIRECT_PURCHASE');
 
       const requirement = await tx.requirement.create({
         data: {
@@ -202,11 +204,13 @@ export const finalizeDirectPurchaseFromCheckout = async (
           organizationId,
           title: `Marketplace ${request.selectedMethod} — Seller #${sellerId}`,
           description: 'Created from procurement checkout wizard.',
-          procurementMethod: 'DIRECT_PURCHASE',
+          procurementMethod: broadMethodForCanonical(canonicalMethod),
+          canonicalMethod,
           status: isAutoApprove ? 'APPROVED' : 'SUBMITTED',
           estimatedValue: totalAmount,
           payload: {
             procurementRequestId: request.id,
+            fullProcurementMethod: canonicalMethod,
             checkoutSnapshot: request.cartSnapshot,
             buyerDetails: request.buyerDetails,
             consigneeDetails: request.consigneeDetails,

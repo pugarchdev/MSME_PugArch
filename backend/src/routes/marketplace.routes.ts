@@ -147,6 +147,8 @@ const publicLegacyRequirementSelect = {
     title: true,
     description: true,
     procurementMethod: true,
+    canonicalMethod: true,
+    payload: true,
     status: true,
     estimatedValue: true,
     currency: true,
@@ -380,12 +382,14 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
                 totalAmount: directPurchase.totalAmount
             }
             : null,
-        payload: requirement.payload
+        payload: requirement.payload,
+        canonicalMethod: requirement.canonicalMethod
     });
 };
 
 const getPublicLegacyRequirementWhere = () => ({
     status: { in: ['APPROVED', 'SOURCING'] },
+    procurementMethod: { not: 'DIRECT_PURCHASE' },
     AND: [{ OR: [{ requiredBy: null }, { requiredBy: { gte: new Date() } }] }]
 });
 
@@ -559,7 +563,12 @@ const loadLatestRequirements = async (take = 6) => {
     ]);
     return [
         ...(buyerRequirements || []).map(decorateRequirement),
-        ...(legacyRequirements || []).map(mapLegacyRequirementToPublic)
+        ...(legacyRequirements || []).filter((reqItem: any) => {
+            const method = reqItem.canonicalMethod || reqItem.procurementMethod || '';
+            const isRestricted = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(method.toUpperCase());
+            const isLimitedRfq = method.toUpperCase() === 'RFQ' && reqItem.payload && typeof reqItem.payload === 'object' && (reqItem.payload as any).rfqType === 'LIMITED';
+            return !isRestricted && !isLimitedRfq;
+        }).map(mapLegacyRequirementToPublic)
     ]
         .sort((a: any, b: any) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime())
         .slice(0, take);
@@ -1818,6 +1827,8 @@ router.get('/marketplace/sellers', shortCache(60), async (req: Request, res: Res
                     district: true,
                     state: true,
                     verificationStatus: true,
+                    gstin: true,
+                    panNumber: true,
                     logoFile: { select: organizationLogoSelect },
                     profile: { select: organizationProfileBrandSelect },
                     users: {
@@ -1845,6 +1856,8 @@ router.get('/marketplace/sellers', shortCache(60), async (req: Request, res: Res
                 district: org.district,
                 state: org.state,
                 verificationStatus: org.verificationStatus,
+                gstin: org.gstin,
+                panNumber: org.panNumber,
                 logoFile: org.logoFile,
                 profile: org.profile,
                 _count: org._count,
@@ -1992,7 +2005,7 @@ router.get('/marketplace/notices', shortCache(60), async (_req: Request, res: Re
 });
 
 // ─── Public: Search ──────────────────────────────────────────────────────────
-router.get('/marketplace/requirements', shortCache(30), async (req: Request, res: Response) => {
+router.get('/marketplace/requirements', optionalAuthenticate, shortCache(30), async (req: AuthRequest, res: Response) => {
     try {
         const query = paginationQuery.extend({
             type: z.enum(['PRODUCT', 'SERVICE']).optional(),
@@ -2049,15 +2062,30 @@ router.get('/marketplace/requirements', shortCache(30), async (req: Request, res
             db.requirement.findMany({ where: legacyWhere, orderBy: [{ requiredBy: 'asc' }, { updatedAt: 'desc' }], take: pageSize * page, select: publicLegacyRequirementSelect }).catch(() => []),
             db.requirement.count({ where: legacyWhere }).catch(() => 0)
         ]);
+
+        const currentUserId = req.user?.id ? Number(req.user.id) : null;
+        const filteredLegacy = (legacyRequirements || []).filter((reqItem: any) => {
+            const method = reqItem.canonicalMethod || reqItem.procurementMethod || '';
+            const isRestricted = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(method.toUpperCase());
+            const isLimitedRfq = method.toUpperCase() === 'RFQ' && reqItem.payload && typeof reqItem.payload === 'object' && (reqItem.payload as any).rfqType === 'LIMITED';
+            
+            if (isRestricted || isLimitedRfq) {
+                if (!currentUserId) return false;
+                const invited = Array.isArray((reqItem.payload as any)?.vendors?.invitedSellers) ? (reqItem.payload as any).vendors.invitedSellers : [];
+                return invited.includes(currentUserId);
+            }
+            return true;
+        });
+
         const combined = [
             ...buyerRequirements.map(decorateRequirement),
-            ...(legacyRequirements || []).map(mapLegacyRequirementToPublic)
+            ...filteredLegacy.map(mapLegacyRequirementToPublic)
         ].sort((a: any, b: any) => {
             const urgent = Number(Boolean(b.isUrgent)) - Number(Boolean(a.isUrgent));
             if (urgent) return urgent;
             return new Date(a.lastDate || 0).getTime() - new Date(b.lastDate || 0).getTime();
         });
-        const total = buyerTotal + legacyTotal;
+        const total = buyerTotal + filteredLegacy.length;
         return ok(res, { requirements: combined.slice(skip, skip + pageSize), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -2108,6 +2136,21 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
 
         if (!requirement) {
             return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+        }
+
+        const currentUserId = req.user?.id ? Number(req.user.id) : null;
+        const method = requirement.canonicalMethod || requirement.procurementMethod || '';
+        const isRestricted = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(method.toUpperCase());
+        const isLimitedRfq = method.toUpperCase() === 'RFQ' && requirement.payload && typeof requirement.payload === 'object' && (requirement.payload as any).rfqType === 'LIMITED';
+        
+        if (isRestricted || isLimitedRfq) {
+            if (!currentUserId) {
+                return apiResponse.error(res, 403, 'Access denied. This is a restricted procurement event.', 'FORBIDDEN');
+            }
+            const invited = Array.isArray((requirement.payload as any)?.vendors?.invitedSellers) ? (requirement.payload as any).vendors.invitedSellers : [];
+            if (!invited.includes(currentUserId)) {
+                return apiResponse.error(res, 403, 'Access denied. You are not invited to this procurement event.', 'FORBIDDEN');
+            }
         }
 
         let similar: any[] = [];

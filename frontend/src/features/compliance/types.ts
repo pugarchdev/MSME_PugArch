@@ -34,3 +34,11 @@ export interface ComplianceRulesResponse {
     total: number;
     filters?: Record<string, unknown>;
 }
+
+export interface ProcurementComplianceWarning {
+  ruleCode: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  recommendation: string;
+  method: string;
+}

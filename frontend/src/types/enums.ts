@@ -47,6 +47,55 @@ export const ProcurementMethod = {
   RATE_CONTRACT: 'RATE_CONTRACT'
 } as const;
 
+export const CanonicalProcurementMethod = {
+  DIRECT_PURCHASE: 'DIRECT_PURCHASE',
+  CATALOG_PURCHASE: 'CATALOG_PURCHASE',
+  RFQ: 'RFQ',
+  RFP: 'RFP',
+  RFI: 'RFI',
+  SEALED_TENDER: 'SEALED_TENDER',
+  OPEN_TENDER: 'OPEN_TENDER',
+  LIMITED_TENDER: 'LIMITED_TENDER',
+  TWO_PACKET_BID: 'TWO_PACKET_BID',
+  REVERSE_AUCTION: 'REVERSE_AUCTION',
+  BID_WITH_REVERSE_AUCTION: 'BID_WITH_REVERSE_AUCTION',
+  RATE_CONTRACT: 'RATE_CONTRACT',
+  REPEAT_ORDER: 'REPEAT_ORDER',
+  SINGLE_SOURCE: 'SINGLE_SOURCE',
+  PAC: 'PAC',
+  EMERGENCY_PURCHASE: 'EMERGENCY_PURCHASE',
+  BOQ_BASED_BID: 'BOQ_BASED_BID',
+} as const;
+
+export type CanonicalProcurementMethodType = typeof CanonicalProcurementMethod[keyof typeof CanonicalProcurementMethod];
+
+export const CANONICAL_METHOD_LABELS: Record<string, string> = {
+  DIRECT_PURCHASE: 'Direct Purchase',
+  CATALOG_PURCHASE: 'Catalogue Purchase',
+  RFQ: 'RFQ',
+  RFP: 'RFP',
+  RFI: 'RFI',
+  SEALED_TENDER: 'Sealed Tender',
+  OPEN_TENDER: 'Open Tender',
+  LIMITED_TENDER: 'Limited Tender',
+  TWO_PACKET_BID: 'Two Packet Bid',
+  REVERSE_AUCTION: 'Reverse Auction',
+  BID_WITH_REVERSE_AUCTION: 'Bid with Reverse Auction',
+  RATE_CONTRACT: 'Rate Contract',
+  REPEAT_ORDER: 'Repeat Order',
+  SINGLE_SOURCE: 'Single Source',
+  PAC: 'PAC / Proprietary',
+  EMERGENCY_PURCHASE: 'Emergency Purchase',
+  BOQ_BASED_BID: 'BOQ Based Bid',
+};
+
+export const EXCEPTION_PROCUREMENT_METHODS = new Set([
+  'PAC', 'SINGLE_SOURCE', 'EMERGENCY_PURCHASE',
+]);
+
+export const isExceptionProcurement = (method: string): boolean =>
+  EXCEPTION_PROCUREMENT_METHODS.has(method);
+
 export const ApprovalStatus = {
   DRAFT: 'DRAFT',
   PENDING: 'PENDING',

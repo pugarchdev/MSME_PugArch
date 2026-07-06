@@ -56,22 +56,44 @@ const writeAuctionEvent = async (req: AuthRequest, auctionId: number, eventType:
 const auctionFieldsSchema = z.object({
   title: z.string().trim().min(3).max(180),
   description: z.string().trim().max(3000).optional(),
+  procurementMethod: z.enum(['REVERSE_AUCTION', 'BID_WITH_REVERSE_AUCTION']).default('REVERSE_AUCTION'),
+  category: z.string().trim().max(160).optional(),
+  subCategory: z.string().trim().max(160).optional(),
+  currency: z.string().trim().length(3).default('INR'),
+  buyerOrganization: z.string().trim().max(180).optional(),
+  department: z.string().trim().max(160).optional(),
+  purchaseGroup: z.string().trim().max(120).optional(),
+  purchaseOrganization: z.string().trim().max(160).optional(),
+  auctionType: z.enum(['ENGLISH_REVERSE', 'RANK_BASED_REVERSE']).default('ENGLISH_REVERSE'),
+  auctionMode: z.enum(['ONLINE']).default('ONLINE'),
   linkedTenderId: z.coerce.number().int().positive().optional(),
   linkedBidId: z.coerce.number().int().positive().optional(),
   linkedRequirementId: z.coerce.number().int().positive().optional(),
   startAt: z.coerce.date(),
   endAt: z.coerce.date(),
+  durationMinutes: z.coerce.number().int().positive().optional(),
   startingPrice: z.coerce.number().positive(),
   reservePrice: z.coerce.number().positive().optional(),
-  minDecrementAmount: z.coerce.number().positive().default(1),
+  minDecrementAmount: z.coerce.number().positive(),
   minDecrementPercent: z.coerce.number().min(0).max(100).optional(),
   autoExtensionEnabled: z.coerce.boolean().default(false),
-  autoExtensionWindowMinutes: z.coerce.number().int().min(1).max(120).default(5),
-  autoExtensionByMinutes: z.coerce.number().int().min(1).max(120).default(5),
+  autoExtensionWindowMinutes: z.coerce.number().int().min(1).max(120).optional(),
+  autoExtensionByMinutes: z.coerce.number().int().min(1).max(120).optional(),
   maxAutoExtensions: z.coerce.number().int().min(0).max(100).default(0),
+  rankVisibility: z.enum(['SHOW_RANK_ONLY', 'SHOW_LOWEST_PRICE', 'HIDDEN']).default('SHOW_RANK_ONLY'),
+  minimumQualifiedBidders: z.coerce.number().int().min(2).default(2),
+  termsDocumentFileId: z.coerce.number().int().positive().optional(),
+  termsDocumentName: z.string().trim().max(260).optional(),
+  buyerMonitorSettings: z.record(z.string(), z.unknown()).optional(),
+  preBidStage: z.record(z.string(), z.unknown()).optional(),
+  auctionTrigger: z.enum(['AFTER_TECHNICAL_QUALIFICATION', 'TOP_N_BIDDERS', 'ALL_TECHNICALLY_QUALIFIED']).optional(),
   visibilityMode: z.enum(['INVITED_SELLERS_ONLY', 'TECHNICALLY_QUALIFIED_ONLY']).default('INVITED_SELLERS_ONLY'),
   allowCompetitorNames: z.coerce.boolean().default(false),
-  remarks: z.string().trim().max(1000).optional()
+  remarks: z.string().trim().max(1000).optional(),
+  qualifiedVendors: z.array(z.object({
+    sellerOrgId: z.coerce.number().int().positive(),
+    sellerUserId: z.coerce.number().int().positive().optional()
+  })).optional()
 });
 
 const createAuctionSchema = auctionFieldsSchema.refine(value => Boolean(value.linkedTenderId || value.linkedBidId || value.linkedRequirementId), {
@@ -80,6 +102,15 @@ const createAuctionSchema = auctionFieldsSchema.refine(value => Boolean(value.li
 }).refine(value => value.endAt > value.startAt, {
   message: 'Auction end time must be after start time',
   path: ['endAt']
+}).refine(value => value.reservePrice === undefined || value.reservePrice <= value.startingPrice, {
+  message: 'Reserve price must be less than or equal to starting price',
+  path: ['reservePrice']
+}).refine(value => !value.autoExtensionEnabled || Boolean(value.autoExtensionWindowMinutes && value.autoExtensionByMinutes && value.maxAutoExtensions > 0), {
+  message: 'Auto extension trigger, duration, and maximum extensions are required when auto extension is enabled',
+  path: ['autoExtensionWindowMinutes']
+}).refine(value => !value.qualifiedVendors || value.qualifiedVendors.length >= value.minimumQualifiedBidders, {
+  message: 'Qualified vendor list must satisfy minimum qualified bidders',
+  path: ['qualifiedVendors']
 });
 
 const updateAuctionSchema = auctionFieldsSchema.omit({ linkedTenderId: true, linkedBidId: true, linkedRequirementId: true }).partial();
@@ -145,6 +176,14 @@ router.post('/reverse-auctions', requirePermission('reverse_auction.create', org
         referenceNo: payload.linkedTenderId ? `TENDER-${payload.linkedTenderId}` : payload.linkedBidId ? `PBID-${payload.linkedBidId}` : `REQ-${payload.linkedRequirementId}`,
         title: payload.title,
         description: payload.description || null,
+        procurementMethod: payload.procurementMethod,
+        category: payload.category || null,
+        subCategory: payload.subCategory || null,
+        auctionType: payload.auctionType,
+        auctionMode: payload.auctionMode,
+        auctionDurationMinutes: payload.durationMinutes || Math.max(1, Math.round((payload.endAt.getTime() - payload.startAt.getTime()) / 60000)),
+        purchaseGroup: payload.purchaseGroup || null,
+        purchaseOrganization: payload.purchaseOrganization || null,
         buyerOrgId: req.user?.organizationId || null,
         createdByUserId: req.user?.id,
         startPrice: payload.startingPrice,
@@ -157,9 +196,27 @@ router.post('/reverse-auctions', requirePermission('reverse_auction.create', org
         minDecrementAmount: payload.minDecrementAmount,
         minDecrementPercent: payload.minDecrementPercent || null,
         autoExtensionEnabled: payload.autoExtensionEnabled,
-        autoExtensionWindowMinutes: payload.autoExtensionWindowMinutes,
-        autoExtensionByMinutes: payload.autoExtensionByMinutes,
+        autoExtensionWindowMinutes: payload.autoExtensionWindowMinutes || 5,
+        autoExtensionByMinutes: payload.autoExtensionByMinutes || 5,
         maxAutoExtensions: payload.maxAutoExtensions,
+        currency: payload.currency.toUpperCase(),
+        rankVisibility: payload.rankVisibility,
+        minimumQualifiedBidders: payload.minimumQualifiedBidders,
+        termsDocumentFileId: payload.termsDocumentFileId || null,
+        termsDocumentName: payload.termsDocumentName || null,
+        buyerMonitorSettings: payload.buyerMonitorSettings || undefined,
+        preBidStage: payload.preBidStage || undefined,
+        auctionTrigger: payload.auctionTrigger || null,
+        auctionConfig: {
+          procurementMethod: payload.procurementMethod,
+          auctionType: payload.auctionType,
+          auctionMode: payload.auctionMode,
+          rankVisibility: payload.rankVisibility,
+          minimumQualifiedBidders: payload.minimumQualifiedBidders,
+          buyerOrganization: payload.buyerOrganization || null,
+          department: payload.department || null,
+          qualifiedVendorCount: payload.qualifiedVendors?.length || 0
+        },
         visibilityMode: payload.visibilityMode,
         allowCompetitorNames: payload.allowCompetitorNames,
         remarks: payload.remarks || null,
@@ -169,6 +226,17 @@ router.post('/reverse-auctions', requirePermission('reverse_auction.create', org
         statusEnum: 'DRAFT'
       }
     });
+    if (payload.qualifiedVendors?.length) {
+      await db.auctionParticipant.createMany({
+        data: payload.qualifiedVendors.map(seller => ({
+          auctionId: auction.id,
+          sellerOrgId: seller.sellerOrgId,
+          sellerUserId: seller.sellerUserId || null,
+          status: payload.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'TECHNICALLY_QUALIFIED' : 'INVITED'
+        })),
+        skipDuplicates: true
+      });
+    }
     await writeAuctionEvent(req, auction.id, 'created', 'Reverse auction created', { auctionCode: auction.auctionCode });
     return apiResponse.created(res, maskSensitive(auction), 'Reverse auction created');
   } catch (error: any) {
@@ -237,6 +305,15 @@ router.patch('/reverse-auctions/:id', requirePermission('reverse_auction.update'
       data: {
         title: payload.title,
         description: payload.description,
+        procurementMethod: payload.procurementMethod,
+        category: payload.category,
+        subCategory: payload.subCategory,
+        auctionType: payload.auctionType,
+        auctionMode: payload.auctionMode,
+        auctionDurationMinutes: payload.durationMinutes,
+        purchaseGroup: payload.purchaseGroup,
+        purchaseOrganization: payload.purchaseOrganization,
+        currency: payload.currency?.toUpperCase(),
         startTime: payload.startAt,
         endTime: payload.endAt,
         startPrice: payload.startingPrice,
@@ -249,6 +326,20 @@ router.patch('/reverse-auctions/:id', requirePermission('reverse_auction.update'
         autoExtensionWindowMinutes: payload.autoExtensionWindowMinutes,
         autoExtensionByMinutes: payload.autoExtensionByMinutes,
         maxAutoExtensions: payload.maxAutoExtensions,
+        rankVisibility: payload.rankVisibility,
+        minimumQualifiedBidders: payload.minimumQualifiedBidders,
+        termsDocumentFileId: payload.termsDocumentFileId,
+        termsDocumentName: payload.termsDocumentName,
+        buyerMonitorSettings: payload.buyerMonitorSettings,
+        preBidStage: payload.preBidStage,
+        auctionTrigger: payload.auctionTrigger,
+        auctionConfig: payload.procurementMethod ? {
+          procurementMethod: payload.procurementMethod,
+          auctionType: payload.auctionType,
+          auctionMode: payload.auctionMode,
+          rankVisibility: payload.rankVisibility,
+          minimumQualifiedBidders: payload.minimumQualifiedBidders
+        } : undefined,
         visibilityMode: payload.visibilityMode,
         allowCompetitorNames: payload.allowCompetitorNames,
         remarks: payload.remarks
@@ -336,20 +427,24 @@ router.post('/reverse-auctions/:id/bids', requirePermission('reverse_auction.bid
       db.$transaction(async (tx: any) => {
         const auction = await tx.auction.findUnique({ where: { id: auctionId } });
         if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+        const allowedParticipantStatuses = String(auction.procurementMethod || '') === 'BID_WITH_REVERSE_AUCTION'
+          ? ['TECHNICALLY_QUALIFIED']
+          : ['INVITED', 'ACCEPTED', 'TECHNICALLY_QUALIFIED'];
         const participant = await tx.auctionParticipant.findFirst({
           where: {
             auctionId,
             sellerOrgId: req.user?.organizationId || -1,
-            status: { in: ['INVITED', 'ACCEPTED', 'TECHNICALLY_QUALIFIED'] }
+            status: { in: allowedParticipantStatuses }
           }
         });
-        if (!participant) throw new ApiError(403, 'Only invited or qualified sellers can bid', 'AUCTION_SELLER_NOT_INVITED');
+        if (!participant) throw new ApiError(403, 'Only qualified sellers can participate in this auction', 'AUCTION_SELLER_NOT_QUALIFIED');
         const now = new Date();
         if (!['LIVE', 'active'].includes(String(auction.status))) throw new ApiError(409, 'Auction is not live', 'AUCTION_NOT_LIVE');
         if (auction.startTime > now || auction.endTime <= now) throw new ApiError(409, 'Auction is outside the bidding window', 'AUCTION_WINDOW_CLOSED');
 
         const current = toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice);
-        const amountDecrement = toNumber(auction.minDecrementAmount ?? auction.minDecrement, 1);
+        const amountDecrement = toNumber(auction.minDecrementAmount ?? auction.minDecrement, 0);
+        if (amountDecrement <= 0) throw new ApiError(400, 'Auction minimum decrement is not configured', 'AUCTION_MIN_DECREMENT_REQUIRED');
         const percentDecrement = auction.minDecrementPercent ? current * (toNumber(auction.minDecrementPercent) / 100) : 0;
         const requiredDecrement = Math.max(amountDecrement, percentDecrement);
         const maxAllowed = current - requiredDecrement;
@@ -444,7 +539,7 @@ router.get('/reverse-auctions/:id/live-summary', requirePermission('reverse_auct
       serverTime: new Date(),
       auction: maskSensitive(auction),
       participant: maskSensitive(participant),
-      minimumNextBid: toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice) - toNumber(auction.minDecrementAmount ?? auction.minDecrement, 1)
+      minimumNextBid: toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice) - toNumber(auction.minDecrementAmount ?? auction.minDecrement, 0)
     });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load live summary', error.code || 'REVERSE_AUCTION_SUMMARY_ERROR');

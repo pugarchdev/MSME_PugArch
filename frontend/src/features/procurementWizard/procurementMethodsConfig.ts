@@ -13,6 +13,7 @@ import {
   UserCheck,
   Users
 } from 'lucide-react';
+import { broadMethodForCanonical } from './procurementMethodHelpers';
 
 export type BuyerType = 'PRIVATE_BUYER' | 'GOVERNMENT_BUYER';
 
@@ -65,7 +66,7 @@ export const METHOD_DEFINITIONS: MethodDefinition[] = [
     gates: ['Catalog item match', 'Cost center approval', 'Funds confirmation'],
     complexity: 'Low',
     estimatedTime: '1-2 Days',
-    buyerTypes: ['PRIVATE_BUYER'],
+    buyerTypes: ['PRIVATE_BUYER', 'GOVERNMENT_BUYER'],
     requiredFields: ['title', 'estimatedValue', 'deliveryLocation'],
     allowedEvaluations: ['L1 total value']
   },
@@ -193,7 +194,7 @@ export const METHOD_DEFINITIONS: MethodDefinition[] = [
     gates: ['Technical evaluation checklist', 'Separate opening committees', 'Financial decrypt key'],
     complexity: 'High',
     estimatedTime: '20-30 Days',
-    buyerTypes: ['GOVERNMENT_BUYER'],
+    buyerTypes: ['PRIVATE_BUYER', 'GOVERNMENT_BUYER'],
     requiredFields: ['title', 'estimatedValue', 'deliveryLocation', 'submissionDate', 'technicalOpeningDate', 'financialOpeningDate'],
     allowedEvaluations: ['Technical qualification then L1', 'QCBS / weighted technical-commercial score']
   },
@@ -330,12 +331,12 @@ export const METHOD_DEFINITIONS: MethodDefinition[] = [
 export interface SuggestionCriteria {
   buyerType: BuyerType;
   estimatedValue: number;
-  whatAreYouBuying: 'Product' | 'Service' | 'Works' | 'BOQ' | 'Custom' | 'Catalogue item' | string;
+  whatAreYouBuying: 'GOODS' | 'SERVICES' | 'WORKS' | 'BOQ' | 'CATALOG_ITEM' | string;
   isCatalogueAvailable: boolean;
   isOnlyOneVendor: boolean;
   isReverseAuctionNeeded: boolean;
   isTechnicalEvaluationNeeded: boolean;
-  urgency: 'Normal' | 'Urgent' | 'Emergency' | string;
+  urgency: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | 'EMERGENCY' | string;
   lineItemsCount: number;
   isSpecClear?: boolean;
   isRepeatedSupply?: boolean;
@@ -368,6 +369,10 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
   } = criteria;
 
   const isGov = buyerType === 'GOVERNMENT_BUYER';
+  const requirementType = String(whatAreYouBuying || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const priority = String(urgency || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const isBoq = requirementType === 'BOQ';
+  const isServiceOrWorks = ['SERVICES', 'SERVICE', 'SERVICE_CONTRACT', 'WORKS', 'WORK', 'WORKS_CONTRACT'].includes(requirementType);
 
   const result: RecommendationResult = {
     id: 'RFQ',
@@ -417,7 +422,7 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
   }
 
   // 9. Emergency Sourcing
-  if (urgency === 'Emergency') {
+  if (priority === 'EMERGENCY') {
     if (isGov) {
       result.id = 'EMERGENCY_PURCHASE';
       result.reason = 'Emergency purchase is recommended to bypass standard advertising timelines due to sudden, unforeseen threats to safety or operational continuity.';
@@ -446,7 +451,7 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
       return result;
     } else {
       result.id = 'DIRECT_PURCHASE';
-      result.reason = 'Direct Purchase is recommended on GeM because the items are standard catalogued goods within direct buy thresholds.';
+      result.reason = 'Direct Purchase is recommended because the items are standard catalogued goods within direct buy thresholds.';
       result.confidence = 'HIGH';
       result.alternativeMethods = ['CATALOG_PURCHASE'];
       result.warnings.push('Ensure the selected catalogue price is reasonable and compares with the L1 market pricing.');
@@ -467,7 +472,7 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
   }
 
   // 5. BOQ / many line items
-  if (lineItemsCount > 5 || whatAreYouBuying === 'BOQ') {
+  if (lineItemsCount > 5 || isBoq) {
     result.id = 'BOQ_BASED_BID';
     result.reason = 'BOQ Based Bid is recommended because you are procuring multiple distinct line items. Suppliers can quote on a structured spreadsheet.';
     result.confidence = 'HIGH';
@@ -503,7 +508,7 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
   }
 
   // 4. Service or complex solution
-  if (whatAreYouBuying === 'Service' || whatAreYouBuying === 'Works') {
+  if (isServiceOrWorks) {
     if (isGov) {
       result.id = 'TWO_PACKET_BID';
       result.reason = 'Two Packet Bid is recommended because technical eligibility, SLAs, and capabilities must be evaluated before financial bid opening.';
@@ -556,7 +561,7 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
   if (isGov) {
     if (estimatedValue <= 500000) {
       result.id = 'DIRECT_PURCHASE';
-      result.reason = 'Direct Purchase/L1 purchase is recommended on GeM for items under Rs. 5 Lakhs using online comparison tools.';
+      result.reason = 'Direct Purchase/L1 purchase is recommended for items under Rs. 5 Lakhs using approved online comparison tools.';
       result.confidence = 'MEDIUM';
       result.alternativeMethods = ['LIMITED_TENDER'];
       return result;
@@ -578,35 +583,5 @@ export const suggestProcurementMethod = (criteria: SuggestionCriteria): Recommen
 
 // Database enum compatibility map
 export const mapToDatabaseMethod = (method: ProcurementMethodId): 'DIRECT_PURCHASE' | 'RFQ' | 'TENDER' | 'REVERSE_AUCTION' | 'RATE_CONTRACT' => {
-  switch (method) {
-    case 'DIRECT_PURCHASE':
-    case 'CATALOG_PURCHASE':
-    case 'REPEAT_ORDER':
-    case 'SINGLE_SOURCE':
-    case 'EMERGENCY_PURCHASE':
-      return 'DIRECT_PURCHASE';
-
-    case 'RFQ':
-    case 'RFI':
-      return 'RFQ';
-
-    case 'RFP':
-    case 'SEALED_TENDER':
-    case 'OPEN_TENDER':
-    case 'LIMITED_TENDER':
-    case 'TWO_PACKET_BID':
-    case 'PAC':
-    case 'BOQ_BASED_BID':
-      return 'TENDER';
-
-    case 'REVERSE_AUCTION':
-    case 'BID_WITH_REVERSE_AUCTION':
-      return 'REVERSE_AUCTION';
-
-    case 'RATE_CONTRACT':
-      return 'RATE_CONTRACT';
-
-    default:
-      return 'TENDER';
-  }
+  return broadMethodForCanonical(method);
 };

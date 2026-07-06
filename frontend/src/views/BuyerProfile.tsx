@@ -38,6 +38,7 @@ import { Loader2 } from '@/components/ui/loader';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { MSME_TYPES } from '../constants/dropdowns';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../lib/validation';
 
 const SIDEBAR_NAV = [
   { id: 'showcase_profile', label: 'Organization Showcase Profile', icon: Building2 },
@@ -144,7 +145,10 @@ export default function BuyerProfile() {
   }, []);
 
   const handleShowcaseFieldChange = (field: string, value: any) => {
-    setShowcaseProfile((prev: any) => ({ ...prev, [field]: value }));
+    let nextValue = value;
+    if (field === 'contactPersonName') nextValue = sanitizePersonNameInput(value);
+    if (field === 'contactPersonMobile') nextValue = sanitizeIndianMobileInput(value);
+    setShowcaseProfile((prev: any) => ({ ...prev, [field]: nextValue }));
   };
 
   const isSensitiveChanged = () => {
@@ -185,6 +189,10 @@ export default function BuyerProfile() {
     if (!showcaseProfile?.organizationName?.trim()) {
       return toast.error('Organization Name is required');
     }
+    const contactNameError = validatePersonName(showcaseProfile?.contactPersonName, 'Contact person name');
+    if (contactNameError) return toast.error(contactNameError);
+    const contactMobileError = validateIndianMobile(showcaseProfile?.contactPersonMobile, 'Contact person mobile');
+    if (contactMobileError) return toast.error(contactMobileError);
 
     if (isSensitiveChanged() && !showcaseOtpSent) {
       await handleGetShowcaseOtp();
@@ -526,7 +534,14 @@ export default function BuyerProfile() {
   };
 
   const handleFieldChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let nextValue = value;
+    if (['firstName', 'lastName', 'nameAsInPan', 'accountHolderName', 'verifyingFirstName', 'verifyingLastName'].includes(field)) {
+      nextValue = sanitizePersonNameInput(value);
+    }
+    if (['verifyingMobile', 'aadhaarMobile'].includes(field)) {
+      nextValue = sanitizeIndianMobileInput(value);
+    }
+    setFormData(prev => ({ ...prev, [field]: nextValue }));
     if (formErrors[field]) {
       setFormErrors(prev => {
         const copy = { ...prev };
@@ -660,11 +675,14 @@ export default function BuyerProfile() {
 
   const handleGetPersonalOtp = async () => {
     const errors: Record<string, string> = {};
-    if (!formData.firstName.trim()) errors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) errors.lastName = 'Last name is required';
+    const firstNameError = validatePersonName(formData.firstName, 'First name');
+    if (firstNameError) errors.firstName = firstNameError;
+    const lastNameError = validatePersonName(formData.lastName, 'Last name');
+    if (lastNameError) errors.lastName = lastNameError;
     if (!formData.designation.trim()) errors.designation = 'Designation is required';
     if (!formData.dateOfRetirement.trim()) errors.dateOfRetirement = 'Date of retirement is required';
-    if (!formData.nameAsInPan.trim()) errors.nameAsInPan = 'Name as in PAN is required';
+    const panNameError = validatePersonName(formData.nameAsInPan, 'Name as in PAN');
+    if (panNameError) errors.nameAsInPan = panNameError;
     if (!formData.orgPan.trim()) errors.orgPan = 'Organisation PAN is required';
     if (!formData.dateAsInPan.trim()) errors.dateAsInPan = 'Date as in PAN is required';
 
@@ -825,11 +843,8 @@ export default function BuyerProfile() {
           errors.bankName = 'Bank name must be between 3 and 100 characters and contain letters';
         }
 
-        if (!cleanAccountHolder) {
-          errors.accountHolderName = 'Account holder name is required';
-        } else if (cleanAccountHolder.length < 3 || cleanAccountHolder.length > 100 || !/[a-zA-Z]/.test(cleanAccountHolder)) {
-          errors.accountHolderName = 'Account holder name must be between 3 and 100 characters and contain letters';
-        }
+        const accountHolderError = validatePersonName(cleanAccountHolder, 'Account holder name');
+        if (accountHolderError) errors.accountHolderName = accountHolderError;
 
         if (!cleanBankAddress) {
           errors.bankAddress = 'Bank address is required';
@@ -853,6 +868,18 @@ export default function BuyerProfile() {
       }
 
       if (activeSection === 'personal') {
+        const personalErrors: Record<string, string> = {};
+        const firstNameError = validatePersonName(formData.firstName, 'First name');
+        const lastNameError = validatePersonName(formData.lastName, 'Last name');
+        const panNameError = validatePersonName(formData.nameAsInPan, 'Name as in PAN');
+        if (firstNameError) personalErrors.firstName = firstNameError;
+        if (lastNameError) personalErrors.lastName = lastNameError;
+        if (panNameError) personalErrors.nameAsInPan = panNameError;
+        if (Object.keys(personalErrors).length > 0) {
+          setFormErrors(personalErrors);
+          setIsSaving(false);
+          return;
+        }
         if (!personalOtpSent) {
           setIsSaving(false);
           await handleGetPersonalOtp();
@@ -874,6 +901,20 @@ export default function BuyerProfile() {
       }
 
       if (activeSection === 'referral') {
+        const verifyingFirstNameError = validatePersonName(formData.verifyingFirstName, 'Verifying authority first name');
+        const verifyingLastNameError = validatePersonName(formData.verifyingLastName, 'Verifying authority last name');
+        const verifyingMobileError = validateIndianMobile(formData.verifyingMobile, 'Verifying authority mobile');
+        const referralErrors: Record<string, string> = {};
+        if (verifyingFirstNameError) referralErrors.verifyingFirstName = verifyingFirstNameError;
+        if (verifyingLastNameError) referralErrors.verifyingLastName = verifyingLastNameError;
+        if (!formData.verifyingEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.verifyingEmail.trim())) referralErrors.verifyingEmail = 'Enter a valid verifying authority email';
+        if (verifyingMobileError) referralErrors.verifyingMobile = verifyingMobileError;
+        if (!formData.verifyingDesignation.trim()) referralErrors.verifyingDesignation = 'Verifying authority designation is required';
+        if (Object.keys(referralErrors).length > 0) {
+          setFormErrors(referralErrors);
+          setIsSaving(false);
+          return;
+        }
         payload.competentAuthorityEmail = formData.competentAuthorityEmail;
         payload.verifyingFirstName = formData.verifyingFirstName;
         payload.verifyingLastName = formData.verifyingLastName;
@@ -884,6 +925,12 @@ export default function BuyerProfile() {
       }
 
       if (activeSection === 'mobile') {
+        const mobileError = validateIndianMobile(formData.aadhaarMobile, 'Mobile number linked with Aadhaar');
+        if (mobileError) {
+          setFormErrors({ aadhaarMobile: mobileError });
+          setIsSaving(false);
+          return;
+        }
         if (!formData.aadhaarConsent) {
           toast.error('Please provide your consent to update mobile number');
           setIsSaving(false);
@@ -1158,6 +1205,7 @@ export default function BuyerProfile() {
                               value={showcaseProfile.contactPersonName || ''}
                               onChange={(e) => handleShowcaseFieldChange('contactPersonName', e.target.value)}
                               placeholder="Name"
+                              maxLength={100}
                             />
                             <Input
                               label="Contact Person Designation *"
@@ -1170,6 +1218,8 @@ export default function BuyerProfile() {
                               value={showcaseProfile.contactPersonMobile || ''}
                               onChange={(e) => handleShowcaseFieldChange('contactPersonMobile', e.target.value)}
                               placeholder="Mobile"
+                              inputMode="numeric"
+                              maxLength={10}
                             />
                             <Input
                               label="Contact Person Email *"
@@ -2238,6 +2288,8 @@ export default function BuyerProfile() {
                       onChange={(e) => handleFieldChange('verifyingMobile', e.target.value)}
                       placeholder="9763982676"
                       error={formErrors.verifyingMobile}
+                      inputMode="numeric"
+                      maxLength={10}
                       className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                     />
                     <div className="md:col-span-2 max-w-xl">
@@ -2299,6 +2351,8 @@ export default function BuyerProfile() {
                         onChange={(e) => handleFieldChange('aadhaarMobile', e.target.value)}
                         placeholder="Enter mobile number linked with Aadhaar"
                         error={formErrors.aadhaarMobile}
+                        inputMode="numeric"
+                        maxLength={10}
                         className="h-12 text-sm font-bold bg-slate-50/50 border-slate-200 rounded-xl"
                       />
                     </div>

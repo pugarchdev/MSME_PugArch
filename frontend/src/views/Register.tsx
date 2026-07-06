@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
 import { toast } from 'sonner';
 import { Store, Building2, ShieldCheck, Mail, Key, Phone, Clock, ArrowRight } from 'lucide-react';
 import { getSellerPortalPath, getSellerPortalLabel } from '../lib/shg';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../lib/validation';
 
 export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' }) {
   const [formData, setFormData] = useState({
@@ -118,9 +119,10 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   };
 
   const handleSendMobileOtp = async () => {
-    const cleanedMobile = formData.mobile.replace(/\D/g, '');
-    if (!cleanedMobile || cleanedMobile.length !== 10) {
-      toast.error('Please enter a valid 10-digit mobile number first');
+    const cleanedMobile = sanitizeIndianMobileInput(formData.mobile);
+    const mobileError = validateIndianMobile(cleanedMobile, 'Mobile number');
+    if (mobileError) {
+      toast.error(mobileError);
       return;
     }
     setIsSendingMobileOtp(true);
@@ -171,7 +173,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
   };
 
   const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) });
+    setFormData({ ...formData, mobile: sanitizeIndianMobileInput(e.target.value) });
     setIsMobileVerified(false);
     setMobileOtpSent(false);
     setMobileOtp('');
@@ -193,6 +195,11 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameError = validatePersonName(formData.name, getNameLabel());
+    if (nameError) {
+      toast.error(nameError);
+      return;
+    }
     if (!isEmailVerified) {
       toast.error('Please verify your email address to continue');
       return;
@@ -212,6 +219,13 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
       toast.error('Please verify your mobile number to continue');
       return;
     }
+    if (hasMobile) {
+      const mobileError = validateIndianMobile(formData.mobile, 'Mobile number');
+      if (mobileError) {
+        toast.error(mobileError);
+        return;
+      }
+    }
     const nextPasswordError = getPasswordError(formData.password);
     setPasswordError(nextPasswordError);
     if (nextPasswordError) {
@@ -223,6 +237,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
     try {
       const payload = {
         ...formData,
+        name: sanitizePersonNameInput(formData.name).trim(),
         mobile: formData.mobile.replace(/\D/g, '') || undefined,
         role: type
       };
@@ -277,8 +292,9 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
               label={getNameLabel()}
               placeholder="e.g. John Doe"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, name: sanitizePersonNameInput(e.target.value) })}
               required
+              maxLength={100}
               className="rounded-xl border-slate-200 focus:border-indigo-500"
             />
 
@@ -362,6 +378,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
                       type="tel"
                       placeholder="10-digit mobile number"
                       maxLength={10}
+                      inputMode="numeric"
                       value={formData.mobile}
                       onChange={handleMobileChange}
                       disabled={isMobileVerified || mobileOtpSent}

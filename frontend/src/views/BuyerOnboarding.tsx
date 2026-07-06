@@ -10,7 +10,15 @@ import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { toast } from 'sonner';
 import { ArrowLeft, ArrowRight, Save, Upload, CheckCircle2, AlertTriangle, Clock, ShieldCheck, X, ExternalLink, Plus, MapPin, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { validateField, validateOptionalField, FieldType } from '../lib/validation';
+import {
+  validateField,
+  FieldType,
+  sanitizeIndianMobileInput,
+  sanitizePersonNameInput,
+  validateIndianMobile,
+  validateOptionalIndianMobile,
+  validatePersonName
+} from '../lib/validation';
 import { compressImage } from '../lib/compress';
 import { getFileAssetPreview, type DocumentPreview } from '../lib/files';
 import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts';
@@ -547,10 +555,23 @@ export default function BuyerOnboarding() {
     if (name === 'pan') fieldType = 'pan';
     if (name === 'gst') fieldType = 'gst';
     if (name === 'cin') fieldType = 'cin';
-    if (name === 'mobile' || name === 'alternateMobile') fieldType = 'mobile';
+    if (name === 'mobile') {
+      const error = validateIndianMobile(value, 'Mobile number');
+      setErrors(prev => ({ ...prev, [name]: error || '' }));
+      return !error;
+    }
+    if (name === 'alternateMobile') {
+      const error = validateOptionalIndianMobile(value, 'Alternate number');
+      setErrors(prev => ({ ...prev, [name]: error || '' }));
+      return !error;
+    }
     if (name === 'email') fieldType = 'email';
     if (name === 'pincode') fieldType = 'pincode';
-    if (name === 'representativeName') fieldType = 'name';
+    if (name === 'representativeName') {
+      const error = validatePersonName(value, 'Full name');
+      setErrors(prev => ({ ...prev, [name]: error || '' }));
+      return !error;
+    }
 
     if (fieldType) {
       const error = validateField(fieldType, value);
@@ -563,7 +584,11 @@ export default function BuyerOnboarding() {
     return true;
   };
 
-  const getFieldError = (name: string) => (touched[name] || submitAttempted ? errors[name] || '' : '');
+  const getFieldError = (name: string) => {
+    const hasValue = String(formData[name] || '').trim().length > 0;
+    const shouldShowLiveMobileError = ['mobile', 'alternateMobile'].includes(name) && hasValue;
+    return touched[name] || submitAttempted || shouldShowLiveMobileError ? errors[name] || '' : '';
+  };
 
   const handleIndustryChange = (value: string) => {
     if (isProfileLocked) return;
@@ -619,8 +644,7 @@ export default function BuyerOnboarding() {
 
     // Character Blocking & Auto Formatting
     if (['mobile', 'alternateMobile', 'pincode'].includes(name)) {
-      newValue = value.replace(/[^0-9]/g, '');
-      if (name === 'mobile' || name === 'alternateMobile') newValue = newValue.slice(0, 10);
+      newValue = name === 'pincode' ? value.replace(/[^0-9]/g, '') : sanitizeIndianMobileInput(value);
       if (name === 'pincode') newValue = newValue.slice(0, 6);
     }
 
@@ -633,7 +657,7 @@ export default function BuyerOnboarding() {
     }
 
     if (name === 'representativeName') {
-      newValue = value.replace(/[^A-Za-z ]/g, '');
+      newValue = sanitizePersonNameInput(value);
     }
 
     if (type === 'checkbox') {
@@ -657,7 +681,7 @@ export default function BuyerOnboarding() {
       if (touched[name] || submitAttempted) validateWebsite(newValue);
     } else {
       setFormData({ ...formData, [name]: newValue });
-      if (touched[name] || submitAttempted) validate(name, newValue);
+      if (['mobile', 'alternateMobile'].includes(name) || touched[name] || submitAttempted) validate(name, newValue);
     }
   };
 
@@ -1028,7 +1052,7 @@ export default function BuyerOnboarding() {
     });
 
     if (sectionId === 'rep') {
-      const alternateMobileError = validateOptionalField('mobile', formData.alternateMobile || '');
+      const alternateMobileError = validateOptionalIndianMobile(formData.alternateMobile || '', 'Alternate number');
       if (alternateMobileError) {
         setErrors(prev => ({ ...prev, alternateMobile: alternateMobileError }));
         isValid = false;
@@ -1537,7 +1561,7 @@ export default function BuyerOnboarding() {
                     <div className="md:col-span-2">
                       <AadhaarVerificationCard compact />
                     </div>
-                    <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} required className="h-10" />
+                    <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} maxLength={100} required className="h-10" />
                     <div className="space-y-3">
                       <Select label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} required className="h-10">
                         <option value="" disabled>Select designation</option>
@@ -1578,8 +1602,8 @@ export default function BuyerOnboarding() {
                       )}
                     </div>
                     <Input label="OFFICIAL EMAIL ID" name="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={getFieldError('email')} required className="h-10" />
-                    <Input label="MOBILE NUMBER" name="mobile" value={formData.mobile} onChange={handleChange} onBlur={handleBlur} error={getFieldError('mobile')} maxLength={10} required className="h-10" />
-                    <Input label="ALTERNATE NUMBER" name="alternateMobile" value={formData.alternateMobile} onChange={handleChange} onBlur={handleBlur} error={getFieldError('alternateMobile')} maxLength={10} className="h-10" />
+                    <Input label="MOBILE NUMBER" name="mobile" type="tel" placeholder="10-digit mobile number" value={formData.mobile} onChange={handleChange} onBlur={handleBlur} error={getFieldError('mobile')} inputMode="numeric" maxLength={10} required className="h-10" />
+                    <Input label="ALTERNATE NUMBER" name="alternateMobile" type="tel" placeholder="10-digit alternate number" value={formData.alternateMobile} onChange={handleChange} onBlur={handleBlur} error={getFieldError('alternateMobile')} inputMode="numeric" maxLength={10} className="h-10" />
                   </div>
                 )}
 

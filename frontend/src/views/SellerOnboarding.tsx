@@ -15,6 +15,7 @@ import { indiaStates, indiaStatesDistricts } from '../data/indiaStatesDistricts'
 import { MSME_TYPES, VENDOR_TYPES, REGISTRATION_TYPES, PRODUCT_CATEGORIES, PRODUCT_CATEGORY_OTHER } from '../constants/dropdowns';
 import { cn } from '../lib/utils';
 import { AadhaarVerificationCard } from '../features/kyc/AadhaarVerificationCard';
+import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../lib/validation';
 
 const toDateInputValue = (value: unknown) => {
   if (!value) return '';
@@ -207,8 +208,6 @@ export default function SellerOnboarding() {
   const validateOfficeForm = (candidate = officeForm) => {
     const errors: Record<string, string> = {};
     const pincodeRegex = /^\d{6}$/;
-    const contactRegex = /^\d{10}$/;
-
     if (!candidate.name.trim()) errors.name = 'Office name is required.';
     if (!candidate.type) errors.type = 'Type of office is required.';
 
@@ -220,8 +219,8 @@ export default function SellerOnboarding() {
     if (!candidate.flat.trim()) errors.flat = 'Flat/Door/Block No is required.';
     if (!candidate.area.trim()) errors.area = 'Area/Locality is required.';
 
-    if (!candidate.contact.trim()) errors.contact = 'Contact number is required.';
-    else if (!contactRegex.test(candidate.contact.trim())) errors.contact = 'Enter a valid 10-digit contact number.';
+    const contactError = validateIndianMobile(candidate.contact, 'Contact number');
+    if (contactError) errors.contact = contactError;
 
     return { errors, isValid: Object.keys(errors).length === 0 };
   };
@@ -599,6 +598,7 @@ export default function SellerOnboarding() {
       });
     }
     if (name === 'nameAsInPan') {
+      val = sanitizePersonNameInput(val);
       setPanErrors((prev: any) => {
         const next = { ...prev };
         delete next.nameAsInPan;
@@ -620,6 +620,7 @@ export default function SellerOnboarding() {
       });
     }
     if (name === 'mobile') {
+      val = sanitizeIndianMobileInput(val);
       setDetailsErrors((prev: any) => {
         const next = { ...prev };
         delete next.mobile;
@@ -643,9 +644,8 @@ export default function SellerOnboarding() {
       if (!formData.dateAsInPan) {
         errors.dateAsInPan = 'Please select Date (As in PAN)';
       }
-      if (!formData.nameAsInPan?.trim()) {
-        errors.nameAsInPan = 'Name (As in PAN) is required';
-      }
+      const nameError = validatePersonName(formData.nameAsInPan, 'Name as in PAN');
+      if (nameError) errors.nameAsInPan = nameError;
       if (Object.keys(errors).length > 0) {
         setPanErrors(errors);
         toast.error('Please fix validation errors in the PAN section.');
@@ -667,9 +667,8 @@ export default function SellerOnboarding() {
       if (!formData.dateOfIncorporation) {
         errors.dateOfIncorporation = 'Date of Incorporation is required';
       }
-      if (!formData.mobile || !/^[6-9]\d{9}$/.test(String(formData.mobile).trim())) {
-        errors.mobile = 'Enter a valid 10-digit registered mobile number';
-      }
+      const mobileError = validateIndianMobile(formData.mobile, 'Registered mobile number');
+      if (mobileError) errors.mobile = mobileError;
       if (Object.keys(errors).length > 0) {
         setDetailsErrors(errors);
         toast.error('Please fix validation errors in the Details section.');
@@ -971,9 +970,8 @@ export default function SellerOnboarding() {
     if (!formData.dateAsInPan) {
       errors.dateAsInPan = 'Please select Date (As in PAN) before verification';
     }
-    if (!formData.nameAsInPan?.trim()) {
-      errors.nameAsInPan = 'Name (As in PAN) is required';
-    }
+    const panNameError = validatePersonName(formData.nameAsInPan, 'Name as in PAN');
+    if (panNameError) errors.nameAsInPan = panNameError;
     if (Object.keys(errors).length > 0) {
       setPanErrors(errors);
       toast.error('Please fix validation errors in the PAN section.');
@@ -1149,7 +1147,6 @@ export default function SellerOnboarding() {
     const errors: Record<string, string> = {};
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
     const bankNameRegex = /^[A-Za-z0-9 .,&()/-]+$/;
-    const holderRegex = /^[A-Za-z .'-]+$/;
     const accountRegex = /^\d{9,18}$/;
 
     if (!values.ifsc) errors.ifsc = 'IFSC code is required.';
@@ -1164,9 +1161,8 @@ export default function SellerOnboarding() {
     else if (values.bankAddress.length < 10) errors.bankAddress = 'Bank address must be at least 10 characters.';
     else if (values.bankAddress.length > 250) errors.bankAddress = 'Bank address cannot exceed 250 characters.';
 
-    if (!values.holderName) errors.holderName = 'Account holder name is required.';
-    else if (values.holderName.length < 2) errors.holderName = 'Account holder name must be at least 2 characters.';
-    else if (!holderRegex.test(values.holderName)) errors.holderName = 'Use only alphabets, spaces, dots, hyphens, and apostrophes.';
+    const holderNameError = validatePersonName(values.holderName, 'Account holder name');
+    if (holderNameError) errors.holderName = holderNameError;
 
     const isMaskedAccount = /^\*+\d+$/.test(values.accountNumber);
     if (!values.accountNumber) errors.accountNumber = 'Bank account number is required.';
@@ -1835,7 +1831,7 @@ export default function SellerOnboarding() {
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1">Contact Number <span className="text-red-500 font-bold">*</span> <span className="text-gray-400 font-normal ml-1">ⓘ</span></label>
-                              <input value={officeForm.contact} onChange={(e) => updateOfficeForm('contact', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="Enter Contact Number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.contact ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
+                              <input value={officeForm.contact} onChange={(e) => updateOfficeForm('contact', sanitizeIndianMobileInput(e.target.value))} inputMode="numeric" maxLength={10} placeholder="Enter Contact Number" className={`w-full h-12 px-4 rounded border text-sm focus:outline-none focus:ring-1 bg-white ${officeErrors.contact ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`} />
 
                               {officeErrors.contact && <p className="mt-1 text-xs font-medium text-red-600">{officeErrors.contact}</p>}
                             </div>
@@ -1991,7 +1987,7 @@ export default function SellerOnboarding() {
                                 <input
                                   id="new-bank-holder"
                                   value={newBank.holderName}
-                                  onChange={(event) => updateNewBank('holderName', event.target.value.replace(/[^A-Za-z .'-]/g, ''))}
+                                  onChange={(event) => updateNewBank('holderName', sanitizePersonNameInput(event.target.value))}
                                   placeholder="Enter Account Holder's Name"
                                   className={`w-full h-12 px-4 rounded border bg-gray-50/50 text-sm focus:outline-none focus:ring-1 ${bankErrors.holderName ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-[#12335f]'}`}
                                 />
@@ -2366,7 +2362,9 @@ export default function SellerOnboarding() {
                           label="Mobile number linked with Aadhaar*"
                           placeholder="Enter mobile number linked with Aadhaar"
                           value={aadhaarData.mobile}
-                          onChange={(e) => setAadhaarData(p => ({ ...p, mobile: e.target.value }))}
+                          onChange={(e) => setAadhaarData(p => ({ ...p, mobile: sanitizeIndianMobileInput(e.target.value) }))}
+                          inputMode="numeric"
+                          maxLength={10}
                         />
                       </div>
                       <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 flex gap-3 items-start">

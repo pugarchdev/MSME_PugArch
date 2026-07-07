@@ -53,4 +53,16 @@ graphify.ps1
 # Codex / AI Agent config
 .codex/
 .agent/
+.agents/
+.clinerules/
+skills-lock.json
+AGENTS.md
+
+# Other IDEs and tools
+.continue/
+.cursor/
+.github/
+.kiro/
+.opencode/
+.windsurf/
 

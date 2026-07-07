@@ -124,6 +124,46 @@ export const PRODUCT_CATEGORIES = [
 // Sentinel value for the "Other" option that lets users type a custom category.
 export const PRODUCT_CATEGORY_OTHER = 'Other';
 
+// Procurement wizard common fields. Values are stable codes saved to backend payloads.
+export const PROCUREMENT_BUYER_TYPES = [
+  { value: 'PRIVATE_BUYER', label: 'Private Buyer' },
+  { value: 'GOVERNMENT_BUYER', label: 'Government Buyer' },
+] as const;
+
+export const PROCUREMENT_REQUIREMENT_TYPES = [
+  { value: 'GOODS', label: 'Goods' },
+  { value: 'SERVICES', label: 'Services' },
+  { value: 'WORKS', label: 'Works' },
+  { value: 'BOQ', label: 'BOQ' },
+  { value: 'CATALOG_ITEM', label: 'Catalog Item' },
+] as const;
+
+export const PROCUREMENT_PRIORITIES = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'URGENT', label: 'Urgent' },
+  { value: 'EMERGENCY', label: 'Emergency' },
+] as const;
+
+export const PROCUREMENT_CURRENCIES = [
+  { value: 'INR', label: 'INR - Indian Rupee' },
+] as const;
+
+export const PROCUREMENT_INSPECTION_TYPES = [
+  { value: 'BUYER_INSPECTION', label: 'Buyer Inspection' },
+  { value: 'THIRD_PARTY_INSPECTION', label: 'Third Party Inspection' },
+  { value: 'JOINT_INSPECTION', label: 'Joint Inspection' },
+  { value: 'SELF_CERTIFICATION', label: 'Self Certification' },
+  { value: 'NOT_REQUIRED', label: 'Not Required' },
+] as const;
+
+export type ProcurementBuyerType = typeof PROCUREMENT_BUYER_TYPES[number]['value'];
+export type ProcurementRequirementType = typeof PROCUREMENT_REQUIREMENT_TYPES[number]['value'];
+export type ProcurementPriority = typeof PROCUREMENT_PRIORITIES[number]['value'];
+export type ProcurementCurrency = typeof PROCUREMENT_CURRENCIES[number]['value'];
+export type ProcurementInspectionType = typeof PROCUREMENT_INSPECTION_TYPES[number]['value'];
+
 // ── Item Condition ──────────────────────────────────────────────────────────
 export const ITEM_CONDITIONS = [
   { value: 'NEW', label: 'New' },

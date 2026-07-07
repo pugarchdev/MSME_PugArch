@@ -182,8 +182,8 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
     return apiResponse.success(res, data, 200, 'Tender opportunity details fetched successfully');
   }
   const bid = await service.resolveBid(token);
-  const isDirectPurchase = bid.procurementType === 'DIRECT_PURCHASE' || bid.bidType === 'DIRECT_PURCHASE';
-  if (isDirectPurchase) {
+  const isRestrictedBid = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(String(bid.procurementType || bid.bidType).toUpperCase());
+  if (isRestrictedBid) {
     const isBuyer = actor?.role === 'buyer' && bid.buyerId === actor.id;
     const isSeller = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
     const isAdminUser = actor?.role === 'admin' || actor?.role === 'master_admin';
@@ -228,12 +228,13 @@ router.get('/seller/bids', authenticate, requireAccountType('seller'), asyncRout
 router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, { participations: { where: { sellerId: req.user!.id }, include: { documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true } } });
   const participation = bid.participations?.[0];
-  if (bid.procurementType === 'DIRECT_PURCHASE' || bid.bidType === 'DIRECT_PURCHASE') {
+  const isRestrictedBid = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(String(bid.procurementType || bid.bidType).toUpperCase());
+  if (isRestrictedBid) {
     if (!participation) {
       throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
     }
   }
-  return apiResponse.success(res, { bid: service.serializeBid(bid, { actor: req.user }), participation: participation ? service.serializeParticipation(participation, { canSeeFinancial: true }) : null }, 200, 'Bid status fetched');
+  return apiResponse.success(res, { bid: service.serializeBid(bid, { actor: req.user }), participation: participation ? service.serializeParticipation(participation, { canSeeFinancial: true, bid }) : null }, 200, 'Bid status fetched');
 }));
 
 router.post('/bids/:bidId/clarifications/:clarificationId/respond', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: clarificationParamSchema, body: z.object({ response: z.string().trim().min(2).max(5000) }) }), asyncRoute(async (req, res) => {

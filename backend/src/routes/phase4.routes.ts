@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import { Prisma } from '@prisma/client';
 import https from 'https';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
@@ -776,6 +777,7 @@ const procurementDraftBody = z.object({
   procurementMethod: z.string().trim().max(80).optional(),
   method: z.string().trim().max(80).optional(),
   methodSlug: z.string().trim().max(80).optional(),
+  canonicalMethod: z.string().trim().max(80).optional(),
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().max(4000).optional(),
   categoryId: z.coerce.number().int().positive().optional(),
@@ -986,9 +988,313 @@ const validateProcurementDraftForSubmit = (draft: any) => {
     throw new ApiError(400, 'Emergency procurement requires an audit justification', 'PROCUREMENT_EMERGENCY_JUSTIFICATION_REQUIRED');
   }
   if (['reverse-auction', 'bid-with-reverse-auction'].includes(methodSlug)) {
-    if (Number(rules.startPrice || 0) <= 0) throw new ApiError(400, 'Reverse auction requires a start price', 'PROCUREMENT_AUCTION_PRICE_REQUIRED');
-    if (Number(rules.minimumDecrement || 0) <= 0) throw new ApiError(400, 'Reverse auction requires minimum decrement value', 'PROCUREMENT_AUCTION_DECREMENT_REQUIRED');
+    const auctionConfig = normalizeAuctionConfigForDraft(draft);
+    validateAuctionConfigForDraft(auctionConfig, methodSlug);
   }
+  if (methodSlug === 'rate-contract') {
+    const rateContractConfig = normalizeRateContractConfigForDraft(draft);
+    validateRateContractConfigForDraft(rateContractConfig);
+  }
+  if (methodSlug === 'catalog-purchase') {
+    const catalog = payload.catalog || {};
+    if (!catalog.catalogType) throw new ApiError(400, 'Catalog Type selection is required', 'CATALOG_TYPE_REQUIRED');
+    if (!catalog.catalogId?.trim()) throw new ApiError(400, 'Catalog ID is required', 'CATALOG_ID_REQUIRED');
+    if (!catalog.catalogName?.trim()) throw new ApiError(400, 'Catalog Name is required', 'CATALOG_NAME_REQUIRED');
+    if (!catalog.supplierId) throw new ApiError(400, 'Supplier selection is required', 'CATALOG_SUPPLIER_REQUIRED');
+    if (!catalog.effectiveDate) throw new ApiError(400, 'Effective Date is required', 'CATALOG_EFFECTIVE_DATE_REQUIRED');
+    if (!catalog.expiryDate) throw new ApiError(400, 'Expiry Date is required', 'CATALOG_EXPIRY_DATE_REQUIRED');
+
+    const start = new Date(String(catalog.effectiveDate)).getTime();
+    const end = new Date(String(catalog.expiryDate)).getTime();
+    if (isNaN(start) || isNaN(end) || end <= start) {
+      throw new ApiError(400, 'Catalog Expiry Date must be after Effective Date', 'CATALOG_DATES_INVALID');
+    }
+  }
+
+  // RFI questionnaire validation
+  if (methodSlug === 'rfi') {
+    const questionnaire = Array.isArray(payload.questionnaire) ? payload.questionnaire : [];
+    if (questionnaire.length === 0) {
+      throw new ApiError(400, 'RFI requires at least one market research questionnaire question', 'PROCUREMENT_QUESTIONNAIRE_REQUIRED');
+    }
+    for (const q of questionnaire) {
+      if (!q.text || String(q.text).trim().length < 5) {
+        throw new ApiError(400, 'Questionnaire question text must be at least 5 characters long', 'PROCUREMENT_QUESTIONNAIRE_TEXT_INVALID');
+      }
+    }
+  }
+
+  // Limited Sourcing validation
+  if (methodSlug === 'limited-tender' || (methodSlug === 'rfq' && payload.rfqType === 'LIMITED')) {
+    const justification = payload.limitedTenderJustification || basics.justification || '';
+    if (clean(justification).length < 15) {
+      throw new ApiError(400, 'Limited Tender / RFQ requires a written justification of at least 15 characters', 'PROCUREMENT_JUSTIFICATION_REQUIRED');
+    }
+    const invitedSellers = Array.isArray(payload.vendors?.invitedSellers) ? payload.vendors.invitedSellers : [];
+    if (invitedSellers.length === 0) {
+      throw new ApiError(400, 'Limited Tender / RFQ requires inviting at least one selected vendor', 'PROCUREMENT_VENDORS_REQUIRED');
+    }
+  }
+
+  // Two Packet Bid validation
+  if (methodSlug === 'two-packet-bid') {
+    if (!tender.technicalEvaluationDate) {
+      throw new ApiError(400, 'Two Packet Bid requires a technical opening date', 'TECHNICAL_OPENING_DATE_REQUIRED');
+    }
+    if (!tender.financialEvaluationDate) {
+      throw new ApiError(400, 'Two Packet Bid requires a financial opening date', 'FINANCIAL_OPENING_DATE_REQUIRED');
+    }
+    const docs = Array.isArray(payload.documents) ? payload.documents : [];
+    const hasTechDoc = docs.some((doc: any) => /technical|tech/i.test(doc.name) && doc.required);
+    const hasFinDoc = docs.some((doc: any) => /financial|commercial|price/i.test(doc.name) && doc.required);
+    if (!hasTechDoc || !hasFinDoc) {
+      throw new ApiError(400, 'Two Packet Bid requires separate Technical and Financial bid documents in checklist', 'TWO_PACKET_DOCUMENTS_REQUIRED');
+    }
+  }
+};
+
+const auctionConfigSchema = z.object({
+  auctionNumber: z.string().trim().max(80).optional(),
+  auctionTitle: z.string().trim().min(3).max(180),
+  auctionDescription: z.string().trim().max(3000).optional(),
+  procurementMethod: z.enum(['REVERSE_AUCTION', 'BID_WITH_REVERSE_AUCTION']),
+  category: z.string().trim().max(160).optional(),
+  subCategory: z.string().trim().max(160).optional(),
+  currency: z.string().trim().length(3).default('INR'),
+  buyerOrganization: z.string().trim().max(180).optional(),
+  department: z.string().trim().max(160).optional(),
+  purchaseGroup: z.string().trim().max(120).optional(),
+  purchaseOrganization: z.string().trim().max(160).optional(),
+  auctionType: z.enum(['ENGLISH_REVERSE', 'RANK_BASED_REVERSE']),
+  auctionMode: z.enum(['ONLINE']),
+  auctionStartDateTime: z.coerce.date(),
+  auctionEndDateTime: z.coerce.date(),
+  auctionDurationMinutes: z.coerce.number().int().positive(),
+  startingBidPrice: z.coerce.number().positive(),
+  reservePrice: z.coerce.number().positive().optional().nullable(),
+  minimumBidDecrement: z.coerce.number().positive(),
+  autoExtensionEnabled: z.coerce.boolean(),
+  extensionTriggerMinutes: z.coerce.number().int().positive().optional().nullable(),
+  extensionDurationMinutes: z.coerce.number().int().positive().optional().nullable(),
+  maximumExtensions: z.coerce.number().int().min(0).optional().nullable(),
+  rankVisibility: z.enum(['SHOW_RANK_ONLY', 'SHOW_LOWEST_PRICE', 'HIDDEN']),
+  qualifiedVendors: z.array(z.object({
+    sellerOrgId: z.coerce.number().int().positive(),
+    sellerUserId: z.coerce.number().int().positive().optional().nullable(),
+    status: z.string().trim().max(80).optional()
+  })).default([]),
+  minimumQualifiedBidders: z.coerce.number().int().min(2),
+  auctionTermsDocument: z.object({
+    fileAssetId: z.coerce.number().int().positive().optional().nullable(),
+    fileName: z.string().trim().max(260).optional().nullable()
+  }).optional(),
+  buyerMonitorSettings: z.record(z.string(), z.unknown()).default({}),
+  triggerConfiguration: z.object({
+    preBidStageRequired: z.coerce.boolean().default(false),
+    auctionAfterTechnicalQualification: z.coerce.boolean().default(false),
+    auctionAmongTopNBidders: z.coerce.number().int().positive().optional().nullable(),
+    auctionAmongAllTechnicallyQualified: z.coerce.boolean().default(true)
+  }).optional()
+}).passthrough();
+
+const normalizeAuctionConfigForDraft = (draft: any) => {
+  const payload = draft.payload || {};
+  const rules = payload.rules || {};
+  const raw = payload.auctionConfig || rules.auctionConfig || {};
+  return {
+    auctionTitle: raw.auctionTitle || payload.basics?.title || draft.title,
+    auctionDescription: raw.auctionDescription || draft.description || payload.basics?.description,
+    procurementMethod: raw.procurementMethod || payload.fullProcurementMethod || draft.canonicalMethod || draft.method || draft.procurementMethod,
+    category: raw.category || payload.basics?.category || payload.category,
+    subCategory: raw.subCategory || payload.basics?.subCategory,
+    currency: raw.currency || payload.currency || payload.basics?.currency || draft.currency || 'INR',
+    buyerOrganization: raw.buyerOrganization || payload.internal?.orgName,
+    department: raw.department || payload.internal?.department,
+    purchaseGroup: raw.purchaseGroup,
+    purchaseOrganization: raw.purchaseOrganization,
+    auctionType: raw.auctionType || 'ENGLISH_REVERSE',
+    auctionMode: raw.auctionMode || 'ONLINE',
+    auctionStartDateTime: raw.auctionStartDateTime || raw.startAt || rules.auctionStartDateTime,
+    auctionEndDateTime: raw.auctionEndDateTime || raw.endAt || rules.auctionEndDateTime,
+    auctionDurationMinutes: raw.auctionDurationMinutes || raw.durationMinutes,
+    startingBidPrice: raw.startingBidPrice || raw.startingPrice || rules.startPrice,
+    reservePrice: raw.reservePrice || rules.reservePrice || null,
+    minimumBidDecrement: raw.minimumBidDecrement || raw.minDecrementAmount || rules.minimumDecrement,
+    autoExtensionEnabled: Boolean(raw.autoExtensionEnabled ?? rules.autoExtensionEnabled ?? false),
+    extensionTriggerMinutes: raw.extensionTriggerMinutes ?? raw.autoExtensionWindowMinutes ?? null,
+    extensionDurationMinutes: raw.extensionDurationMinutes ?? raw.autoExtensionByMinutes ?? null,
+    maximumExtensions: raw.maximumExtensions ?? raw.maxAutoExtensions ?? 0,
+    rankVisibility: raw.rankVisibility || (rules.showLowestPrice ? 'SHOW_LOWEST_PRICE' : rules.showSellerRank ? 'SHOW_RANK_ONLY' : 'HIDDEN'),
+    qualifiedVendors: Array.isArray(raw.qualifiedVendors)
+      ? raw.qualifiedVendors
+      : Array.isArray(payload.vendors?.invitedSellers)
+        ? payload.vendors.invitedSellers.map((sellerOrgId: unknown) => ({ sellerOrgId }))
+        : [],
+    minimumQualifiedBidders: raw.minimumQualifiedBidders || payload.schedule?.minimumBidders || 2,
+    auctionTermsDocument: raw.auctionTermsDocument,
+    buyerMonitorSettings: raw.buyerMonitorSettings || {},
+    triggerConfiguration: raw.triggerConfiguration
+  };
+};
+
+const validateAuctionConfigForDraft = (configInput: Record<string, unknown>, methodSlug: string) => {
+  const parsed = auctionConfigSchema.safeParse(configInput);
+  if (!parsed.success) {
+    throw new ApiError(400, parsed.error.issues[0]?.message || 'Reverse auction configuration is invalid', 'PROCUREMENT_AUCTION_CONFIG_INVALID');
+  }
+  const config = parsed.data;
+  if (methodSlug === 'reverse-auction' && config.procurementMethod !== 'REVERSE_AUCTION') {
+    throw new ApiError(400, 'Reverse Auction configuration must use REVERSE_AUCTION', 'PROCUREMENT_AUCTION_METHOD_INVALID');
+  }
+  if (methodSlug === 'bid-with-reverse-auction' && config.procurementMethod !== 'BID_WITH_REVERSE_AUCTION') {
+    throw new ApiError(400, 'Bid with Reverse Auction configuration must use BID_WITH_REVERSE_AUCTION', 'PROCUREMENT_AUCTION_METHOD_INVALID');
+  }
+  if (config.auctionStartDateTime >= config.auctionEndDateTime) {
+    throw new ApiError(400, 'Auction start date/time must be before auction end date/time', 'PROCUREMENT_AUCTION_DATE_INVALID');
+  }
+  if (config.reservePrice && Number(config.reservePrice) > Number(config.startingBidPrice)) {
+    throw new ApiError(400, 'Reserve price must be less than or equal to starting bid price', 'PROCUREMENT_AUCTION_RESERVE_INVALID');
+  }
+  if (config.qualifiedVendors.length < config.minimumQualifiedBidders) {
+    throw new ApiError(400, 'Qualified vendor list must meet the minimum qualified bidders requirement', 'PROCUREMENT_AUCTION_VENDOR_COUNT_INVALID');
+  }
+  if (config.autoExtensionEnabled && (!config.extensionTriggerMinutes || !config.extensionDurationMinutes || !config.maximumExtensions)) {
+    throw new ApiError(400, 'Auto extension trigger, duration, and maximum extensions are required when auto extension is enabled', 'PROCUREMENT_AUCTION_EXTENSION_REQUIRED');
+  }
+  if (methodSlug === 'bid-with-reverse-auction') {
+    const trigger = config.triggerConfiguration;
+    if (!trigger?.auctionAfterTechnicalQualification) {
+      throw new ApiError(400, 'Bid with Reverse Auction requires auction after technical qualification trigger', 'PROCUREMENT_AUCTION_TRIGGER_REQUIRED');
+    }
+    if (!trigger.auctionAmongAllTechnicallyQualified && !trigger.auctionAmongTopNBidders) {
+      throw new ApiError(400, 'Select top N bidders or all technically qualified bidders for auction stage', 'PROCUREMENT_AUCTION_TRIGGER_SCOPE_REQUIRED');
+    }
+  }
+  return config;
+};
+
+const rateContractItemSchema = z.object({
+  itemName: z.string().trim().min(2).max(240),
+  specification: z.string().trim().max(2000).optional().default(''),
+  uom: z.string().trim().min(1).max(40),
+  estimatedAnnualQuantity: z.coerce.number().positive(),
+  baseRate: z.coerce.number().positive(),
+  gst: z.coerce.number().min(0).max(100).default(0),
+  discount: z.coerce.number().min(0).max(100).default(0),
+  slabPricing: z.array(z.object({
+    minQuantity: z.coerce.number().positive(),
+    maxQuantity: z.coerce.number().positive().optional().nullable(),
+    rate: z.coerce.number().positive()
+  })).optional().default([])
+});
+
+const rateContractConfigSchema = z.object({
+  rateContractNumber: z.string().trim().max(80).optional(),
+  contractTitle: z.string().trim().min(3).max(200),
+  contractDescription: z.string().trim().max(4000).optional().default(''),
+  contractCategory: z.string().trim().max(160).optional().default(''),
+  contractSubCategory: z.string().trim().max(160).optional().default(''),
+  periodStartDate: z.coerce.date(),
+  periodEndDate: z.coerce.date(),
+  rateValidityPeriod: z.string().trim().min(2).max(120),
+  supplierSelectionStrategy: z.enum(['SINGLE_SUPPLIER', 'MULTI_SUPPLIER', 'PANEL_RATE_CONTRACT', 'ITEM_WISE_L1']),
+  selectedSuppliers: z.array(z.object({
+    supplierId: z.coerce.number().int().positive(),
+    supplierUserId: z.coerce.number().int().positive().optional().nullable(),
+    supplierName: z.string().trim().max(180).optional().nullable()
+  })).min(1),
+  itemRateSchedule: z.array(rateContractItemSchema).min(1),
+  priceVariationClause: z.enum(['FIXED_PRICE', 'INDEX_BASED_VARIATION', 'MUTUALLY_AGREED_REVISION']),
+  callOffOrderAllowed: z.coerce.boolean(),
+  maximumOrderQuantityPerCallOff: z.coerce.number().positive().optional().nullable(),
+  minimumOrderQuantity: z.coerce.number().nonnegative().default(0),
+  deliverySla: z.string().trim().min(2).max(500),
+  penaltyClause: z.string().trim().min(2).max(1000),
+  securityDepositRequired: z.coerce.boolean().default(false),
+  securityDepositAmount: z.coerce.number().nonnegative().default(0),
+  pbgRequired: z.coerce.boolean().default(false),
+  pbgAmount: z.coerce.number().nonnegative().default(0),
+  approvalWorkflow: z.string().trim().min(2).max(200),
+  contractDocument: z.object({
+    fileAssetId: z.coerce.number().int().positive().optional().nullable(),
+    fileName: z.string().trim().max(260).optional().nullable()
+  }).optional().nullable()
+}).passthrough();
+
+const normalizeRateContractConfigForDraft = (draft: any) => {
+  const payload = draft.payload || {};
+  const raw = payload.rateContractConfig || payload.rateContract || {};
+  const items = Array.isArray(raw.itemRateSchedule) && raw.itemRateSchedule.length
+    ? raw.itemRateSchedule
+    : (Array.isArray(payload.items) ? payload.items : Array.isArray(draft.items) ? draft.items : []).map((item: any) => ({
+      itemName: item.itemName || item.name,
+      specification: item.specification || item.description || item.technicalSpecification || '',
+      uom: item.unitOfMeasure || item.unit || 'Nos',
+      estimatedAnnualQuantity: item.estimatedAnnualQuantity || item.quantity || 1,
+      baseRate: item.baseRate || item.estimatedUnitPrice || item.unitPrice || 0,
+      gst: item.gst || item.taxRate || 0,
+      discount: item.discount || 0,
+      slabPricing: item.slabPricing || []
+    }));
+  const selectedSuppliers = Array.isArray(raw.selectedSuppliers) && raw.selectedSuppliers.length
+    ? raw.selectedSuppliers
+    : Array.isArray(payload.vendors?.invitedSellers)
+      ? payload.vendors.invitedSellers.map((supplierId: unknown) => ({ supplierId }))
+      : [];
+
+  return {
+    rateContractNumber: raw.rateContractNumber,
+    contractTitle: raw.contractTitle || payload.basics?.title || draft.title,
+    contractDescription: raw.contractDescription || payload.basics?.description || draft.description || '',
+    contractCategory: raw.contractCategory || payload.basics?.category || payload.category || '',
+    contractSubCategory: raw.contractSubCategory || payload.basics?.subCategory || '',
+    periodStartDate: raw.periodStartDate || raw.startDate || payload.tender?.bidStartDate,
+    periodEndDate: raw.periodEndDate || raw.endDate || payload.tender?.bidClosingDate || draft.requiredBy,
+    rateValidityPeriod: raw.rateValidityPeriod || 'Contract period',
+    supplierSelectionStrategy: raw.supplierSelectionStrategy || 'SINGLE_SUPPLIER',
+    selectedSuppliers,
+    itemRateSchedule: items,
+    priceVariationClause: raw.priceVariationClause || 'FIXED_PRICE',
+    callOffOrderAllowed: Boolean(raw.callOffOrderAllowed ?? true),
+    maximumOrderQuantityPerCallOff: raw.maximumOrderQuantityPerCallOff ?? null,
+    minimumOrderQuantity: raw.minimumOrderQuantity ?? 0,
+    deliverySla: raw.deliverySla || payload.terms?.deliveryTerms || 'As per contract terms',
+    penaltyClause: raw.penaltyClause || payload.terms?.penaltyClause || 'As per contract terms',
+    securityDepositRequired: Boolean(raw.securityDepositRequired ?? payload.terms?.emdRequired ?? false),
+    securityDepositAmount: Number(raw.securityDepositAmount ?? payload.terms?.securityDeposit ?? payload.terms?.emdAmount ?? 0),
+    pbgRequired: Boolean(raw.pbgRequired ?? payload.terms?.pbgRequired ?? false),
+    pbgAmount: Number(raw.pbgAmount ?? payload.terms?.securityDeposit ?? 0),
+    approvalWorkflow: raw.approvalWorkflow || payload.approval?.workflow || 'Finance + Procurement',
+    contractDocument: raw.contractDocument || null
+  };
+};
+
+const validateRateContractConfigForDraft = (configInput: Record<string, unknown>) => {
+  const parsed = rateContractConfigSchema.safeParse(configInput);
+  if (!parsed.success) {
+    throw new ApiError(400, parsed.error.issues[0]?.message || 'Rate contract configuration is invalid', 'PROCUREMENT_RATE_CONTRACT_INVALID');
+  }
+  const config = parsed.data;
+  if (config.periodStartDate >= config.periodEndDate) {
+    throw new ApiError(400, 'Rate Contract end date must be after start date', 'RATE_CONTRACT_DATE_INVALID');
+  }
+  if (config.callOffOrderAllowed && config.maximumOrderQuantityPerCallOff && config.maximumOrderQuantityPerCallOff < config.minimumOrderQuantity) {
+    throw new ApiError(400, 'Maximum call-off quantity cannot be lower than minimum order quantity', 'RATE_CONTRACT_CALLOFF_QUANTITY_INVALID');
+  }
+  for (const item of config.itemRateSchedule) {
+    for (const slab of item.slabPricing || []) {
+      if (slab.maxQuantity && slab.maxQuantity < slab.minQuantity) {
+        throw new ApiError(400, 'Slab pricing maximum quantity cannot be lower than minimum quantity', 'RATE_CONTRACT_SLAB_INVALID');
+      }
+    }
+  }
+  if (config.securityDepositRequired && config.securityDepositAmount <= 0) {
+    throw new ApiError(400, 'Security deposit amount is required when security deposit is enabled', 'RATE_CONTRACT_SECURITY_DEPOSIT_REQUIRED');
+  }
+  if (config.pbgRequired && config.pbgAmount <= 0) {
+    throw new ApiError(400, 'PBG amount is required when PBG is enabled', 'RATE_CONTRACT_PBG_REQUIRED');
+  }
+  return config;
 };
 
 const saveProcurementDraft = async (req: AuthRequest, body: z.infer<typeof procurementDraftBody>) => {
@@ -1007,6 +1313,7 @@ const saveProcurementDraft = async (req: AuthRequest, body: z.infer<typeof procu
     description: body.description,
     categoryId: body.categoryId,
     procurementMethod: methodCode,
+    canonicalMethod: body.canonicalMethod || methodSlug.toUpperCase(),
     estimatedValue: body.estimatedValue,
     requiredBy: body.requiredBy,
     status: 'DRAFT',
@@ -1028,10 +1335,147 @@ const saveProcurementDraft = async (req: AuthRequest, body: z.infer<typeof procu
     })
     : await procurementWorkflow.createRequirement(actorFrom(req), {
       ...data,
-      items
+      items,
+      payload: data.payload,
+      draftStep: data.draftStep
     });
   await auditWrite(req, body.id ? 'procurement.draft.updated' : 'procurement.draft.created', 'requirement', saved.id, { methodSlug });
   return db.requirement.findUnique({ where: { id: saved.id }, include: procurementDraftInclude });
+};
+
+const nextProcurementAuctionCode = () => `RA-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+const nextRateContractCode = () => `RC-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+const createAuctionForSubmittedProcurement = async (req: AuthRequest, requirement: any, draftBody: z.infer<typeof procurementDraftBody>) => {
+  const methodSlug = methodSlugForDraft(draftBody);
+  if (!['reverse-auction', 'bid-with-reverse-auction'].includes(methodSlug)) return null;
+
+  const existing = await db.auction.findFirst({ where: { linkedRequirementId: requirement.id } });
+  if (existing) return existing;
+
+  const config = validateAuctionConfigForDraft(normalizeAuctionConfigForDraft(draftBody), methodSlug);
+  const auction = await db.auction.create({
+    data: {
+      linkedRequirementId: requirement.id,
+      auctionCode: config.auctionNumber || nextProcurementAuctionCode(),
+      referenceNo: requirement.requirementNumber || `REQ-${requirement.id}`,
+      title: config.auctionTitle,
+      description: config.auctionDescription || null,
+      procurementMethod: config.procurementMethod,
+      category: config.category || null,
+      subCategory: config.subCategory || null,
+      auctionType: config.auctionType,
+      auctionMode: config.auctionMode,
+      auctionDurationMinutes: config.auctionDurationMinutes,
+      purchaseGroup: config.purchaseGroup || null,
+      purchaseOrganization: config.purchaseOrganization || null,
+      buyerOrgId: req.user?.organizationId || requirement.organizationId || null,
+      createdByUserId: userId(req),
+      startPrice: Number(config.startingBidPrice),
+      basePrice: Number(config.startingBidPrice),
+      reservePrice: config.reservePrice ? Number(config.reservePrice) : null,
+      currentBid: Number(config.startingBidPrice),
+      minDecrement: Number(config.minimumBidDecrement),
+      minDecrementAmount: Number(config.minimumBidDecrement),
+      autoExtensionEnabled: config.autoExtensionEnabled,
+      autoExtensionWindowMinutes: config.extensionTriggerMinutes || 5,
+      autoExtensionByMinutes: config.extensionDurationMinutes || 5,
+      maxAutoExtensions: config.maximumExtensions || 0,
+      currency: config.currency.toUpperCase(),
+      rankVisibility: config.rankVisibility,
+      minimumQualifiedBidders: config.minimumQualifiedBidders,
+      termsDocumentFileId: config.auctionTermsDocument?.fileAssetId || null,
+      termsDocumentName: config.auctionTermsDocument?.fileName || null,
+      buyerMonitorSettings: config.buyerMonitorSettings,
+      preBidStage: config.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? {
+        required: true,
+        triggerConfiguration: config.triggerConfiguration,
+        status: 'PENDING_PRE_QUALIFICATION'
+      } : undefined,
+      auctionTrigger: config.procurementMethod === 'BID_WITH_REVERSE_AUCTION'
+        ? config.triggerConfiguration?.auctionAmongTopNBidders
+          ? 'TOP_N_BIDDERS'
+          : 'ALL_TECHNICALLY_QUALIFIED'
+        : null,
+      auctionConfig: config,
+      visibilityMode: config.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'TECHNICALLY_QUALIFIED_ONLY' : 'INVITED_SELLERS_ONLY',
+      allowCompetitorNames: config.rankVisibility === 'SHOW_LOWEST_PRICE',
+      remarks: 'Created from guided procurement wizard',
+      startTime: config.auctionStartDateTime,
+      endTime: config.auctionEndDateTime,
+      status: 'DRAFT',
+      statusEnum: 'DRAFT'
+    }
+  });
+
+  await db.auctionParticipant.createMany({
+    data: config.qualifiedVendors.map(vendor => ({
+      auctionId: auction.id,
+      sellerOrgId: Number(vendor.sellerOrgId),
+      sellerUserId: vendor.sellerUserId ? Number(vendor.sellerUserId) : null,
+      status: config.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'TECHNICALLY_QUALIFIED' : 'INVITED'
+    })),
+    skipDuplicates: true
+  });
+  await auditWrite(req, 'auction.created_from_procurement', 'auction', auction.id, {
+    requirementId: requirement.id,
+    procurementMethod: config.procurementMethod,
+    qualifiedVendorCount: config.qualifiedVendors.length
+  });
+  return db.auction.findUnique({ where: { id: auction.id } });
+};
+
+const createRateContractForSubmittedProcurement = async (req: AuthRequest, requirement: any, draftBody: z.infer<typeof procurementDraftBody>) => {
+  const methodSlug = methodSlugForDraft(draftBody);
+  if (methodSlug !== 'rate-contract') return null;
+
+  const existing = await db.contract.findFirst({
+    where: {
+      contractType: 'RATE_CONTRACT',
+      metadata: {
+        path: ['requirementId'],
+        equals: requirement.id
+      }
+    }
+  });
+  if (existing) return existing;
+
+  const config = validateRateContractConfigForDraft(normalizeRateContractConfigForDraft(draftBody));
+  const value = config.itemRateSchedule.reduce((sum, item) => {
+    const discountedRate = Number(item.baseRate) * (1 - Number(item.discount || 0) / 100);
+    return sum + (Number(item.estimatedAnnualQuantity) * discountedRate * (1 + Number(item.gst || 0) / 100));
+  }, 0);
+  const payload = (draftBody.payload || {}) as Record<string, unknown>;
+  const payloadBasics = (payload.basics || {}) as Record<string, unknown>;
+
+  const contract = await db.contract.create({
+    data: {
+      contractNumber: config.rateContractNumber || nextRateContractCode(),
+      contractType: 'RATE_CONTRACT',
+      status: 'ACTIVE',
+      title: config.contractTitle,
+      value,
+      currency: String(payload.currency || payloadBasics.currency || requirement.currency || 'INR').toUpperCase(),
+      startDate: config.periodStartDate,
+      endDate: config.periodEndDate,
+      metadata: {
+        ...config,
+        requirementId: requirement.id,
+        requirementNumber: requirement.requirementNumber,
+        buyerId: userId(req),
+        buyerOrganizationId: req.user?.organizationId || requirement.organizationId || null,
+        callOffOrderAllowed: config.callOffOrderAllowed,
+        activeState: config.periodEndDate.getTime() >= Date.now() ? 'ACTIVE' : 'EXPIRED'
+      }
+    }
+  });
+
+  await auditWrite(req, 'rate_contract.created_from_procurement', 'contract', contract.id, {
+    requirementId: requirement.id,
+    supplierCount: config.selectedSuppliers.length,
+    itemCount: config.itemRateSchedule.length
+  });
+  return contract;
 };
 
 const tenderBody = z.object({
@@ -3396,18 +3840,405 @@ router.get('/procurement/drafts/:id', authenticate, authorize('buyer', 'admin', 
   ok(res, serializeProcurementDraft(draft));
 }, 'Unable to load procurement draft'));
 
+
+async function handleCatalogPurchaseApprovalCompletion(req: any, id: number) {
+  const reqRecord = await db.requirement.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      buyer: true
+    }
+  });
+  if (!reqRecord) return;
+
+  const itemsBySeller: Record<string, any[]> = {};
+  for (const item of reqRecord.items) {
+    const specs = (item.specifications || {}) as Record<string, any>;
+    const sellerId = Number(specs.sellerId);
+    if (!sellerId) continue;
+    if (!itemsBySeller[sellerId]) {
+      itemsBySeller[sellerId] = [];
+    }
+    itemsBySeller[sellerId].push(item);
+  }
+
+  for (const [sellerIdStr, items] of Object.entries(itemsBySeller)) {
+    const sellerId = Number(sellerIdStr);
+    let totalAmount = new Prisma.Decimal(0);
+    
+    const poItemsData = items.map(item => {
+      const qty = new Prisma.Decimal(Number(item.quantity || 1));
+      const specs = (item.specifications || {}) as Record<string, any>;
+      const price = new Prisma.Decimal(Number(specs.unitPrice || 0));
+      const itemTotal = qty.mul(price);
+      totalAmount = totalAmount.add(itemTotal);
+      return {
+        productId: item.productId || undefined,
+        itemName: item.itemName,
+        description: item.description || undefined,
+        quantity: qty,
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: price,
+        taxRate: new Prisma.Decimal(Number(specs.gst || 0)),
+        totalAmount: itemTotal
+      };
+    });
+
+    const poNum = "PO-CAT-" + new Date().getFullYear() + "-" + Math.floor(100000 + Math.random() * 900000);
+
+    const po = await db.purchaseOrder.create({
+      data: {
+        poNumber: poNum,
+        buyerId: reqRecord.buyerId,
+        sellerId: sellerId,
+        title: "Purchase Order for Catalog Sourced Event #" + reqRecord.requirementNumber,
+        amount: totalAmount,
+        totalValue: totalAmount.toNumber(),
+        status: 'generated',
+        sourceType: 'requirement',
+        sourceId: reqRecord.id,
+        items: {
+          create: poItemsData
+        }
+      }
+    });
+
+    await db.deliveryWorkflow.create({
+      data: {
+        purchaseOrderId: po.id,
+        status: 'created'
+      }
+    });
+
+    try {
+      await notificationService.notify(sellerId, {
+        title: 'New Purchase Order (Catalogue Purchase)',
+        message: "You have received a new Purchase Order (" + poNum + ") from " + (reqRecord.buyer?.name || 'a buyer') + ".",
+        type: 'purchase_order_created',
+        priority: 'high',
+        redirectUrl: '/seller/orders'
+      });
+    } catch (err) {
+      // non-fatal
+    }
+  }
+
+  // Update requirement status to FULFILLED (awarded)
+  await db.requirement.update({
+    where: { id },
+    data: { status: 'FULFILLED' }
+  });
+
+  await auditWrite(req, 'procurement.catalog_purchase_converted_to_po', 'requirement', id, { poCount: Object.keys(itemsBySeller).length });
+}
+
+
+router.post('/procurement/validate-catalog-items', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const { items } = z.object({
+    items: z.array(z.object({
+      catalogItemId: z.coerce.number().int().positive(),
+      catalogItemType: z.enum(['Product', 'Service']),
+      quantity: z.coerce.number().positive(),
+      unitPrice: z.coerce.number().nonnegative()
+    }))
+  }).parse(req.body);
+
+  const results = [];
+  let allValid = true;
+
+  for (const item of items) {
+    const isProduct = item.catalogItemType === 'Product';
+    if (isProduct) {
+      const dbProduct = await db.product.findUnique({
+        where: { id: item.catalogItemId },
+        select: { id: true, name: true, price: true, status: true }
+      });
+      if (!dbProduct) {
+        results.push({ catalogItemId: item.catalogItemId, valid: false, reason: 'Product not found' });
+        allValid = false;
+      } else if (dbProduct.status !== 'ACTIVE') {
+        results.push({ catalogItemId: item.catalogItemId, valid: false, reason: 'Product is not active' });
+        allValid = false;
+      } else {
+        const dbPrice = Number(dbProduct.price || 0);
+        if (Math.abs(dbPrice - item.unitPrice) > 0.01) {
+          results.push({ catalogItemId: item.catalogItemId, valid: false, reason: "Price mismatch. Expected: " + dbPrice });
+          allValid = false;
+        } else {
+          results.push({ catalogItemId: item.catalogItemId, valid: true });
+        }
+      }
+    } else {
+      const dbService = await db.service.findUnique({
+        where: { id: item.catalogItemId },
+        select: { id: true, name: true, basePrice: true, status: true }
+      });
+      if (!dbService) {
+        results.push({ catalogItemId: item.catalogItemId, valid: false, reason: 'Service not found' });
+        allValid = false;
+      } else if (dbService.status !== 'ACTIVE') {
+        results.push({ catalogItemId: item.catalogItemId, valid: false, reason: 'Service is not active' });
+        allValid = false;
+      } else {
+        const dbPrice = Number(dbService.basePrice || 0);
+        if (Math.abs(dbPrice - item.unitPrice) > 0.01) {
+          results.push({ catalogItemId: item.catalogItemId, valid: false, reason: "Price mismatch. Expected: " + dbPrice });
+          allValid = false;
+        } else {
+          results.push({ catalogItemId: item.catalogItemId, valid: true });
+        }
+      }
+    }
+  }
+
+  ok(res, { valid: allValid, results });
+}, 'Unable to validate catalog items'));
+
 router.post('/procurement/submit', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   await assertBuyerProcurementApproved(req);
   const parsed = procurementDraftBody.extend({ id: z.coerce.number().int().positive().optional() }).parse(req.body);
   validateProcurementDraftForSubmit(parsed);
+
+  const methodSlug = methodSlugForDraft(parsed);
+  if (methodSlug === 'catalog-purchase') {
+    const items = parsed.items || [];
+    for (const item of items) {
+      const specs = (item.specifications || {}) as Record<string, any>;
+      const itemId = Number(specs.catalogItemId || item.productId);
+      const isProduct = specs.catalogItemType !== 'Service';
+
+      if (!itemId) {
+        throw new ApiError(400, `Catalog Item ID is missing for item: ${item.itemName}`, 'CATALOG_ITEM_ID_MISSING');
+      }
+
+      if (isProduct) {
+        const dbProduct = await db.product.findUnique({
+          where: { id: itemId }
+        });
+        if (!dbProduct) {
+          throw new ApiError(400, `Product not found: ${item.itemName}`, 'CATALOG_PRODUCT_NOT_FOUND');
+        }
+        if (dbProduct.status !== 'ACTIVE') {
+          throw new ApiError(400, `Product is not active in catalogue: ${item.itemName}`, 'CATALOG_PRODUCT_INACTIVE');
+        }
+        const dbPrice = Number(dbProduct.price || 0);
+        const submittedPrice = Number(item.estimatedUnitPrice || specs.unitPrice || 0);
+        if (Math.abs(dbPrice - submittedPrice) > 0.01) {
+          throw new ApiError(400, `Price mismatch for product ${item.itemName}. Expected: ${dbPrice}, Submitted: ${submittedPrice}`, 'CATALOG_PRICE_MISMATCH');
+        }
+      } else {
+        const dbService = await db.service.findUnique({
+          where: { id: itemId }
+        });
+        if (!dbService) {
+          throw new ApiError(400, `Service not found: ${item.itemName}`, 'CATALOG_SERVICE_NOT_FOUND');
+        }
+        if (dbService.status !== 'ACTIVE') {
+          throw new ApiError(400, `Service is not active in catalogue: ${item.itemName}`, 'CATALOG_SERVICE_INACTIVE');
+        }
+        const dbPrice = Number(dbService.basePrice || 0);
+        const submittedPrice = Number(item.estimatedUnitPrice || specs.unitPrice || 0);
+        if (Math.abs(dbPrice - submittedPrice) > 0.01) {
+          throw new ApiError(400, `Price mismatch for service ${item.itemName}. Expected: ${dbPrice}, Submitted: ${submittedPrice}`, 'CATALOG_PRICE_MISMATCH');
+        }
+      }
+    }
+  }
+
   const draft = parsed.id ? await assertProcurementDraftAccess(req, parsed.id) : await saveProcurementDraft(req, parsed);
   const submitted = await procurementWorkflow.submitRequirement(actorFrom(req), draft.id);
+  const auction = await createAuctionForSubmittedProcurement(req, submitted, parsed);
+  const rateContract = await createRateContractForSubmittedProcurement(req, submitted, parsed);
   await auditWrite(req, 'procurement.submitted', 'requirement', submitted.id, { methodSlug: methodSlugForDraft(parsed) });
   ok(res, {
     procurement: serializeProcurementDraft({ ...submitted, items: draft.items || [] }),
+    auction,
+    rateContract,
     referenceNumber: submitted.requirementNumber
   });
 }, 'Unable to submit procurement'));
+
+router.get('/procurement/rate-contracts', authenticate, authorize('buyer', 'admin', 'master_admin'), asyncRoute(async (req, res) => {
+  const query = parse(paginationQuery.extend({
+    contractState: z.enum(['ACTIVE', 'EXPIRED']).optional()
+  }), req.query);
+  const window = listWindow(query);
+  const now = new Date();
+  const where: any = { contractType: 'RATE_CONTRACT' };
+  if (query.q) where.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { contractNumber: { contains: query.q, mode: 'insensitive' } }];
+  if (query.contractState === 'ACTIVE') where.endDate = { gte: now };
+  if (query.contractState === 'EXPIRED') where.endDate = { lt: now };
+
+  const allContracts = await db.contract.findMany({
+    where,
+    orderBy: { endDate: 'asc' },
+    ...window
+  });
+  const filtered = isAdmin(req) || req.user?.role === 'master_admin'
+    ? allContracts
+    : allContracts.filter(contract => Number((contract.metadata as any)?.buyerId || 0) === userId(req));
+  ok(res, paged(filtered, filtered.length, query, 'rateContracts'));
+}, 'Unable to load rate contracts'));
+
+router.post('/procurement/rate-contracts/:id/call-off-orders', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  await assertBuyerProcurementApproved(req);
+  const body = parse(z.object({
+    sellerId: z.coerce.number().int().positive(),
+    title: z.string().trim().min(3).max(200).optional(),
+    deliveryAddress: z.string().trim().min(3).max(1000),
+    expectedDelivery: z.coerce.date().optional(),
+    items: z.array(z.object({
+      itemName: z.string().trim().min(2).max(240),
+      quantity: z.coerce.number().positive(),
+      unitOfMeasure: z.string().trim().min(1).max(40),
+      unitPrice: z.coerce.number().positive(),
+      taxRate: z.coerce.number().min(0).max(100).optional().default(0)
+    })).min(1)
+  }), req.body);
+  const contract = await db.contract.findUnique({ where: { id } });
+  const metadata = (contract?.metadata || {}) as any;
+  if (!contract || contract.contractType !== 'RATE_CONTRACT' || Number(metadata.buyerId || 0) !== userId(req)) {
+    throw new ApiError(404, 'Rate contract not found', 'RATE_CONTRACT_NOT_FOUND');
+  }
+  if (!metadata.callOffOrderAllowed) throw new ApiError(409, 'Call-off orders are not allowed for this rate contract', 'RATE_CONTRACT_CALLOFF_NOT_ALLOWED');
+  if (contract.endDate && contract.endDate < new Date()) throw new ApiError(409, 'Rate contract has expired', 'RATE_CONTRACT_EXPIRED');
+  const selectedSuppliers = Array.isArray(metadata.selectedSuppliers) ? metadata.selectedSuppliers : [];
+  const supplierAllowed = selectedSuppliers.some((supplier: any) =>
+    Number(supplier.supplierUserId || supplier.sellerUserId || supplier.supplierId || 0) === body.sellerId
+  );
+  if (!supplierAllowed) throw new ApiError(400, 'Seller is not part of this rate contract', 'RATE_CONTRACT_SUPPLIER_INVALID');
+  const totalQuantity = body.items.reduce((sum, item) => sum + Number(item.quantity), 0);
+  if (Number(metadata.minimumOrderQuantity || 0) > 0 && totalQuantity < Number(metadata.minimumOrderQuantity)) {
+    throw new ApiError(400, 'Call-off order quantity is below minimum order quantity', 'RATE_CONTRACT_MIN_QTY_INVALID');
+  }
+  if (metadata.maximumOrderQuantityPerCallOff && totalQuantity > Number(metadata.maximumOrderQuantityPerCallOff)) {
+    throw new ApiError(400, 'Call-off order quantity exceeds maximum quantity per call-off', 'RATE_CONTRACT_MAX_QTY_INVALID');
+  }
+  const amount = body.items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice) * (1 + Number(item.taxRate || 0) / 100), 0);
+  const po = await db.purchaseOrder.create({
+    data: {
+      poNumber: `CO-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      buyerId: userId(req),
+      sellerId: body.sellerId,
+      contractId: contract.id,
+      title: body.title || `Call-off order against ${contract.contractNumber}`,
+      amount,
+      totalValue: amount,
+      currency: contract.currency,
+      status: 'generated',
+      sourceType: 'RATE_CONTRACT_CALLOFF',
+      sourceId: contract.id,
+      expectedDelivery: body.expectedDelivery,
+      deliveryAddress: body.deliveryAddress,
+      metadata: {
+        rateContractId: contract.id,
+        rateContractNumber: contract.contractNumber,
+        deliverySla: metadata.deliverySla,
+        penaltyClause: metadata.penaltyClause
+      },
+      items: {
+        create: body.items.map(item => {
+          const lineTotal = Number(item.quantity) * Number(item.unitPrice) * (1 + Number(item.taxRate || 0) / 100);
+          return {
+            itemName: item.itemName,
+            quantity: item.quantity,
+            unitOfMeasure: item.unitOfMeasure,
+            unitPrice: item.unitPrice,
+            taxRate: item.taxRate,
+            totalAmount: lineTotal
+          };
+        })
+      }
+    },
+    include: { items: true }
+  });
+  await auditWrite(req, 'rate_contract.calloff_order_created', 'purchaseOrder', po.id, { contractId: contract.id });
+  ok(res, po, 201);
+}, 'Unable to create rate contract call-off order'));
+
+router.get('/procurement/repeat-order/previous-pos', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const buyerUser = await db.user.findUnique({ where: { id: userId(req) }, select: { organizationId: true } });
+  if (!buyerUser?.organizationId) return ok(res, { results: [] });
+
+  const where: any = {
+    buyer: { organizationId: buyerUser.organizationId },
+    status: { notIn: ['cancelled', 'rejected', 'CANCELLED', 'REJECTED'] },
+  };
+  if (q) {
+    where.OR = [
+      { poNumber: { contains: q, mode: 'insensitive' } },
+      { title: { contains: q, mode: 'insensitive' } },
+      { seller: { name: { contains: q, mode: 'insensitive' } } },
+      { items: { some: { itemName: { contains: q, mode: 'insensitive' } } } },
+    ];
+  }
+
+  const pos = await db.purchaseOrder.findMany({
+    where,
+    take: 20,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      poNumber: true,
+      title: true,
+      amount: true,
+      totalValue: true,
+      currency: true,
+      status: true,
+      poStatus: true,
+      createdAt: true,
+      expectedDelivery: true,
+      buyer: { select: { id: true, name: true, organizationId: true } },
+      seller: { select: { id: true, name: true, email: true, mobile: true, accountStatus: true } },
+      items: { select: { id: true, itemName: true, description: true, quantity: true, unitOfMeasure: true, unitPrice: true, totalAmount: true } },
+      cracs: { select: { acceptedQuantity: true } },
+      tender: { select: { id: true, tenderId: true, requirement: { select: { id: true, requirementNumber: true, procurementMethod: true, canonicalMethod: true } } } },
+    }
+  });
+
+  const results = pos.map(po => {
+    const orderedQty = po.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const deliveredQty = po.cracs.reduce((sum, crac) => sum + Number(crac.acceptedQuantity || 0), 0);
+    const pendingQty = Math.max(0, orderedQty - deliveredQty);
+    const originalMethod = po.tender?.requirement?.canonicalMethod || po.tender?.requirement?.procurementMethod || 'UNKNOWN';
+    const prNumber = po.tender?.requirement?.requirementNumber || null;
+    return {
+      id: po.id,
+      poNumber: po.poNumber,
+      title: po.title,
+      amount: Number(po.amount),
+      totalValue: po.totalValue,
+      currency: po.currency,
+      status: po.status,
+      poStatus: po.poStatus,
+      poDate: po.createdAt,
+      expectedDelivery: po.expectedDelivery,
+      sellerId: po.seller.id,
+      sellerName: po.seller.name,
+      sellerEmail: po.seller.email || '',
+      sellerMobile: po.seller.mobile || '',
+      isSupplierActive: po.seller.accountStatus === 'ACTIVE',
+      items: po.items.map(item => ({
+        id: item.id,
+        itemName: item.itemName,
+        description: item.description,
+        quantity: Number(item.quantity),
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: Number(item.unitPrice),
+        totalAmount: Number(item.totalAmount),
+      })),
+      orderedQuantity: orderedQty,
+      deliveredQuantity: deliveredQty,
+      pendingQuantity: pendingQty,
+      originalProcurementMethod: originalMethod,
+      prNumber,
+    };
+  });
+
+  ok(res, { results });
+}));
 
 router.post('/procurement/:id/documents', authenticate, authorize('buyer', 'admin'), upload.single('file'), asyncRoute(async (req: AuthRequest & { file?: Express.Multer.File }, res) => {
   if (!req.file) throw new ApiError(400, 'File is required', 'FILE_REQUIRED');
@@ -3438,6 +4269,15 @@ router.patch('/procurement/:id/status', authenticate, authorize('buyer', 'admin'
   }
   const updated = await db.requirement.update({ where: { id }, data: { status: nextStatus }, include: procurementDraftInclude });
   await auditWrite(req, 'procurement.status_updated', 'requirement', id, { requestedStatus: status, status: nextStatus });
+  
+  if (nextStatus === 'APPROVED' && updated.canonicalMethod === 'CATALOG_PURCHASE') {
+    try {
+      await handleCatalogPurchaseApprovalCompletion(req, id);
+    } catch (err) {
+      console.error('Failed to handle catalog purchase approval completion:', err);
+    }
+  }
+  
   ok(res, serializeProcurementDraft(updated));
 }, 'Unable to update procurement status'));
 
@@ -3956,19 +4796,15 @@ router.get('/tenders', authenticate, asyncRoute(async (req, res) => {
             {
               NOT: {
                 OR: [
-                  { procurementType: 'DIRECT_PURCHASE' },
-                  { bidType: 'DIRECT_PURCHASE' }
+                  { procurementType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } },
+                  { bidType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } }
                 ]
               }
             },
             {
               participations: {
                 some: { sellerId: userId(req) }
-              },
-              OR: [
-                { procurementType: 'DIRECT_PURCHASE' },
-                { bidType: 'DIRECT_PURCHASE' }
-              ]
+              }
             }
           ]
         };
@@ -4551,7 +5387,10 @@ router.post('/tenders/:id/auction', authenticate, requirePermission('reverse_auc
   await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
-  const body = parse(z.object({ startPrice: z.coerce.number().positive(), minDecrement: z.coerce.number().positive().default(1), startTime: z.coerce.date(), endTime: z.coerce.date() }), req.body);
+  const body = parse(z.object({ startPrice: z.coerce.number().positive(), minDecrement: z.coerce.number().positive(), startTime: z.coerce.date(), endTime: z.coerce.date() }).refine(value => value.endTime > value.startTime, {
+    message: 'Auction end time must be after start time',
+    path: ['endTime']
+  }), req.body);
   const auction = await tenderWorkflow.createAuction(actorFrom(req), id, body);
   await auditWrite(req, 'auction.created', 'auction', auction.id);
   ok(res, auction, 201);
@@ -5946,14 +6785,17 @@ router.get('/admin/reports/summary', authenticate, authorizeAdmin, asyncRoute(as
 }));
 
 router.get('/admin/reports/procurement', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
-  const [requirements, tenders, directPurchases, quoteRequests, purchaseOrders] = await Promise.all([
+  const [requirements, tenders, directPurchases, quoteRequests, purchaseOrders, rateContracts, activeRateContracts, expiredRateContracts] = await Promise.all([
     db.requirement.count(),
     db.tender.count(),
     db.directPurchase.count(),
     db.quoteRequest.count(),
-    db.purchaseOrder.count()
+    db.purchaseOrder.count(),
+    db.contract.count({ where: { contractType: 'RATE_CONTRACT' } }),
+    db.contract.count({ where: { contractType: 'RATE_CONTRACT', endDate: { gte: new Date() } } }),
+    db.contract.count({ where: { contractType: 'RATE_CONTRACT', endDate: { lt: new Date() } } })
   ]);
-  ok(res, { requirements, tenders, directPurchases, quoteRequests, purchaseOrders });
+  ok(res, { requirements, tenders, directPurchases, quoteRequests, purchaseOrders, rateContracts, activeRateContracts, expiredRateContracts });
 }));
 
 router.get('/admin/reports/payments', authenticate, authorizeAdmin, asyncRoute(async (_req, res) => {
@@ -7159,7 +8001,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   const { type, status, method, search, sortBy, sortDir } = req.query as Record<string, string | undefined>;
 
   // ── Parallel data fetch ──
-  const [bidDrafts, procurementBids, procurementRequests, directPurchases, requirements] = await Promise.all([
+  const [bidDrafts, procurementBids, procurementRequests, directPurchases, requirements, rateContracts] = await Promise.all([
     db.bidWizardDraft.findMany({
       where: { buyerId, draftStatus: 'DRAFT' },
       orderBy: { updatedAt: 'desc' },
@@ -7194,6 +8036,10 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
         category: { select: { name: true } },
         items: true
       },
+    }),
+    db.contract.findMany({
+      where: { contractType: 'RATE_CONTRACT' },
+      orderBy: { updatedAt: 'desc' },
     }),
   ]);
 
@@ -7575,6 +8421,58 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   }
 
   // ── Apply filters ──
+  // 6) Rate Contracts
+  for (const contract of rateContracts) {
+    const metadata = (contract.metadata || {}) as any;
+    if (Number(metadata.buyerId || 0) !== buyerId) continue;
+    const expired = contract.endDate ? contract.endDate < new Date() : false;
+    const itemRateSchedule = Array.isArray(metadata.itemRateSchedule) ? metadata.itemRateSchedule : [];
+    const selectedSuppliers = Array.isArray(metadata.selectedSuppliers) ? metadata.selectedSuppliers : [];
+    all.push({
+      id: contract.id,
+      type: 'rate_contract',
+      typeLabel: 'Rate Contract',
+      title: contract.title || `Rate Contract ${contract.contractNumber}`,
+      referenceNumber: contract.contractNumber || `RC-${contract.id}`,
+      status: expired ? 'EXPIRED' : String(contract.status || 'ACTIVE'),
+      statusLabel: expired ? 'Expired' : statusLabel(String(contract.status || 'ACTIVE')),
+      statusGroup: expired ? 'cancelled' : 'active',
+      method: 'rate-contract',
+      methodLabel: 'Rate Contract',
+      estimatedValue: Number(contract.value || 0),
+      category: metadata.contractCategory || '',
+      description: metadata.contractDescription || '',
+      deliveryLocation: metadata.deliverySla || '',
+      startDate: contract.startDate?.toISOString?.() || '',
+      endDate: contract.endDate?.toISOString?.() || '',
+      quantity: String(itemRateSchedule.reduce((sum: number, item: any) => sum + Number(item.estimatedAnnualQuantity || 0), 0)),
+      unit: itemRateSchedule[0]?.uom || '',
+      organizationName: selectedSuppliers.map((supplier: any) => supplier.supplierName).filter(Boolean).join(', '),
+      createdAt: contract.createdAt?.toISOString?.() || '',
+      updatedAt: contract.updatedAt?.toISOString?.() || '',
+      actionUrl: '/buyer/procurement?method=rate-contract',
+      documents: metadata.contractDocument?.fileAssetId ? [{
+        fileAssetId: metadata.contractDocument.fileAssetId,
+        fileName: metadata.contractDocument.fileName || 'Rate Contract Document',
+        documentType: 'Rate Contract Document'
+      }] : [],
+      items: itemRateSchedule.map((item: any) => ({
+        itemName: item.itemName,
+        quantity: String(item.estimatedAnnualQuantity || ''),
+        unitOfMeasure: item.uom || '',
+        description: item.specification || ''
+      })),
+      paymentTerms: metadata.priceVariationClause || '',
+      eligibilityCriteria: selectedSuppliers.map((supplier: any) => supplier.supplierName || `Supplier ${supplier.supplierId}`),
+      termsAndConditions: [
+        `Validity: ${contract.startDate?.toISOString?.().slice(0, 10) || '-'} to ${contract.endDate?.toISOString?.().slice(0, 10) || '-'}`,
+        `Rate Validity: ${metadata.rateValidityPeriod || '-'}`,
+        `Call-off Orders: ${metadata.callOffOrderAllowed ? 'Allowed' : 'Not Allowed'}`,
+        `Price Variation: ${metadata.priceVariationClause || 'FIXED_PRICE'}`
+      ]
+    });
+  }
+
   let filtered = all;
   if (type) {
     filtered = filtered.filter(p => p.type === type);
@@ -7614,6 +8512,8 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     completed: all.filter(p => p.statusGroup === 'completed').length,
     cancelled: all.filter(p => p.statusGroup === 'cancelled').length,
     totalValue: all.reduce((sum, p) => sum + (p.estimatedValue || 0), 0),
+    activeRateContracts: all.filter(p => p.type === 'rate_contract' && p.statusGroup === 'active').length,
+    expiredRateContracts: all.filter(p => p.type === 'rate_contract' && p.status === 'EXPIRED').length,
   };
 
   ok(res, { kpis, procurements: filtered });

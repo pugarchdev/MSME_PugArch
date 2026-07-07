@@ -8,6 +8,7 @@ import type { AuthRequest } from '../middleware/authenticate.js';
 import { createApprovalChain } from '../services/approval-chain.service.js';
 import { numberSeries } from '../services/workflow/workflow-common.js';
 import { featureFlags } from '../config/feature-flags.js';
+import { normalizeCanonicalMethod } from '../utils/procurement-methods.js';
 
 const router = Router();
 
@@ -249,6 +250,7 @@ router.post(
                         title: `Direct Purchase Requirement for Seller #${sellerId}`,
                         description: `Requirement automatically created for direct purchase checkout.`,
                         procurementMethod: 'DIRECT_PURCHASE',
+                        canonicalMethod: normalizeCanonicalMethod('DIRECT_PURCHASE'),
                         status: isAutoApprove ? 'APPROVED' : 'SUBMITTED',
                         estimatedValue: totalAmount,
                         items: {

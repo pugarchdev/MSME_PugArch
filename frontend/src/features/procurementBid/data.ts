@@ -81,6 +81,8 @@ export interface ProcurementBid {
   bidDocuments?: Array<{ id: number | string; name: string; meta: string; fileAssetId?: number | null }>;
   participations?: ProcurementBidParticipation[];
   awards?: ProcurementBidAward[];
+  technicalPacket?: any;
+  documents?: any[];
 }
 
 export interface ProcurementBidDocument {

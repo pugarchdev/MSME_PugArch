@@ -33,6 +33,7 @@ export interface EntitySummary {
         title?: string;
         description?: string | null;
         procurementMethod?: string;
+        canonicalMethod?: string | null;
         estimatedValue?: number | string | null;
         items?: Array<{
             id: number;
@@ -44,6 +45,7 @@ export interface EntitySummary {
         }>;
     } | null;
     payload?: any | null;
+    canonicalMethod?: string | null;
     methodSlug?: string | null;
 }
 

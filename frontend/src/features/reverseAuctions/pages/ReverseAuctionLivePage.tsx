@@ -284,7 +284,8 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
                   <InfoRow label="Invited/visible participants" value={formatNumber(participantRows.length)} />
                   <InfoRow label="My participant status" value={participant?.status || 'Not available'} />
                   <InfoRow label="My last bid" value={participant?.lastBidAmount ? formatCurrency(participant.lastBidAmount) : myBestBid ? formatCurrency(myBestBid) : '-'} />
-                  <InfoRow label="Visibility mode" value={auction.visibilityMode || (auction.allowCompetitorNames ? 'Competitor names visible' : 'Anonymous rank and price')} />
+                  <InfoRow label="Rank visibility" value={auction.rankVisibility || auction.visibilityMode || (auction.allowCompetitorNames ? 'SHOW_LOWEST_PRICE' : 'SHOW_RANK_ONLY')} />
+                  <InfoRow label="Minimum qualified bidders" value={String(auction.minimumQualifiedBidders || 2)} />
                 </div>
                 <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start gap-2">
@@ -452,9 +453,14 @@ function AuctionRulesCard({ auction, minimumNextBid, live }: { auction: ReverseA
         <SectionHeader icon={Gavel} title="Auction Rules" subtitle="Price-only reverse auction guardrails applied before server accepts a bid." />
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <InfoRow label="Starting price" value={formatCurrency(auction.startPrice)} />
+          <InfoRow label="Reserve price" value={auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not configured'} />
           <InfoRow label="Minimum next bid" value={minimumNextBid > 0 ? formatCurrency(minimumNextBid) : '-'} />
           <InfoRow label="Minimum decrement" value={auction.minDecrementAmount || auction.minDecrement ? formatCurrency(auction.minDecrementAmount ?? auction.minDecrement) : '-'} />
           <InfoRow label="Percent decrement" value={auction.minDecrementPercent ? `${auction.minDecrementPercent}%` : 'Not configured'} />
+          <InfoRow label="Auction type" value={auction.auctionType || 'ENGLISH_REVERSE'} />
+          <InfoRow label="Rank visibility" value={auction.rankVisibility || 'SHOW_RANK_ONLY'} />
+          <InfoRow label="Auto extension" value={auction.autoExtensionEnabled ? `${auction.autoExtensionWindowMinutes || 0}m trigger / ${auction.autoExtensionByMinutes || 0}m extension` : 'Disabled'} />
+          <InfoRow label="Maximum extensions" value={auction.autoExtensionEnabled ? String(auction.maxAutoExtensions || 0) : 'N/A'} />
           <InfoRow label="Auction start" value={formatDateTime(auction.startTime)} />
           <InfoRow label="Auction end" value={formatDateTime(auction.endTime)} />
         </div>

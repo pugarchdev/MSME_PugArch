@@ -545,7 +545,7 @@ export default function App() {
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
     // LEGACY PROCUREMENT UI - hidden because unified procurement flow is now active.
     if (pathname === '/buyer/create-bid' && roleOk(user.role, ['buyer'])) {
-      return <LegacyNoticePage title="Create Bid / Tender" />;
+      return <Redirect to="/buyer/procurement/create" />;
     }
     if ((pathname === '/buyer/create-procurement' || pathname === '/buyer/procurement/create' || /^\/buyer\/create-procurement\/[^/]+$/.test(pathname)) && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
     if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
@@ -561,7 +561,7 @@ export default function App() {
     if (pathname === '/buyer/my-procurements' && roleOk(user.role, ['buyer'])) return <MyProcurementsPage />;
     if (pathname === '/buyer/procurement/checkout' && roleOk(user.role, ['buyer'])) return <ProcurementCheckoutPage />;
     if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) {
-      return <LegacyNoticePage title="Direct Purchase Sourcing" target="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
+      return <Redirect to="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
     }
     if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage listOnly />;
     if ((pathname === '/buyer/direct-purchase/checkout' || pathname === '/buyer/create-procurement/direct-purchase/checkout') && roleOk(user.role, ['buyer'])) {
@@ -656,7 +656,7 @@ export default function App() {
       }
       if (pathname === '/reverse-auctions') return <ReverseAuctionListPage />;
       if (pathname === '/reverse-auctions/create') {
-        return <LegacyNoticePage title="Create Reverse Auction" target="/buyer/procurement/create?method=REVERSE_AUCTION" />;
+        return <Redirect to="/buyer/procurement/create?method=REVERSE_AUCTION" />;
       }
       const reverseAuctionLiveMatch = pathname.match(/^\/reverse-auctions\/(\d+)\/live$/);
       if (reverseAuctionLiveMatch) {

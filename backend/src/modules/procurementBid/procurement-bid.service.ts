@@ -215,7 +215,7 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
     allowReverseAuction: bid.allowReverseAuction,
     allowBoq: bid.allowBoq,
     packetType: bid.packetType,
-    technicalPacket: isAdmin || isBuyerOwner ? bid.technicalPacket : undefined,
+    technicalPacket: isAdmin || isBuyerOwner || actor?.role === 'seller' ? bid.technicalPacket : undefined,
     financialPacket: canSeeFinancial ? bid.financialPacket : undefined,
     termsAndConditions: bid.termsAndConditions || [],
     eligibilityCriteria: bid.eligibilityCriteria || [],
@@ -235,52 +235,62 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
       fileUrl: doc.fileUrl
     })),
     participantsCount: bid.participations?.length || 0,
-    participations: canSeeParticipants ? (bid.participations || []).map((p: any) => serializeParticipation(p, { canSeeFinancial })) : undefined,
+    participations: canSeeParticipants ? (bid.participations || []).map((p: any) => serializeParticipation(p, { canSeeFinancial, bid })) : undefined,
     clarifications: isAdmin || isBuyerOwner ? bid.clarifications : undefined,
     evaluations: isAdmin || isBuyerOwner ? bid.evaluations : undefined,
     awards: bid.awards
   };
 };
 
-export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean } = {}) => ({
-  id: p.id,
-  bidId: p.bidId,
-  sellerId: p.sellerId,
-  seller: p.seller ? { id: p.seller.id, name: p.seller.name, role: p.seller.role } : undefined,
-  participationNumber: p.participationNumber,
-  technicalStatus: p.technicalStatus,
-  financialStatus: p.financialStatus,
-  finalStatus: p.finalStatus,
-  rank: p.rank,
-  quotedAmount: options.canSeeFinancial ? moneyNumber(p.quotedAmount) : maskedQuote.quotedAmount,
-  gstPercentage: options.canSeeFinancial ? moneyNumber(p.gstPercentage) : maskedQuote.gstPercentage,
-  totalAmount: options.canSeeFinancial ? moneyNumber(p.totalAmount) : maskedQuote.totalAmount,
-  financialSealed: !options.canSeeFinancial,
-  financialMessage: options.canSeeFinancial ? undefined : maskedQuote.message,
-  makeBrand: p.makeBrand,
-  model: p.model,
-  offeredItemDescription: p.offeredItemDescription,
-  submissionStatus: p.submissionStatus,
-  submittedAt: p.submittedAt,
-  technicalSubmittedAt: p.technicalSubmittedAt,
-  financialSubmittedAt: p.financialSubmittedAt,
-  isWithdrawn: p.isWithdrawn,
-  rejectionReason: p.rejectionReason,
-  documents: (p.documents || []).map((doc: any) => ({
-    id: doc.id,
-    documentCategory: doc.documentCategory,
-    documentName: doc.documentName,
-    fileName: doc.fileName,
-    mimeType: doc.mimeType,
-    fileSize: doc.fileSize,
-    documentStatus: doc.documentStatus,
-    uploadedAt: doc.uploadedAt,
-    fileAssetId: doc.fileAssetId
-  })),
-  clarifications: p.clarifications,
-  evaluations: p.evaluations,
-  awards: p.awards
-});
+export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean; bid?: any } = {}) => {
+  let allowed = options.canSeeFinancial;
+  const bid = options.bid || p.bid;
+  if (bid && (bid.procurementType === 'TWO_PACKET_BID' || bid.bidType === 'TWO_PACKET_BID')) {
+    if (p.technicalStatus !== 'QUALIFIED') {
+      allowed = false;
+    }
+  }
+
+  return {
+    id: p.id,
+    bidId: p.bidId,
+    sellerId: p.sellerId,
+    seller: p.seller ? { id: p.seller.id, name: p.seller.name, role: p.seller.role } : undefined,
+    participationNumber: p.participationNumber,
+    technicalStatus: p.technicalStatus,
+    financialStatus: p.financialStatus,
+    finalStatus: p.finalStatus,
+    rank: p.rank,
+    quotedAmount: allowed ? moneyNumber(p.quotedAmount) : maskedQuote.quotedAmount,
+    gstPercentage: allowed ? moneyNumber(p.gstPercentage) : maskedQuote.gstPercentage,
+    totalAmount: allowed ? moneyNumber(p.totalAmount) : maskedQuote.totalAmount,
+    financialSealed: !allowed,
+    financialMessage: allowed ? undefined : maskedQuote.message,
+    makeBrand: p.makeBrand,
+    model: p.model,
+    offeredItemDescription: p.offeredItemDescription,
+    submissionStatus: p.submissionStatus,
+    submittedAt: p.submittedAt,
+    technicalSubmittedAt: p.technicalSubmittedAt,
+    financialSubmittedAt: p.financialSubmittedAt,
+    isWithdrawn: p.isWithdrawn,
+    rejectionReason: p.rejectionReason,
+    documents: (p.documents || []).map((doc: any) => ({
+      id: doc.id,
+      documentCategory: doc.documentCategory,
+      documentName: doc.documentName,
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      fileSize: doc.fileSize,
+      documentStatus: doc.documentStatus,
+      uploadedAt: doc.uploadedAt,
+      fileAssetId: doc.fileAssetId
+    })),
+    clarifications: p.clarifications,
+    evaluations: p.evaluations,
+    awards: p.awards
+  };
+};
 
 const getTenderBidActivityWhere = (query: any = {}) => {
   const where: any = {
@@ -450,7 +460,7 @@ export const listPublicBids = async (query: any, actor?: any) => {
   const pageSize = Math.min(50, Math.max(1, Number(query.pageSize || 12)));
   const takeForMergedPage = page * pageSize;
 
-  const directPurchaseCondition = actor
+  const restrictedBidsCondition = actor
     ? (actor.role === 'admin' || actor.role === 'master_admin')
       ? {}
       : {
@@ -458,34 +468,30 @@ export const listPublicBids = async (query: any, actor?: any) => {
             {
               NOT: {
                 OR: [
-                  { procurementType: 'DIRECT_PURCHASE' },
-                  { bidType: 'DIRECT_PURCHASE' }
+                  { procurementType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } },
+                  { bidType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } }
                 ]
               }
             },
             {
               buyerId: actor.id,
               OR: [
-                { procurementType: 'DIRECT_PURCHASE' },
-                { bidType: 'DIRECT_PURCHASE' }
+                { procurementType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } },
+                { bidType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } }
               ]
             },
             {
               participations: {
                 some: { sellerId: actor.id }
-              },
-              OR: [
-                { procurementType: 'DIRECT_PURCHASE' },
-                { bidType: 'DIRECT_PURCHASE' }
-              ]
+              }
             }
           ]
         }
     : {
         NOT: {
           OR: [
-            { procurementType: 'DIRECT_PURCHASE' },
-            { bidType: 'DIRECT_PURCHASE' }
+            { procurementType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } },
+            { bidType: { in: ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } }
           ]
         }
       };
@@ -493,7 +499,7 @@ export const listPublicBids = async (query: any, actor?: any) => {
   const where: any = {
     approvalStatus: { in: ['APPROVED', 'PENDING'] },
     status: { in: query.status ? [String(query.status).toUpperCase()] : publicBidStatuses },
-    ...directPurchaseCondition
+    ...restrictedBidsCondition
   };
   if (query.q) {
     const q = String(query.q);

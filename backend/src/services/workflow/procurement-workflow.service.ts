@@ -7,9 +7,12 @@ type RequirementInput = {
   description?: string;
   categoryId?: number;
   procurementMethod?: string;
+  canonicalMethod?: string;
   estimatedValue?: number;
   requiredBy?: Date;
   items?: Array<Record<string, unknown>>;
+  payload?: any;
+  draftStep?: number;
 };
 
 const assertBuyer = (actor: WorkflowActor) => {
@@ -27,9 +30,12 @@ export const procurementWorkflow = {
         description: input.description,
         categoryId: input.categoryId,
         procurementMethod: input.procurementMethod || 'TENDER',
+        canonicalMethod: input.canonicalMethod || null,
         estimatedValue: input.estimatedValue,
         requiredBy: input.requiredBy,
         status: 'DRAFT',
+        payload: input.payload || null,
+        draftStep: input.draftStep ?? null,
         items: input.items?.length ? { create: input.items } : undefined
       },
       include: { items: true }

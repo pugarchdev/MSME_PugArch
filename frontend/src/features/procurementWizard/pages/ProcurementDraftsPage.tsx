@@ -59,6 +59,8 @@ interface DisplayDraft {
   id?: number;
   uniqueKey: string;
   title: string;
+  procurementMethod?: string;
+  canonicalMethod?: string;
   methodSlug: string;
   estimatedValue: number;
   updatedAt?: string;
@@ -110,6 +112,8 @@ const mapLocalDraftToDisplay = (local: any): DisplayDraft | null => {
     id: undefined,
     uniqueKey: 'local',
     title: cleanTitle(local.basics?.title || 'Untitled Local Draft'),
+    procurementMethod: undefined,
+    canonicalMethod: local.type?.toUpperCase?.().replace(/-/g, '_'),
     methodSlug: local.type || 'rfq',
     estimatedValue: Number(local.basics?.estimatedValue || 0),
     updatedAt: local.updatedAt,
@@ -135,6 +139,8 @@ const mapServerDraftToDisplay = (server: any): DisplayDraft => {
     id: server.id,
     uniqueKey: server.payload?.isV2 ? `v2-${server.id}` : `v1-${server.id}`,
     title: cleanTitle(server.title || payload.basics?.title || 'Untitled Draft'),
+    procurementMethod: server.procurementMethod,
+    canonicalMethod: server.canonicalMethod || payload.fullProcurementMethod || payload.type,
     methodSlug: server.methodSlug || payload.type || 'rfq',
     estimatedValue: Number(server.estimatedValue || payload.basics?.estimatedValue || 0),
     updatedAt: server.updatedAt,

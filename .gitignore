@@ -66,3 +66,14 @@ AGENTS.md
 .opencode/
 .windsurf/
 
+# AI Agent & IDE Customizations
+.agents/
+.clinerules/
+.continue/
+.cursor/
+.github/copilot-instructions.md
+.kiro/
+.opencode/
+.windsurf/
+AGENTS.md
+skills-lock.json

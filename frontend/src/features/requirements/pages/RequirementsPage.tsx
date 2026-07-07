@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X, ShoppingCart, Gavel, ClipboardList, TrendingDown } from 'lucide-react';
+import { AlertCircle, CalendarClock, ClipboardCheck, Copy, Download, Eye, FileText, Plus, RefreshCw, Send, Trash2, Upload, X, ShoppingCart, Gavel, ClipboardList, TrendingDown, Repeat } from 'lucide-react';
 import { useCategories } from '../../catalogue/hooks';
 import { toast } from 'sonner';
 import { Loader2 } from '@/components/ui/loader';
@@ -26,6 +26,7 @@ import { EmptyState, InlineError } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import { cn } from '../../../lib/utils';
+import { labelForCanonical } from '../../procurementWizard/procurementMethodHelpers';
 import {
     useCreateRequirement,
     useDeleteRequirement,
@@ -185,18 +186,20 @@ export default function RequirementsPage() {
 
     const methodCounts = useMemo(() => {
         const allRecs = countList.data?.records || [];
-        const direct = allRecs.filter(r => r.procurementMethod === 'DIRECT_PURCHASE').length;
+        const direct = allRecs.filter(r => r.procurementMethod === 'DIRECT_PURCHASE' && r.canonicalMethod !== 'REPEAT_ORDER').length;
         const rfq = allRecs.filter(r => r.procurementMethod === 'RFQ').length;
         const tender = allRecs.filter(r => r.procurementMethod === 'TENDER').length;
         const auction = allRecs.filter(r => r.procurementMethod === 'REVERSE_AUCTION').length;
         const rateContract = allRecs.filter(r => r.procurementMethod === 'RATE_CONTRACT').length;
+        const repeatOrder = allRecs.filter(r => r.canonicalMethod === 'REPEAT_ORDER').length;
         return {
             total: allRecs.length,
             direct,
             rfq,
             tender,
             auction,
-            rateContract
+            rateContract,
+            repeatOrder
         };
     }, [countList.data]);
 
@@ -276,7 +279,7 @@ export default function RequirementsPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
                 <Metric
                     label="Direct Purchases"
                     value={methodCounts.direct}
@@ -326,6 +329,16 @@ export default function RequirementsPage() {
                     loading={countList.isLoading}
                     onClick={() => setMethodAndReset(method === 'RATE_CONTRACT' ? '' : 'RATE_CONTRACT')}
                     isActive={method === 'RATE_CONTRACT'}
+                />
+                <Metric
+                    label="Repeat Orders"
+                    value={methodCounts.repeatOrder}
+                    hint="Repeated PO purchases"
+                    tone="neutral"
+                    icon={Repeat}
+                    loading={countList.isLoading}
+                    onClick={() => setMethodAndReset(method === 'REPEAT_ORDER' ? '' : 'REPEAT_ORDER')}
+                    isActive={method === 'REPEAT_ORDER'}
                 />
             </div>
 
@@ -440,7 +453,7 @@ export default function RequirementsPage() {
                                 </Badge>
                             </div>
                             <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-600">
-                                <p><span className="font-black text-slate-900">Method:</span> {PROCUREMENT_METHOD_LABELS[req.procurementMethod] || req.procurementMethod}</p>
+                                <p><span className="font-black text-slate-900">Method:</span> {req.canonicalMethod ? labelForCanonical(req.canonicalMethod) : (PROCUREMENT_METHOD_LABELS[req.procurementMethod] || req.procurementMethod)}</p>
                                 <p><span className="font-black text-slate-900">Estimated:</span> {formatCurrency(req.estimatedValue)}</p>
                                 <p><span className="font-black text-slate-900">Required by:</span> {formatDate(req.requiredBy)}</p>
                                 <p><span className="font-black text-slate-900">Updated:</span> {formatRelative(req.updatedAt)}</p>
@@ -531,7 +544,7 @@ export default function RequirementsPage() {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <Badge className="rounded-md border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase text-slate-600">
-                                                    {PROCUREMENT_METHOD_LABELS[req.procurementMethod] || req.procurementMethod}
+                                                    {req.canonicalMethod ? labelForCanonical(req.canonicalMethod) : (PROCUREMENT_METHOD_LABELS[req.procurementMethod] || req.procurementMethod)}
                                                 </Badge>
                                             </td>
                                             <td className="px-4 py-3">
@@ -1328,6 +1341,89 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                                 </div>
                             )}
 
+                            {/* Section 1.5: Exception Procurement Details */}
+                            {payload.fullProcurementMethod === 'SINGLE_SOURCE' && payload.singleSourceDetails && (
+                                <div className="rounded-xl border border-rose-250 bg-rose-50/20 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🔒 Single Source Sourcing Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Reason Type" value={payload.singleSourceDetails.reasonType} />
+                                        <InfoCell label="Price Reasonability Basis" value={payload.singleSourceDetails.priceReasonabilityBasis} />
+                                        <InfoCell label="Approval Authority" value={payload.singleSourceDetails.approvalAuthority} />
+                                        <InfoCell label="Market Availability Checked" value={payload.singleSourceDetails.marketAvailabilityChecked ? "Yes" : "No"} />
+                                        <InfoCell label="Alternative Checked" value={payload.singleSourceDetails.alternativeSuppliersChecked ? "Yes" : "No"} />
+                                    </div>
+                                    {payload.singleSourceDetails.justification && (
+                                        <div className="rounded-lg border border-rose-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Single Source Justification</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.singleSourceDetails.justification}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {payload.fullProcurementMethod === 'PAC' && payload.pacDetails && (
+                                <div className="rounded-xl border border-rose-250 bg-rose-50/20 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>🛡️ Proprietary Article Certificate (PAC) Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="OEM Name" value={payload.pacDetails.oemName} />
+                                        <InfoCell label="OEM Code" value={payload.pacDetails.oemCode || "N/A"} />
+                                        <InfoCell label="Manufacturer Details" value={payload.pacDetails.manufacturerDetails} />
+                                        <InfoCell label="Authorized Dealer" value={payload.pacDetails.authorizedDealer} />
+                                        <InfoCell label="PAC Certificate Number" value={payload.pacDetails.pacCertificateNumber} />
+                                        <InfoCell label="PAC Validity Date" value={payload.pacDetails.pacValidityDate} />
+                                        <InfoCell label="Competent Authority (CFA)" value={payload.pacDetails.competentAuthority} />
+                                        <InfoCell label="No Alternative Declared" value={payload.pacDetails.noAlternativeAvailable ? "Yes" : "No"} />
+                                    </div>
+                                    {payload.pacDetails.proprietaryJustification && (
+                                        <div className="rounded-lg border border-rose-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Proprietary Justification</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.pacDetails.proprietaryJustification}</p>
+                                        </div>
+                                    )}
+                                    {payload.pacDetails.priceReasonabilityNote && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Price Reasonability Note</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.pacDetails.priceReasonabilityNote}</p>
+                                        </div>
+                                    )}
+                                    {payload.pacDetails.approvalRemarks && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Approval Remarks</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.pacDetails.approvalRemarks}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {payload.fullProcurementMethod === 'EMERGENCY_PURCHASE' && payload.emergencyDetails && (
+                                <div className="rounded-xl border border-orange-250 bg-orange-50/20 p-4 space-y-3 shadow-sm">
+                                    <SectionTitle>⚠️ Emergency Sourcing Details</SectionTitle>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        <InfoCell label="Emergency Type" value={payload.emergencyDetails.emergencyType} />
+                                        <InfoCell label="Emergency Date & Time" value={payload.emergencyDetails.dateTime} />
+                                        <InfoCell label="Retrospective Approval Required" value={payload.emergencyDetails.retrospectiveApprovalRequired ? "Yes" : "No"} />
+                                    </div>
+                                    {payload.emergencyDetails.description && (
+                                        <div className="rounded-lg border border-orange-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-orange-500">Emergency Description</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.emergencyDetails.description}</p>
+                                        </div>
+                                    )}
+                                    {payload.emergencyDetails.impactIfNotPurchased && (
+                                        <div className="rounded-lg border border-rose-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Impact If Not Purchased Immediately</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.emergencyDetails.impactIfNotPurchased}</p>
+                                        </div>
+                                    )}
+                                    {payload.emergencyDetails.auditJustification && (
+                                        <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Audit Justification</p>
+                                            <p className="mt-1 text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed">{payload.emergencyDetails.auditJustification}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Section 2: Supplier Selection */}
                             {vendors && (vendors.selection || vendors.msmePreference || vendors.minimumTurnover || vendors.experienceYears) && (
                                 <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3 shadow-sm">
@@ -1763,7 +1859,7 @@ function RequirementDetail({ id, onClose }: { id: number; onClose: () => void })
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                         <Field label="Procurement Method">
                             <p className="text-sm font-bold text-slate-900">
-                                {PROCUREMENT_METHOD_LABELS[requirement.procurementMethod] || requirement.procurementMethod}
+                                {requirement.canonicalMethod ? labelForCanonical(requirement.canonicalMethod) : (PROCUREMENT_METHOD_LABELS[requirement.procurementMethod] || requirement.procurementMethod)}
                             </p>
                         </Field>
                         <Field label="Estimated Value">

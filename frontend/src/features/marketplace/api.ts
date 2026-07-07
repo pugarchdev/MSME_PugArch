@@ -259,6 +259,8 @@ export interface BuyerRequirement {
     attachmentUrl?: string | null;
     terms?: string | null;
     procurementMethod?: string | null;
+    canonicalMethod?: string | null;
+    methodSlug?: string | null;
     procurementMethodLabel?: string | null;
     estimatedValue?: number | string | null;
     currency?: string | null;

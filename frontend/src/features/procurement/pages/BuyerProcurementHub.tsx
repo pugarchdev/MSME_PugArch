@@ -24,7 +24,9 @@ import {
   Building2,
   MapPin,
   ClipboardCheck,
-  Layers
+  Layers,
+  ShieldCheck,
+  Clock
 } from 'lucide-react';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -200,17 +202,21 @@ export default function BuyerProcurementHub() {
 
   // KPI calculations
   const kpis = useMemo(() => {
+    const activeRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.statusGroup === 'active').length;
+    const expiredRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.status === 'EXPIRED').length;
     return [
       { label: 'Total Procurements', value: summary?.myTendersCount || 0, change: '+12% this month', icon: FolderOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-150' },
       { label: 'Drafts', value: summary?.cartItemCount || 0, change: 'Saved drafts', icon: FileText, color: 'text-slate-600 bg-slate-50 border-slate-150' },
       { label: 'Pending Approvals', value: summary?.pendingApprovalsCount || 0, change: 'Action required', icon: CheckSquare, color: 'text-amber-600 bg-amber-50 border-amber-150' },
       { label: 'Active Events', value: summary?.myTendersCount || 0, change: 'Live sourcing', icon: Globe, color: 'text-blue-600 bg-blue-50 border-blue-150' },
+      { label: 'Active Rate Contracts', value: activeRateContracts, change: 'Available for call-off', icon: ShieldCheck, color: 'text-teal-600 bg-teal-50 border-teal-150' },
+      { label: 'Expired Contracts', value: expiredRateContracts, change: 'Renewal attention', icon: Clock, color: 'text-slate-600 bg-slate-50 border-slate-150' },
       { label: 'Supplier Responses', value: summary?.myRfqsCount || 0, change: 'Pending review', icon: MessageSquare, color: 'text-cyan-600 bg-cyan-50 border-cyan-150' },
       { label: 'Awarded Value', value: 'Rs. 24.8 L', change: '8 awards granted', icon: Award, color: 'text-emerald-600 bg-emerald-50 border-emerald-150' },
       { label: 'Open Purchase Orders', value: summary?.myActivePOsCount || 0, change: 'Sent to sellers', icon: ShoppingCart, color: 'text-sky-600 bg-sky-50 border-sky-150' },
       { label: 'Pending Deliveries', value: summary?.grnsToApproveCount || 0, change: 'Tracking live', icon: Package, color: 'text-violet-600 bg-violet-50 border-violet-150' },
     ];
-  }, [summary]);
+  }, [allProcurements, summary]);
 
   // Unified Dashboard Cards list (10 cards)
   const dashboardCards = [
@@ -378,8 +384,8 @@ export default function BuyerProcurementHub() {
                 className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Buyer Types</option>
-                <option value="PRIVATE">Private (SAP)</option>
-                <option value="GOVERNMENT">Government (GeM)</option>
+                <option value="PRIVATE">Private Buyer</option>
+                <option value="GOVERNMENT">Government Buyer</option>
               </select>
             </div>
             <div>

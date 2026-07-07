@@ -128,21 +128,6 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   const { user, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
-
-  useEffect(() => {
-    api.get('/api/auth/features')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.enabledFeatures) {
-          setEnabledFeatures(data.enabledFeatures);
-        }
-      })
-      .catch(err => console.error(err));
-  }, []);
-
-  const isSmsEnabled = enabledFeatures.includes('sms');
-
   useEffect(() => {
     const aadhaarParam = searchParams?.get('aadhaar');
     if (!aadhaarParam) return;
@@ -542,6 +527,23 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
   const isPanReady = panNumberValid && panNameValid && dobValid;
   const maskedAadhaar = isAadhaarOrVidValid ? `${'X'.repeat(aadhaarValue.length - 4).replace(/(.{4})/g, '$1 ').trim()} ${aadhaarValue.slice(-4)}` : '';
   const mobileAlreadyRegistered = mobileAvailability === 'exists';
+  const isContactVerificationComplete = isEmailVerified && isMobileOtpVerified;
+
+  const resetMobileOtpState = () => {
+    setIsMobileOtpVerified(false);
+    setMobileOtpSent(false);
+    setMobileOtp('');
+  };
+
+  const handleMobileVerificationNumberChange = (value: string) => {
+    setFormData(prev => ({ ...prev, mobile: sanitizeIndianMobileInput(value) }));
+    setMobileTouched(true);
+    setSubmitErrors(prev => {
+      const { mobile, ...rest } = prev;
+      return rest;
+    });
+    resetMobileOtpState();
+  };
 
   useEffect(() => {
     if (!mobileValue || !isMobileValid) {
@@ -590,6 +592,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         return rest;
       });
     }
+    if ('mobile' in patch) resetMobileOtpState();
     setIsAadhaarVerified(false);
     setAadhaarKycStatus('NOT_STARTED');
   };
@@ -609,6 +612,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
     setIsAadhaarVerified(false);
     setAadhaarKycStatus('NOT_STARTED');
     setMobileAvailability('idle');
+    resetMobileOtpState();
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('preRegisterKycSessionToken');
       localStorage.removeItem('preRegisterKycRedirectPath');
@@ -809,12 +813,23 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
         }
       }
     }
-    if (currentSubStep === 3 && !isEmailVerified) {
-      toast.error('Please verify your email address first');
-      return;
-    }
-
-    if (currentSubStep === 3 && isEmailVerified) {
+    if (currentSubStep === 3) {
+      if (!isEmailVerified) {
+        toast.error('Please verify your email address first');
+        return;
+      }
+      if (!isMobileValid) {
+        toast.error('Please enter a valid mobile number');
+        return;
+      }
+      if (mobileAlreadyRegistered) {
+        toast.error('This mobile number is already registered');
+        return;
+      }
+      if (!isMobileOtpVerified) {
+        toast.error('Please verify your mobile number first');
+        return;
+      }
       if (!formData.userId && formData.email) {
         setFormData(prev => ({ ...prev, userId: formData.email }));
       }
@@ -906,6 +921,22 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
       return toast.error(gstError);
     }
     if (!user) {
+      if (!isMobileOtpVerified) {
+        setCurrentSubStep(3);
+        return toast.error('Please verify your mobile number first');
+      }
+      if (!isMobileValid) {
+        setCurrentSubStep(3);
+        return toast.error('Please enter a valid mobile number');
+      }
+      if (mobileAlreadyRegistered) {
+        setCurrentSubStep(3);
+        return toast.error('This mobile number is already registered');
+      }
+      if (!isEmailVerified) {
+        setCurrentSubStep(4);
+        return toast.error('Please verify your email address first');
+      }
       if (!formData.userId) {
         return toast.error('Please enter user id');
       }
@@ -1011,7 +1042,7 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
             selectedDocuments: role === 'buyer' ? selectedDocs : sellerRegistrationDocuments()
           }
         };
-        if (formData.mobile.trim()) payload.mobile = formData.mobile.trim();
+        payload.mobile = formData.mobile.trim();
         console.log('DEBUG FRONTEND REGISTER payload keys:', Object.keys(payload));
         console.log('DEBUG FRONTEND REGISTER registrationDetails keys:', Object.keys(payload.registrationDetails || {}));
         console.log('Registration details normal submit payload:', {
@@ -2174,64 +2205,92 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                     </div>
                   )}
 
-                  {isSmsEnabled && formData.mobile && /^[6-9]\d{9}$/.test(formData.mobile.trim()) && (
-                    <div className="rounded-lg border border-slate-200 bg-white p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Mobile Verification</p>
-                          <p className="mt-1 text-sm font-bold text-slate-800">{formData.mobile}</p>
-                          {!isMobileOtpVerified && (
-                            <p className="mt-1 text-xs font-semibold text-slate-500">Optional SMS OTP verification for mobile-based alerts and OTP delivery.</p>
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Mobile Verification *</p>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="tel"
+                            inputMode="numeric"
+                            maxLength={10}
+                            value={formData.mobile}
+                            onChange={(e) => handleMobileVerificationNumberChange(e.target.value)}
+                            disabled={mobileOtpSent || isMobileOtpVerified}
+                            placeholder="10-digit mobile number"
+                            className={cn(
+                              "h-10 w-full rounded-md border bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#12335f]/20 disabled:bg-slate-50 disabled:text-slate-500 sm:w-64",
+                              formData.mobile && !isMobileValid ? "border-red-300 focus:ring-red-100" : "border-slate-300"
+                            )}
+                          />
+                          {(mobileOtpSent || isMobileOtpVerified) && (
+                            <button
+                              type="button"
+                              onClick={resetMobileOtpState}
+                              className="inline-flex items-center gap-1 rounded-full bg-slate-200/50 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-200 hover:text-[#12335f] transition-all"
+                              title="Edit Mobile"
+                            >
+                              <Pencil className="h-3 w-3" /> Edit
+                            </button>
                           )}
                         </div>
-                        {isMobileOtpVerified ? (
-                          <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-black text-green-700">
-                            <ShieldCheck className="h-4 w-4" />
-                            Mobile verified
-                          </span>
-                        ) : (
-                          <Button
-                            type="button"
-                            onClick={handleSendMobileOtp}
-                            disabled={isSendingMobileOtp || mobileOtpSent}
-                            className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black text-white"
-                          >
-                            {isSendingMobileOtp ? 'Sending...' : mobileOtpSent ? 'OTP Sent' : 'Send Mobile OTP'}
-                          </Button>
+                        {formData.mobile && !isMobileValid && (
+                          <p className="mt-1 text-xs font-semibold text-red-500">Enter a valid 10 digit mobile number starting with 6, 7, 8, or 9.</p>
+                        )}
+                        {mobileAlreadyRegistered && (
+                          <p className="mt-1 text-xs font-semibold text-red-500">This mobile number is already registered.</p>
+                        )}
+                        {!isMobileOtpVerified && (
+                          <p className="mt-1 text-xs font-semibold text-red-500">Mobile OTP verification is required to proceed.</p>
                         )}
                       </div>
-                      {mobileOtpSent && !isMobileOtpVerified && (
-                        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={6}
-                            value={mobileOtp}
-                            onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, ''))}
-                            placeholder="6 digit OTP"
-                            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-center text-sm font-bold tracking-[0.2em] outline-none focus:ring-2 focus:ring-[#12335f]/20 sm:w-40"
-                          />
-                          <Button
-                            type="button"
-                            onClick={handleVerifyMobileOtp}
-                            className="h-10 rounded-md bg-slate-900 px-4 text-xs font-black text-white"
-                          >
-                            Verify Mobile
-                          </Button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMobileOtpSent(false);
-                              setMobileOtp('');
-                            }}
-                            className="text-xs font-bold text-[#12335f] underline underline-offset-4"
-                          >
-                            Resend
-                          </button>
-                        </div>
+                      {isMobileOtpVerified ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-black text-green-700">
+                          <ShieldCheck className="h-4 w-4" />
+                          Mobile verified
+                        </span>
+                      ) : (
+                        <Button
+                          type="button"
+                          onClick={handleSendMobileOtp}
+                          disabled={isSendingMobileOtp || mobileOtpSent || !isMobileValid || mobileAlreadyRegistered}
+                          className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-500"
+                        >
+                          {isSendingMobileOtp ? 'Sending...' : mobileOtpSent ? 'OTP Sent' : 'Send Mobile OTP'}
+                        </Button>
                       )}
                     </div>
-                  )}
+                    {mobileOtpSent && !isMobileOtpVerified && (
+                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={mobileOtp}
+                          onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, ''))}
+                          placeholder="6 digit OTP"
+                          className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-center text-sm font-bold tracking-[0.2em] outline-none focus:ring-2 focus:ring-[#12335f]/20 sm:w-40"
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleVerifyMobileOtp}
+                          className="h-10 rounded-md bg-slate-900 px-4 text-xs font-black text-white"
+                        >
+                          Verify Mobile
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileOtpSent(false);
+                            setMobileOtp('');
+                          }}
+                          className="text-xs font-bold text-[#12335f] underline underline-offset-4"
+                        >
+                          Resend
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   {otpSent && !isEmailVerified && (
                     <div className="mt-6 flex flex-col items-center gap-6 rounded-md border border-slate-100 bg-[#f8fafc]/60 px-6 py-10 sm:px-12 md:rounded-md">
@@ -2428,12 +2487,14 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                     onClick={handleNext}
                     disabled={
                       (currentSubStep === 1 && isPrimaryBuyer && !isPrimaryBuyerOrganisationComplete) ||
-                      (currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar' && isAadhaarVerified && role === 'seller' && !isHerShg && !formData.roleInOrg)
+                      (currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar' && isAadhaarVerified && role === 'seller' && !isHerShg && !formData.roleInOrg) ||
+                      (currentSubStep === 3 && !isContactVerificationComplete)
                     }
                     className={cn(
                       "h-10 px-8 rounded text-[13px] font-bold  tracking-wider transition-all",
                       ((currentSubStep === 1 && isPrimaryBuyer && !isPrimaryBuyerOrganisationComplete) ||
-                       (currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar' && isAadhaarVerified && role === 'seller' && !isHerShg && !formData.roleInOrg))
+                       (currentSubStep === 2 && formData.personalVerificationMethod === 'aadhaar' && isAadhaarVerified && role === 'seller' && !isHerShg && !formData.roleInOrg) ||
+                       (currentSubStep === 3 && !isContactVerificationComplete))
                         ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                         : "bg-slate-200 hover:bg-slate-300 text-slate-600"
                     )}

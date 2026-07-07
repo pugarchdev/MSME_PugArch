@@ -225,7 +225,7 @@ export function BuyerTypeBadge({ buyerType }: BuyerTypeBadgeProps) {
       "inline-flex items-center px-2 py-0.5 rounded border text-[8.5px] font-black uppercase tracking-wider leading-none",
       isGov ? "bg-amber-50 text-amber-850 border-amber-250" : "bg-indigo-50 text-indigo-850 border-indigo-250"
     )}>
-      {isGov ? 'Government (GeM)' : 'Private (SAP)'}
+      {isGov ? 'Government Buyer' : 'Private Buyer'}
     </span>
   );
 }
@@ -995,7 +995,7 @@ export function ProcurementSummaryPanel({
   return (
     <div className="grid gap-3.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 font-bold text-xs">
       <SummaryItem label="Sourcing Title" value={title} />
-      <SummaryItem label="Workflow Type" value={buyerType === 'GOVERNMENT_BUYER' ? 'Government (GeM)' : 'Private (SAP)'} />
+      <SummaryItem label="Workflow Type" value={buyerType === 'GOVERNMENT_BUYER' ? 'Government Buyer' : 'Private Buyer'} />
       <SummaryItem label="Sourcing Method" value={method.replace(/_/g, ' ')} />
       <SummaryItem label="Estimated Budget" value={formatCurrency(estimatedValue)} />
       <SummaryItem label="Priority Level" value={priority} />

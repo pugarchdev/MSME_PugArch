@@ -266,13 +266,39 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
           const apiPan = String(data.pan || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           const finalPan = PAN_RE.test(apiPan) ? apiPan : resolvedPan;
 
+          const matchedState = data.state ? data.state.trim().toUpperCase() : '';
+          let matchedDistrict = '';
+          if (matchedState && data.city) {
+            const districts = indiaStatesDistricts[matchedState] || [];
+            const searchCity = data.city.trim().toLowerCase();
+            const found = districts.find(d => d.toLowerCase() === searchCity);
+            if (found) {
+              matchedDistrict = found;
+            } else {
+              const foundPartial = districts.find(d => 
+                d.toLowerCase().includes(searchCity) || searchCity.includes(d.toLowerCase())
+              );
+              if (foundPartial) matchedDistrict = foundPartial;
+            }
+          }
+
           setFormData((prev: any) => ({
             ...prev,
             businessName: (data.legalName || data.tradeName || '').trim() || prev.businessName,
+            organisation: (data.legalName || data.tradeName || '').trim() || prev.organisation,
             orgPan: finalPan || prev.orgPan,
-            state: data.state?.trim() || prev.state,
-            district: data.city?.trim() || prev.district,
+            state: matchedState || prev.state,
+            district: matchedDistrict || prev.district,
+            officeZoneName: (data.address || data.businessAddress || '').trim() || prev.officeZoneName
           }));
+          
+          setSelectedDocs((prev) => {
+            if (!prev.includes('gstCert')) {
+              return [...prev, 'gstCert'];
+            }
+            return prev;
+          });
+
           setVerifiedGstDetails(data);
           setIsGstVerified(true);
           toast.success(`GST verified: ${data.status || 'Active'}`);
@@ -1210,6 +1236,36 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                       </div>
 
                       <div className="space-y-2">
+                        <label className="flex items-center gap-1 text-[13px] font-semibold text-slate-700">
+                          GSTIN (Optional) <Info className="h-3.5 w-3.5 text-slate-400" />
+                        </label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Enter GSTIN"
+                            value={formData.gstin}
+                            onChange={(e) => {
+                              const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+                              setFormData({ ...formData, gstin: val });
+                              setIsGstVerified(false);
+                              setGstError('');
+                            }}
+                            maxLength={15}
+                            error={gstError}
+                            className="h-10 rounded border-slate-300 bg-white text-[13px] flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={fetchGstDetails}
+                            disabled={isFetchingGst || !formData.gstin}
+                            className="h-10 px-4 rounded bg-slate-50 text-slate-600 border-slate-300 text-[12px] font-bold"
+                          >
+                            {isFetchingGst ? '...' : 'Fetch'}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
                         <label className="flex items-center gap-1 text-[13px] font-semibold text-slate-700">
                           Organisation Name * <Info className="h-3.5 w-3.5 text-slate-400" />
                         </label>

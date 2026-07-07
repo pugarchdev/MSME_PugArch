@@ -281,8 +281,14 @@ export default function Dashboard() {
   const [showPendingModal, setShowPendingModal] = useState(false);
 
   useEffect(() => {
-    if (user && ['buyer', 'seller'].includes(user.role) && user.organization && (user.organization as any).verificationStatus === 'PENDING') {
-      setShowPendingModal(true);
+    if (user && ['buyer', 'seller'].includes(user.role)) {
+      const isPending = 
+        user.onboardingStatus === 'pending' || 
+        user.onboardingStatus === 'resubmission_required' ||
+        (user.organization && (user.organization as any).verificationStatus === 'PENDING');
+      if (isPending) {
+        setShowPendingModal(true);
+      }
     }
   }, [user]);
 
@@ -898,7 +904,14 @@ export default function Dashboard() {
                 Organization Verification Pending
               </h3>
               <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                Your organization <span className="font-bold text-slate-700">"{user?.organization?.organizationName}"</span> is currently pending approval. Please complete your onboarding application to submit all sections for admin compliance review.
+                {user?.organization?.organizationName ? (
+                  <>
+                    Your organization <span className="font-bold text-slate-700">"{user.organization.organizationName}"</span> is currently pending approval.
+                  </>
+                ) : (
+                  <>Your profile onboarding is currently pending.</>
+                )}{" "}
+                Please complete your onboarding application to submit all sections for admin compliance review.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full pt-2">

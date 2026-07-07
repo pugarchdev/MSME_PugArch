@@ -38,9 +38,9 @@ export const registerSchema = z.object({
   password: z.string().min(12).max(128),
   role: z.enum(['buyer', 'seller', 'admin']),
   mobile: z.preprocess(
-    value => String(value || '').trim() || undefined,
-    z.string().regex(/^[6-9]\d{9}$/).optional()
-  ).optional(),
+    value => String(value || '').trim(),
+    z.string().regex(/^[6-9]\d{9}$/)
+  ),
   dob: z.string().optional().nullable(),
   registrationDetails: z.any().optional()
 });

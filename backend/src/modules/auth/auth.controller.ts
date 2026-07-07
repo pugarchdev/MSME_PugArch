@@ -296,11 +296,6 @@ export const authController = {
 
   sendMobileOtp: async (req: Request, res: Response) => {
     try {
-      const isSmsEnabled = await isSmsFeatureEnabledForCompany(null);
-      if (!isSmsEnabled) {
-        return res.status(403).json({ message: 'SMS verification is currently disabled.' });
-      }
-
       const mobile = toLocalIndianMobile(req.body.mobile);
       if (!mobile) return res.status(400).json({ message: 'Valid Indian mobile number is required' });
 
@@ -417,35 +412,22 @@ export const authController = {
         return res.status(400).json({ message: 'Please verify your email address first.' });
       }
 
-      const isSmsEnabled = await isSmsFeatureEnabledForCompany(null);
       let mobileOtpRecord = { ok: false, reason: '' };
 
-      if (isSmsEnabled) {
-        if (!mobile) {
-          return res.status(400).json({ message: 'Mobile number is required' });
+      // Mobile verification is always required; mobile is a mandatory field.
+      if (!mobile) {
+        return res.status(400).json({ message: 'Mobile number is required' });
+      }
+      const normalizedMobile = toLocalIndianMobile(mobile);
+      if (!normalizedMobile) {
+        return res.status(400).json({ message: 'Valid 10-digit Indian mobile number is required' });
+      }
+      mobileOtpRecord = await assertMobileOtpVerified(normalizedMobile);
+      if (!mobileOtpRecord.ok) {
+        if (mobileOtpRecord.reason === 'expired') {
+          return res.status(400).json({ message: 'Mobile OTP expired. Please request a new code.' });
         }
-        const normalizedMobile = smsService.normalizeMobile(mobile);
-        if (!normalizedMobile) {
-          return res.status(400).json({ message: 'Valid 10-digit Indian mobile number is required' });
-        }
-        mobileOtpRecord = await assertMobileOtpVerified(normalizedMobile);
-        if (!mobileOtpRecord.ok) {
-          if (mobileOtpRecord.reason === 'expired') {
-            return res.status(400).json({ message: 'Mobile OTP expired. Please request a new code.' });
-          }
-          return res.status(400).json({ message: 'Please verify your mobile number first.' });
-        }
-      } else if (mobile) {
-        const normalizedMobile = smsService.normalizeMobile(mobile);
-        if (normalizedMobile) {
-          mobileOtpRecord = await assertMobileOtpVerified(normalizedMobile);
-          if (!mobileOtpRecord.ok) {
-            if (mobileOtpRecord.reason === 'expired') {
-              return res.status(400).json({ message: 'Mobile OTP expired. Please request a new code.' });
-            }
-            return res.status(400).json({ message: 'Please verify your mobile number first.' });
-          }
-        }
+        return res.status(400).json({ message: 'Please verify your mobile number first.' });
       }
 
       const passwordValidation = validatePasswordStrength(String(password || ''));
@@ -459,10 +441,8 @@ export const authController = {
       const existingEmail = await prisma.user.findUnique({ where: { email } });
       if (existingEmail) return res.status(400).json({ message: 'Email already registered. Please log in.' });
 
-      if (mobile) {
-        const existingMobile = await prisma.user.findFirst({ where: { mobile: String(mobile).trim() } });
-        if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
-      }
+      const existingMobile = await prisma.user.findFirst({ where: { mobile: normalizedMobile } });
+      if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
 
       logger.debug({ bodyKeys: Object.keys(req.body) }, '[DEBUG REGISTER] req.body keys');
       if (req.body.registrationDetails) {
@@ -538,7 +518,7 @@ export const authController = {
           name, email, password: hashedPassword,
           role: role as Role,
           accountTypeId: role === 'seller' ? 2 : role === 'shg' ? 4 : role === 'buyer' ? 3 : role === 'admin' ? 1 : 3,
-          mobile,
+          mobile: normalizedMobile,
           dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
           emailVerified: emailOtpRecord.ok,
           mobileVerified: mobileOtpRecord.ok,
@@ -683,7 +663,7 @@ export const authController = {
 
 
       if (emailOtpRecord.ok) await consumeEmailOtp(email).catch(() => undefined);
-      if (mobileOtpRecord.ok && mobile) await consumeMobileOtp(String(mobile).trim()).catch(() => undefined);
+      if (mobileOtpRecord.ok) await consumeMobileOtp(normalizedMobile).catch(() => undefined);
 
       try {
         await notificationService.notifyAdmins({

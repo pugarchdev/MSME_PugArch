@@ -97,9 +97,9 @@ export default function RbacPanel() {
       .filter(permission => moduleFilter === 'All' || permission.module === moduleFilter)
       .filter(permission => !q || [permission.code, permission.module, permission.description || ''].join(' ').toLowerCase().includes(q))
       .reduce<Record<string, Permission[]>>((acc, permission) => {
-        const module = permission.module || 'Other';
-        acc[module] = acc[module] || [];
-        acc[module].push(permission);
+        const permModule = permission.module || 'Other';
+        acc[permModule] = acc[permModule] || [];
+        acc[permModule].push(permission);
         return acc;
       }, {});
   }, [permissions, query, moduleFilter]);

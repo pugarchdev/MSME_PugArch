@@ -204,6 +204,26 @@ export default function BuyerProcurementHub() {
   const kpis = useMemo(() => {
     const activeRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.statusGroup === 'active').length;
     const expiredRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.status === 'EXPIRED').length;
+    
+    // Dynamic Awarded Value calculation
+    const awardedProcurements = allProcurements.filter(p => 
+      String(p.status).toUpperCase() === 'AWARDED' || 
+      String(p.statusGroup).toLowerCase() === 'awarded'
+    );
+    const awardedCount = awardedProcurements.length;
+    const awardedSum = awardedProcurements.reduce((sum, p) => sum + (Number(p.estimatedValue) || 0), 0);
+    
+    const formatAwardedValue = (val: number) => {
+      if (!val) return 'Rs. 0';
+      if (val >= 10000000) { // 1 Crore
+        return `Rs. ${(val / 10000000).toFixed(1)} Cr`;
+      }
+      if (val >= 100000) { // 1 Lakh
+        return `Rs. ${(val / 100000).toFixed(1)} L`;
+      }
+      return `Rs. ${val.toLocaleString('en-IN')}`;
+    };
+
     return [
       { label: 'Total Procurements', value: summary?.myTendersCount || 0, change: '+12% this month', icon: FolderOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-150' },
       { label: 'Drafts', value: summary?.cartItemCount || 0, change: 'Saved drafts', icon: FileText, color: 'text-slate-600 bg-slate-50 border-slate-150' },
@@ -212,7 +232,7 @@ export default function BuyerProcurementHub() {
       { label: 'Active Rate Contracts', value: activeRateContracts, change: 'Available for call-off', icon: ShieldCheck, color: 'text-teal-600 bg-teal-50 border-teal-150' },
       { label: 'Expired Contracts', value: expiredRateContracts, change: 'Renewal attention', icon: Clock, color: 'text-slate-600 bg-slate-50 border-slate-150' },
       { label: 'Supplier Responses', value: summary?.myRfqsCount || 0, change: 'Pending review', icon: MessageSquare, color: 'text-cyan-600 bg-cyan-50 border-cyan-150' },
-      { label: 'Awarded Value', value: 'Rs. 24.8 L', change: '8 awards granted', icon: Award, color: 'text-emerald-600 bg-emerald-50 border-emerald-150' },
+      { label: 'Awarded Value', value: formatAwardedValue(awardedSum), change: `${awardedCount} award${awardedCount === 1 ? '' : 's'} granted`, icon: Award, color: 'text-emerald-600 bg-emerald-50 border-emerald-150' },
       { label: 'Open Purchase Orders', value: summary?.myActivePOsCount || 0, change: 'Sent to sellers', icon: ShoppingCart, color: 'text-sky-600 bg-sky-50 border-sky-150' },
       { label: 'Pending Deliveries', value: summary?.grnsToApproveCount || 0, change: 'Tracking live', icon: Package, color: 'text-violet-600 bg-violet-50 border-violet-150' },
     ];

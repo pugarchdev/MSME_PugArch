@@ -14,6 +14,7 @@ import { Pagination } from '../../shared/Pagination';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { GST_STANDARD_RATES, formatTaxRate } from '../../shared/gstTax';
+import { PdfEngine, DocumentConfig, moneyPdf } from '../../../lib/pdfEngine';
 
 type InvoiceRow = {
   id: number;
@@ -260,6 +261,109 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
       toast.error(err.message || 'Invoice approval failed');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDownloadPdf = (mode: 'download' | 'print' = 'download') => {
+    if (!selectedInvoice) return;
+    const inv = selectedInvoice;
+    const details = detailedInvoice?.items || [];
+    
+    const totalVal = Number(inv.amount || inv.totalAmount || 0);
+    const taxableVal = Number(inv.taxableAmount || totalVal);
+
+    const items = details.length > 0 ? details : [{
+      itemName: inv.purchaseOrder?.title || 'Goods / Services Delivery',
+      quantity: 1,
+      unitPrice: taxableVal,
+      totalAmount: totalVal,
+      taxableAmount: taxableVal,
+      taxAmount: Number(inv.totalTaxAmount || 0)
+    }];
+
+    let computedTaxable = 0;
+    let computedTax = 0;
+    let computedTotal = 0;
+
+    const tableData = items.map((item: any, index: number) => {
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.unitPrice || 0);
+      const taxAmt = Number(item.taxAmount || 0);
+      const lineTotal = Number(item.totalAmount || (qty * unitPrice) + taxAmt);
+      
+      computedTaxable += (qty * unitPrice);
+      computedTax += taxAmt;
+      computedTotal += lineTotal;
+
+      return [
+        String(index + 1),
+        item.itemName || 'N/A',
+        String(qty),
+        unitPrice || (taxableVal / Math.max(qty, 1)),
+        taxAmt,
+        lineTotal
+      ];
+    });
+
+    const finalTaxable = details.length > 0 ? computedTaxable : taxableVal;
+    const finalTax = details.length > 0 ? computedTax : Number(inv.totalTaxAmount || 0);
+    const finalGrandTotal = details.length > 0 ? computedTotal : totalVal;
+
+    const config: DocumentConfig = {
+      documentTitle: 'Tax Invoice Registry',
+      documentNumber: inv.invoiceNumber || `INV-${inv.id}`,
+      dateStr: formatDate(inv.createdAt),
+      status: String(inv.status || inv.invoiceStatus).toUpperCase().replace(/_/g, ' '),
+      parties: [
+        {
+          title: 'SUPPLIER (SELLER DETAILS)',
+          name: inv.seller?.name || `Seller #${inv.sellerId || '-'}`,
+          gstin: (inv.seller as any)?.profile?.gst || (inv.seller as any)?.gst || undefined,
+          pan: (inv.seller as any)?.profile?.pan || (inv.seller as any)?.pan || undefined,
+          address: (inv.seller as any)?.profile?.address || (inv.seller as any)?.address || 'As per portal profile'
+        },
+        {
+          title: 'CONSIGNEE (BUYER DEPARTMENT)',
+          name: inv.buyer?.name || `Buyer #${inv.buyerId || '-'}`,
+          gstin: (inv.buyer as any)?.profile?.gst || (inv.buyer as any)?.gst || undefined,
+          address: (inv.buyer as any)?.profile?.address || (inv.buyer as any)?.address || 'As per portal profile'
+        }
+      ],
+      infoGrid: {
+        'Contract Reference': inv.purchaseOrder?.poNumber || `PO #${inv.purchaseOrderId || '-'}`,
+        'Due Date': formatDate(inv.dueDate),
+        'Supply Jurisdiction': inv.interstate ? 'Interstate (IGST)' : 'Intrastate (CGST+SGST)',
+        'IRN': '2f8a5c3e7d9b1a0f9e8d7c6b5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b'
+      },
+      tableHeaders: ['Sr.', 'Description', 'Qty', 'Rate', 'Tax Amount', 'Line Total'],
+      tableData: tableData.map((row: any) => [row[0], row[1], row[2], moneyPdf(row[3]), moneyPdf(row[4]), moneyPdf(row[5])]),
+      financials: {
+        subtotal: finalTaxable,
+        taxableAmount: finalTaxable,
+        totalTax: finalTax,
+        igst: inv.interstate ? finalTax : undefined,
+        cgst: !inv.interstate ? finalTax / 2 : undefined,
+        sgst: !inv.interstate ? finalTax / 2 : undefined,
+        tds: Number(inv.tdsAmount || 0),
+        grandTotal: finalGrandTotal
+      },
+      notes: [
+        'Certified that the particulars given above are true and correct.',
+        'Authenticated via Class-3 Digital Signature Certificate (DSC) registered under the Indian Information Technology Act, 2000.',
+        'Generated via e-Invoice Registry Portal (JsgSmile Integrated Ledger)'
+      ]
+    };
+
+    const engine = new PdfEngine('p');
+    const doc = engine.generate(config);
+    
+    if (mode === 'print') {
+      doc.autoPrint();
+      window.open(doc.output('bloburl'), '_blank');
+      toast.success('Invoice opened for printing');
+    } else {
+      doc.save(`${config.documentNumber}-invoice.pdf`);
+      toast.success('Invoice PDF downloaded');
     }
   };
 
@@ -909,61 +1013,7 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
               </div>
             ) : (
               <>
-                {/* Print Styling inside the View modal */}
-                {invoiceModalMode === 'view' && (
-                  <style dangerouslySetInnerHTML={{
-                    __html: `
-                    @media print {
-                      /* Hide standard screen elements */
-                      body * {
-                        visibility: hidden !important;
-                      }
-                      /* Show only the printable card and its descendants */
-                      #printable-invoice-card, #printable-invoice-card * {
-                        visibility: visible !important;
-                      }
-                      /* Ensure html, body don't have constraints during print */
-                      html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                        min-height: 0 !important;
-                        background: white !important;
-                      }
-                      /* Clear constraints on overlay parent */
-                      #printable-invoice-overlay {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        height: auto !important;
-                        min-height: 0 !important;
-                        overflow: visible !important;
-                        background: white !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        display: block !important;
-                      }
-                      /* Position and flow for the card itself */
-                      #printable-invoice-card {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        max-width: 100% !important;
-                        height: auto !important;
-                        max-height: none !important;
-                        overflow: visible !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                      }
-                      .no-print {
-                        display: none !important;
-                      }
-                    }
-                  `}} />
-                )}
+                {/* Print Styling inside the View modal (Removed in favor of PdfEngine) */}
 
                 {invoiceModalMode === 'view' && (
                   <div className="space-y-6">
@@ -1253,10 +1303,17 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
                       </Button>
                       <Button
                         type="button"
-                        onClick={() => window.print()}
+                        onClick={() => handleDownloadPdf('print')}
                         className="h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase tracking-wider hover:bg-slate-800 flex items-center gap-1.5"
                       >
                         Print Invoice
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleDownloadPdf('download')}
+                        className="h-10 rounded-lg bg-emerald-600 text-xs font-black uppercase tracking-wider hover:bg-emerald-700 text-white flex items-center gap-1.5"
+                      >
+                        Download PDF
                       </Button>
                     </div>
                   </div>

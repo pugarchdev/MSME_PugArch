@@ -17,6 +17,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { downloadCsv } from '../features/shared/exportUtils';
 
 interface PublicBuyerRequirementsProps {
   buyerId: number;
@@ -104,20 +105,7 @@ export default function PublicBuyerRequirements({ buyerId }: PublicBuyerRequirem
       item.remarks || ''
     ]);
 
-    // Format rows correctly with quotes
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${profile?.organizationName?.replace(/\s+/g, '_') || 'buyer'}_requirements.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`${profile?.organizationName?.replace(/\s+/g, '_') || 'buyer'}_requirements.csv`, [headers, ...rows]);
     toast.success('Requirements list downloaded successfully');
   };
 

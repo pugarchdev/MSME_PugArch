@@ -8,6 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, ResultsTable, StatusBadge } from '../components';
 import { money, type BidResultRow, type ProcurementBid } from '../data';
 import { procurementBidApi } from '../api';
+import { downloadCsv } from '../../shared/exportUtils';
 
 export default function BidResultsPage() {
   const { user } = useAuth();
@@ -124,16 +125,15 @@ export default function BidResultsPage() {
             </div>
             <button
               onClick={() => {
-                const csv = [
-                  'sellerName,sellerType,offeredItem,totalPrice,rank,status',
-                  ...ranking.map(row => `"${row.sellerName}","${row.sellerType}","${row.offeredItem}",${row.totalPrice},"${row.finalRank}","${row.resultStatus}"`)
-                ].join('\n');
-                const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${bid.id}-result.csv`;
-                link.click();
-                URL.revokeObjectURL(url);
+                const rows = ranking.map(row => ({
+                  sellerName: row.sellerName,
+                  sellerType: row.sellerType,
+                  offeredItem: row.offeredItem,
+                  totalPrice: row.totalPrice,
+                  rank: row.finalRank,
+                  status: row.resultStatus
+                }));
+                downloadCsv(`${bid.id}-result.csv`, rows);
               }}
               className="inline-flex h-9 items-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white"
             ><Download className="h-4 w-4" /> Export result</button>

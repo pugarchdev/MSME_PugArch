@@ -35,6 +35,12 @@ const backendSecuritySurface = [
   read('backend/src/services/workflow/tender-workflow.service.ts')
 ].join('\n');
 const schema = read('backend/prisma/schema.prisma');
+const walk = dir => fs.existsSync(dir)
+  ? fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+      const full = path.join(dir, entry.name);
+      return entry.isDirectory() ? walk(full) : [full];
+    })
+  : [];
 
 const requiredSecurityPatterns = [
   ['helmet/security middleware', 'applySecurityMiddleware'],
@@ -65,6 +71,16 @@ const forbiddenSourcePatterns = [
 
 for (const [regex, message] of forbiddenSourcePatterns) {
   assert.equal(regex.test(backendIndex), false, message);
+}
+
+for (const file of walk(path.join(root, 'frontend'))) {
+  if (!/\.(html|tsx|ts|jsx|js)$/.test(file)) continue;
+  const source = fs.readFileSync(file, 'utf8');
+  const externalScripts = source.match(/<script\b[^>]*\bsrc=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
+  for (const tag of externalScripts) {
+    assert.match(tag, /\bintegrity=["'][^"']+["']/i, `${path.relative(root, file)} external script missing SRI integrity`);
+    assert.match(tag, /\bcrossorigin=["']anonymous["']/i, `${path.relative(root, file)} external script missing crossorigin="anonymous"`);
+  }
 }
 
 console.log('Static security checks passed');

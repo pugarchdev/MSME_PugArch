@@ -112,6 +112,11 @@ const versionedRouter = Router();
 versionedRouter.use(`/${API_VERSION}`, createVersionedRouter());
 
 // Also mount without version for backwards compatibility (deprecated)
-versionedRouter.use('/', createVersionedRouter());
+versionedRouter.use('/', (_req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', 'Wed, 31 Dec 2026 23:59:59 GMT');
+  res.setHeader('Link', `</api/${API_VERSION}>; rel="successor-version"`);
+  next();
+}, createVersionedRouter());
 
 export default versionedRouter;

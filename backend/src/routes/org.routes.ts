@@ -28,7 +28,7 @@ import { ensureOrgMembership } from '../services/org-membership.service.js';
 import { getTransporter } from '../services/mail.service.js';
 import { env } from '../config/env.js';
 import { hashPassword, validatePasswordStrength } from '../services/password.service.js';
-import { issueAuthResponse } from '../services/token.service.js';
+import { issueCookieAuth } from '../services/auth-cookie.service.js';
 import { toSafeUser } from '../utils/routeHelpers.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
 import { DEFAULT_ORG_ROLE_TEMPLATES, ORG_PERMISSION_CATALOG, type OrgPermissionKey } from '../constants/org-permissions.js';
@@ -986,7 +986,7 @@ router.post(
             metadata: { organizationId: invite.organizationId, orgRole: invite.orgRole, customRoleId: invite.customRoleId }
         });
 
-        const tokens = issueAuthResponse(user);
+        const tokens = await issueCookieAuth(req, res, user);
         ok(res, {
             ...tokens,
             user: toSafeUser(user),

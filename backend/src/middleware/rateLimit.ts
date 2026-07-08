@@ -50,9 +50,6 @@ const routeLimiter = (options: RateLimitOptions) => {
   };
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' || !process.env.NODE_ENV) {
-      return next();
-    }
     const key = keyFor(req);
 
     try {
@@ -73,7 +70,12 @@ const routeLimiter = (options: RateLimitOptions) => {
         return next();
       }
     } catch (error) {
-      logger.error({ err: error, requestId: req.id, rateLimit: options.name }, 'Redis rate limit failed; falling back to memory');
+      logger.error({ err: error, requestId: req.id, rateLimit: options.name }, 'Redis rate limit failed');
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      logger.error({ requestId: req.id, rateLimit: options.name }, 'Redis rate limit unavailable in production');
+      return apiResponse.error(res, 503, 'Rate limiting is temporarily unavailable. Please try again later.', 'RATE_LIMIT_UNAVAILABLE');
     }
 
     const now = Date.now();

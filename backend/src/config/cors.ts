@@ -25,21 +25,20 @@ const configuredOrigins = [
 ].map(origin => origin.trim()).filter(Boolean);
 
 const isAllowedVercelFrontendOrigin = (origin: string) => {
-  if (isProduction) return false;
+  if (isProduction || !env.CORS_ALLOW_VERCEL_PREVIEWS) return false;
 
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:') return false;
 
-    const hostname = url.hostname;
-    return hostname.endsWith('.vercel.app');
+    return staticOrigins.includes(origin) || configuredOrigins.includes(origin);
   } catch {
     return false;
   }
 };
 
 export const isAllowedCorsOrigin = (origin?: string) => {
-  if (!origin) return true;
+  if (!origin) return false;
 
   try {
     const url = new URL(origin);
@@ -77,7 +76,6 @@ export const preflightCors = (req: Request, res: Response, next: NextFunction) =
 
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
     return callback(null, isAllowedCorsOrigin(origin));
   },
   credentials: true,

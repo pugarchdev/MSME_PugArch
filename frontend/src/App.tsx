@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from './hooks/useAuth';
 import { cn } from './lib/utils';
 import { isShgUser } from './lib/shg';
+import { getCookieValue } from './lib/auth';
 
 // Eagerly imported (small, always-needed for initial routes).
 import Home from './views/Home';
@@ -338,7 +339,7 @@ export default function App() {
 
   const [hasCookie, setHasCookie] = useState(() => {
     if (typeof document === 'undefined') return false;
-    return document.cookie.split(';').some(c => c.trim().startsWith('token='));
+    return Boolean(getCookieValue('csrfToken'));
   });
 
   React.useEffect(() => {
@@ -363,7 +364,7 @@ export default function App() {
 
   React.useEffect(() => {
     if (mounted) {
-      setHasCookie(document.cookie.split(';').some(c => c.trim().startsWith('token=')));
+      setHasCookie(Boolean(getCookieValue('csrfToken')));
     }
   }, [mounted, loading, user]);
 
@@ -383,21 +384,12 @@ export default function App() {
     }
   }, [mounted, loading, user, pathname, router]);
 
-  // Detect a middleware bounce. The Next.js middleware reads the `token`
-  // cookie and redirects to '/' whenever it's missing; localStorage may still
-  // have a valid token. If we just <Redirect to="/dashboard"> from here,
-  // middleware bounces us right back, and we loop. So:
-  //   1) Stamp the cookie from localStorage on every render where we land on '/'
-  //   2) Use a ref to ensure we only auto-redirect after the cookie has been
-  //      stamped at least once - this guarantees the next request middleware
-  //      sees has the cookie set.
+  // Detect session marker cookie after backend sets HttpOnly auth cookies.
   const cookieStampedRef = React.useRef(false);
   React.useEffect(() => {
     if (!mounted || loading) return;
     if (pathname === '/' && user) {
-      const t = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (t) {
-        document.cookie = `token=${t}; path=/; max-age=7200; SameSite=Lax`;
+      if (getCookieValue('csrfToken')) {
         cookieStampedRef.current = true;
         setHasCookie(true);
       }

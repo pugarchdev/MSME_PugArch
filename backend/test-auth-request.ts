@@ -1,7 +1,10 @@
 import jwt from 'jsonwebtoken';
 import http from 'http';
 
-const JWT_SECRET = "MSME_PugArch_JWT_SECRET_SUPER_SECURE_KEY_2026";
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_ACCESS_SECRET or JWT_SECRET is required');
+}
 const payload = {
   id: 6,
   email: "anandgadge1008@gmail.com",

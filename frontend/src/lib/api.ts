@@ -1,3 +1,5 @@
+import { COOKIE_SESSION_TOKEN, getCookieValue } from './auth';
+
 export const getBaseUrl = () => {
   if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
     const { protocol, hostname, port } = window.location;
@@ -87,6 +89,23 @@ const getHeaderValue = (headers: HeadersInit | undefined, name: string) => {
 const cacheKey = (endpoint: string, options: RequestInit = {}) => {
   const auth = getHeaderValue(options.headers, 'Authorization');
   return `${endpoint}|${auth}`;
+};
+
+const normalizeHeaders = (headers: HeadersInit | undefined, body?: BodyInit | null) => {
+  const next: Record<string, string> = { ...(headers as any) };
+  const auth = next.Authorization || next.authorization || '';
+  if (/^Bearer\s*(null|undefined|cookie-session)?$/i.test(auth.trim()) || auth.trim() === `Bearer ${COOKIE_SESSION_TOKEN}`) {
+    delete next.Authorization;
+    delete next.authorization;
+  }
+  if (!(body instanceof FormData) && !next['Content-Type']) {
+    next['Content-Type'] = 'application/json';
+  }
+  const csrfToken = getCookieValue('csrfToken');
+  if (csrfToken && !next['X-CSRF-Token']) {
+    next['X-CSRF-Token'] = csrfToken;
+  }
+  return next;
 };
 
 const responseFromCache = (entry: CachedResponse) => new Response(JSON.stringify(entry.body), {
@@ -246,11 +265,8 @@ export const api = {
     const method = (options.method || 'GET').toUpperCase();
     const { skipCache, ...fetchOptions } = options;
     const shouldCache = method === 'GET' && !skipCache;
-    const key = cacheKey(endpoint, options);
-    const headers: Record<string, string> = { ...fetchOptions.headers as any };
-    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
-      headers['Content-Type'] = 'application/json';
-    }
+    const headers = normalizeHeaders(fetchOptions.headers, options.body as BodyInit | null);
+    const key = cacheKey(endpoint, { ...options, headers });
 
     if (shouldCache) {
       const cached = getCache.get(key);

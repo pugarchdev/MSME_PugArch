@@ -466,7 +466,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
     { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
-    { label: 'Marketplace (Buy Products)', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
       { label: 'Sourcing Hub / Dashboard', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: PlusCircle, roles: ['buyer'] },
@@ -798,7 +798,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
     if (!authToken) return;
 
     const baseUrl = BASE_URL;
-    const streamUrl = `${baseUrl}/api/notifications/stream?token=${encodeURIComponent(authToken)}`;
+    const streamUrl = `${baseUrl}/api/notifications/stream`;
 
     let eventSource: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
@@ -816,7 +816,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
       if (disposed) return;
       try {
         eventSource?.close();
-        eventSource = new EventSource(streamUrl);
+        eventSource = new EventSource(streamUrl, { withCredentials: true });
 
         eventSource.addEventListener('connected', () => {
           console.log('[SSE] Notification stream connected successfully');

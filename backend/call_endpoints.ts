@@ -1,13 +1,17 @@
 import jwt from 'jsonwebtoken';
 import fetch from 'node-fetch';
 
-const JWT_SECRET = "MSME_PugArch_JWT_SECRET_SUPER_SECURE_KEY_2026";
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_ACCESS_SECRET or JWT_SECRET is required');
+}
 
 async function main() {
   const payload = {
     id: 6,
     email: "kolhesnehal065@gmail.com",
-    role: "buyer"
+    role: "buyer",
+    sessionVersion: 0
   };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
   console.log('Signed token:', token);

@@ -18,7 +18,7 @@ import {
   verifyOtp
 } from '../services/otp.service.js';
 import { sendOtpEmail } from '../services/mail.service.js';
-import { issueAuthResponse } from '../services/token.service.js';
+import { issueCookieAuth } from '../services/auth-cookie.service.js';
 import { toSafeUser } from '../utils/routeHelpers.js';
 import { deleteCache, invalidateByPattern } from '../services/cache.service.js';
 import { redisKeys } from '../constants/redis-keys.js';
@@ -442,7 +442,7 @@ router.post('/shg/registration/create-account', async (req, res) => {
   });
 
   await consumeEmailOtp(email);
-  const tokens = issueAuthResponse(user);
+  const tokens = await issueCookieAuth(req, res, user);
   return apiResponse.created(res, { ...tokens, user: toSafeUser(user), redirectUrl: '/shg/onboarding' }, 'SHG account created');
 });
 

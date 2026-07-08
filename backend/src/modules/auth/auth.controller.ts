@@ -27,7 +27,8 @@ import {
 import { sendOtpEmail } from '../../services/mail.service.js';
 import { smsService, toLocalIndianMobile } from '../../services/sms.service.js';
 import { hashPassword, validatePasswordStrength, verifyPassword } from '../../services/password.service.js';
-import { issueAuthResponse, verifyRefreshToken } from '../../services/token.service.js';
+import { clearAuthCookies, getRefreshTokenFromRequest, issueCookieAuth, revokeRefreshSession, rotateRefreshToken } from '../../services/auth-cookie.service.js';
+import { assertPasswordNotReused, rememberPreviousPassword } from '../../services/password-history.service.js';
 import { handleSecureRouteError, handleFinancialRouteError, toSafeUser } from '../../utils/routeHelpers.js';
 import { validatePersonalVerification } from '../../utils/validationHelpers.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
@@ -677,7 +678,7 @@ export const authController = {
         console.error('[Register Notification] Failed to notify admins:', err);
       }
 
-      const tokens = issueAuthResponse(user);
+      const tokens = await issueCookieAuth(req, res, user);
       await auditLog({
         actorUserId: user.id,
         action: 'auth.register',
@@ -853,7 +854,7 @@ export const authController = {
         where: { id: user.id },
         data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
       });
-      const tokens = issueAuthResponse(updatedUser);
+      const tokens = await issueCookieAuth(req, res, updatedUser);
       await auditLog({
         actorUserId: user.id,
         actorRole: user.role,
@@ -902,7 +903,7 @@ export const authController = {
         where: { id: user.id },
         data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
       });
-      const tokens = issueAuthResponse(updatedUser);
+      const tokens = await issueCookieAuth(req, res, updatedUser);
       await auditLog({
         actorUserId: user.id,
         actorRole: user.role,
@@ -922,25 +923,19 @@ export const authController = {
 
   refresh: async (req: Request, res: Response) => {
     try {
-      const refreshToken = String(req.body.refreshToken || '');
-      const decoded = verifyRefreshToken(refreshToken);
-      if (decoded.type !== 'refresh' || !decoded.id || Number.isNaN(Number(decoded.sessionVersion))) {
-        return res.status(401).json({ message: 'Invalid refresh token' });
-      }
-
-      const user = await prisma.user.findUnique({ where: { id: Number(decoded.id) } });
-      if (!user || user.sessionVersion !== Number(decoded.sessionVersion)) {
-        return res.status(401).json({ message: 'Session expired. Please sign in again.' });
-      }
-
-      res.json(issueAuthResponse(user));
+      const refreshToken = String(req.body.refreshToken || getRefreshTokenFromRequest(req) || '');
+      if (!refreshToken) return res.status(401).json({ message: 'Invalid refresh token' });
+      res.json(await rotateRefreshToken(req, res, refreshToken));
     } catch {
+      clearAuthCookies(res);
       res.status(401).json({ message: 'Invalid refresh token' });
     }
   },
 
   logout: async (req: AuthRequest, res: Response) => {
     try {
+      const refreshToken = getRefreshTokenFromRequest(req);
+      if (refreshToken) await revokeRefreshSession(refreshToken).catch(() => undefined);
       await prisma.user.update({
         where: { id: Number(req.user?.id) },
         data: { sessionVersion: { increment: 1 } }
@@ -954,6 +949,7 @@ export const authController = {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent']
       });
+      clearAuthCookies(res);
       res.json({ success: true });
     } catch (err: any) {
       handleSecureRouteError(res, err, 'Unable to register right now. Please try again.');
@@ -1114,6 +1110,15 @@ export const authController = {
         return res.json({ success: true, message: 'Password reset successful. Please sign in again.' });
       }
 
+      try {
+        await assertPasswordNotReused(user.id, newPassword, user.password);
+      } catch (reuseErr: any) {
+        if (reuseErr?.message === 'PASSWORD_REUSED') {
+          return res.status(400).json({ message: 'Choose a password you have not used recently' });
+        }
+        throw reuseErr;
+      }
+      const previousPasswordHash = user.password;
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -1125,6 +1130,7 @@ export const authController = {
           lastPasswordChangeAt: new Date()
         }
       });
+      await rememberPreviousPassword(user.id, previousPasswordHash);
 
       if (otpToken) {
         const tokenKey = `reset_token:${otpToken}`;
@@ -1173,7 +1179,7 @@ export const authController = {
       const result = await verifyOtp('two_factor_login', otpIdentity, otp);
       if (!result.ok) return res.status(400).json({ message: result.reason === 'expired' ? 'OTP expired' : 'Invalid OTP' });
 
-      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorChannel: channel } as any });
+      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorChannel: channel, sessionVersion: { increment: 1 } } as any });
       await consumeOtp('two_factor_login', otpIdentity);
       await auditLog({
         actorUserId: user.id,
@@ -1200,7 +1206,7 @@ export const authController = {
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
-      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false } });
+      await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false, sessionVersion: { increment: 1 } } });
       await auditLog({
         actorUserId: user.id,
         actorRole: user.role,
@@ -1373,6 +1379,15 @@ export const authController = {
         });
       }
 
+      try {
+        await assertPasswordNotReused(userId, String(newPassword), user.password);
+      } catch (reuseErr: any) {
+        if (reuseErr?.message === 'PASSWORD_REUSED') {
+          return res.status(400).json({ message: 'Choose a password you have not used recently' });
+        }
+        throw reuseErr;
+      }
+      const previousPasswordHash = user.password;
       const hashedPassword = await hashPassword(newPassword);
       await prisma.user.update({
         where: { id: userId },
@@ -1383,6 +1398,7 @@ export const authController = {
           lastPasswordChangeAt: new Date()
         }
       });
+      await rememberPreviousPassword(userId, previousPasswordHash);
 
       await auditLog({
         actorUserId: userId,
@@ -1434,7 +1450,7 @@ export const authController = {
       });
 
       const safeUser = await buildSafeAuthPayload(userId);
-      const tokens = issueAuthResponse(updatedUser);
+      const tokens = await issueCookieAuth(req, res, updatedUser);
       await auditLog({
         actorUserId: userId,
         actorRole: user.role,
@@ -1622,7 +1638,7 @@ export const authController = {
       await onUserLinkedToOrganization(user.id, org.id).catch(err => console.error('[Dual Role Membership] link failed', err));
 
       const safeUser = await buildSafeAuthPayload(userId);
-      const tokens = issueAuthResponse(updatedUser);
+      const tokens = await issueCookieAuth(req, res, updatedUser);
       await auditLog({
         actorUserId: userId,
         actorRole: user.role,

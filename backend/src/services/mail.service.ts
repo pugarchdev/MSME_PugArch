@@ -136,7 +136,7 @@ export const sendOtpEmail = async (
     // Verify if email is actually enabled for this tenant
     const emailEnabled = val.emailEnabled ?? Boolean(env.SMTP_USER && env.SMTP_PASS);
     if (!emailEnabled) {
-      console.warn(`[OTP] Email sending is disabled for company ${companyId}. Generated OTP: ${otp} (for ${email})`);
+      console.warn(`[OTP] Email sending is disabled for company ${companyId} (${email})`);
       return false;
     }
 
@@ -179,10 +179,10 @@ export const sendOtpEmail = async (
 
     const transporter = await getTransporterForCompany(companyId);
 
-    // If no transporter auth credentials resolved and no global credentials, log OTP
+    // If no transporter auth credentials resolved and no global credentials, fail without leaking OTP.
     const hasAuth = val.username || (env.SMTP_USER && env.SMTP_PASS);
     if (!hasAuth) {
-      console.warn(`[OTP] No SMTP credentials configured. Generated OTP: ${otp} (for ${email})`);
+      console.warn(`[OTP] No SMTP credentials configured for ${email}`);
       return false;
     }
 
@@ -196,7 +196,6 @@ export const sendOtpEmail = async (
     return true;
   } catch (error: any) {
     console.error(`[OTP] Failed to send email to ${email}. Error:`, error);
-    console.warn(`[OTP Fallback] Generated OTP: ${otp} (for ${email})`);
     return false;
   }
 };

@@ -5484,12 +5484,20 @@ app.post('/api/admin/users/:id/unlock', authenticate, authorizeAdmin, async (req
 app.get('/api/notifications/stream', async (req, res) => {
   const unauthorizedAuditAction = 'security.unauthorized_access';
   try {
-    const token = String(req.query.token || '').trim();
+    const token = String(
+      (req as any).cookies?.token ||
+      req.headers.cookie
+        ?.split(';')
+        .map(part => part.trim())
+        .find(part => part.startsWith('token='))
+        ?.slice('token='.length) ||
+      ''
+    ).trim();
     if (!token) throw new ApiError(401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
 
     let decoded;
     try {
-      decoded = verifyAccessToken(token);
+      decoded = verifyAccessToken(decodeURIComponent(token));
     } catch (jwtErr: any) {
       throw new ApiError(401, jwtErr.name === 'TokenExpiredError' ? 'Authentication token expired' : 'Invalid authentication token', 'AUTH_TOKEN_INVALID');
     }

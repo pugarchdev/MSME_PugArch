@@ -87,6 +87,7 @@ model User {
   assignedUserRoles                  UserRole[]                              @relation("UserRoleAssigner")
   updatedCompanyFeatures             CompanyFeature[]                        @relation("CompanyFeatureUpdater")
   sessions                           UserSession[]
+  passwordHistories                  PasswordHistory[]
   sellerDocumentsVerified            SellerDocument[]                        @relation("SellerDocumentVerifiedBy")
   shgProfile                         ShgProfile?                             @relation("ShgPrimaryUser")
   apiVerificationLogs                ApiVerificationLog[]
@@ -678,6 +679,16 @@ model UserSession {
   @@index([refreshTokenHash])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+model PasswordHistory {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  passwordHash String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model RbacRole {

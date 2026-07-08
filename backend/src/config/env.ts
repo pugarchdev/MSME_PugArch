@@ -64,6 +64,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5001),
   DATABASE_URL: withFallback(['POSTGRES_PRISMA_URL', 'POSTGRES_URL'], z.string().min(1).optional()),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters').optional(),
+  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters').optional(),
+  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters').optional(),
   JWT_EXPIRES_IN: z.string().default('2h'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('2h'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
@@ -71,7 +73,7 @@ const envSchema = z.object({
   FAILED_LOGIN_LOCK_THRESHOLD: z.coerce.number().int().min(3).max(20).default(5),
   FAILED_LOGIN_LOCK_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
   FRONTEND_URL: z.string().optional(),
-  CORS_ALLOW_VERCEL_PREVIEWS: envBoolean(true),
+  CORS_ALLOW_VERCEL_PREVIEWS: envBoolean(false),
   REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().optional(),
   REDIS_PORT: z.coerce.number().int().default(6379),
@@ -155,6 +157,18 @@ if (isTrueProduction) {
     throw new Error('JWT_SECRET must be at least 32 characters in production');
   }
 
+  if (!parsed.data.JWT_ACCESS_SECRET || !parsed.data.JWT_REFRESH_SECRET) {
+    throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are required in production');
+  }
+
+  if (
+    parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET ||
+    parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_SECRET ||
+    parsed.data.JWT_REFRESH_SECRET === parsed.data.JWT_SECRET
+  ) {
+    throw new Error('JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and JWT_SECRET must be distinct in production');
+  }
+
   if (['debug', 'trace'].includes(parsed.data.LOG_LEVEL.toLowerCase())) {
     throw new Error('LOG_LEVEL must not be debug or trace in production');
   }
@@ -199,7 +213,9 @@ process.env.DATABASE_URL = databaseUrl;
 export const env = {
   ...parsed.data,
   DATABASE_URL: databaseUrl,
-  JWT_SECRET: parsed.data.JWT_SECRET
+  JWT_SECRET: parsed.data.JWT_SECRET,
+  JWT_ACCESS_SECRET: parsed.data.JWT_ACCESS_SECRET || parsed.data.JWT_SECRET,
+  JWT_REFRESH_SECRET: parsed.data.JWT_REFRESH_SECRET || parsed.data.JWT_SECRET
 };
 
 export const isProduction = env.NODE_ENV === 'production';

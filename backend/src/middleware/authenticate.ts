@@ -6,6 +6,7 @@ import { auditLog } from '../modules/audit/audit.service.js';
 import { getOrSetCache } from '../services/cache.service.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { getActivePermissionCodes, getAccountTypeForUser } from '../services/rbac.service.js';
+import { getAccessTokenFromRequest } from '../services/auth-cookie.service.js';
 
 export type AuthenticatedUser = {
   id: number;
@@ -26,13 +27,12 @@ export type AuthRequest = Request & {
 };
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
-  let authHeader = req.headers.authorization || '';
-  if (!authHeader && req.query.token && typeof req.query.token === 'string') {
-    authHeader = `Bearer ${req.query.token}`;
-  }
-  const [scheme, token] = authHeader.split(' ');
+  const authHeader = req.headers.authorization || '';
+  const [scheme, headerToken] = authHeader.split(' ');
+  const canUseHeaderToken = scheme === 'Bearer' && headerToken && !['null', 'undefined', 'cookie-session'].includes(headerToken);
+  const token = canUseHeaderToken ? headerToken : getAccessTokenFromRequest(req);
 
-  if (scheme !== 'Bearer' || !token) {
+  if (!token) {
     void auditLog({
       action: 'security.unauthorized_access',
       entityType: 'api',

@@ -1958,7 +1958,7 @@ export default function BuyerOnboarding() {
 
 type SearchableSelectProps = {
   label: string;
-  value: string;
+  value: string | null | undefined;
   options: string[];
   onChange: (value: string) => void;
   onBlur?: () => void;
@@ -2049,7 +2049,7 @@ function SearchableSelect({
     }
   };
 
-  const displayValue = isOpen ? query : value;
+  const displayValue = (isOpen ? query : value) || '';
 
   return (
     <div ref={containerRef} className="relative w-full min-w-0 space-y-1.5">

@@ -74,8 +74,7 @@ const routeLimiter = (options: RateLimitOptions) => {
     }
 
     if (process.env.NODE_ENV === 'production') {
-      logger.error({ requestId: req.id, rateLimit: options.name }, 'Redis rate limit unavailable in production');
-      return apiResponse.error(res, 503, 'Rate limiting is temporarily unavailable. Please try again later.', 'RATE_LIMIT_UNAVAILABLE');
+      logger.warn({ requestId: req.id, rateLimit: options.name }, 'Redis rate limit unavailable in production; falling back to in-memory rate limiting');
     }
 
     const now = Date.now();

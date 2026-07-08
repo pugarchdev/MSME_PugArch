@@ -8,7 +8,7 @@ import { Card, CardContent, Badge } from '../components/ui/card';
 import { Stepper, Step } from '../components/ui/stepper';
 import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Save, Upload, CheckCircle2, AlertTriangle, Clock, ShieldCheck, X, ExternalLink, Plus, MapPin, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Upload, CheckCircle2, AlertTriangle, Clock, ShieldCheck, X, ExternalLink, Plus, MapPin, Check, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
   validateField,
@@ -1786,9 +1786,9 @@ export default function BuyerOnboarding() {
                           <div
                             key={doc.field}
                             className={cn(
-                              "p-4 rounded-xl border flex flex-col gap-3 transition-all",
+                              "p-4 rounded-xl border flex flex-col gap-3 transition-all duration-300",
                               isInvalid
-                                ? "border-red-400 bg-red-50/30"
+                                ? "border-red-400 bg-red-50/30 animate-shake"
                                 : "border-slate-100 bg-slate-50/50"
                             )}
                           >
@@ -1806,16 +1806,25 @@ export default function BuyerOnboarding() {
                               {!isSubmittedOrApproved && !isVerifiedOrgDoc && (
                                 <>
                                   <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => handleFileUpload(e, `documents.${doc.field}`)} id={`upload-${doc.field}`} className="hidden" />
-                                  <label htmlFor={`upload-${doc.field}`} className="cursor-pointer text-[11px] font-bold text-[#12335f] hover:text-[#12335f] underline">
-                                    {isFieldUploading ? 'Uploading...' : hasFile ? 'Add Files' : 'Upload Files'}
-                                  </label>
+                                  {isFieldUploading ? (
+                                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 cursor-not-allowed">
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#12335f]" /> Uploading...
+                                    </span>
+                                  ) : (
+                                    <label htmlFor={`upload-${doc.field}`} className="cursor-pointer text-[11px] font-bold text-[#12335f] hover:text-slate-800 underline transition-colors">
+                                      {hasFile ? 'Add Files' : 'Upload Files'}
+                                    </label>
+                                  )}
                                 </>
                               )}
                             </div>
                             {hasFile && (
                               <div className="space-y-2">
                                 {documentFiles.map((file: any, fileIndex: number) => (
-                                  <div key={`${doc.field}-${file?.fileId || file?.url || fileIndex}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                  <div
+                                    key={`${doc.field}-${file?.fileId || file?.url || fileIndex}`}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 animate-fade-in-up"
+                                  >
                                     <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-600">
                                       {getDocumentDisplayName(file, doc.label, fileIndex)}
                                     </span>

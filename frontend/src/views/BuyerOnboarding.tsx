@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { api, unwrapApiData } from '../lib/api';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
@@ -1073,7 +1073,7 @@ export default function BuyerOnboarding() {
   };
   const hasValue = (value: unknown) => typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
 
-  const getSectionCompletion = (sectionId: string) => {
+  const getSectionCompletion = useCallback((sectionId: string) => {
     if (sectionId === 'org') {
       const hasRequiredOrganizationFields =
         hasValue(formData.organizationName) &&
@@ -1147,10 +1147,23 @@ export default function BuyerOnboarding() {
     }
 
     return false;
-  };
+  }, [formData, selectedDocs, cachedProfile]);
 
-  const completedSectionCount = SIDEBAR_SECTIONS.filter(section => getSectionCompletion(section.id)).length;
-  const complianceProgress = Math.round((completedSectionCount / SIDEBAR_SECTIONS.length) * 100);
+  const sectionCompletions = useMemo(() => {
+    const completions: Record<string, boolean> = {};
+    for (const section of SIDEBAR_SECTIONS) {
+      completions[section.id] = getSectionCompletion(section.id);
+    }
+    return completions;
+  }, [getSectionCompletion]);
+
+  const completedSectionCount = useMemo(() => {
+    return SIDEBAR_SECTIONS.filter(section => sectionCompletions[section.id]).length;
+  }, [sectionCompletions]);
+
+  const complianceProgress = useMemo(() => {
+    return Math.round((completedSectionCount / SIDEBAR_SECTIONS.length) * 100);
+  }, [completedSectionCount]);
 
   const getUploadedDocumentUrl = (document: any) =>
     typeof document === 'string' ? document : document?.url || document?.signedUrl || '';
@@ -1358,7 +1371,7 @@ export default function BuyerOnboarding() {
         <div className="flex flex-wrap items-center gap-1.5 mb-5 overflow-x-auto pb-1.5 no-scrollbar">
           {SIDEBAR_SECTIONS.map((section, idx) => {
             const isActive = activeSection === section.id;
-            const isCompleted = getSectionCompletion(section.id);
+            const isCompleted = sectionCompletions[section.id];
             return (
               <button
                 key={section.id}

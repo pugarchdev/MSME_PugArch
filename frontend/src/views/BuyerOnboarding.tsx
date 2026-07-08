@@ -320,7 +320,10 @@ export default function BuyerOnboarding() {
   const isStale = !cachedProfile || cachedProfile.user?.role !== 'buyer';
   const org = !isStale && cachedProfile?.user?.organization || {};
   const orgVerified = org.verificationStatus === 'VERIFIED';
-  const selectedDocs: string[] = user?.registrationDetails?.selectedDocuments || cachedProfile?.user?.registrationDetails?.selectedDocuments || ['panCard', 'regCert', 'addressProof'];
+  const rawSelectedDocs = user?.registrationDetails?.selectedDocuments || cachedProfile?.user?.registrationDetails?.selectedDocuments || [];
+  const buyerDocIds = ['panCard', 'regCert', 'gstCert', 'addressProof', 'authLetter'];
+  const filteredSelectedDocs = (Array.isArray(rawSelectedDocs) ? rawSelectedDocs : []).filter((id: string) => buyerDocIds.includes(id));
+  const selectedDocs = filteredSelectedDocs.length > 0 ? filteredSelectedDocs : ['panCard', 'regCert', 'addressProof'];
   const initialDraft = readBuyerDraft();
   const initialFormData = buildBuyerFormData(isStale ? {} : cachedProfile, initialDraft);
   const [activeSection, setActiveSection] = useState(
@@ -864,7 +867,17 @@ export default function BuyerOnboarding() {
       }
 
       const fieldPath = fieldName.split('.');
+      // Compute the updated documents payload directly from the current formData snapshot
+      // (NOT as a side-effect inside setFormData) so the PUT call is always reliably made.
       let nextDocumentsForSave: any = null;
+      if (fieldPath.length > 1 && fieldPath[0] === 'documents') {
+        const currentFiles = getDocumentFiles(formData[fieldPath[0]]?.[fieldPath[1]]);
+        nextDocumentsForSave = {
+          ...(formData.documents || {}),
+          [fieldPath[1]]: [...currentFiles, ...uploadedFiles]
+        };
+      }
+      // Update local state
       setFormData((prev: any) => {
         if (fieldPath.length > 1) {
           const currentFiles = getDocumentFiles(prev[fieldPath[0]]?.[fieldPath[1]]);
@@ -872,18 +885,17 @@ export default function BuyerOnboarding() {
             ...prev[fieldPath[0]],
             [fieldPath[1]]: [...currentFiles, ...uploadedFiles]
           };
-          if (fieldPath[0] === 'documents') nextDocumentsForSave = nextNested;
           return {
             ...prev,
             [fieldPath[0]]: nextNested
           };
         }
-
         return {
           ...prev,
           [fieldName]: [...getDocumentFiles(prev[fieldName]), ...uploadedFiles]
         };
       });
+      // Persist documents to backend immediately after upload
       if (nextDocumentsForSave) {
         const saveRes = await api.put('/api/buyer/onboarding', { documents: nextDocumentsForSave }, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -2071,7 +2083,7 @@ function SearchableSelect({
     }
   };
 
-  const displayValue = (isOpen ? query : value) || '';
+  const displayValue = (isOpen ? query : (value ?? '')) || '';
 
   return (
     <div ref={containerRef} className="relative w-full min-w-0 space-y-1.5">

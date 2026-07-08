@@ -2636,20 +2636,22 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
         updateData.lastPasswordChangeAt = new Date();
       }
       if (rawData.email) {
+        const newEmail = String(rawData.email).trim().toLowerCase();
         const existingEmail = await prisma.user.findFirst({
-          where: { email: String(rawData.email).trim().toLowerCase(), id: { not: userId } },
+          where: { email: newEmail },
           select: { id: true }
         });
-        if (existingEmail) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
-        updateData.email = String(rawData.email).trim().toLowerCase();
+        if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+        updateData.email = newEmail;
       }
       if (rawData.mobile) {
+        const newMobile = String(rawData.mobile).trim();
         const existingMobile = await prisma.user.findFirst({
-          where: { mobile: String(rawData.mobile).trim(), id: { not: userId } },
+          where: { mobile: newMobile },
           select: { id: true }
         });
-        if (existingMobile) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
-        updateData.mobile = rawData.mobile;
+        if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
+        updateData.mobile = newMobile;
       }
       if (rawData.dob && !isNaN(Date.parse(rawData.dob))) updateData.dob = new Date(rawData.dob);
       await prisma.user.update({ where: { id: userId }, data: updateData });
@@ -3606,20 +3608,22 @@ app.post('/api/buyer/register', authenticate, authorize('buyer'), async (req: Au
         updateData.lastPasswordChangeAt = new Date();
       }
       if (rawData.email) {
+        const newEmail = String(rawData.email).trim().toLowerCase();
         const existingEmail = await prisma.user.findFirst({
-          where: { email: String(rawData.email).trim().toLowerCase(), id: { not: userId } },
+          where: { email: newEmail },
           select: { id: true }
         });
-        if (existingEmail) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
-        updateData.email = String(rawData.email).trim().toLowerCase();
+        if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+        updateData.email = newEmail;
       }
       if (rawData.mobile) {
+        const newMobile = String(mobile).trim();
         const existingMobile = await prisma.user.findFirst({
-          where: { mobile: String(mobile).trim(), id: { not: userId } },
+          where: { mobile: newMobile },
           select: { id: true }
         });
-        if (existingMobile) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
-        updateData.mobile = mobile;
+        if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
+        updateData.mobile = newMobile;
       }
       await prisma.user.update({ where: { id: userId }, data: updateData });
     }

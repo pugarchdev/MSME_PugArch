@@ -245,7 +245,7 @@ export const api = {
     const url = resolveUrl(endpoint);
     const method = (options.method || 'GET').toUpperCase();
     const { skipCache, ...fetchOptions } = options;
-    const shouldCache = method === 'GET' && !skipCache;
+    const shouldCache = method === 'GET';
     const key = cacheKey(endpoint, options);
     const headers: Record<string, string> = { ...fetchOptions.headers as any };
     if (!(options.body instanceof FormData) && !headers['Content-Type']) {
@@ -258,7 +258,7 @@ export const api = {
       // is rendered immediately. If it's still within the fresh TTL we don't
       // bother refreshing; if it's stale we fire a background refresh so the
       // UI stays current without the user seeing a spinner.
-      if (isCacheUsable(cached)) {
+      if (!skipCache && isCacheUsable(cached)) {
         const isStale = !isCacheFresh(cached);
         if (isStale && !refreshingKeys.has(key)) {
           refreshingKeys.add(key);

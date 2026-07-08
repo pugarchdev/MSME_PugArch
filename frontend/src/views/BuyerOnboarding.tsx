@@ -961,12 +961,10 @@ export default function BuyerOnboarding() {
       return { valid: errorFields.length === 0, errorFields };
     }
     if (sectionId === 'docs') {
-      const orgRecord = cachedProfile?.user?.organization || {};
-      const orgVerified = orgRecord.verificationStatus === 'VERIFIED';
-      const isMissingPan = !orgVerified && selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
-      const isMissingReg = !orgVerified && selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
-      const isMissingGst = !orgVerified && selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
-      const isMissingAddr = !orgVerified && selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
+      const isMissingPan = selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
+      const isMissingReg = selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
+      const isMissingGst = selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
+      const isMissingAddr = selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
       const isMissingAuth = selectedDocs.includes('authLetter') && !hasUploadedDocument(formData.documents?.authLetter);
 
       setErrors(prev => ({
@@ -1781,8 +1779,8 @@ export default function BuyerOnboarding() {
                         const isFieldUploading = isUploading === `documents.${doc.field}`;
                         const displayLabel = isRequired ? `${doc.label} (Required)` : `${doc.label} (Optional)`;
                         const isOrgDoc = ['panCard', 'regCert', 'gstCert', 'addressProof'].includes(doc.field);
-                        const isVerifiedOrgDoc = orgVerified && isOrgDoc;
-                        const isInvalid = submitAttempted && isRequired && !hasFile && !isVerifiedOrgDoc;
+                        const isVerifiedOrgDoc = false;
+                        const isInvalid = submitAttempted && isRequired && !hasFile;
 
                         return (
                           <div

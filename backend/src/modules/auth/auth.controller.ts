@@ -439,11 +439,37 @@ export const authController = {
         });
       }
 
-      const existingEmail = await prisma.user.findUnique({ where: { email } });
-      if (existingEmail) return res.status(400).json({ message: 'Email already registered. Please log in.' });
+      // --- Duplicate check with re-registration support ---
+      // A user who registered but abandoned before onboarding will have onboardingStatus='pending'.
+      // We allow them to re-register by updating their existing record instead of blocking permanently.
+      const existingByEmail = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, role: true, onboardingStatus: true, mobile: true }
+      });
+      const existingByMobile = await prisma.user.findFirst({
+        where: { mobile: normalizedMobile },
+        select: { id: true, role: true, onboardingStatus: true, email: true }
+      });
 
-      const existingMobile = await prisma.user.findFirst({ where: { mobile: normalizedMobile } });
-      if (existingMobile) return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
+      // A ghost account = same email/mobile, onboarding never started, same role
+      const ghostByEmail = (existingByEmail && existingByEmail.onboardingStatus === 'pending' && existingByEmail.role === role) ? existingByEmail : null;
+      const ghostByMobile = (existingByMobile && existingByMobile.onboardingStatus === 'pending' && existingByMobile.role === role) ? existingByMobile : null;
+
+      // Block if email belongs to a fully progressed user
+      if (existingByEmail && !ghostByEmail) {
+        return res.status(400).json({ message: 'Email already registered. Please log in.' });
+      }
+      // Block if mobile belongs to a fully progressed user
+      if (existingByMobile && !ghostByMobile) {
+        return res.status(400).json({ message: 'Mobile number already in use. Please use unique details.' });
+      }
+      // Block if email ghost and mobile ghost are two different incomplete accounts
+      if (ghostByEmail && ghostByMobile && ghostByEmail.id !== ghostByMobile.id) {
+        return res.status(400).json({ message: 'These details are linked to separate incomplete registrations. Please contact support.' });
+      }
+
+      // The ghost user to update (if any)
+      const ghostUser = ghostByEmail || ghostByMobile || null;
 
       logger.debug({ bodyKeys: Object.keys(req.body) }, '[DEBUG REGISTER] req.body keys');
       if (req.body.registrationDetails) {
@@ -513,23 +539,44 @@ export const authController = {
       }
 
       const hashedPassword = await hashPassword(password);
-      const user = await prisma.user.create({
-        data: {
-          userId: email,
-          name, email, password: hashedPassword,
-          role: role as Role,
-          accountTypeId: role === 'seller' ? 2 : role === 'shg' ? 4 : role === 'buyer' ? 3 : role === 'admin' ? 1 : 3,
-          mobile: normalizedMobile,
-          dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
-          emailVerified: emailOtpRecord.ok,
-          mobileVerified: mobileOtpRecord.ok,
-          lastPasswordChangeAt: new Date(),
-          registrationStatus: RegistrationStatus.completed,
-          accountStatus: 'ACTIVE',
-          onboardingStatus: 'pending',
-          registrationDetails: sanitizeRegistrationDetails(registrationDetails)
-        }
-      });
+
+      // If an incomplete ghost account exists, update it instead of creating a new one
+      const user = ghostUser
+        ? await prisma.user.update({
+            where: { id: ghostUser.id },
+            data: {
+              userId: email,
+              name, email, password: hashedPassword,
+              mobile: normalizedMobile,
+              dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
+              emailVerified: emailOtpRecord.ok,
+              mobileVerified: mobileOtpRecord.ok,
+              lastPasswordChangeAt: new Date(),
+              passwordResetVersion: { increment: 1 },
+              sessionVersion: { increment: 1 },
+              registrationStatus: RegistrationStatus.completed,
+              accountStatus: 'ACTIVE',
+              onboardingStatus: 'pending',
+              registrationDetails: sanitizeRegistrationDetails(registrationDetails)
+            }
+          })
+        : await prisma.user.create({
+            data: {
+              userId: email,
+              name, email, password: hashedPassword,
+              role: role as Role,
+              accountTypeId: role === 'seller' ? 2 : role === 'shg' ? 4 : role === 'buyer' ? 3 : role === 'admin' ? 1 : 3,
+              mobile: normalizedMobile,
+              dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
+              emailVerified: emailOtpRecord.ok,
+              mobileVerified: mobileOtpRecord.ok,
+              lastPasswordChangeAt: new Date(),
+              registrationStatus: RegistrationStatus.completed,
+              accountStatus: 'ACTIVE',
+              onboardingStatus: 'pending',
+              registrationDetails: sanitizeRegistrationDetails(registrationDetails)
+            }
+          });
 
       if (user.role === 'buyer' || user.role === 'seller') {
         const rDetails = asObject(registrationDetails);
@@ -1334,7 +1381,7 @@ export const authController = {
         }));
       };
 
-      const profile = user.role === 'seller' ? user.sellerProfile : user.buyerProfile;
+      const profile = (user.role === 'seller' || user.role === 'shg') ? user.sellerProfile : user.buyerProfile;
       const enrichedProfile = profile
         ? { ...profile, documents: await enrichDocuments((profile as any).documents) }
         : profile;

@@ -274,7 +274,7 @@ export const api = {
       // is rendered immediately. If it's still within the fresh TTL we don't
       // bother refreshing; if it's stale we fire a background refresh so the
       // UI stays current without the user seeing a spinner.
-      if (isCacheUsable(cached)) {
+      if (!skipCache && isCacheUsable(cached)) {
         const isStale = !isCacheFresh(cached);
         if (isStale && !refreshingKeys.has(key)) {
           refreshingKeys.add(key);

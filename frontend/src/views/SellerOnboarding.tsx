@@ -158,7 +158,7 @@ export default function SellerOnboarding() {
   const getAuthHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
 
   const cachedMe = api.peek('/api/auth/me', { headers: getAuthHeaders() });
-  const isStale = !cachedMe || cachedMe.user?.role !== 'seller';
+  const isStale = !cachedMe || !(cachedMe.user?.role === 'seller' || cachedMe.user?.role === 'shg');
   const cachedProfile = isStale ? {} : (cachedMe?.profile || {});
   const cachedRegDetails = isStale ? {} : (cachedMe?.user?.registrationDetails || {});
   const orgVerified = !isStale && cachedMe?.user?.organization?.verificationStatus === 'VERIFIED';
@@ -815,11 +815,16 @@ export default function SellerOnboarding() {
       const data = await res.json();
       if (res.ok) {
         toast.success('Document uploaded successfully.');
-        if (data.document && data.asset) {
-          setSellerDocuments(current => [
-            ...(Array.isArray(current) ? current : []).filter((doc: any) => doc.documentType !== documentType),
-            { ...data.document, fileAsset: data.asset }
-          ]);
+        const docObj = data.document || data.data?.document;
+        const assetObj = data.asset || data.data?.asset;
+        if (docObj && assetObj) {
+          setSellerDocuments(current => {
+            const currentArray = Array.isArray(current) ? current : [];
+            return [
+              ...currentArray.filter((doc: any) => doc.documentType !== documentType),
+              { ...docObj, fileAsset: assetObj }
+            ];
+          });
         }
         await fetchProfile();
       } else {
@@ -2174,8 +2179,8 @@ export default function SellerOnboarding() {
                                     </span>
                                   )}
                                   {status === 'PENDING' && (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                      <Clock className="h-3.5 w-3.5" /> Pending Review
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                      <Clock className="h-3.5 w-3.5" /> Uploaded
                                     </span>
                                   )}
                                   {status === 'NOT_UPLOADED' && (

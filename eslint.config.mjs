@@ -42,5 +42,11 @@ export default [
       'security/detect-no-csrf-before-method-override': 'error',
       'security/detect-pseudoRandomBytes': 'error'
     }
+  },
+  {
+    files: ['backend/**/*.ts'],
+    rules: {
+      '@next/next/no-assign-module-variable': 'off'
+    }
   }
 ];

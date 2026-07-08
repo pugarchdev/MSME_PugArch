@@ -269,7 +269,9 @@ export default function SellerOnboarding() {
   const [aadhaarData, setAadhaarData] = useState({ number: '', mobile: '', consent: false });
   const [emailData, setEmailData] = useState({ newEmail: '', verifyEmail: '' });
   const [regDetails, setRegDetails] = useState<any>(cachedRegDetails);
-  const [sellerDocuments, setSellerDocuments] = useState<any[]>(cachedProfile.sellerDocuments || []);
+  const [sellerDocuments, setSellerDocuments] = useState<any[]>(
+    Array.isArray(cachedProfile.sellerDocuments) ? cachedProfile.sellerDocuments : []
+  );
   const [isUploadingMap, setIsUploadingMap] = useState<Record<string, boolean>>({});
   const savedSectionsStorageKey = `${SELLER_SAVED_SECTIONS_KEY_PREFIX}:${user?.id || user?.email || 'current'}`;
 
@@ -464,7 +466,8 @@ export default function SellerOnboarding() {
 
   const areAllDocumentsUploaded = useCallback(() => {
     const required = getRequiredDocuments();
-    const uploadedTypes = sellerDocuments.map((d: any) => d.documentType);
+    const docsArray = Array.isArray(sellerDocuments) ? sellerDocuments : [];
+    const uploadedTypes = docsArray.map((d: any) => d.documentType);
     return required.filter(doc => doc.required).every(reqDoc => {
       if (orgVerified && ['pan_copy', 'gst_certificate', 'address_proof', 'business_registration_proof'].includes(reqDoc.id)) {
         return true;
@@ -475,7 +478,8 @@ export default function SellerOnboarding() {
 
   const submittedOnboardingDocuments = useMemo(() => {
     const allDocIds = new Set(getRequiredDocuments().map(doc => doc.id));
-    return sellerDocuments.filter((doc: any) => allDocIds.has(doc.documentType));
+    const docsArray = Array.isArray(sellerDocuments) ? sellerDocuments : [];
+    return docsArray.filter((doc: any) => allDocIds.has(doc.documentType));
   }, [getRequiredDocuments, sellerDocuments]);
 
   const isApprovedProfile = onboardingStatus === 'approved_for_procurement' || onboardingStatus === 'verified' || onboardingStatus === 'VERIFIED';
@@ -525,7 +529,7 @@ export default function SellerOnboarding() {
       const regDetails = data.user?.registrationDetails || {};
       const profile = data.profile || {};
       setRegDetails(regDetails);
-      setSellerDocuments(profile.sellerDocuments || []);
+      setSellerDocuments(Array.isArray(profile.sellerDocuments) ? profile.sellerDocuments : []);
 
       const org = data.user?.organization || {};
       const orgVerified = org.verificationStatus === 'VERIFIED';
@@ -814,10 +818,13 @@ export default function SellerOnboarding() {
       if (res.ok) {
         toast.success('Document uploaded successfully.');
         if (data.document && data.asset) {
-          setSellerDocuments(current => [
-            ...current.filter((doc: any) => doc.documentType !== documentType),
-            { ...data.document, fileAsset: data.asset }
-          ]);
+          setSellerDocuments(current => {
+            const currentArray = Array.isArray(current) ? current : [];
+            return [
+              ...currentArray.filter((doc: any) => doc.documentType !== documentType),
+              { ...data.document, fileAsset: data.asset }
+            ];
+          });
         }
         await fetchProfile();
       } else {

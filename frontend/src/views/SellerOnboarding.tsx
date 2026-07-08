@@ -817,12 +817,14 @@ export default function SellerOnboarding() {
       const data = await res.json();
       if (res.ok) {
         toast.success('Document uploaded successfully.');
-        if (data.document && data.asset) {
+        api.invalidate('/api/auth/me');
+        const responseData = data?.data;
+        if (responseData && responseData.document && responseData.asset) {
           setSellerDocuments(current => {
             const currentArray = Array.isArray(current) ? current : [];
             return [
               ...currentArray.filter((doc: any) => doc.documentType !== documentType),
-              { ...data.document, fileAsset: data.asset }
+              { ...responseData.document, fileAsset: responseData.asset }
             ];
           });
         }
@@ -2249,7 +2251,7 @@ export default function SellerOnboarding() {
                             </p>
                           ) : (
                             <div className="flex flex-col items-center gap-2">
-                              {isSmsEnabled && user?.mobile ? (
+                              {user?.mobile ? (
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block text-center">Select OTP Channel</label>
                                   <div className="grid grid-cols-2 gap-2 bg-slate-100 p-0.5 rounded-lg w-48">
@@ -2265,7 +2267,7 @@ export default function SellerOnboarding() {
                                             : 'text-slate-500'
                                         }`}
                                       >
-                                        {ch === 'email' ? 'Email' : 'SMS'}
+                                        {ch === 'email' ? 'Email' : 'Phone'}
                                       </button>
                                     ))}
                                   </div>

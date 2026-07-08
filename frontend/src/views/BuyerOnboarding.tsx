@@ -1857,7 +1857,7 @@ export default function BuyerOnboarding() {
                     <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-500">Verification Required via OTP</p>
                       
-                      {isSmsEnabled && (user?.mobile || formData.mobile) ? (
+                      {(user?.mobile || formData.mobile) ? (
                         <div className="mt-2.5 space-y-2">
                           <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Select OTP Channel</label>
                           <div className="grid grid-cols-2 gap-2 bg-slate-100 p-0.5 rounded-lg max-w-xs">
@@ -1873,7 +1873,7 @@ export default function BuyerOnboarding() {
                                     : 'text-slate-500'
                                 }`}
                               >
-                                {ch === 'email' ? 'Email OTP' : 'SMS OTP'}
+                                {ch === 'email' ? 'Email OTP' : 'Phone OTP'}
                               </button>
                             ))}
                           </div>

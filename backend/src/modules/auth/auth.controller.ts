@@ -1375,7 +1375,7 @@ export const authController = {
         }));
       };
 
-      const profile = user.role === 'seller' ? user.sellerProfile : user.buyerProfile;
+      const profile = (user.role === 'seller' || user.role === 'shg') ? user.sellerProfile : user.buyerProfile;
       const enrichedProfile = profile
         ? { ...profile, documents: await enrichDocuments((profile as any).documents) }
         : profile;

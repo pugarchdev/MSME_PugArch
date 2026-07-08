@@ -158,7 +158,7 @@ export default function SellerOnboarding() {
   const getAuthHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
 
   const cachedMe = api.peek('/api/auth/me', { headers: getAuthHeaders() });
-  const isStale = !cachedMe || cachedMe.user?.role !== 'seller';
+  const isStale = !cachedMe || !(cachedMe.user?.role === 'seller' || cachedMe.user?.role === 'shg');
   const cachedProfile = isStale ? {} : (cachedMe?.profile || {});
   const cachedRegDetails = isStale ? {} : (cachedMe?.user?.registrationDetails || {});
   const orgVerified = !isStale && cachedMe?.user?.organization?.verificationStatus === 'VERIFIED';

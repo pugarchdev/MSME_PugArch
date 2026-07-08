@@ -1242,6 +1242,54 @@ export const authController = {
       });
       if (!user) return res.status(404).json({ message: 'Not found' });
 
+      // Auto-create BuyerProfile if buyer user has none (can happen after
+      // admin approval or edge-case flows that skip profile upsert).
+      if (user.role === 'buyer' && !user.buyerProfile) {
+        const reg = asObject(user.registrationDetails);
+        const org = user.organization || {} as any;
+        const sellerOffice = getPrimarySellerOffice(user.sellerProfile);
+        const orgName = firstValue(
+          org.organizationName, user.sellerProfile?.businessName,
+          reg.businessName, user.name
+        );
+        try {
+          const created = await prisma.buyerProfile.create({
+            data: {
+              userId: user.id,
+              organizationId: user.organizationId || org.id || null,
+              organizationName: orgName || 'Buyer Organization',
+              businessType: firstValue(org.organizationType, reg.businessType, 'Government Buyer'),
+              organizationType: firstValue(org.organizationType, reg.businessType) || null,
+              industry: firstValue(reg.industry) || null,
+              cin: firstValue(org.cinNumber, reg.cinNumber, reg.cin) || null,
+              pan: firstValue(org.panNumber, reg.pan) || null,
+              gst: firstValue(org.gstin, reg.gstin) || null,
+              website: firstValue(org.website, reg.website) || null,
+              state: firstValue(org.state, sellerOffice?.state, reg.state) || null,
+              district: firstValue(org.district, reg.district) || null,
+              city: firstValue(org.city, sellerOffice?.city, reg.city) || null,
+              pincode: firstValue(org.pincode, sellerOffice?.pincode, reg.pincode) || null,
+              registeredAddress: firstValue(org.addressLine1, sellerOffice?.address, reg.address) || null,
+              representativeName: firstValue(reg.accountName, user.name),
+              email: user.email,
+              mobile: firstValue(user.mobile, reg.mobile, '0000000000'),
+              procurementCategories: [],
+              preferredMethods: [],
+              declarationAccepted: false,
+              termsAccepted: false,
+            }
+          });
+          (user as any).buyerProfile = created;
+        } catch (autoCreateErr: any) {
+          // If unique constraint violation (profile created concurrently), re-fetch
+          if (autoCreateErr.code === 'P2002') {
+            (user as any).buyerProfile = await prisma.buyerProfile.findUnique({ where: { userId: user.id } });
+          } else {
+            console.error('[me] Auto-create BuyerProfile failed:', autoCreateErr);
+          }
+        }
+      }
+
       const getDocumentEntries = (documents: any) =>
         documents && typeof documents === 'object' && !Array.isArray(documents)
           ? Object.entries(documents as Record<string, any>)

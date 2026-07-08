@@ -269,6 +269,9 @@ export default function SellerOnboarding() {
   const [aadhaarData, setAadhaarData] = useState({ number: '', mobile: '', consent: false });
   const [emailData, setEmailData] = useState({ newEmail: '', verifyEmail: '' });
   const [regDetails, setRegDetails] = useState<any>(cachedRegDetails);
+  const [sellerDocuments, setSellerDocuments] = useState<any[]>(
+    Array.isArray(cachedProfile.sellerDocuments) ? cachedProfile.sellerDocuments : []
+  );
   const [sellerDocuments, setSellerDocuments] = useState<any[]>(Array.isArray(cachedProfile.sellerDocuments) ? cachedProfile.sellerDocuments : []);
   const [isUploadingMap, setIsUploadingMap] = useState<Record<string, boolean>>({});
   const savedSectionsStorageKey = `${SELLER_SAVED_SECTIONS_KEY_PREFIX}:${user?.id || user?.email || 'current'}`;
@@ -982,13 +985,13 @@ export default function SellerOnboarding() {
     try {
       // Simulate verification API call
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       const updatedFormData = {
         ...formData,
         nameAsInPan: formData.nameAsInPan || formData.businessName || "FETCHED NAME FROM PAN",
         panVerified: true
       };
-      
+
       setFormData(updatedFormData);
       toast.success('PAN details autofetched and verified');
 
@@ -1362,7 +1365,7 @@ export default function SellerOnboarding() {
 
                   {currentSection === 'details' && (
                     <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                      <AadhaarVerificationCard compact />
+                      {!regDetails?.isAadhaarVerified && <AadhaarVerificationCard compact />}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Input
                           label="Business / Organisation Name"
@@ -2242,7 +2245,7 @@ export default function SellerOnboarding() {
                             </p>
                           ) : (
                             <div className="flex flex-col items-center gap-2">
-                              {isSmsEnabled && user?.mobile ? (
+                              {user?.mobile ? (
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block text-center">Select OTP Channel</label>
                                   <div className="grid grid-cols-2 gap-2 bg-slate-100 p-0.5 rounded-lg w-48">
@@ -2252,13 +2255,12 @@ export default function SellerOnboarding() {
                                         type="button"
                                         disabled={ownershipOtpSent}
                                         onClick={() => setSubmissionChannel(ch)}
-                                        className={`py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${
-                                          submissionChannel === ch
+                                        className={`py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${submissionChannel === ch
                                             ? 'bg-white text-[#12335f] shadow-sm'
                                             : 'text-slate-500'
-                                        }`}
+                                          }`}
                                       >
-                                        {ch === 'email' ? 'Email' : 'SMS'}
+                                        {ch === 'email' ? 'Email' : 'Phone'}
                                       </button>
                                     ))}
                                   </div>

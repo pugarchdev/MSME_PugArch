@@ -961,12 +961,10 @@ export default function BuyerOnboarding() {
       return { valid: errorFields.length === 0, errorFields };
     }
     if (sectionId === 'docs') {
-      const orgRecord = cachedProfile?.user?.organization || {};
-      const orgVerified = orgRecord.verificationStatus === 'VERIFIED';
-      const isMissingPan = !orgVerified && selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
-      const isMissingReg = !orgVerified && selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
-      const isMissingGst = !orgVerified && selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
-      const isMissingAddr = !orgVerified && selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
+      const isMissingPan = selectedDocs.includes('panCard') && !hasUploadedDocument(formData.documents?.panCard);
+      const isMissingReg = selectedDocs.includes('regCert') && !hasUploadedDocument(formData.documents?.regCert);
+      const isMissingGst = selectedDocs.includes('gstCert') && !hasUploadedDocument(formData.documents?.gstCert);
+      const isMissingAddr = selectedDocs.includes('addressProof') && !hasUploadedDocument(formData.documents?.addressProof);
       const isMissingAuth = selectedDocs.includes('authLetter') && !hasUploadedDocument(formData.documents?.authLetter);
 
       setErrors(prev => ({
@@ -1558,9 +1556,11 @@ export default function BuyerOnboarding() {
 
                 {activeSection === 'rep' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="md:col-span-2">
-                      <AadhaarVerificationCard compact />
-                    </div>
+                    {!formData.aadhaarVerified && (
+                      <div className="md:col-span-2">
+                        <AadhaarVerificationCard compact />
+                      </div>
+                    )}
                     <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} maxLength={100} required className="h-10" />
                     <div className="space-y-3">
                       <Select label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} required className="h-10">
@@ -1779,8 +1779,8 @@ export default function BuyerOnboarding() {
                         const isFieldUploading = isUploading === `documents.${doc.field}`;
                         const displayLabel = isRequired ? `${doc.label} (Required)` : `${doc.label} (Optional)`;
                         const isOrgDoc = ['panCard', 'regCert', 'gstCert', 'addressProof'].includes(doc.field);
-                        const isVerifiedOrgDoc = orgVerified && isOrgDoc;
-                        const isInvalid = submitAttempted && isRequired && !hasFile && !isVerifiedOrgDoc;
+                        const isVerifiedOrgDoc = false;
+                        const isInvalid = submitAttempted && isRequired && !hasFile;
 
                         return (
                           <div
@@ -1855,7 +1855,7 @@ export default function BuyerOnboarding() {
                     <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-500">Verification Required via OTP</p>
                       
-                      {isSmsEnabled && (user?.mobile || formData.mobile) ? (
+                      {(user?.mobile || formData.mobile) ? (
                         <div className="mt-2.5 space-y-2">
                           <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Select OTP Channel</label>
                           <div className="grid grid-cols-2 gap-2 bg-slate-100 p-0.5 rounded-lg max-w-xs">
@@ -1871,7 +1871,7 @@ export default function BuyerOnboarding() {
                                     : 'text-slate-500'
                                 }`}
                               >
-                                {ch === 'email' ? 'Email OTP' : 'SMS OTP'}
+                                {ch === 'email' ? 'Email OTP' : 'Phone OTP'}
                               </button>
                             ))}
                           </div>

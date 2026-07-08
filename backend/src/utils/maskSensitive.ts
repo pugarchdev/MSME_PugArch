@@ -50,17 +50,17 @@ export const maskAadhaar = (value: unknown) => maskValue(compact(value), 4);
 export const maskBankAccount = (value: unknown) => maskValue(String(value ?? '').replace(/\s+/g, ''), 4);
 
 export const maskSensitive = <T>(input: T): T => {
-  const seen = new WeakSet();
-
-  const mask = (val: any): any => {
+  const mask = (val: any, stack = new Set<any>()): any => {
     if (!val || typeof val !== 'object') return val;
     if (val instanceof Date) return val;
     if (val.constructor && (val.constructor.name === 'Decimal' || val._isDecimal === true || (typeof val.toNumber === 'function' && typeof val.toFixed === 'function'))) return val;
     
-    if (seen.has(val)) return '[Circular]';
-    seen.add(val);
+    if (stack.has(val)) return '[Circular]';
+    
+    const newStack = new Set(stack);
+    newStack.add(val);
 
-    if (Array.isArray(val)) return val.map(item => mask(item));
+    if (Array.isArray(val)) return val.map(item => mask(item, newStack));
 
     return Object.entries(val).reduce<Record<string, unknown>>((acc, [key, value]) => {
       if (passthroughKeys.has(key)) {
@@ -72,7 +72,7 @@ export const maskSensitive = <T>(input: T): T => {
       } else if (sensitiveKeys.has(key) || /password|secret|token/i.test(key)) {
         acc[key] = value ? maskValue(value) : value;
       } else {
-        acc[key] = mask(value);
+        acc[key] = mask(value, newStack);
       }
       return acc;
     }, {});

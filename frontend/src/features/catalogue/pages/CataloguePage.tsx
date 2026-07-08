@@ -17,7 +17,7 @@ import { EntityIdLink } from '../../shared/EntityIdLink';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import type { CatalogueItemDto, CategoryDto } from '../../shared/types';
 import { GstTaxPicker, calculateGstBreakdown } from '../../shared/gstTax';
-import { catalogueApi } from '../api';
+import { catalogueApi, downloadCatalogueFile } from '../api';
 import { getFileAssetPreview, type DocumentPreview, openFileAsset } from '../../../lib/files';
 import { DocumentPreviewModal } from '../../../components/DocumentPreviewModal';
 import { QUANTITY_UNITS, ITEM_CONDITIONS } from '../../../constants/dropdowns';
@@ -128,14 +128,12 @@ const uploadCatalogueAsset = async (file: File) => {
     fd.append('file', file);
     return fd;
   };
-  const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
   const endpoints = ['/api/catalogue/upload', '/api/upload?entityType=catalogue'];
   let lastError = '';
 
   for (const endpoint of endpoints) {
     const res = await api.fetch(endpoint, {
       method: 'POST',
-      headers,
       body: buildBody()
     });
     const data = await res.json().catch(() => ({}));
@@ -401,13 +399,21 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     }
   }, [mode]);
 
-  const loadCatalogue = useCallback(async () => {
+  const loadCatalogue = useCallback(async (skipCache = false) => {
     setLoading(true);
     setError(null);
     try {
       const [productRows, serviceRows, categoriesData] = await Promise.all([
-        mode === 'seller' ? catalogueApi.sellerProducts() : mode === 'admin' ? catalogueApi.adminProducts() : catalogueApi.searchProducts(),
-        mode === 'seller' ? catalogueApi.sellerServices() : mode === 'admin' ? catalogueApi.adminServices() : catalogueApi.searchServices(),
+        mode === 'seller'
+          ? catalogueApi.sellerProducts(skipCache)
+          : mode === 'admin'
+            ? catalogueApi.adminProducts({}, skipCache)
+            : catalogueApi.searchProducts({}, skipCache),
+        mode === 'seller'
+          ? catalogueApi.sellerServices(skipCache)
+          : mode === 'admin'
+            ? catalogueApi.adminServices({}, skipCache)
+            : catalogueApi.searchServices({}, skipCache),
         catalogueApi.categories()
       ]);
       let normProducts = normalizeList<CatalogueItemDto>(productRows).map(item => ({ ...item, itemKind: 'product' as const }));
@@ -425,16 +431,16 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
     } finally {
       setLoading(false);
     }
-  }, [loadBuyerActions, mode]);
+  }, [loadBuyerActions, mode, user]);
 
   useEffect(() => {
     void loadCatalogue();
   }, [loadCatalogue]);
 
-  const loadImportHistory = useCallback(async () => {
+  const loadImportHistory = useCallback(async (skipCache = false) => {
     if (mode !== 'seller') return;
     try {
-      const rows = await catalogueApi.importHistory();
+      const rows = await catalogueApi.importHistory(skipCache);
       setImportHistory(normalizeList<ImportBatchDto>(rows));
     } catch {
       // non-blocking
@@ -461,7 +467,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       if (item.itemKind === 'product') await catalogueApi.duplicateProduct(item.id);
       else await catalogueApi.duplicateService(item.id);
       toast.success(`${item.itemKind === 'product' ? 'Product' : 'Service'} duplicated as draft`);
-      await loadCatalogue();
+      await loadCatalogue(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Duplicate failed');
     }
@@ -473,7 +479,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       if (item.itemKind === 'product') await catalogueApi.setProductStatus(item.id, next);
       else await catalogueApi.setServiceStatus(item.id, next);
       toast.success(next === 'ACTIVE' ? 'Published to marketplace' : 'Deactivated');
-      await loadCatalogue();
+      await loadCatalogue(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Status update failed');
     }
@@ -725,15 +731,14 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
   return (
     <div className="space-y-6 min-w-0">
       {/* Premium Dashboard Banner Header */}
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0c1a30] via-[#122b4f] to-[#1d447d] p-6 text-white shadow-lg relative">
-        <div className="absolute right-0 top-0 h-40 w-40 bg-emerald-500/10 rounded-full blur-3xl" />
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 text-slate-800 shadow-sm relative">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between relative z-10">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#12335f]">
               <Store className="h-3.5 w-3.5" /> {title}
             </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">Marketplace Catalogue</h1>
-            <p className="mt-1 text-xs font-semibold text-white/70">{subtitle}</p>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-900">Marketplace Catalogue</h1>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{subtitle}</p>
           </div>
           
           <div className="flex flex-wrap gap-2.5">
@@ -742,32 +747,21 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                 <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border-0 px-4">
                   <PackagePlus className="mr-2 h-4 w-4" /> Add Product
                 </Button>
-                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white shadow-md border-0 px-4">
+                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-[#12335f] hover:bg-[#0b2447] text-white shadow-md border-0 px-4">
                   <Wrench className="mr-2 h-4 w-4" /> Add Service
                 </Button>
-                <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10">
+                <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                   <FileUp className="mr-2 h-4 w-4" /> Import
                 </Button>
                 <Button disabled={!sellerApproved} variant="outline" onClick={() => {
-                  const path = '/api/catalogue/import/templates/products';
-                  const token = localStorage.getItem('token') || '';
-                  fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
-                    .then(r => r.blob())
-                    .then(blob => {
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'catalogue_products_template.xlsx';
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    })
+                  downloadCatalogueFile('/api/catalogue/import/templates/products', 'catalogue_products_template.xlsx')
                     .catch(() => toast.error('Template download failed'));
-                }} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10" title="Download Product Template">
+                }} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50" title="Download Product Template">
                   <Download className="mr-2 h-4 w-4" /> Template
                 </Button>
               </>
             )}
-            <Button variant="outline" onClick={loadCatalogue} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-white/15 bg-white/5 text-white hover:bg-white/10 backdrop-blur-sm">
+            <Button variant="outline" onClick={() => loadCatalogue(true)} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
             <ViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -1195,7 +1189,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
           kind={importKind}
           open={Boolean(importKind)}
           onClose={() => setImportKind(null)}
-          onComplete={() => { void loadCatalogue(); void loadImportHistory(); }}
+          onComplete={() => { void loadCatalogue(true); void loadImportHistory(true); }}
         />
       )}
       {mode === 'seller' && importHistory.length > 0 && (
@@ -1220,19 +1214,13 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                     <td className="py-2 pr-3"><Badge>{batch.status}</Badge></td>
                     <td className="py-2 pr-3">{formatDateTime(batch.createdAt)}</td>
                     <td className="py-2">
-                      {batch.invalidRows > 0 && (
+                      {batch.invalidRows > 0 ? (
                         <button type="button" className="text-[10px] font-black uppercase text-red-700 hover:underline" onClick={() => {
-                          const token = localStorage.getItem('token') || '';
-                          fetch(`${BASE_URL}/api/catalogue/import/${batch.id}/errors/download`, { headers: { Authorization: `Bearer ${token}` } })
-                            .then(r => r.blob()).then(blob => {
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `import_errors_${batch.id}.xlsx`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            }).catch(() => toast.error('Download failed'));
+                          downloadCatalogueFile(`/api/catalogue/import/${batch.id}/errors/download`, `import_errors_${batch.id}.xlsx`)
+                            .catch(() => toast.error('Download failed'));
                         }}>Errors</button>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase">✔ Success</span>
                       )}
                     </td>
                   </tr>
@@ -2261,7 +2249,6 @@ function PurchaseBidModal({ item, actionState, onActionCreated, onClose }: {
       formData.append('file', optimizedFile);
       const res = await api.fetch('/api/upload', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData
       });
       if (res.ok) {

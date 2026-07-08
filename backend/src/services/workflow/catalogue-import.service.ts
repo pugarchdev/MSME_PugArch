@@ -15,11 +15,77 @@ const parseUrls = (value: unknown): string[] => {
     .filter(u => u && (u.startsWith('http://') || u.startsWith('https://')));
 };
 
+type DownloadedFileType = {
+  ext: string;
+  mimeType: string;
+  resourceKind: 'image' | 'document';
+};
+
+const downloadedFileTypes: DownloadedFileType[] = [
+  { ext: '.pdf', mimeType: 'application/pdf', resourceKind: 'document' },
+  { ext: '.jpg', mimeType: 'image/jpeg', resourceKind: 'image' },
+  { ext: '.jpeg', mimeType: 'image/jpeg', resourceKind: 'image' },
+  { ext: '.png', mimeType: 'image/png', resourceKind: 'image' },
+  { ext: '.doc', mimeType: 'application/msword', resourceKind: 'document' },
+  { ext: '.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', resourceKind: 'document' },
+  { ext: '.xls', mimeType: 'application/vnd.ms-excel', resourceKind: 'document' },
+  { ext: '.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resourceKind: 'document' },
+  { ext: '.csv', mimeType: 'text/csv', resourceKind: 'document' }
+];
+
+const fileTypeForMime = (mimeType: string) =>
+  downloadedFileTypes.find(type => type.mimeType === mimeType);
+
+const fileTypeForExtension = (ext: string) =>
+  downloadedFileTypes.find(type => type.ext === ext.toLowerCase());
+
+const detectDownloadedFileType = (buffer: Buffer, declaredMime: string): DownloadedFileType | null => {
+  const normalizedMime = declaredMime.split(';')[0].trim().toLowerCase();
+  if (buffer.subarray(0, 4).equals(Buffer.from([0x25, 0x50, 0x44, 0x46]))) return fileTypeForMime('application/pdf') || null;
+  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return fileTypeForMime('image/jpeg') || null;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return fileTypeForMime('image/png') || null;
+  if (buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
+    const archiveIndex = buffer.toString('latin1');
+    if (archiveIndex.includes('[Content_Types].xml') || archiveIndex.includes('word/')) {
+      return fileTypeForMime('application/vnd.openxmlformats-officedocument.wordprocessingml.document') || null;
+    }
+    if (archiveIndex.includes('xl/')) {
+      return fileTypeForMime('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') || null;
+    }
+  }
+  if (buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) {
+    return normalizedMime === 'application/vnd.ms-excel'
+      ? fileTypeForMime('application/vnd.ms-excel') || null
+      : fileTypeForMime('application/msword') || null;
+  }
+
+  const sample = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8').trim().toLowerCase();
+  if (sample.startsWith('<!doctype html') || sample.startsWith('<html')) return null;
+  if (/^[\u0009\u000a\u000d\u0020-\u007e]+$/.test(sample) && sample.includes(',')) return fileTypeForMime('text/csv') || null;
+  return fileTypeForMime(normalizedMime) || null;
+};
+
+const fileNameForDownloadedUrl = (url: string, detectedType: DownloadedFileType) => {
+  let originalName = `imported_file${detectedType.ext}`;
+  try {
+    const basename = path.basename(new URL(url).pathname) || originalName;
+    const ext = path.extname(basename).toLowerCase();
+    const extensionType = fileTypeForExtension(ext);
+    originalName = extensionType?.mimeType === detectedType.mimeType
+      ? basename
+      : `${path.basename(basename, ext) || 'imported_file'}${detectedType.ext}`;
+  } catch {
+    // Keep generated fallback name.
+  }
+  return originalName;
+};
+
 async function downloadAndUploadUrl(
   url: string,
   userId: number,
   role: string,
-  entityType: 'catalogue_product' | 'catalogue_service'
+  entityType: 'catalogue_product' | 'catalogue_service',
+  expectedKind: 'image' | 'document'
 ) {
   try {
     const res = await fetch(url);
@@ -34,22 +100,21 @@ async function downloadAndUploadUrl(
       return null;
     }
 
-    const contentType = res.headers.get('content-type') || 'application/octet-stream';
-    let originalName = 'imported_file';
-    try {
-      originalName = path.basename(new URL(url).pathname) || 'imported_file';
-    } catch (e) {
-      // Ignore
+    const detectedType = detectDownloadedFileType(buffer, res.headers.get('content-type') || 'application/octet-stream');
+    if (!detectedType) {
+      console.warn(`[Catalogue Import] Skipped URL with unsupported or invalid file content: ${url}`);
+      return null;
     }
-    if (!path.extname(originalName)) {
-      const ext = contentType.includes('jpeg') ? '.jpg' : (contentType.includes('png') ? '.png' : (contentType.includes('pdf') ? '.pdf' : '.bin'));
-      originalName += ext;
+    if (detectedType.resourceKind !== expectedKind) {
+      console.warn(`[Catalogue Import] Skipped ${expectedKind} URL with ${detectedType.resourceKind} content: ${url}`);
+      return null;
     }
+    const originalName = fileNameForDownloadedUrl(url, detectedType);
 
     const mockFile: Express.Multer.File = {
       buffer,
       originalname: originalName,
-      mimetype: contentType,
+      mimetype: detectedType.mimeType,
       size: buffer.length,
       fieldname: 'file',
       encoding: '7bit',
@@ -67,7 +132,7 @@ async function downloadAndUploadUrl(
 
     return asset.id;
   } catch (err: any) {
-    console.error(`[Catalogue Import] Error downloading/uploading file from URL ${url}:`, err);
+    console.warn(`[Catalogue Import] Skipped URL ${url}: ${err?.message || 'download/upload failed'}`);
     return null;
   }
 }
@@ -360,7 +425,7 @@ export const catalogueImportService = {
 
       const imageIds: number[] = [];
       const imageResults = await Promise.all(
-        imageUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, 'catalogue_product'))
+        imageUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, 'catalogue_product', 'image'))
       );
       for (const id of imageResults) {
         if (id) imageIds.push(id);
@@ -368,7 +433,7 @@ export const catalogueImportService = {
 
       const documentIds: number[] = [];
       const docResults = await Promise.all(
-        docUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, type === 'PRODUCT' ? 'catalogue_product' : 'catalogue_service'))
+        docUrls.map(url => downloadAndUploadUrl(url, actor.id, actor.role, type === 'PRODUCT' ? 'catalogue_product' : 'catalogue_service', 'document'))
       );
       for (const id of docResults) {
         if (id) documentIds.push(id);

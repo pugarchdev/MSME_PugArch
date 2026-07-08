@@ -3,23 +3,9 @@ import React, { useRef, useState } from 'react';
 import { Download, FileUp, Loader2, Upload, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
-import { catalogueApi, type ImportPreviewResult } from '../api';
-import { BASE_URL } from '../../../lib/api';
+import { catalogueApi, downloadCatalogueFile, type ImportPreviewResult } from '../api';
 
 type ImportKind = 'product' | 'service';
-
-const downloadWithAuth = async (path: string, filename: string) => {
-  const token = localStorage.getItem('token') || '';
-  const res = await fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error('Download failed');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-};
 
 export function CatalogueImportModal({ kind, open, onClose, onComplete }: {
   kind: ImportKind;
@@ -103,7 +89,7 @@ export function CatalogueImportModal({ kind, open, onClose, onComplete }: {
               type="button"
               variant="outline"
               className="mt-3 h-8 text-[10px] font-black uppercase"
-              onClick={() => downloadWithAuth(
+              onClick={() => downloadCatalogueFile(
                 kind === 'product' ? '/api/catalogue/import/templates/products' : '/api/catalogue/import/templates/services',
                 kind === 'product' ? 'catalogue_products_template.xlsx' : 'catalogue_services_template.xlsx'
               ).catch(() => toast.error('Template download failed'))}
@@ -157,7 +143,7 @@ export function CatalogueImportModal({ kind, open, onClose, onComplete }: {
                       type="button"
                       variant="outline"
                       className="h-7 text-[10px]"
-                      onClick={() => downloadWithAuth(`/api/catalogue/import/${preview.batchId}/errors/download`, `import_errors_${preview.batchId}.xlsx`).catch(() => toast.error('Error report download failed'))}
+                      onClick={() => downloadCatalogueFile(`/api/catalogue/import/${preview.batchId}/errors/download`, `import_errors_${preview.batchId}.xlsx`).catch(() => toast.error('Error report download failed'))}
                     >
                       <Download className="mr-1 h-3 w-3" /> Error Report
                     </Button>

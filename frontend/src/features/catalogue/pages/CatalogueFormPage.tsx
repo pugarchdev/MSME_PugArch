@@ -109,17 +109,18 @@ const uploadedAssetIds = (assets: any[]) =>
   Array.from(new Set(assets.map(asset => fileIdOf(asset)).filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0)));
 
 const uploadCatalogueAsset = async (file: File) => {
-  const fd = new FormData();
-  fd.append('file', file);
-  const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
+  const buildBody = () => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return fd;
+  };
   const endpoints = ['/api/catalogue/upload', '/api/upload?entityType=catalogue'];
   let lastError = '';
 
   for (const endpoint of endpoints) {
     const res = await api.fetch(endpoint, {
       method: 'POST',
-      headers,
-      body: fd
+      body: buildBody()
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return normalizeUploadedAsset(data, file);
@@ -441,42 +442,41 @@ export default function CatalogueFormPage() {
   return (
     <div className="space-y-6 min-w-0">
       {/* Premium Gradient Banner Header */}
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0c1a30] via-[#122b4f] to-[#1d447d] p-6 text-white shadow-lg relative">
-        <div className="absolute right-0 top-0 h-40 w-40 bg-emerald-500/10 rounded-full blur-3xl" />
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 text-slate-800 shadow-sm relative">
         <button
           type="button"
           onClick={handleCancel}
-          className="group flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-white/80 transition-colors hover:text-white"
+          className="group flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 transition-colors hover:text-slate-900"
         >
           <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
           Back to Catalogue
         </button>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between relative z-10">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#12335f]">
               <Sparkles className="h-3.5 w-3.5" /> {kind === 'product' ? 'product onboarding' : 'service onboarding'}
             </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h1>
-            <p className="mt-2 text-xs font-semibold text-white/70">{descriptionText}</p>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-900">{title}</h1>
+            <p className="mt-2 text-xs font-semibold text-slate-500">{descriptionText}</p>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-white/15 bg-white/10 p-3 text-xs backdrop-blur-md sm:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
+          <div className="grid gap-2 rounded-2xl border border-slate-200/80 bg-slate-50 p-3 text-xs sm:grid-cols-3 text-slate-700">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">
                 <Package className="h-3.5 w-3.5" /> {kind === 'product' ? 'SKU' : 'Scope'}
               </div>
-              <p className="mt-1 text-xs font-bold text-white">Ready to publish</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Ready to publish</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verification
               </div>
-              <p className="mt-1 text-xs font-bold text-white">Fast review</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Fast review</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/80">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">
                 <BadgeCheck className="h-3.5 w-3.5" /> Buyer ready
               </div>
-              <p className="mt-1 text-xs font-bold text-white">RFQ enabled</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">RFQ enabled</p>
             </div>
           </div>
         </div>

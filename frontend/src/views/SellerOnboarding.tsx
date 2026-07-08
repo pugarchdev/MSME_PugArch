@@ -381,7 +381,9 @@ export default function SellerOnboarding() {
       { id: 'address_proof', label: 'Address Proof', required: true, category: 'mandatory' }
     ];
 
-    const selectedDocs = Array.isArray(regDetails.selectedDocuments) ? regDetails.selectedDocuments : [];
+    const buyerDocIds = ['panCard', 'regCert', 'gstCert', 'addressProof', 'authLetter'];
+    const selectedDocs = (Array.isArray(regDetails.selectedDocuments) ? regDetails.selectedDocuments : [])
+      .filter((id: string) => !buyerDocIds.includes(id));
     const selectedDocLabels: Record<string, string> = {
       pan_copy: 'PAN Card Copy',
       bank_passbook: 'Bank Passbook / Cancelled Cheque',

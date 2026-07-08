@@ -2625,6 +2625,12 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
 
     if (password || rawData.email || rawData.mobile || rawData.dob) {
       const updateData: any = {};
+      // Fetch the current user's credentials once so we can skip duplicate checks
+      // when the submitted email/mobile matches what's already stored (e.g. buyer-turned-seller).
+      const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, mobile: true }
+      });
       if (password) {
         const passwordValidation = validatePasswordStrength(String(password));
         if (!passwordValidation.ok) {
@@ -2637,21 +2643,27 @@ app.post('/api/seller/register', authenticate, authorize('seller'), async (req: 
       }
       if (rawData.email) {
         const newEmail = String(rawData.email).trim().toLowerCase();
-        const existingEmail = await prisma.user.findFirst({
-          where: { email: newEmail },
-          select: { id: true }
-        });
-        if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
-        updateData.email = newEmail;
+        // Only validate and update if the email is genuinely different from the current user's email.
+        if (newEmail !== (currentUser?.email || '').toLowerCase()) {
+          const existingEmail = await prisma.user.findFirst({
+            where: { email: newEmail },
+            select: { id: true }
+          });
+          if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+          updateData.email = newEmail;
+        }
       }
       if (rawData.mobile) {
         const newMobile = String(rawData.mobile).trim();
-        const existingMobile = await prisma.user.findFirst({
-          where: { mobile: newMobile },
-          select: { id: true }
-        });
-        if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
-        updateData.mobile = newMobile;
+        // Only validate and update if the mobile is genuinely different from the current user's mobile.
+        if (newMobile !== (currentUser?.mobile || '').trim()) {
+          const existingMobile = await prisma.user.findFirst({
+            where: { mobile: newMobile },
+            select: { id: true }
+          });
+          if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
+          updateData.mobile = newMobile;
+        }
       }
       if (rawData.dob && !isNaN(Date.parse(rawData.dob))) updateData.dob = new Date(rawData.dob);
       await prisma.user.update({ where: { id: userId }, data: updateData });
@@ -3609,21 +3621,30 @@ app.post('/api/buyer/register', authenticate, authorize('buyer'), async (req: Au
       }
       if (rawData.email) {
         const newEmail = String(rawData.email).trim().toLowerCase();
-        const existingEmail = await prisma.user.findFirst({
-          where: { email: newEmail },
-          select: { id: true }
-        });
-        if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
-        updateData.email = newEmail;
+        // Only validate and update if the submitted email is different from the current user's email.
+        // The buyer profile's representative email (rawData.email) should not trigger a duplicate
+        // error when a seller-turned-buyer submits their own registered email.
+        if (newEmail !== (existingUser.email || '').toLowerCase()) {
+          const existingEmail = await prisma.user.findFirst({
+            where: { email: newEmail },
+            select: { id: true }
+          });
+          if (existingEmail && existingEmail.id !== userId) return res.status(409).json({ message: 'Email address already in use. Please use unique details.' });
+          updateData.email = newEmail;
+        }
       }
       if (rawData.mobile) {
         const newMobile = String(mobile).trim();
-        const existingMobile = await prisma.user.findFirst({
-          where: { mobile: newMobile },
-          select: { id: true }
-        });
-        if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
-        updateData.mobile = newMobile;
+        // Only validate and update if the submitted mobile is different from the current user's mobile.
+        // Avoids false "already in use" errors for seller-turned-buyer using their own registered mobile.
+        if (newMobile !== (existingUser.mobile || '').trim()) {
+          const existingMobile = await prisma.user.findFirst({
+            where: { mobile: newMobile },
+            select: { id: true }
+          });
+          if (existingMobile && existingMobile.id !== userId) return res.status(409).json({ message: 'Mobile number already in use. Please use unique details.' });
+          updateData.mobile = newMobile;
+        }
       }
       await prisma.user.update({ where: { id: userId }, data: updateData });
     }

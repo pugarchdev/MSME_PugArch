@@ -161,16 +161,36 @@ const scanFileForMalware = async (_file: Express.Multer.File) => {
 const providerFor = (name: StorageProviderName): StorageProvider =>
   name === 'gcp' ? gcpStorageProvider : cloudinaryStorageProvider;
 
+const isPublicCatalogueAsset = async (fileAssetId: number) => {
+  const [productImage, certification] = await Promise.all([
+    prisma.productImage.findFirst({
+      where: { fileAssetId, product: { status: 'ACTIVE' as any } },
+      select: { id: true }
+    }).catch(() => null),
+    prisma.certification.findFirst({
+      where: {
+        fileAssetId,
+        OR: [
+          { product: { status: 'ACTIVE' as any } },
+          { service: { status: 'ACTIVE' as any } }
+        ]
+      },
+      select: { id: true }
+    }).catch(() => null)
+  ]);
+  return Boolean(productImage || certification);
+};
+
 export const canAccessFileAsset = async (asset: any, user: { id: number; role: string }) => {
   if (user.role === 'admin' || user.role === 'master_admin') return true;
   if (asset.ownerId === user.id) return true;
+  if (['catalogue', 'catalogue_product', 'catalogue_service'].includes(asset.entityType) || await isPublicCatalogueAsset(asset.id)) return true;
   if (!asset.entityId) return false;
 
   if (asset.entityType === 'tender') return checkOwnership('tender', asset.entityId, user);
   if (asset.entityType === 'bid') return checkOwnership('bid', asset.entityId, user);
   if (asset.entityType === 'quote') return checkOwnership('quote', asset.entityId, user);
   if (asset.entityType === 'procurement_checkout') return asset.ownerId === user.id;
-  if (['catalogue', 'catalogue_product', 'catalogue_service'].includes(asset.entityType)) return true;
   if (asset.entityType === 'procurement_bid') {
     const doc = await prisma.procurementBidDocument.findFirst({
       where: { fileAssetId: asset.id },

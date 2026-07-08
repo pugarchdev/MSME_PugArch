@@ -4,6 +4,9 @@ import { Input } from '../../../../components/ui/input';
 import { SearchableSelect } from '../common/SearchableSelect';
 import { DELIVERY_PERIOD_OPTIONS, INSPECTION_TYPE_OPTIONS } from '../../constants';
 
+const RequiredMark = ({ required }: { required?: boolean }) =>
+  required ? <span className="ml-0.5 text-red-600">*</span> : null;
+
 export default function Step3_ConsigneeDelivery({
   consignee,
   delivery,
@@ -31,13 +34,13 @@ export default function Step3_ConsigneeDelivery({
         </div>
         {['consigneeName', 'consigneeDesignation', 'consigneeMobile', 'consigneeEmail'].map(field => (
           <div key={field} className="space-y-1">
-            <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}</label>
+            <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}<RequiredMark required={field === 'consigneeName'} /></label>
             <Input value={String(consignee[field] || '')} onChange={e => onConsigneeChange(field, e.target.value)} />
           </div>
         ))}
         {['deliveryAddress', 'district', 'taluka', 'city', 'pinCode'].map(field => (
           <div key={field} className="space-y-1">
-            <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}</label>
+            <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}<RequiredMark required={field === 'deliveryAddress' || field === 'pinCode'} /></label>
             <Input
               value={String(delivery[field] || consignee[field] || '')}
               onChange={e => onDeliveryChange(field, e.target.value)}

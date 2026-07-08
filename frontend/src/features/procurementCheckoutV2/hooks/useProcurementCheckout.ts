@@ -133,6 +133,10 @@ export function useProcurementCheckout() {
   };
 
   const saveDraft = async () => {
+    if (!formData.selectedMethod) {
+      toast.info('Select procurement method in Step 4 before saving this checkout as a draft.');
+      return;
+    }
     setIsSavingDraft(true);
     try {
       const id = await ensureRequest();

@@ -93,7 +93,7 @@ const roleBadgeClass = 'border-slate-200 bg-slate-50 text-slate-700';
 export default function TeamManagementPage() {
     const { user } = useAuth();
     const { orgRole, orgStatus } = useOrgRole();
-    const { hasPermission } = usePermissions();
+    const { hasPermission, loading: permissionsLoading } = usePermissions();
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [editingMember, setEditingMember] = useState<Member | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -123,11 +123,12 @@ export default function TeamManagementPage() {
     const roles = Array.isArray(rolesData) ? rolesData : [];
     const transfers = Array.isArray(transfersData) ? transfersData : [];
     const permissionGroups = catalogData?.grouped || {};
-    const canViewTeam = hasPermission('team.member.view');
-    const canInviteTeam = hasPermission('team.member.invite');
-    const canManageRoles = hasPermission('team.role.manage');
+    const isOrgAdmin = orgRole === 'ORG_ADMIN';
+    const canViewTeam = isOrgAdmin || hasPermission('team.member.view');
+    const canInviteTeam = isOrgAdmin || hasPermission('team.member.invite');
+    const canManageRoles = isOrgAdmin || hasPermission('team.role.manage');
     const canAssignRoles = hasPermission('team.role.assign') || canManageRoles;
-    const canDisableMembers = hasPermission('team.member.disable');
+    const canDisableMembers = isOrgAdmin || hasPermission('team.member.disable');
     const roleOptions = useMemo(() => {
         const labels = new Map<string, string>();
         members.forEach(member => {
@@ -258,6 +259,10 @@ export default function TeamManagementPage() {
             )}
         </>
     );
+
+    if (permissionsLoading) {
+        return <LoadingState label="Checking team access..." />;
+    }
 
     if (!canViewTeam) {
         return (

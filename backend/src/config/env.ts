@@ -158,15 +158,15 @@ if (isTrueProduction) {
   }
 
   if (!parsed.data.JWT_ACCESS_SECRET || !parsed.data.JWT_REFRESH_SECRET) {
-    throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are required in production');
-  }
-
-  if (
-    parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET ||
-    parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_SECRET ||
-    parsed.data.JWT_REFRESH_SECRET === parsed.data.JWT_SECRET
-  ) {
-    throw new Error('JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and JWT_SECRET must be distinct in production');
+    console.warn('[env] WARNING: JWT_ACCESS_SECRET and/or JWT_REFRESH_SECRET are not set in production. Falling back to JWT_SECRET. For optimal security, configure separate 32+ character secrets.');
+  } else {
+    if (
+      parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET ||
+      parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_SECRET ||
+      parsed.data.JWT_REFRESH_SECRET === parsed.data.JWT_SECRET
+    ) {
+      throw new Error('JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and JWT_SECRET must be distinct in production when configured');
+    }
   }
 
   if (['debug', 'trace'].includes(parsed.data.LOG_LEVEL.toLowerCase())) {

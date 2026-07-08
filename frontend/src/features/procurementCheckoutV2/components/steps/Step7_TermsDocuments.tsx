@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { FileText, Trash2, Upload } from 'lucide-react';
+import { Eye, FileText, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { Input } from '../../../../components/ui/input';
+import { openFileAsset } from '../../../../lib/files';
 import { uploadProcurementDocument } from '../../api';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -19,6 +19,11 @@ interface UploadedDoc {
 }
 
 const DOCUMENT_CATEGORIES = [
+  {
+    key: 'Terms and Conditions Document',
+    label: 'Terms and Conditions Document',
+    description: 'Delivery, payment, warranty, inspection, delay penalty, and additional contract terms',
+  },
   { key: 'Approval Document', label: 'Approval Document', description: 'Administrative approval or sanction order' },
   { key: 'L1 Comparison Sheet', label: 'L1 Comparison Sheet', description: 'L1 price comparison document' },
   { key: 'PAC Certificate', label: 'PAC Certificate', description: 'Proprietary Article Certificate' },
@@ -104,25 +109,37 @@ function DocumentUploadZone({
             >
               <span className="inline-flex min-w-0 items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-slate-500" />
-                <a
-                  href={`/api/files/${doc.fileAssetId}/view`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="truncate text-[#12335f] hover:underline"
-                >
-                  {doc.fileName}
-                </a>
+                <span className="truncate text-[#12335f]">{doc.fileName}</span>
                 <span className="shrink-0 text-slate-400">
                   ({(doc.fileSize / 1024).toFixed(0)} KB)
                 </span>
               </span>
-              <button
-                type="button"
-                onClick={() => onRemove(idx)}
-                className="text-slate-400 hover:text-red-600"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    openFileAsset({
+                      id: doc.fileAssetId,
+                      fileAssetId: doc.fileAssetId,
+                      originalName: doc.fileName,
+                      mimeType: doc.mimeType,
+                    }, doc.fileName).catch(err => {
+                      toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                    });
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-[#12335f] hover:bg-slate-100"
+                >
+                  <Eye className="h-3.5 w-3.5" /> View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(idx)}
+                  className="text-slate-400 hover:text-red-600"
+                  aria-label={`Remove ${doc.fileName}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -163,32 +180,19 @@ export default function Step7_TermsDocuments({
     <div className="space-y-5">
       <h2 className="text-lg font-black text-slate-950">Step 7 — Terms & Documents</h2>
 
-      {/* Terms text fields */}
-      {['deliveryTerms', 'paymentTerms', 'warrantyTerms', 'inspectionTerms', 'delayPenaltyDetails', 'additionalTerms'].map(field => (
-        <div key={field} className="space-y-1">
-          <label className="text-xs font-bold">{field.replace(/([A-Z])/g, ' $1')}</label>
-          <textarea
-            rows={2}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-            value={String(data[field] || '')}
-            onChange={e => onChange(field, e.target.value)}
-          />
-        </div>
-      ))}
-
-      <div className="space-y-1">
-        <label className="text-xs font-bold">Liquidated Damages / Delay Penalty Applicable</label>
-        <Input
-          value={String(data.delayPenaltyApplicable || 'No')}
-          onChange={e => onChange('delayPenaltyApplicable', e.target.value)}
-        />
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <h3 className="text-sm font-black text-slate-900">Terms and conditions upload</h3>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Upload one document containing delivery terms, payment terms, warranty terms, inspection terms,
+          liquidated damages, delay penalty details, and any additional procurement clauses.
+        </p>
       </div>
 
       {/* Document Upload Section */}
       <div className="border-t border-slate-200 pt-5">
         <h3 className="mb-1 text-sm font-black text-slate-900">Upload Procurement Documents</h3>
         <p className="mb-4 text-xs text-slate-500">
-          Upload approval, L1 comparison, PAC, technical specification, and other supporting documents.
+          Upload terms and conditions, approval, L1 comparison, PAC, technical specification, and other supporting documents.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           {DOCUMENT_CATEGORIES.map(cat => {

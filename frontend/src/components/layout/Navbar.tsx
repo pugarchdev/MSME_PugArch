@@ -523,7 +523,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
     { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
     { label: 'Administration', icon: Settings, roles: ['buyer', 'seller'], children: [
-      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'] },
+      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'], permission: 'team.member.view' },
       { label: 'Delivery Addresses', path: '/buyer/address-book', icon: MapPin, roles: ['buyer'] },
       { label: 'Settings', path: user?.role === 'seller' ? '/seller/settings' : '/buyer/profile', icon: Settings, roles: ['buyer', 'seller'] },
       { label: 'Help', path: '/help', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },

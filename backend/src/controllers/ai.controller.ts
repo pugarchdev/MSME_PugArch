@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { aiService } from '../services/ai/aiService.js';
+import { portalFallback } from '../services/ai/portalFallback.js';
 
 export const getMsmeInsight = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -36,9 +37,17 @@ export const getMsmeInsight = async (req: Request, res: Response): Promise<void>
     });
   } catch (error: any) {
     console.error('[AIController] Error generating insight:', error);
-    res.status(500).json({
-      success: false,
-      error: error?.message || 'Failed to generate AI insight from all configured providers.'
+    const fallback = await portalFallback.answer({
+      question: typeof req.body?.question === 'string' ? req.body.question : 'Analyze this MSME dashboard and give important insights.',
+      dashboardData: req.body?.dashboardData && typeof req.body.dashboardData === 'object' ? req.body.dashboardData : {},
+      user: req.user
+    });
+    res.json({
+      success: true,
+      answer: fallback.answer,
+      provider: fallback.provider,
+      model: fallback.model,
+      fallback: true
     });
   }
 };

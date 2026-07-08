@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useMarketplaceCart } from '../hooks/useMarketplaceCart';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrapApiData } from '../../../lib/api';
+import { openFileAsset } from '../../../lib/files';
 import PremiumLoader from '../../../components/PremiumLoader';
 import { resolveMarketplaceImage } from '../utils/marketplaceImages';
 import { saveSupplier } from '../utils/savedSuppliers';
@@ -446,15 +447,14 @@ export default function MarketplaceServiceDetail() {
                                                 </>
                                             );
                                             return cert.fileAsset?.url ? (
-                                                <a
+                                                <button
+                                                    type="button"
                                                     key={cert.id}
-                                                    href={cert.fileAsset.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
+                                                    onClick={() => openFileAsset(cert.fileAsset, cert.name || cert.fileAsset?.originalName || 'Service document').catch(err => toast.error(err instanceof Error ? err.message : 'Unable to open document'))}
                                                     className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs hover:border-[#0b2447]/30 hover:bg-white"
                                                 >
                                                     {content}
-                                                </a>
+                                                </button>
                                             ) : (
                                                 <div key={cert.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
                                                     {content}

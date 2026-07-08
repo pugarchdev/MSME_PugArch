@@ -674,7 +674,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 max-w-6xl mx-auto pb-6">
+    <div className="w-full space-y-4 animate-in fade-in duration-500 pb-6">
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 border-b border-slate-200 pb-2.5">
         <div>
           <p className="text-[9px] font-black text-[#12335f] uppercase tracking-[0.15em] mb-0.5">MSME Procurement Portal</p>

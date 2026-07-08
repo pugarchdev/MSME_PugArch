@@ -1,4 +1,5 @@
 import { api, unwrapApiData, BASE_URL } from './api';
+import { getCookieValue } from './auth';
 
 export type DocumentPreviewMode = 'image' | 'pdf' | 'office' | 'google';
 
@@ -56,15 +57,13 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
     };
   }
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
-  const signedUrlEndpoint = token ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
-  const viewEndpoint = token ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
-  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const hasSession = Boolean(getCookieValue('csrfToken'));
+  const signedUrlEndpoint = hasSession ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
+  const viewEndpoint = hasSession ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
 
   try {
     const res = await api.fetch(signedUrlEndpoint, {
       method: 'GET',
-      headers: authHeader,
       skipCache: true
     });
 
@@ -85,7 +84,6 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
 
   const res = await api.fetch(viewEndpoint, {
     method: 'GET',
-    headers: authHeader,
     skipCache: true
   });
 
@@ -153,13 +151,14 @@ export const openFileAsset = async (fileAsset: any, label = 'Document') => {
       return;
     }
 
+    const hasSession = Boolean(getCookieValue('csrfToken'));
+    const signedUrlEndpoint = hasSession ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
+    const viewEndpoint = hasSession ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
+
     // Try fetching signed URL from backend
     try {
-      const res = await api.fetch(`/api/files/${fileId}/signed-url`, {
+      const res = await api.fetch(signedUrlEndpoint, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`
-        },
         skipCache: true
       });
 
@@ -180,11 +179,8 @@ export const openFileAsset = async (fileAsset: any, label = 'Document') => {
     }
 
     // Fallback to fetching blob from view endpoint
-    const res = await api.fetch(`/api/files/${fileId}/view`, {
+    const res = await api.fetch(viewEndpoint, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`
-      },
       skipCache: true
     });
 

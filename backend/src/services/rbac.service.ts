@@ -83,6 +83,25 @@ export const getCurrentUserPermissions = async (userId: number, scope?: RbacScop
 
   const defaults: string[] = [];
   if (user) {
+    if (normalized.scopeType === 'ORGANIZATION' && normalized.scopeId) {
+      const membership = await prisma.orgMembership.findUnique({
+        where: { userId_organizationId: { userId, organizationId: Number(normalized.scopeId) } },
+        select: { orgRole: true, isActive: true }
+      }).catch(() => null);
+      if (membership?.isActive && membership.orgRole === 'ORG_ADMIN') {
+        defaults.push(
+          'team.member.view',
+          'team.member.invite',
+          'team.member.disable',
+          'team.role.view',
+          'team.role.manage',
+          'team.role.assign',
+          'organization.view',
+          'organization.update'
+        );
+      }
+    }
+
     if (user.role === 'seller' || user.role === 'shg') {
       defaults.push(
         'dashboard.view',

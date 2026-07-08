@@ -5,6 +5,8 @@ import { ArrowLeft, ArrowRight, Save, Send, Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { STEP_TITLES } from '../constants';
+import { useAuth } from '../../../hooks/useAuth';
+import { useOrgRole } from '../../../hooks/useOrgRole';
 
 export default function CheckoutWizardLayout({
   currentStep,
@@ -19,6 +21,7 @@ export default function CheckoutWizardLayout({
   onConvertBid,
   canPlaceOrder,
   canConvertBid,
+  canSaveDraft = true,
   children,
 }: {
   currentStep: number;
@@ -33,8 +36,13 @@ export default function CheckoutWizardLayout({
   onConvertBid: () => void;
   canPlaceOrder: boolean;
   canConvertBid: boolean;
+  canSaveDraft?: boolean;
   children: React.ReactNode;
 }) {
+  const { user } = useAuth();
+  const { orgRole, isOrgAdmin } = useOrgRole();
+  const isAdmin = user?.role === 'admin' || user?.role === 'master_admin' || orgRole === 'ORG_ADMIN' || isOrgAdmin;
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <div className="border-b border-slate-200 pb-4">
@@ -73,7 +81,7 @@ export default function CheckoutWizardLayout({
               <ArrowLeft className="mr-2 h-4 w-4" /> Previous
             </Button>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={onSave} disabled={isSubmitting || isSavingDraft}>
+              <Button type="button" variant="outline" onClick={onSave} disabled={isSubmitting || isSavingDraft || !canSaveDraft} title={!canSaveDraft ? 'Select procurement method in Step 4 before saving draft' : undefined}>
                 {isSavingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-slate-500" /> : <Save className="mr-2 h-4 w-4" />}
                 {isSavingDraft ? 'Saving...' : 'Save Draft'}
               </Button>
@@ -83,9 +91,11 @@ export default function CheckoutWizardLayout({
                 </Button>
               ) : (
                 <>
-                  <Button type="button" variant="outline" onClick={onSubmitApproval} disabled={isSubmitting}>
-                    <Send className="mr-2 h-4 w-4" /> Submit for Approval
-                  </Button>
+                  {!isAdmin && (
+                    <Button type="button" variant="outline" onClick={onSubmitApproval} disabled={isSubmitting}>
+                      <Send className="mr-2 h-4 w-4" /> Submit for Approval
+                    </Button>
+                  )}
                   {canConvertBid && (
                     <Button type="button" variant="outline" onClick={onConvertBid} disabled={isSubmitting}>
                       Convert to Bid/RA

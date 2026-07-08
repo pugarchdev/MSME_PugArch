@@ -2141,12 +2141,53 @@ const getPublicTenderDocument = async (fileId: number) => db.tenderDocument.find
   include: { tender: { select: { buyerId: true } } }
 });
 
+const getPublicFileActor = async (fileId: number): Promise<{ id: number; role: string } | null> => {
+  const publicDoc = await getPublicTenderDocument(fileId);
+  if (publicDoc) return { id: publicDoc.tender.buyerId, role: 'buyer' };
+
+  const directCatalogueAsset = await db.fileAsset.findFirst({
+    where: {
+      id: fileId,
+      status: 'active',
+      entityType: { in: ['catalogue', 'catalogue_product', 'catalogue_service'] }
+    },
+    select: { ownerId: true, ownerRole: true }
+  });
+  if (directCatalogueAsset) {
+    return { id: Number(directCatalogueAsset.ownerId), role: String(directCatalogueAsset.ownerRole || 'seller') };
+  }
+
+  const productImage = await db.productImage.findFirst({
+    where: { fileAssetId: fileId, product: { status: 'ACTIVE' } },
+    include: { product: { select: { sellerId: true } } }
+  }).catch(() => null);
+  if (productImage?.product?.sellerId) return { id: Number(productImage.product.sellerId), role: 'seller' };
+
+  const certification = await db.certification.findFirst({
+    where: {
+      fileAssetId: fileId,
+      OR: [
+        { product: { status: 'ACTIVE' } },
+        { service: { status: 'ACTIVE' } }
+      ]
+    },
+    include: {
+      product: { select: { sellerId: true } },
+      service: { select: { sellerId: true } }
+    }
+  }).catch(() => null);
+  const sellerId = certification?.product?.sellerId || certification?.service?.sellerId;
+  if (sellerId) return { id: Number(sellerId), role: 'seller' };
+
+  return null;
+};
+
 router.get('/public/files/:id/view', asyncRoute(async (req: AuthRequest, res) => {
   const { id } = parse(idParams, req.params);
-  const publicDoc = await getPublicTenderDocument(id);
-  if (!publicDoc) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
+  const publicActor = await getPublicFileActor(id);
+  if (!publicActor) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
 
-  const file = await getFileContent(id, { id: publicDoc.tender.buyerId, role: 'buyer' }, {
+  const file = await getFileContent(id, publicActor, {
     ipAddress: req.ip,
     userAgent: req.headers['user-agent']
   });
@@ -2161,10 +2202,10 @@ router.get('/public/files/:id/view', asyncRoute(async (req: AuthRequest, res) =>
 
 router.get('/public/files/:id/signed-url', asyncRoute(async (req: AuthRequest, res) => {
   const { id } = parse(idParams, req.params);
-  const publicDoc = await getPublicTenderDocument(id);
-  if (!publicDoc) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
+  const publicActor = await getPublicFileActor(id);
+  if (!publicActor) throw new ApiError(404, 'Public document not found', 'FILE_NOT_FOUND');
 
-  const file = await getSignedUrl(id, { id: publicDoc.tender.buyerId, role: 'buyer' }, {
+  const file = await getSignedUrl(id, publicActor, {
     ipAddress: req.ip,
     userAgent: req.headers['user-agent']
   });

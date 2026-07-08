@@ -84,6 +84,7 @@ export default function ProcurementCheckoutPage() {
       onConvertBid={wizard.convertToBid}
       canPlaceOrder={canPlaceOrder}
       canConvertBid={canConvertBid}
+      canSaveDraft={Boolean(wizard.formData.selectedMethod)}
     >
       {wizard.currentStep === 1 && (
         <Step1_CartReview

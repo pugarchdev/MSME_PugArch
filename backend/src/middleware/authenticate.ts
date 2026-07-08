@@ -30,7 +30,11 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   const authHeader = req.headers.authorization || '';
   const [scheme, headerToken] = authHeader.split(' ');
   const canUseHeaderToken = scheme === 'Bearer' && headerToken && !['null', 'undefined', 'cookie-session'].includes(headerToken);
-  const token = canUseHeaderToken ? headerToken : getAccessTokenFromRequest(req);
+  const token = canUseHeaderToken
+    ? headerToken
+    : (req.query.token && typeof req.query.token === 'string')
+      ? req.query.token
+      : getAccessTokenFromRequest(req);
 
   if (!token) {
     void auditLog({

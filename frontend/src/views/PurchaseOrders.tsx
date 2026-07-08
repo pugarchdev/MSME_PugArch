@@ -311,8 +311,8 @@ export default function PurchaseOrders() {
         }
       ],
       infoGrid: {
-        'Payment Terms': order.paymentTerms ? order.paymentTerms.replace(/_/g, ' ') : 'As per portal workflow',
-        'Delivery Type': order.deliveryType ? order.deliveryType.replace(/_/g, ' ') : 'Standard delivery',
+        'Payment Terms': order.paymentTerms ? readableStatus(order.paymentTerms) : 'As per portal workflow',
+        'Delivery Type': order.deliveryType ? readableStatus(order.deliveryType) : 'Standard delivery',
         'Acknowledged At': order.acceptedAt ? formatTimestamp(order.acceptedAt) : 'Pending / Not recorded',
         'PO Reference': `ID ${order.id}`,
         'PO Title': order.title || 'N/A',
@@ -435,8 +435,8 @@ export default function PurchaseOrders() {
 
                   {(order.paymentTerms || order.deliveryType) && (
                     <div className="flex flex-wrap gap-1.5">
-                      {order.paymentTerms && <span className="rounded bg-teal-50 px-2 py-1 text-[9px] font-black uppercase text-teal-700">{order.paymentTerms.replace(/_/g, ' ')}</span>}
-                      {order.deliveryType && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">{order.deliveryType.replace(/_/g, ' ')}</span>}
+                      {order.paymentTerms && <span className="rounded bg-teal-50 px-2 py-1 text-[9px] font-black uppercase text-teal-700">{readableStatus(order.paymentTerms)}</span>}
+                      {order.deliveryType && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">{readableStatus(order.deliveryType)}</span>}
                     </div>
                   )}
 
@@ -481,12 +481,12 @@ export default function PurchaseOrders() {
                           <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
                           {order.paymentTerms && (
                             <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded uppercase">
-                              {order.paymentTerms.replace(/_/g, ' ')}
+                              {readableStatus(order.paymentTerms)}
                             </span>
                           )}
                           {order.deliveryType && (
                             <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
-                              {order.deliveryType.replace(/_/g, ' ')}
+                              {readableStatus(order.deliveryType)}
                             </span>
                           )}
                         </div>
@@ -556,12 +556,12 @@ export default function PurchaseOrders() {
                   </span>
                   {viewingOrder.paymentTerms && (
                     <span className="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-teal-700">
-                      Payment: {viewingOrder.paymentTerms.replace(/_/g, ' ')}
+                      Payment: {readableStatus(viewingOrder.paymentTerms)}
                     </span>
                   )}
                   {viewingOrder.deliveryType && (
                     <span className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-purple-700">
-                      Delivery: {viewingOrder.deliveryType.replace(/_/g, ' ')}
+                      Delivery: {readableStatus(viewingOrder.deliveryType)}
                     </span>
                   )}
                 </div>
@@ -612,7 +612,7 @@ export default function PurchaseOrders() {
                                   router.push(`/delivery/${dt.id}`);
                                 }}
                               />
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">({dt.status.replace(/_/g, ' ')})</span>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">({readableStatus(dt.status || 'pending')})</span>
                             </div>
                           ))}
                         </div>
@@ -630,7 +630,7 @@ export default function PurchaseOrders() {
                       <span className="text-xs font-black text-[#12335f]">Shipment Tracking</span>
                     </div>
                     <span className="text-[9px] font-black uppercase bg-[#12335f]/10 text-[#12335f] px-2 py-0.5 rounded border border-[#12335f]/20">
-                      {activeDelivery.status.replace(/_/g, ' ')}
+                      {readableStatus(activeDelivery.status || 'pending')}
                     </span>
                   </div>
                   <div className="text-[11px] font-semibold text-slate-600 space-y-0.5">

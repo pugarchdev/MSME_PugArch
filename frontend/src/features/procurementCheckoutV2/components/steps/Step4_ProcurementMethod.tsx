@@ -9,6 +9,8 @@ import type { CartEvaluation, ProcurementMethodCode } from '../../types';
 import { createL1ComparisonFromCart } from '../../api';
 import { toast } from 'sonner';
 
+const RequiredMark = () => <span className="ml-0.5 text-red-600">*</span>;
+
 export default function Step4_ProcurementMethod({
   cartId,
   selectedMethod,
@@ -65,7 +67,7 @@ export default function Step4_ProcurementMethod({
           ))}
 
           <div className="space-y-1">
-            <label className="text-xs font-bold">Procurement Method</label>
+            <label className="text-xs font-bold">Procurement Method<RequiredMark /></label>
             <SearchableSelect
               options={evaluation.allowedMethods.map(m => ({ value: m, label: PROCUREMENT_METHOD_LABELS[m] || m }))}
               value={selectedMethod || evaluation.recommendedMethod}

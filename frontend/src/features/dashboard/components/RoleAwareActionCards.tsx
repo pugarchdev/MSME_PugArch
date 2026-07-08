@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../hooks/useAuth';
-import { useOrgRole, usePermissions } from '../../../hooks/useOrgRole';
 import { getApi } from '../../shared/apiClient';
 import { cn } from '../../../lib/utils';
 
@@ -116,7 +115,7 @@ const ActionCard = React.memo(function ActionCard({
             type="button"
             onClick={handleClick}
             className={cn(
-                "group text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2",
+                "group flex min-h-[92px] w-full flex-col text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2",
                 priority && "relative overflow-hidden",
                 TONE_HOVER_BORDERS[card.tone] || TONE_HOVER_BORDERS.slate
             )}
@@ -169,8 +168,6 @@ const ActionCard = React.memo(function ActionCard({
 
 function RoleAwareActionCards() {
     const { user } = useAuth();
-    const { orgRole } = useOrgRole();
-    const { hasPermission } = usePermissions();
     const router = useRouter();
 
     const summary = useQuery({
@@ -186,6 +183,10 @@ function RoleAwareActionCards() {
     const isLoading = summary.isLoading && !summary.data;
     const isBuyer = user?.role === 'buyer';
     const isSeller = user?.role === 'seller';
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    const hasPermission = useCallback((permissionCode: string) => {
+        return permissions.includes('*') || permissions.includes(permissionCode);
+    }, [permissions]);
 
     const cards: ActionCardConfig[] = useMemo(() => [
         // ─── Buyer baseline tiles ───
@@ -399,10 +400,10 @@ function RoleAwareActionCards() {
                     <div className="flex items-center gap-1.5 pl-0.5">
                         <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
                         <h4 className="text-[9px] font-black uppercase tracking-widest text-[#12335f]">
-                            Priority Actions Required {orgRole && `· ${orgRole.replace(/_/g, ' ')}`}
+                            Priority Actions Required {data.orgRole && `· ${data.orgRole.replace(/_/g, ' ')}`}
                         </h4>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                         {priorityActions.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} priority onOpen={openCard} />)}
                     </div>
                 </div>
@@ -414,7 +415,7 @@ function RoleAwareActionCards() {
                     <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400 pl-0.5">
                         General Monitoring
                     </h4>
-                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                         {generalMonitoring.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} onOpen={openCard} />)}
                     </div>
                 </div>

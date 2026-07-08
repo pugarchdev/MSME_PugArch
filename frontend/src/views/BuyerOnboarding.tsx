@@ -1558,9 +1558,11 @@ export default function BuyerOnboarding() {
 
                 {activeSection === 'rep' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="md:col-span-2">
-                      <AadhaarVerificationCard compact />
-                    </div>
+                    {!formData.aadhaarVerified && (
+                      <div className="md:col-span-2">
+                        <AadhaarVerificationCard compact />
+                      </div>
+                    )}
                     <Input label="FULL NAME" name="representativeName" value={formData.representativeName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('representativeName')} maxLength={100} required className="h-10" />
                     <div className="space-y-3">
                       <Select label="DESIGNATION" name="designation" value={formData.designation} onChange={handleChange} onBlur={handleBlur} error={getFieldError('designation')} required className="h-10">

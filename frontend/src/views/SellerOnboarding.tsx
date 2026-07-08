@@ -1369,7 +1369,7 @@ export default function SellerOnboarding() {
 
                   {currentSection === 'details' && (
                     <div className="space-y-6 animate-in fade-in duration-300 min-w-0 w-full">
-                      <AadhaarVerificationCard compact />
+                      {!regDetails?.isAadhaarVerified && <AadhaarVerificationCard compact />}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Input
                           label="Business / Organisation Name"

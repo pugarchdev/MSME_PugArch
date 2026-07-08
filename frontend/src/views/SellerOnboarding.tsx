@@ -272,7 +272,6 @@ export default function SellerOnboarding() {
   const [sellerDocuments, setSellerDocuments] = useState<any[]>(
     Array.isArray(cachedProfile.sellerDocuments) ? cachedProfile.sellerDocuments : []
   );
-  const [sellerDocuments, setSellerDocuments] = useState<any[]>(Array.isArray(cachedProfile.sellerDocuments) ? cachedProfile.sellerDocuments : []);
   const [isUploadingMap, setIsUploadingMap] = useState<Record<string, boolean>>({});
   const savedSectionsStorageKey = `${SELLER_SAVED_SECTIONS_KEY_PREFIX}:${user?.id || user?.email || 'current'}`;
 

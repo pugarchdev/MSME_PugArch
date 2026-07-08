@@ -17,6 +17,8 @@ import { useBidWizard } from '../hooks/useBidWizard';
 import type { StepComponentProps } from '../types/steps';
 import { STEP_TITLES } from '../utils/constants';
 import { fetchDeliveryAddresses } from '../../directPurchase/api';
+import { PdfEngine, DocumentConfig } from '../../../lib/pdfEngine';
+import { formatDateTime } from '../../shared/format';
 
 const steps = [Step1, Step2, Step3, Step4, Step5, Step6, Step7, Step8, Step9];
 
@@ -115,29 +117,55 @@ export default function CreateBidPage() {
     wizard.formData.step9.restrictiveConditionsDeclarationAccepted
   );
   const generatePreviewPdf = async () => {
-    const { default: jsPDF } = await import('jspdf');
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text('BidCreationWizardV2 Preview', 14, 16);
-    doc.setFontSize(9);
-    let y = 28;
+    const tableData: any[][] = [];
     STEP_TITLES.forEach((title, index) => {
       const data = wizard.formData[`step${index + 1}` as keyof typeof wizard.formData] || {};
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${index + 1}. ${title}`, 14, y);
-      y += 6;
-      doc.setFont('helvetica', 'normal');
-      Object.entries(data).slice(0, 10).forEach(([key, value]) => {
-        const text = `${key}: ${typeof value === 'object' ? JSON.stringify(value).slice(0, 80) : String(value || '-')}`;
-        doc.text(doc.splitTextToSize(text, 180), 16, y);
-        y += 5;
-        if (y > 280) {
-          doc.addPage();
-          y = 16;
+      Object.entries(data).forEach(([key, value]) => {
+        let displayValue = '-';
+        if (typeof value === 'object' && value !== null) {
+          displayValue = JSON.stringify(value);
+        } else if (value !== undefined && value !== null && value !== '') {
+          displayValue = String(value);
         }
+        if (displayValue.length > 100) {
+          displayValue = displayValue.slice(0, 97) + '...';
+        }
+        tableData.push([`${index + 1}. ${title}`, key, displayValue]);
       });
-      y += 3;
     });
+
+    const config: DocumentConfig = {
+      documentTitle: 'Bid Creation Preview Draft',
+      documentNumber: `DRAFT-${Date.now()}`,
+      dateStr: formatDateTime(new Date()),
+      status: 'DRAFT PREVIEW',
+      parties: [
+        {
+          title: 'Buyer Organization',
+          name: wizard.formData.step2?.organizationName || 'N/A',
+          details: [
+            `Representative: ${wizard.formData.step2?.buyerName || 'N/A'}`,
+            `Ministry: ${wizard.formData.step2?.ministry || 'N/A'}`,
+            `Address: ${wizard.formData.step2?.officeAddress || 'N/A'}`
+          ]
+        }
+      ],
+      infoGrid: {
+        'Bid Type': wizard.bidType || 'N/A',
+        'Packet Type': wizard.packetType || 'N/A',
+        'Current Step': `${wizard.currentStep} / 9`
+      },
+      tableHeaders: ['Section', 'Configuration Field', 'Draft Value'],
+      tableData: tableData,
+      notes: [
+        '1. This is a draft preview of the bid document configuration.',
+        '2. This document is not legally binding and has not been published to the portal.',
+        '3. Please review all fields before final submission.'
+      ]
+    };
+
+    const engine = new PdfEngine('p');
+    const doc = engine.generate(config);
     doc.save('bid-preview.pdf');
   };
 

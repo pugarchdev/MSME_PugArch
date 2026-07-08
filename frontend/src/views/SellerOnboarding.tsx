@@ -466,8 +466,7 @@ export default function SellerOnboarding() {
 
   const areAllDocumentsUploaded = useCallback(() => {
     const required = getRequiredDocuments();
-    const docsArray = Array.isArray(sellerDocuments) ? sellerDocuments : [];
-    const uploadedTypes = docsArray.map((d: any) => d.documentType);
+    const uploadedTypes = (Array.isArray(sellerDocuments) ? sellerDocuments : []).map((d: any) => d.documentType);
     return required.filter(doc => doc.required).every(reqDoc => {
       if (orgVerified && ['pan_copy', 'gst_certificate', 'address_proof', 'business_registration_proof'].includes(reqDoc.id)) {
         return true;
@@ -478,8 +477,7 @@ export default function SellerOnboarding() {
 
   const submittedOnboardingDocuments = useMemo(() => {
     const allDocIds = new Set(getRequiredDocuments().map(doc => doc.id));
-    const docsArray = Array.isArray(sellerDocuments) ? sellerDocuments : [];
-    return docsArray.filter((doc: any) => allDocIds.has(doc.documentType));
+    return (Array.isArray(sellerDocuments) ? sellerDocuments : []).filter((doc: any) => allDocIds.has(doc.documentType));
   }, [getRequiredDocuments, sellerDocuments]);
 
   const isApprovedProfile = onboardingStatus === 'approved_for_procurement' || onboardingStatus === 'verified' || onboardingStatus === 'VERIFIED';
@@ -817,16 +815,11 @@ export default function SellerOnboarding() {
       const data = await res.json();
       if (res.ok) {
         toast.success('Document uploaded successfully.');
-        api.invalidate('/api/auth/me');
-        const responseData = data?.data;
-        if (responseData && responseData.document && responseData.asset) {
-          setSellerDocuments(current => {
-            const currentArray = Array.isArray(current) ? current : [];
-            return [
-              ...currentArray.filter((doc: any) => doc.documentType !== documentType),
-              { ...responseData.document, fileAsset: responseData.asset }
-            ];
-          });
+        if (data.document && data.asset) {
+          setSellerDocuments(current => [
+            ...(Array.isArray(current) ? current : []).filter((doc: any) => doc.documentType !== documentType),
+            { ...data.document, fileAsset: data.asset }
+          ]);
         }
         await fetchProfile();
       } else {
@@ -991,13 +984,13 @@ export default function SellerOnboarding() {
     try {
       // Simulate verification API call
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       const updatedFormData = {
         ...formData,
         nameAsInPan: formData.nameAsInPan || formData.businessName || "FETCHED NAME FROM PAN",
         panVerified: true
       };
-      
+
       setFormData(updatedFormData);
       toast.success('PAN details autofetched and verified');
 
@@ -2261,11 +2254,10 @@ export default function SellerOnboarding() {
                                         type="button"
                                         disabled={ownershipOtpSent}
                                         onClick={() => setSubmissionChannel(ch)}
-                                        className={`py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${
-                                          submissionChannel === ch
+                                        className={`py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${submissionChannel === ch
                                             ? 'bg-white text-[#12335f] shadow-sm'
                                             : 'text-slate-500'
-                                        }`}
+                                          }`}
                                       >
                                         {ch === 'email' ? 'Email' : 'Phone'}
                                       </button>

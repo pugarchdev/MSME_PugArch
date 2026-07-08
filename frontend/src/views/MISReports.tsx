@@ -8,6 +8,7 @@ import {
 import { FileBarChart, Users, ClipboardCheck, ArrowUpRight, ArrowDownRight, Activity, Download, ShieldCheck, Clock, FileText, CreditCard, Truck, Gavel, KeyRound } from 'lucide-react';
 import { api } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { downloadCsv } from '../features/shared/exportUtils';
 import { useAuth } from '../hooks/useAuth';
 
 const COLORS = ['#12335f', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -77,14 +78,7 @@ export default function MISReports() {
       ['Active Procurement Value', stats?.activeProcurementValue || 'Rs. 0'],
       ['Tender Success Rate', stats?.tenderSuccessRate || '0%'],
     ];
-    const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `mis-summary-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`mis-summary-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   };
 
   return (

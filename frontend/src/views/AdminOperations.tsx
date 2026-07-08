@@ -25,6 +25,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Pagination } from '../features/shared/Pagination';
 import { formatDate, formatDateTime } from '../features/shared/format';
+import { downloadCsv } from '../features/shared/exportUtils';
 import { cn } from '../lib/utils';
 import { useResponsiveViewMode } from '../features/shared/hooks';
 import { ViewModeToggle } from '../features/shared/ViewModeToggle';
@@ -326,16 +327,7 @@ export default function AdminOperations({ section }: AdminOperationsProps) {
         formatDateTime(item.createdAt)
       ];
     });
-    const csv = [headers, ...rows]
-      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `admin-${section}-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`admin-${section}-report-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
     toast.success('Admin report exported');
   };
 

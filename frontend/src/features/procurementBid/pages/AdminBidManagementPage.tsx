@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import { downloadCsv } from '../../shared/exportUtils';
 import {
   PageShell,
   ProcurementEmptyState,
@@ -336,17 +337,7 @@ export default function AdminBidManagementPage() {
       lifecycleStage: item.currentStage,
       participants: item.participantsCount || item.results.length,
     }));
-    const csv = [
-      Object.keys(rows[0] || { bidNumber: '', title: '', buyer: '' }).join(','),
-      ...rows.map(row => Object.values(row).map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = bid ? `${bid.id}-procurement-report.csv` : 'jsgsmile-procurement-report.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(bid ? `${bid.id}-procurement-report.csv` : 'jsgsmile-procurement-report.csv', rows);
   };
 
   const options = useMemo(() => ({

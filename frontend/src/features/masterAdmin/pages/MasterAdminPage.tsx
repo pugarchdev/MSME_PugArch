@@ -41,6 +41,7 @@ import {
 import { toast } from 'sonner';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useAuth } from '../../../hooks/useAuth';
+import { downloadCsv } from '../../shared/exportUtils';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Loader2 } from '../../../components/ui/loader';
@@ -1221,17 +1222,14 @@ export default function MasterAdminPage() {
       return set;
     }, new Set<string>());
     const keys = Array.from(keySet);
-    const csv = [
-      keys.join(','),
-      ...rows.map(row => keys.map(key => csvCell(row[key])).join(','))
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `master-admin-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const csvRows = [
+      keys,
+      ...rows.map(row => keys.map(key => {
+        const text = formatCell(row[key]);
+        return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : text;
+      }))
+    ];
+    downloadCsv(`master-admin-${label}-${new Date().toISOString().slice(0, 10)}.csv`, csvRows);
     toast.success(`${labelize(label)} export prepared`);
   };
 
@@ -3818,11 +3816,6 @@ const formatCell = (value: unknown) => {
     return anyValue.organizationName || anyValue.name || anyValue.email || JSON.stringify(value);
   }
   return String(value).replace(/_/g, ' ');
-};
-
-const csvCell = (value: unknown) => {
-  const text = formatCell(value).replace(/\s+/g, ' ').trim();
-  return `"${text.replace(/"/g, '""')}"`;
 };
 
 const formatDate = (value: unknown) => {

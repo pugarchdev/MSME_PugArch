@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../lib/api";
 import { formatDate, formatDateTime } from "../features/shared/format";
+import { downloadCsv } from "../features/shared/exportUtils";
 import { Button } from "../components/ui/button";
 import { Pagination } from "../features/shared/Pagination";
 import { useResponsiveViewMode } from "../features/shared/hooks";
@@ -1158,24 +1159,7 @@ export default function AdminOnboarding() {
       return;
     }
 
-    const escapeCsv = (value: any) =>
-      `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const headers = Object.keys(rows[0]);
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) =>
-        headers.map((header) => escapeCsv((row as any)[header])).join(","),
-      ),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `admin-onboarding-${activeTab}-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadCsv(`admin-onboarding-${activeTab}-${new Date().toISOString().split("T")[0]}.csv`, rows);
     toast.success(`Exported ${rows.length} onboarding records`);
   };
 

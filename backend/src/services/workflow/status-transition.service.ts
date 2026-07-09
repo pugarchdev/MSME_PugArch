@@ -25,6 +25,7 @@ export type BidWorkflowStatus =
 
 export type POWorkflowStatus =
   | 'generated'
+  | 'order_placed'
   | 'issued'
   | 'accepted'
   | 'in_fulfillment'
@@ -93,6 +94,7 @@ const bidTransitions: TransitionMap<BidWorkflowStatus> = {
 
 const poTransitions: TransitionMap<POWorkflowStatus> = {
   generated: ['issued', 'accepted', 'cancelled'],
+  order_placed: ['accepted', 'cancelled'],
   issued: ['accepted', 'cancelled'],
   accepted: ['in_fulfillment', 'delivered', 'cancelled'],
   in_fulfillment: ['delivered', 'cancelled'],
@@ -204,6 +206,7 @@ export const bidStatusEnumFor = (status: BidWorkflowStatus) => {
 export const poStatusEnumFor = (status: POWorkflowStatus) => {
   const map: Partial<Record<POWorkflowStatus, string>> = {
     generated: 'GENERATED',
+    order_placed: 'ORDER_PLACED',
     issued: 'ISSUED',
     accepted: 'ACCEPTED',
     in_fulfillment: 'IN_FULFILLMENT',

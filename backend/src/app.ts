@@ -13,9 +13,24 @@ export const createApp = () => {
   app.use(compression());
   applySecurityMiddleware(app);
 
-  // Handle favicon requests gracefully to avoid 404 warnings
-  app.get('/favicon.ico', (_req, res) => { res.status(204).end(); });
-  app.get('/favicon.png', (_req, res) => { res.status(204).end(); });
+  // Serve inline transparent favicon to avoid browser 404s
+  const faviconBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+  app.get('/favicon.ico', (_req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': faviconBuffer.length,
+      'Cache-Control': 'public, max-age=86400'
+    });
+    res.end(faviconBuffer);
+  });
+  app.get('/favicon.png', (_req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': faviconBuffer.length,
+      'Cache-Control': 'public, max-age=86400'
+    });
+    res.end(faviconBuffer);
+  });
 
   // Unified API Routing layer
   app.use('/api', apiRouter);

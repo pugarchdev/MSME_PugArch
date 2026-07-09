@@ -13,6 +13,10 @@ export const createApp = () => {
   app.use(compression());
   applySecurityMiddleware(app);
 
+  // Handle favicon requests gracefully to avoid 404 warnings
+  app.get('/favicon.ico', (_req, res) => { res.status(204).end(); });
+  app.get('/favicon.png', (_req, res) => { res.status(204).end(); });
+
   // Unified API Routing layer
   app.use('/api', apiRouter);
 

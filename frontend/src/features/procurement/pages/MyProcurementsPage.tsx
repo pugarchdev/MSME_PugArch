@@ -34,6 +34,7 @@ import {
   ExternalLink,
   Paperclip,
   Download,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
@@ -93,6 +94,24 @@ interface NormalizedProcurement {
     justification?: string;
     remarks?: string;
   };
+  detailSections?: Array<{
+    title: string;
+    fields: Array<{ label: string; value: string }>;
+  }>;
+  approvalTrail?: Array<{
+    stage?: string;
+    label?: string;
+    decision?: string;
+    remarks?: string;
+    decidedAt?: string;
+    approverName?: string;
+    approverEmail?: string;
+  }>;
+  tracking?: Array<{
+    label: string;
+    status: string;
+    date?: string;
+  }>;
 }
 
 interface KpiData {
@@ -870,13 +889,21 @@ function ProcurementDetailDialog({
     );
   };
 
+  const statusTone = (status?: string) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed' || s === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    if (s === 'active' || s === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700';
+    if (s === 'rejected' || s === 'cancelled') return 'border-red-200 bg-red-50 text-red-700';
+    return 'border-slate-200 bg-slate-50 text-slate-600';
+  };
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-3xl my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-5xl my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -940,6 +967,27 @@ function ProcurementDetailDialog({
             )}
           </div>
 
+          {/* Status Tracking */}
+          {p.tracking && p.tracking.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                Status Tracking
+              </h3>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                {p.tracking.map((step, idx) => (
+                  <div key={`${step.label}-${idx}`} className={cn('rounded-xl border p-3', statusTone(step.status))}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em]">{step.label}</p>
+                      <span className="text-[9px] font-black uppercase">{step.status}</span>
+                    </div>
+                    <p className="mt-2 text-xs font-bold text-slate-800">{step.date ? formatDateTime(step.date) : 'Pending'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Section 2: Items Requested Table */}
           {p.items && p.items.length > 0 && (
             <div>
@@ -968,6 +1016,33 @@ function ProcurementDetailDialog({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Creation-time Details */}
+          {p.detailSections && p.detailSections.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5 text-slate-400" />
+                Filled Procurement Details
+              </h3>
+              <div className="space-y-3">
+                {p.detailSections.map((section, idx) => (
+                  <div key={`${section.title}-${idx}`} className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#12335f]">{section.title}</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2 lg:grid-cols-3">
+                      {section.fields.map((field, fieldIdx) => (
+                        <div key={`${field.label}-${fieldIdx}`} className="rounded-lg border border-slate-100 bg-slate-50/40 p-2.5">
+                          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{field.label}</p>
+                          <p className="mt-1 text-xs font-bold leading-relaxed text-slate-800 break-words whitespace-pre-wrap">{field.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1013,6 +1088,35 @@ function ProcurementDetailDialog({
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Approval Trail */}
+          {p.approvalTrail && p.approvalTrail.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+                Approval Trail
+              </h3>
+              <div className="space-y-2">
+                {p.approvalTrail.map((approval, idx) => (
+                  <div key={`${approval.stage}-${idx}`} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black text-slate-900">{approval.label || approval.stage || `Stage ${idx + 1}`}</p>
+                      <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                        {approval.approverName ? `${approval.approverName}${approval.approverEmail ? ` · ${approval.approverEmail}` : ''}` : 'Awaiting approver'}
+                      </p>
+                      {approval.remarks && <p className="mt-1 text-xs font-semibold text-slate-600">{approval.remarks}</p>}
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <span className={cn('inline-flex rounded-md border px-2 py-0.5 text-[10px] font-black uppercase', statusTone(approval.decision))}>
+                        {approval.decision || 'Pending'}
+                      </span>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500">{approval.decidedAt ? formatDateTime(approval.decidedAt) : 'Not decided'}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

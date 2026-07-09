@@ -74,6 +74,87 @@ const approvedProcurementStatuses = new Set(['approved_for_procurement', 'approv
 
 const ok = (res: Response, data: unknown, status = 200) => res.status(status).json(maskSensitive({ success: true, data }));
 
+const humanizeKey = (key: string) =>
+  key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+
+const isPresentValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+};
+
+const formatDetailValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) {
+    return value
+      .map(item => {
+        if (item && typeof item === 'object') {
+          const obj = item as Record<string, unknown>;
+          return String(obj.name || obj.label || obj.supplierName || obj.itemName || obj.fileName || obj.id || JSON.stringify(obj));
+        }
+        return String(item);
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return Object.entries(obj)
+      .filter(([, v]) => isPresentValue(v))
+      .map(([k, v]) => `${humanizeKey(k)}: ${formatDetailValue(v)}`)
+      .join('; ');
+  }
+  return String(value);
+};
+
+const detailFieldsFromObject = (source: unknown, labelMap: Record<string, string> = {}) => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+  return Object.entries(source as Record<string, unknown>)
+    .filter(([key, value]) => isPresentValue(value) && !['id', 'documents', 'items', 'boqTable'].includes(key))
+    .map(([key, value]) => ({
+      label: labelMap[key] || humanizeKey(key),
+      value: formatDetailValue(value)
+    }))
+    .filter(field => field.value);
+};
+
+const detailSection = (title: string, source: unknown, labelMap?: Record<string, string>) => {
+  const fields = detailFieldsFromObject(source, labelMap);
+  return fields.length ? { title, fields } : null;
+};
+
+const approvalTrailFor = (approvals: any[] = []) =>
+  approvals
+    .sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
+    .map(a => ({
+      stage: String(a.stage || ''),
+      label: humanizeKey(String(a.stage || 'Approval')),
+      decision: String(a.decision || 'PENDING'),
+      remarks: a.remarks || a.clarificationNote || '',
+      decidedAt: a.decidedAt?.toISOString?.() || '',
+      approverName: a.approver?.name || '',
+      approverEmail: a.approver?.email || ''
+    }));
+
+const trackingFor = (status: string, createdAt?: Date, submittedAt?: Date | null, approvedAt?: Date | null, approvals: any[] = []) => {
+  const normalized = String(status || '').toUpperCase();
+  const submitted = Boolean(submittedAt) || !['DRAFT'].includes(normalized);
+  const approved = Boolean(approvedAt) || ['APPROVED', 'CONVERTED_TO_ORDER', 'COMPLETED'].includes(normalized);
+  const approvalTrail = approvalTrailFor(approvals);
+  return [
+    { label: 'Created', status: 'completed', date: createdAt?.toISOString?.() || '' },
+    { label: 'Submitted', status: submitted ? 'completed' : 'pending', date: submittedAt?.toISOString?.() || '' },
+    { label: 'Approval Review', status: approved ? 'completed' : approvalTrail.length ? 'active' : 'pending', date: approvalTrail.find(a => a.decision === 'APPROVED')?.decidedAt || '' },
+    { label: 'Approved / Ordered', status: approved ? 'completed' : 'pending', date: approvedAt?.toISOString?.() || '' }
+  ];
+};
+
 const procurementMethodDefinitions = [
   { slug: 'direct-purchase', code: 'DIRECT_PURCHASE', name: 'Direct Purchase', route: '/buyer/procurement/create?method=DIRECT_PURCHASE', handoffRoute: '/buyer/procurement/create?method=DIRECT_PURCHASE', badge: 'Common', valueHint: 'Best for low-value or approved direct buys' },
   { slug: 'catalog-purchase', code: 'CATALOG_PURCHASE', name: 'Catalogue Purchase', route: '/buyer/procurement/create?method=CATALOG_PURCHASE', handoffRoute: '/buyer/marketplace', badge: 'Fast-Track', valueHint: 'Pre-approved catalogue item purchase' },
@@ -8084,6 +8165,41 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     }),
   ]);
 
+  const [cartApprovals, directPurchaseApprovals, tenderApprovals] = await Promise.all([
+    procurementRequests.length
+      ? db.procurementApproval.findMany({
+        where: { entityType: 'cart', entityId: { in: procurementRequests.map((p: any) => Number(p.cartId || p.id)).filter(Boolean) } },
+        include: { approver: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ entityId: 'asc' }, { sequence: 'asc' }]
+      })
+      : Promise.resolve([]),
+    (directPurchases.length || procurementRequests.length)
+      ? db.procurementApproval.findMany({
+        where: { entityType: 'direct_purchase', entityId: { in: [...directPurchases.map((p: any) => Number(p.id)), ...procurementRequests.map((p: any) => Number(p.id))].filter(Boolean) } },
+        include: { approver: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ entityId: 'asc' }, { sequence: 'asc' }]
+      })
+      : Promise.resolve([]),
+    procurementBids.length
+      ? db.procurementApproval.findMany({
+        where: { entityType: 'tender', entityId: { in: procurementBids.map((p: any) => Number(p.id)).filter(Boolean) } },
+        include: { approver: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ entityId: 'asc' }, { sequence: 'asc' }]
+      })
+      : Promise.resolve([]),
+  ]);
+
+  const approvalsByEntity = (approvals: any[]) =>
+    approvals.reduce((acc: Record<number, any[]>, approval: any) => {
+      const key = Number(approval.entityId);
+      acc[key] = acc[key] || [];
+      acc[key].push(approval);
+      return acc;
+    }, {});
+  const cartApprovalsByEntity = approvalsByEntity(cartApprovals);
+  const directApprovalsByEntity = approvalsByEntity(directPurchaseApprovals);
+  const tenderApprovalsByEntity = approvalsByEntity(tenderApprovals);
+
   // ── Normalize into unified shape ──
   type NormalizedProcurement = {
     id: number;
@@ -8114,6 +8230,9 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     eligibilityCriteria?: string[];
     termsAndConditions?: string[];
     budgetDetails?: any;
+    detailSections?: Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
+    approvalTrail?: Array<Record<string, unknown>>;
+    tracking?: Array<{ label: string; status: string; date?: string }>;
   };
 
   const all: NormalizedProcurement[] = [];
@@ -8347,6 +8466,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
 
     const prStatus = String(pr.status || 'DRAFT');
     const prStatusGroup = statusGroupFor(prStatus);
+    const prApprovals = directApprovalsByEntity[Number(pr.id)] || cartApprovalsByEntity[Number(pr.cartId || pr.id)] || [];
     const prActionUrl =
       prStatusGroup === 'draft'
         ? '/buyer/procurement/drafts'
@@ -8355,6 +8475,19 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
           : prStatus === 'CONVERTED_TO_ORDER' || prStatus === 'COMPLETED' || prStatus === 'APPROVED'
             ? '/buyer/orders'
             : '/buyer/my-procurements';
+    const prDetailSections = [
+      detailSection('Buyer Details', pr.buyerDetails, {
+        department: 'Buyer Department / Organization',
+        officerName: 'Buyer Officer Name',
+        fileNumber: 'Department File Number'
+      }),
+      detailSection('Consignee & Delivery', { ...(pr.consigneeDetails as any || {}), ...(pr.deliveryDetails as any || {}) }),
+      detailSection('Budget & Sanction', pr.budgetSanction),
+      detailSection('Payment Authority', pr.paymentAuthority),
+      detailSection('Price Reasonability', pr.priceReasonability),
+      detailSection('PAC / Justification', pr.pacJustification),
+      detailSection('Warnings & Declarations', { ...(pr.warnings as any || {}), ...(pr.declarations as any || {}) }),
+    ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
 
     all.push({
       id: pr.id,
@@ -8397,19 +8530,53 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
         priceReasonabilityRemarks: reasonability.priceReasonabilityRemarks || '',
         marketComparisonPrice: reasonability.marketComparisonPrice ? Number(reasonability.marketComparisonPrice) : undefined,
         lastPurchasePrice: reasonability.lastPurchasePrice ? Number(reasonability.lastPurchasePrice) : undefined,
-      } as any
+      } as any,
+      detailSections: prDetailSections,
+      approvalTrail: approvalTrailFor(prApprovals),
+      tracking: trackingFor(prStatus, pr.createdAt, pr.submittedAt, pr.approvedAt, prApprovals)
     });
   }
 
   // 4) DirectPurchase
   for (const dp of directPurchases) {
     const req = dp.requirement || {};
+    const payload = req.payload as any || {};
+    const dpApprovals = directApprovalsByEntity[Number(dp.id)] || [];
     const items = (req.items || []).map((item: any) => ({
       itemName: item.itemName || item.name || '',
       quantity: String(item.quantity || ''),
       unitOfMeasure: item.unitOfMeasure || item.unit || '',
       description: item.description || ''
     }));
+    const dpDetailSections = [
+      detailSection('Buyer & Department', {
+        department: dp.department,
+        budgetHead: dp.budgetHead,
+        costCenter: dp.costCenter,
+        consigneeName: dp.consigneeName,
+        mobileNumber: dp.mobileNumber,
+        email: dp.email,
+      }),
+      detailSection('Delivery', {
+        deliveryAddress: dp.deliveryAddressText,
+        deliveryInstructions: dp.deliveryInstructions,
+        requiredDeliveryDate: dp.requiredDeliveryDate,
+      }),
+      detailSection('Justification & Remarks', {
+        justification: dp.justification,
+        remarks: dp.remarks,
+      }),
+      detailSection('Source Requirement', {
+        requirementNumber: req.requirementNumber,
+        procurementMethod: req.canonicalMethod || req.procurementMethod,
+        requiredBy: req.requiredBy,
+        workflowStatus: dp.workflowStatus,
+        approvalStatus: dp.approvalStatus,
+      }),
+      detailSection('Original Wizard Basics', payload.basics),
+      detailSection('Internal Details', payload.internal),
+      detailSection('Schedule & Rules', { ...(payload.schedule || {}), ...(payload.rules || {}) }),
+    ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
 
     all.push({
       id: dp.id,
@@ -8444,7 +8611,10 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
         costCenter: dp.costCenter || '',
         justification: dp.justification || '',
         remarks: dp.remarks || '',
-      } as any
+      } as any,
+      detailSections: dpDetailSections,
+      approvalTrail: approvalTrailFor(dpApprovals),
+      tracking: trackingFor(String(dp.status || 'DRAFT'), dp.createdAt, dp.requestedAt, dp.approvedAt, dpApprovals)
     });
   }
 
@@ -8472,6 +8642,25 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
         }
       }
     }
+    const requirementDetailSections = [
+      detailSection('Procurement Intent', {
+        ...(payload.basics || {}),
+        buyerType: payload.buyerType,
+        buyingType: payload.buyingType,
+        recommendedMethod: payload.recommendation?.id,
+        recommendationReason: payload.recommendation?.reason,
+      }),
+      detailSection('Internal Buyer Details', payload.internal),
+      detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails }),
+      detailSection('Vendor / Supplier Selection', payload.vendors),
+      detailSection('Timeline & Rules', { ...(payload.schedule || {}), ...(payload.tender || {}), ...(payload.rules || {}) }),
+      detailSection('Commercial Terms', payload.terms),
+      detailSection('Evaluation Basis', payload.evaluation),
+      detailSection('Approval Notes', payload.approval),
+      detailSection('Service Details', payload.serviceDetails),
+      detailSection('Rate Contract', payload.rateContractConfig || payload.rateContract),
+      detailSection('Reverse Auction', payload.auctionConfig),
+    ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
 
     all.push({
       id: r.id,
@@ -8500,7 +8689,10 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       items,
       paymentTerms: '',
       eligibilityCriteria: [],
-      termsAndConditions: []
+      termsAndConditions: [],
+      detailSections: requirementDetailSections,
+      approvalTrail: [],
+      tracking: trackingFor(String(r.status || 'DRAFT'), r.createdAt, r.status === 'DRAFT' ? null : r.updatedAt, ['PUBLISHED', 'OPEN', 'CLOSED'].includes(String(r.status || '')) ? r.updatedAt : null, [])
     });
   }
 

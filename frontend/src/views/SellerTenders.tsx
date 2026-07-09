@@ -598,7 +598,7 @@ export default function SellerTenders() {
               <table className="w-full text-left border-collapse min-w-[920px]">
                 <thead className="bg-slate-50/60 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-[11px] font-bold uppercase text-slate-500 w-14">#</th>
+                    <th className="px-4 py-3 text-[11px] font-bold uppercase text-slate-500 w-20">Sr. No</th>
                     <th className="px-4 py-3 w-32"><SortHeader label="Tender ID" sortKey="tenderId" /></th>
                     <th className="px-4 py-3"><SortHeader label="Title" sortKey="title" /></th>
                     <th className="px-4 py-3"><SortHeader label="Category" sortKey="category" /></th>

@@ -124,9 +124,9 @@ export default function SellerEventListPage() {
 
   const getSubmissionStatusBadge = (bid: ProcurementBid) => {
     if (bid.participated) {
-      return <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-bold">SUBMITTED</span>;
+      return <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-800">SUBMITTED</span>;
     }
-    return <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-650 border border-slate-200 text-[9px] font-bold">PENDING</span>;
+    return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-650">PENDING</span>;
   };
 
   const isInvitedFilter = filterParam === 'invited';
@@ -137,9 +137,9 @@ export default function SellerEventListPage() {
     : 'Live procurement bids, RFQs, RFPs, reverse auctions, and rate contracts open for participation.';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-12">
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12">
       {/* Header Panel */}
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">{pageLabel}</p>
@@ -160,7 +160,7 @@ export default function SellerEventListPage() {
       </div>
 
       {/* Filters Panel */}
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="space-y-3 rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
         <div className="flex items-center gap-1.5 pl-0.5 text-xs font-bold text-slate-700">
           <Filter className="h-4 w-4 text-[#12335f]" /> Filter Bids & Tenders
         </div>
@@ -171,14 +171,14 @@ export default function SellerEventListPage() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search..."
-              className="h-10 w-full rounded-md border border-slate-250 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:border-[#12335f] focus:bg-white transition"
+              className="h-10 w-full rounded-2xl border border-slate-250 bg-white pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
             />
           </div>
 
           <select
             value={method}
             onChange={e => setMethod(e.target.value)}
-            className="h-10 rounded-md border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#12335f]"
+            className="h-10 rounded-2xl border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
           >
             <option value="">All Methods</option>
             {methods.map(m => <option key={m} value={m}>{m}</option>)}
@@ -187,7 +187,7 @@ export default function SellerEventListPage() {
           <select
             value={status}
             onChange={e => setStatus(e.target.value)}
-            className="h-10 rounded-md border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#12335f]"
+            className="h-10 rounded-2xl border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
           >
             <option value="">All Statuses</option>
             {statuses.map(s => <option key={s} value={s}>{s}</option>)}
@@ -196,7 +196,7 @@ export default function SellerEventListPage() {
           <select
             value={submissionStatus}
             onChange={e => setSubmissionStatus(e.target.value)}
-            className="h-10 rounded-md border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#12335f]"
+            className="h-10 rounded-2xl border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
           >
             <option value="">All Submissions</option>
             <option value="invited">Invited Bids</option>
@@ -206,7 +206,7 @@ export default function SellerEventListPage() {
           <select
             value={deadlineRange}
             onChange={e => setDeadlineRange(e.target.value)}
-            className="h-10 rounded-md border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#12335f]"
+            className="h-10 rounded-2xl border border-slate-250 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
           >
             <option value="">Any Deadline</option>
             <option value="7">Closing in 7 Days</option>
@@ -224,7 +224,7 @@ export default function SellerEventListPage() {
       </div>
 
       {/* Bids & Tenders Table */}
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         {loading ? (
           <div className="p-8 text-center space-y-2">
             <RefreshCw className="h-6 w-6 animate-spin mx-auto text-[#12335f]" />
@@ -241,10 +241,11 @@ export default function SellerEventListPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto bg-slate-50/70 p-2">
+            <table className="w-full border-separate border-spacing-y-2 text-left">
               <thead>
-                <tr className="border-b border-slate-150 bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                  <th className="px-4 py-3">Sr. No</th>
                   <th className="px-4 py-3">Bid / Tender ID</th>
                   <th className="px-4 py-3">Title & Org</th>
                   <th className="px-4 py-3">Method</th>
@@ -255,9 +256,10 @@ export default function SellerEventListPage() {
                   <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-150">
-                {pageItems.map(bid => (
-                  <tr key={bid.id} className="hover:bg-slate-50/80 transition-colors">
+              <tbody>
+                {pageItems.map((bid, index) => (
+                  <tr key={bid.id} className="bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm">
+                    <td className="rounded-l-2xl px-4 py-3.5 text-xs font-black text-slate-500">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
                     <td className="px-4 py-3.5 text-xs font-black text-slate-900">{bid.id}</td>
                     <td className="px-4 py-3.5 space-y-0.5">
                       <p className="text-xs font-bold text-slate-800 leading-snug line-clamp-1">{bid.title}</p>
@@ -283,7 +285,7 @@ export default function SellerEventListPage() {
                         <span className="text-[8px] font-black uppercase text-slate-450">Fin: {bid.currentStage || 'Pending'}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 text-center">
+                    <td className="rounded-r-2xl px-4 py-3.5 text-center">
                       <Link href={`/seller/procurement/events/${bid.id}`}>
                         <Button type="button" size="sm" variant="outline" className="h-8 rounded-md text-[10px] font-extrabold uppercase tracking-wide">
                           <Eye className="mr-1 h-3.5 w-3.5" /> View Details

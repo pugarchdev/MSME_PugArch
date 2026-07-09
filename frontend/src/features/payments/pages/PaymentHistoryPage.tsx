@@ -583,6 +583,7 @@ function PaymentDetail({ payment, initialTab, onClose }: { payment: PaymentRow; 
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
                           <tr>
+                            <th className="w-16 p-3">Sr. No</th>
                             <th className="p-3">Entry</th>
                             <th className="p-3">Debit Account</th>
                             <th className="p-3">Credit Account</th>
@@ -591,8 +592,9 @@ function PaymentDetail({ payment, initialTab, onClose }: { payment: PaymentRow; 
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {payment.ledgerEntries?.map(entry => (
+                          {payment.ledgerEntries?.map((entry, index) => (
                             <tr key={entry.id}>
+                              <td className="p-3 text-xs font-black text-slate-500">{String(index + 1).padStart(2, '0')}</td>
                               <td className="p-3 font-black uppercase text-slate-800">{entry.entryType.replace(/_/g, ' ')}</td>
                               <td className="p-3 font-mono font-semibold text-slate-600">{entry.debitAccount || '-'}</td>
                               <td className="p-3 font-mono font-semibold text-slate-600">{entry.creditAccount || '-'}</td>

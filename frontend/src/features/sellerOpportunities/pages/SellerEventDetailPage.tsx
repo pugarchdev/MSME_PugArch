@@ -101,7 +101,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
     : `/bids/${bid.id}`;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-16">
+    <div className="mx-auto max-w-[1560px] space-y-6 px-4 pb-16">
       {/* Back button & Title Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <button
@@ -122,7 +122,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
       </div>
 
       {/* Main Banner Info */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+      <div className="space-y-4 rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-black uppercase text-slate-450">ID: {bid.id}</span>
           <MethodBadge method={bid.procurementType || 'Open Bid'} />
@@ -163,8 +163,8 @@ export default function SellerEventDetailPage({ id }: PageProps) {
       </div>
 
       {/* Tabs Menu */}
-      <div className="border-b border-slate-200">
-        <div className="flex gap-4 overflow-x-auto">
+      <div className="rounded-[22px] bg-slate-50/80 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
+        <div className="flex gap-2 overflow-x-auto">
           {[
             { id: 'overview', label: '1. Overview & Timeline' },
             { id: 'items', label: '2. Items & Technical Specs' },
@@ -177,10 +177,10 @@ export default function SellerEventDetailPage({ id }: PageProps) {
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
               className={cn(
-                "pb-2 text-xs font-black uppercase tracking-wider border-b-2 outline-none transition whitespace-nowrap",
+                "rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-wider outline-none transition whitespace-nowrap",
                 activeTab === tab.id
-                  ? "border-[#12335f] text-[#12335f]"
-                  : "border-transparent text-slate-400 hover:text-slate-650"
+                  ? "bg-[#12335f] text-white shadow-sm"
+                  : "text-slate-500 hover:bg-white hover:text-slate-800"
               )}
             >
               {tab.label}
@@ -190,7 +190,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
       </div>
 
       {/* Tabs Content */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div>
@@ -244,7 +244,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Procurement Items & Technical Specs</h3>
             
             {bid.itemName === 'BOQ Based Bid' || String(bid.procurementType).toUpperCase().includes('BOQ') ? (
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-3">
+              <div className="space-y-3 rounded-[20px] bg-indigo-50/70 p-4 ring-1 ring-indigo-100">
                 <div className="flex gap-2 text-indigo-800">
                   <ClipboardList className="h-5 w-5 shrink-0" />
                   <div>
@@ -260,23 +260,25 @@ export default function SellerEventDetailPage({ id }: PageProps) {
               </div>
             ) : null}
 
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="overflow-x-auto rounded-[20px] bg-slate-50/80 p-2 ring-1 ring-slate-200/70">
+              <table className="w-full border-separate border-spacing-y-2 text-left text-xs">
                 <thead>
-                  <tr className="border-b bg-slate-50 text-[10px] font-extrabold uppercase text-slate-500">
+                  <tr className="text-[10px] font-extrabold uppercase text-slate-500">
+                    <th className="w-20 px-4 py-2">Sr. No</th>
                     <th className="px-4 py-2">Item Description / Technical Specifications</th>
                     <th className="px-4 py-2 text-right">Quantity</th>
                     <th className="px-4 py-2">Delivery Location</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-semibold text-slate-650">
-                  <tr>
+                <tbody className="font-semibold text-slate-650">
+                  <tr className="bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+                    <td className="rounded-l-2xl px-4 py-3 text-xs font-black text-slate-500">01</td>
                     <td className="px-4 py-3">
                       <p className="font-bold text-slate-800">{bid.itemName || 'Standard Procurement Line Item'}</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">Specifications: All items supplied must match specifications defined by the buyer organization in the bid documents.</p>
                     </td>
                     <td className="px-4 py-3 text-right font-black text-slate-900">{bid.quantity || '1 Units'}</td>
-                    <td className="px-4 py-3">{bid.deliveryLocation || 'Delivery location specified in order'}</td>
+                    <td className="rounded-r-2xl px-4 py-3">{bid.deliveryLocation || 'Delivery location specified in order'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -292,7 +294,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             <div className="space-y-2 mt-2">
               {bid.requiredDocuments && bid.requiredDocuments.length > 0 ? (
                 bid.requiredDocuments.map((doc: string, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between border rounded-lg p-3 text-xs font-bold text-slate-700 bg-slate-50">
+                  <div key={idx} className="flex items-center justify-between rounded-[18px] bg-slate-50 p-3 text-xs font-bold text-slate-700 ring-1 ring-slate-200/70">
                     <span className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-[#12335f]" />
                       {doc}
@@ -304,7 +306,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                 ))
               ) : (
                 ['Technical Compliance Sheet', 'Udyam Registration Certificate', 'Commercial Offer Details'].map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between border rounded-lg p-3 text-xs font-bold text-slate-700 bg-slate-50">
+                  <div key={idx} className="flex items-center justify-between rounded-[18px] bg-slate-50 p-3 text-xs font-bold text-slate-700 ring-1 ring-slate-200/70">
                     <span className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-[#12335f]" />
                       {doc}
@@ -324,7 +326,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Clarifications Board</h3>
             
             {/* Ask clarification question form */}
-            <form onSubmit={handleAskQuestion} className="space-y-3 bg-slate-50 p-4 border rounded-lg">
+            <form onSubmit={handleAskQuestion} className="space-y-3 rounded-[20px] bg-slate-50 p-4 ring-1 ring-slate-200/70">
               <label htmlFor="clarification-question" className="block text-xs font-black uppercase text-slate-700">Ask a Question / Seek Clarification</label>
               <textarea
                 id="clarification-question"
@@ -332,13 +334,13 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                 value={questionText}
                 onChange={e => setQuestionText(e.target.value)}
                 placeholder="Type your question about technical specifications, timelines, or eligibility criteria..."
-                className="w-full text-xs font-semibold p-2 border rounded-md outline-none focus:border-[#12335f]"
+                className="w-full rounded-2xl border border-slate-200 p-3 text-xs font-semibold outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
               />
               <div className="flex justify-end">
                 <Button
                   type="submit"
                   disabled={submittingQuestion || !questionText.trim()}
-                  className="bg-[#12335f] text-white hover:bg-[#12335f]/95 rounded-md h-8 text-[10px] font-black uppercase"
+                  className="h-8 rounded-2xl bg-[#12335f] text-[10px] font-black uppercase text-white hover:bg-[#12335f]/95"
                 >
                   {submittingQuestion ? 'Submitting Question...' : 'Submit Clarification Request'}
                 </Button>
@@ -351,7 +353,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
               
               {bid.clarifications && bid.clarifications.length > 0 ? (
                 bid.clarifications.map((c: any, idx: number) => (
-                  <div key={idx} className="border rounded-lg p-3 space-y-2 text-xs">
+                  <div key={idx} className="space-y-2 rounded-[18px] p-3 text-xs ring-1 ring-slate-200/70">
                     <div className="flex justify-between border-b pb-1">
                       <span className="font-black text-slate-800">Request #{c.requestNumber || idx + 1}</span>
                       <span className="text-[10px] font-bold text-slate-400">{c.requestedAt ? new Date(c.requestedAt).toLocaleDateString() : 'Recent'}</span>
@@ -381,7 +383,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 border-b pb-1.5">Bid Submission Packets</h3>
 
             {/* Technical Packet */}
-            <div className="border rounded-lg p-4 space-y-3">
+            <div className="space-y-3 rounded-[20px] p-4 ring-1 ring-slate-200/70">
               <div className="flex items-center justify-between border-b pb-2">
                 <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
                   <FileText className="h-4.5 w-4.5 text-[#12335f]" /> Technical Proposal Packet
@@ -394,9 +396,9 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             </div>
 
             {/* Financial Packet */}
-            <div className={cn("border rounded-lg p-4 space-y-3 relative", isFinancialLocked && "bg-slate-50/70 border-dashed")}>
+            <div className={cn("relative space-y-3 rounded-[20px] p-4 ring-1 ring-slate-200/70", isFinancialLocked && "border border-dashed border-slate-300 bg-slate-50/70")}>
               {isFinancialLocked && (
-                <div className="absolute inset-0 bg-slate-50/50 flex flex-col items-center justify-center p-4 text-center rounded-lg">
+                <div className="absolute inset-0 flex flex-col items-center justify-center rounded-[20px] bg-slate-50/70 p-4 text-center">
                   <Lock className="h-6 w-6 text-slate-400" />
                   <p className="text-xs font-black text-slate-700 mt-2 uppercase tracking-wide">Financial Packet Locked</p>
                   <p className="text-[10px] text-slate-400 font-semibold max-w-sm mt-1">This is a two-packet bid. Financial packet remains locked and hidden until technical proposal qualification is approved.</p>
@@ -415,7 +417,7 @@ export default function SellerEventDetailPage({ id }: PageProps) {
             </div>
 
             {/* Terms & Final Submit Notice */}
-            <div className="rounded-lg border border-slate-200 p-4 space-y-3 bg-slate-50">
+            <div className="space-y-3 rounded-[20px] bg-slate-50 p-4 ring-1 ring-slate-200/70">
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"

@@ -352,17 +352,38 @@ export default function MarketplaceProductList() {
                     </div>
                 </div>
 
-                <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className="mx-auto max-w-[1560px] px-4 py-6">
+                    {isSellerDashboardMarketplace && (
+                        <section className="mb-5 overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_18%_18%,#1f6f63_0,#12335f_44%,#07172e_100%)] p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">Seller Marketplace Desk</p>
+                                    <h1 className="mt-2 text-2xl font-black tracking-tight text-white">Published Market View</h1>
+                                    <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-blue-100/90">
+                                        Review how your products and services appear in marketplace discovery, compare categories, and keep listings procurement-ready.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <Link href="/seller/catalogue" className="inline-flex h-10 items-center rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-white/15">
+                                        Manage Catalogue
+                                    </Link>
+                                    <Link href="/seller/products/new" className="inline-flex h-10 items-center rounded-2xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-emerald-400">
+                                        Add Product
+                                    </Link>
+                                </div>
+                            </div>
+                        </section>
+                    )}
                     {/* Products & Services Toggle Tabs */}
-                    <div className="mb-6 flex border-b border-slate-200 items-end">
+                    <div className="mb-6 flex items-end rounded-[22px] bg-slate-50/80 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                         <button
                             type="button"
                             onClick={() => handleToggleType('products')}
                             className={cn(
-                                "flex items-center gap-2 pb-3 px-4 text-xs font-black tracking-wider uppercase transition-all border-b-2 relative -mb-[2px]",
+                                "flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-all",
                                 !isServices
-                                    ? "border-[#0b2447] text-[#0b2447]"
-                                    : "border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300"
+                                    ? "bg-[#0b2447] text-white shadow-sm"
+                                    : "text-slate-500 hover:bg-white hover:text-slate-800"
                             )}
                         >
                             <Package className="h-4 w-4" />
@@ -372,10 +393,10 @@ export default function MarketplaceProductList() {
                             type="button"
                             onClick={() => handleToggleType('services')}
                             className={cn(
-                                "flex items-center gap-2 pb-3 px-4 text-xs font-black tracking-wider uppercase transition-all border-b-2 relative -mb-[2px]",
+                                "flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-all",
                                 isServices
-                                    ? "border-[#0b2447] text-[#0b2447]"
-                                    : "border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300"
+                                    ? "bg-[#0b2447] text-white shadow-sm"
+                                    : "text-slate-500 hover:bg-white hover:text-slate-800"
                             )}
                         >
                             <Wrench className="h-4 w-4" />
@@ -425,7 +446,7 @@ export default function MarketplaceProductList() {
                     </div>
 
                     {activeCategory && (
-                        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="mb-4 flex flex-col gap-2 rounded-[20px] bg-blue-50 p-3 ring-1 ring-blue-100 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-xs font-black text-[#0b2447]">Showing items in {activeCategory.name}</p>
                             <button
                                 type="button"
@@ -442,7 +463,7 @@ export default function MarketplaceProductList() {
                     )}
 
                     {/* Filters Bar */}
-                    <div className="flex flex-col gap-3 mb-6">
+                    <div className="mb-6 flex flex-col gap-3 rounded-[24px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
                         {/* Primary Filter Row */}
                         <div className="flex flex-col sm:flex-row gap-3">
                             <form onSubmit={handleSearch} className="flex-1 relative">
@@ -452,18 +473,18 @@ export default function MarketplaceProductList() {
                                     value={query}
                                     onChange={e => { setQuery(e.target.value); setPage(1); syncUrl({ q: e.target.value, page: 1 }); }}
                                     placeholder={isServices ? "Search services..." : "Search products..."}
-                                    className="w-full h-10 pl-10 pr-4 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20"
+                                    className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10"
                                 />
                             </form>
                             
-                            <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); syncUrl({ categoryId: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-semibold bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20">
+                            <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); syncUrl({ categoryId: e.target.value, page: 1 }); }} className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10">
                                 <option value="">All Categories</option>
                                 {categories.filter((c: any) => isServices ? ['SERVICE', 'BOTH'].includes(c.type) : ['PRODUCT', 'BOTH'].includes(c.type)).map((c: any) => (
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </select>
 
-                            <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); syncUrl({ sort: e.target.value, page: 1 }); }} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-semibold bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0b2447]/20">
+                            <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); syncUrl({ sort: e.target.value, page: 1 }); }} className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10">
                                 <option value="popular">Popular</option>
                                 <option value="latest">Newest</option>
                                 <option value="price_asc">Price: Low to High</option>
@@ -478,7 +499,7 @@ export default function MarketplaceProductList() {
                                 type="button"
                                 onClick={() => setShowAdvancedFilters(prev => !prev)}
                                 className={cn(
-                                    "h-10 px-4 flex items-center justify-center gap-2 rounded-lg border text-sm font-black transition shadow-sm",
+                                    "h-10 px-4 flex items-center justify-center gap-2 rounded-2xl border text-sm font-black transition shadow-sm",
                                     showAdvancedFilters
                                         ? "bg-[#0b2447] border-[#0b2447] text-white"
                                         : "bg-white border-slate-200 text-[#0b2447] hover:bg-slate-50 hover:border-slate-300"
@@ -491,7 +512,7 @@ export default function MarketplaceProductList() {
 
                         {/* Collapsible Advanced Filters Panel */}
                         {showAdvancedFilters && (
-                            <div className="bg-slate-50 rounded-lg border border-slate-200/80 p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="grid grid-cols-1 gap-4 rounded-[22px] bg-slate-50 p-4 ring-1 ring-slate-200/70 animate-in fade-in slide-in-from-top-2 duration-200 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Sellers Status</label>
                                     <select value={verificationFilter} onChange={e => { setVerificationFilter(e.target.value); setPage(1); syncUrl({ verifiedSeller: e.target.value === 'VERIFIED' ? 'true' : '', page: 1 }); }} className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-semibold bg-white cursor-pointer focus:outline-none">
@@ -631,7 +652,7 @@ export default function MarketplaceProductList() {
                     </div>
 
                     {/* Results Count */}
-                    <div className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-4 flex flex-col gap-2 rounded-[20px] bg-slate-50/80 p-3 ring-1 ring-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-xs font-semibold text-slate-500">
                             {activeCategory ? `Showing ${total} item${total !== 1 ? 's' : ''} in ${activeCategory.name}` : `${total} ${isServices ? 'service' : 'product'}${total !== 1 ? 's' : ''} found`}
                         </p>
@@ -644,10 +665,10 @@ export default function MarketplaceProductList() {
                     {/* Product / Service Grid */}
                     {(isLoading || !hasLoadedList) && items.length === 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="h-64 bg-slate-100 rounded-lg animate-pulse" />)}
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="h-64 rounded-[22px] bg-slate-100 animate-pulse" />)}
                         </div>
                     ) : sortedItems.length === 0 ? (
-                        <div className="text-center py-16 rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                        <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 py-16 text-center">
                             {isServices ? <Wrench className="h-12 w-12 text-slate-300 mx-auto mb-3" /> : <Package className="h-12 w-12 text-slate-300 mx-auto mb-3" />}
                             <h3 className="text-sm font-black text-slate-800">{activeCategory ? 'No products or services found in this category.' : `No ${isServices ? 'services' : 'products'} found matching your criteria.`}</h3>
                             <p className="mt-1 text-xs font-semibold text-slate-500">Publish your requirement so verified MSMEs can respond.</p>
@@ -659,11 +680,12 @@ export default function MarketplaceProductList() {
                             </div>
                         </div>
                     ) : viewMode === 'list' ? (
-                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[1040px] text-left text-sm">
-                                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                        <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+                            <div className="overflow-x-auto bg-slate-50/70 p-2">
+                                <table className="w-full min-w-[1040px] border-separate border-spacing-y-2 text-left text-sm">
+                                    <thead className="text-[10px] uppercase tracking-wider text-slate-500">
                                         <tr>
+                                            <th className="w-20 px-4 py-3 font-black">Sr. No</th>
                                             <th className="px-4 py-3"><SortableHeader label={isServices ? 'Service' : 'Product'} field="name" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
                                             <th className="px-4 py-3"><SortableHeader label="Seller" field="seller" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
                                             <th className="px-4 py-3"><SortableHeader label="Category" field="category" activeField={tableSortKey} direction={tableSortDirection} onSort={toggleTableSort} /></th>
@@ -672,8 +694,8 @@ export default function MarketplaceProductList() {
                                             <th className="px-4 py-3 text-right font-black">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {sortedItems.map((item: any) => {
+                                    <tbody>
+                                        {sortedItems.map((item: any, index: number) => {
                                             const isFallback = item.id < 0;
                                             const isVerified = item.organization?.verificationStatus === 'VERIFIED';
                                             const location = item.organization?.city || item.organization?.district || item.organization?.state;
@@ -684,7 +706,8 @@ export default function MarketplaceProductList() {
                                                 ? (isServices ? '/marketplace/services' : '/marketplace/products')
                                                 : (isServices ? `/marketplace/services/${item.id}` : `/marketplace/products/${item.id}`);
                                             return (
-                                                <tr key={item.id} className="bg-white transition hover:bg-blue-50/50">
+                                                <tr key={item.id} className="bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm">
+                                                    <td className="rounded-l-2xl px-4 py-3 text-xs font-black text-slate-500">{String((page - 1) * 12 + index + 1).padStart(2, '0')}</td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex min-w-[240px] items-center gap-3">
                                                             <Link
@@ -723,7 +746,7 @@ export default function MarketplaceProductList() {
                                                     </td>
                                                     <td className="px-4 py-3 text-xs font-semibold text-slate-600">{item.category?.name || '-'}</td>
                                                     <td className="px-4 py-3 text-right text-xs font-black text-[#0b2447]">{itemPrice ? `INR ${Number(itemPrice).toLocaleString('en-IN')}` : 'Request quote'}</td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="rounded-r-2xl px-4 py-3">
                                                         <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase text-blue-700">{item.status || 'ACTIVE'}</span>
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -789,7 +812,7 @@ export default function MarketplaceProductList() {
                             </div>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                             {sortedItems.map((item: any) => {
                                 const isFallback = item.id < 0;
                                 const imageUrl = resolveMarketplaceImage(item, isServices ? 'service' : 'product');
@@ -801,7 +824,7 @@ export default function MarketplaceProductList() {
                                     ? (isServices ? '/marketplace/services' : '/marketplace/products')
                                     : (isServices ? `/marketplace/services/${item.id}` : `/marketplace/products/${item.id}`);
                                 return (
-                                    <div key={item.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all flex flex-col justify-between">
+                                    <div key={item.id} className="flex flex-col justify-between overflow-hidden rounded-[22px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:ring-[#0b2447]/20">
                                         <div>
                                             <Link 
                                                 href={detailUrl} 
@@ -809,7 +832,7 @@ export default function MarketplaceProductList() {
                                                     if (isFallback) return;
                                                     cacheAndTrackItem(item);
                                                 }}
-                                                className="block relative h-36 bg-slate-100 overflow-hidden"
+                                                className="relative block h-36 overflow-hidden bg-slate-100"
                                             >
                                                 {imageUrl ? (
                                                     <img src={imageUrl} alt={item.name} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />

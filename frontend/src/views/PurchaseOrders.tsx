@@ -770,6 +770,7 @@ export default function PurchaseOrders() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 text-[9px] font-black uppercase tracking-wider text-slate-500">
                       <tr>
+                        <th className="w-16 p-2.5">Sr. No</th>
                         <th className="p-2.5">Item Name</th>
                         <th className="p-2.5 w-16 text-center">Qty</th>
                         <th className="p-2.5 text-right w-28">Unit Price</th>
@@ -779,6 +780,7 @@ export default function PurchaseOrders() {
                     <tbody className="divide-y divide-slate-100">
                       {(viewingOrder.items?.length ? viewingOrder.items : [{ itemName: viewingOrder.title, quantity: 1, unitPrice: viewingOrder.amount || viewingOrder.totalValue, totalAmount: viewingOrder.amount || viewingOrder.totalValue }]).map((item, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/80">
+                          <td className="p-2.5 text-xs font-black text-slate-500">{String(idx + 1).padStart(2, '0')}</td>
                           <td className="p-2.5 font-bold text-slate-800">{item.itemName || viewingOrder.title}</td>
                           <td className="p-2.5 text-center font-bold text-slate-600">{Number(item.quantity || 1)}</td>
                           <td className="p-2.5 text-right font-semibold text-slate-600">{formatCurrency(item.unitPrice)}</td>

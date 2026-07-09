@@ -720,28 +720,29 @@ export default function Dashboard() {
       )}
 
       {user?.role === 'seller' && (
-        <section className="rounded-[24px] bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-emerald-500/20 animate-in fade-in duration-300">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <section className="relative overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_20%_15%,#1f6f63_0,#12335f_46%,#07172e_100%)] p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] animate-in fade-in duration-300">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Primary Seller Actions</p>
-              <h2 className="text-base font-black text-slate-950">Manage Products & Services</h2>
-              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
-                Grow your business: upload products/services to the public Marketplace, manage your Catalogue, and bid on public tenders.
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">Primary Seller Actions</p>
+              <h2 className="text-lg font-black text-white">Manage Products, Catalogue & Bids</h2>
+              <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-blue-100/90">
+                Grow business from one seller desk: publish catalogue items, monitor public market visibility, and respond to procurement opportunities.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
               <Link href="/seller/products/new">
-                <Button className="h-10 rounded-md bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-black uppercase tracking-wide text-white flex items-center gap-1.5 shadow-sm">
+                <Button className="h-10 rounded-2xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-400">
                   <PlusCircle className="h-4 w-4" /> Add Product
                 </Button>
               </Link>
               <Link href="/seller/catalogue">
-                <Button variant="outline" className="h-10 rounded-md border-slate-200 bg-white hover:bg-slate-50 px-4 text-xs font-black uppercase tracking-wide text-slate-700 shadow-sm">
+                <Button variant="outline" className="h-10 rounded-2xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15">
                   My Catalogue
                 </Button>
               </Link>
               <Link href="/seller/marketplace">
-                <Button variant="outline" className="h-10 rounded-md border-[#12335f]/20 hover:border-[#12335f]/30 hover:bg-[#12335f]/5 text-[#12335f] px-4 text-xs font-black uppercase tracking-wide shadow-sm">
+                <Button variant="outline" className="h-10 rounded-2xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15">
                   Public Market
                 </Button>
               </Link>

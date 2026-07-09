@@ -206,7 +206,7 @@ export default function RfqPage() {
                             <table className="w-full min-w-[920px] text-sm">
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
-                                        <th className="px-4 py-2.5 text-left w-12">#</th>
+                                        <th className="px-4 py-2.5 text-left w-20">Sr. No</th>
                                         <th className="px-4 py-2.5 text-left w-24">RFQ ID</th>
                                         <th className="px-4 py-2.5 text-left">Subject</th>
                                         <th className="px-4 py-2.5 text-left">{isBuyer ? 'Vendor' : 'Buyer'}</th>

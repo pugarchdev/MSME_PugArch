@@ -180,15 +180,16 @@ export default function SellerProcurementHub() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-12 px-4 md:px-0">
+    <div className="mx-auto max-w-[1560px] space-y-6 px-4 pb-12">
       {/* Premium Header */}
-      <div className="rounded-2xl border border-slate-150 bg-white p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="relative overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_20%_20%,#23517f_0,#12335f_42%,#07172e_100%)] p-6 text-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="pointer-events-none absolute right-[-8%] top-[-35%] h-72 w-72 rounded-full bg-emerald-400/10 blur-[80px]" />
         <div>
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#12335f]/10 text-[#12335f] border border-[#12335f]/10 mb-2 uppercase tracking-wider">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/10 text-blue-100 border border-white/10 mb-2 uppercase tracking-wider">
             <ClipboardList className="h-3 w-3" /> Supplier Portal
           </span>
-          <h1 className="text-xl font-black uppercase text-slate-900 tracking-tight">Bidding & Tenders Dashboard</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500 max-w-2xl leading-relaxed">
+          <h1 className="text-xl font-black uppercase text-white tracking-tight">Bidding & Tenders Dashboard</h1>
+          <p className="mt-1 text-xs font-semibold text-blue-100/85 max-w-2xl leading-relaxed">
             Access buyer bidding requirements, submit Bid Proposals / RFPs, participate in downward price Auctions, and manage your delivery fulfillment.
           </p>
         </div>
@@ -196,16 +197,16 @@ export default function SellerProcurementHub() {
           type="button" 
           variant="outline" 
           onClick={() => summaryQuery.refetch()} 
-          className="h-10 rounded-xl text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border-slate-200 self-start md:self-center"
+          className="h-10 text-xs font-bold text-white bg-white/10 hover:bg-white/15 border-white/20 self-start md:self-center"
         >
           <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isLoading && 'animate-spin')} /> Refresh
         </Button>
       </div>
  
       {/* Unified Key Metrics Banner (Less Boxy) */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-150 grid grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {summaryMetrics.map((metric) => (
-          <div key={metric.label} className="p-4 flex flex-col justify-center bg-slate-50/20">
+          <div key={metric.label} className="rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
             <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">{metric.label}</span>
             {isLoading ? (
               <div className="h-6 w-12 rounded bg-slate-100 animate-pulse mt-1" />
@@ -226,7 +227,7 @@ export default function SellerProcurementHub() {
             <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
             Bids & Opportunities
           </h3>
-          <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden divide-y divide-slate-100">
+          <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 divide-y divide-slate-100">
             {opportunityActions.map((card) => {
               const Icon = card.icon;
               const colors = toneColors[card.tone] || toneColors.indigo;
@@ -237,7 +238,7 @@ export default function SellerProcurementHub() {
                   onClick={() => router.push(card.href)}
                   className="w-full text-left p-4 hover:bg-slate-50/70 transition-all flex items-start gap-3.5 group focus:outline-none focus:bg-slate-50"
                 >
-                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm", colors.bg, colors.text)}>
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-sm", colors.bg, colors.text)}>
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -266,7 +267,7 @@ export default function SellerProcurementHub() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             Execution & Operations
           </h3>
-          <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden divide-y divide-slate-100">
+          <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 divide-y divide-slate-100">
             {fulfillmentActions.map((card) => {
               const Icon = card.icon;
               const colors = toneColors[card.tone] || toneColors.indigo;
@@ -277,7 +278,7 @@ export default function SellerProcurementHub() {
                   onClick={() => router.push(card.href)}
                   className="w-full text-left p-4 hover:bg-slate-50/70 transition-all flex items-start gap-3.5 group focus:outline-none focus:bg-slate-50"
                 >
-                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm", colors.bg, colors.text)}>
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-sm", colors.bg, colors.text)}>
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="flex-1 min-w-0">

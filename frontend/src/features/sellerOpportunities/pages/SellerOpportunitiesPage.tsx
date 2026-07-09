@@ -454,8 +454,8 @@ export default function SellerOpportunitiesPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-6">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-8">
+      <div className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Bidding Opportunities</p>
@@ -501,7 +501,7 @@ export default function SellerOpportunitiesPage() {
         />
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
         <div className="grid gap-3 lg:grid-cols-[1fr_170px_170px_170px_150px_auto_auto] lg:items-center">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -509,13 +509,13 @@ export default function SellerOpportunitiesPage() {
               value={query}
               onChange={event => setQuery(event.target.value)}
               placeholder="Search opportunity, buyer, category, location..."
-              className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:border-[#12335f]"
+              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
             />
           </div>
           <SelectFilter value={type} onChange={(value) => setType(value as OpportunityType | '')} placeholder="All types" options={typeOptions} />
           <SelectFilter value={status} onChange={setStatus} placeholder="All statuses" options={statusOptions} />
           <SelectFilter value={location} onChange={setLocation} placeholder="All locations" options={locationOptions} />
-          <select value={closingDate} onChange={event => setClosingDate(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none">
+          <select value={closingDate} onChange={event => setClosingDate(event.target.value)} className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10">
             <option value="">Any closing date</option>
             <option value="7">Next 7 days</option>
           </select>
@@ -526,12 +526,12 @@ export default function SellerOpportunitiesPage() {
 
       {loading ? (
         <div className="grid gap-3 md:grid-cols-2">
-          {[1, 2, 3, 4].map(item => <div key={item} className="h-40 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="h-4 w-40 rounded bg-slate-100" /><div className="mt-4 h-20 rounded bg-slate-100" /></div>)}
+          {[1, 2, 3, 4].map(item => <div key={item} className="h-40 rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70"><div className="h-4 w-40 rounded bg-slate-100" /><div className="mt-4 h-20 rounded bg-slate-100" /></div>)}
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>
+        <div className="rounded-[22px] bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-200">{error}</div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="rounded-[24px] bg-white/95 p-8 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
           <h2 className="text-base font-black text-slate-950">No matching opportunities right now.</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Check again later or update your marketplace categories.</p>
         </div>
@@ -543,10 +543,10 @@ export default function SellerOpportunitiesPage() {
           <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} label="opportunities" />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+        <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+          <div className="overflow-x-auto bg-slate-50/70 p-2">
+            <table className="w-full min-w-[1180px] border-separate border-spacing-y-2 text-sm">
+              <thead className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="w-16 px-4 py-3 text-left whitespace-nowrap">S.No.</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Reference</th>
@@ -562,14 +562,14 @@ export default function SellerOpportunitiesPage() {
                   <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {pageRows.map((item, index) => {
                   const expanded = expandedId === item.id;
                   return (
                     <React.Fragment key={item.id}>
-                      <tr className={cn('hover:bg-slate-50', expanded && 'bg-blue-50/40')}>
-                        <td className="px-4 py-3 text-xs font-black text-slate-500 whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                      <tr className={cn('bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm', expanded && 'bg-blue-50/50')}>
+                        <td className="rounded-l-2xl px-4 py-3 text-xs font-black text-slate-500 whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
+                        <td className="rounded-r-2xl px-4 py-3 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => setSelectedItem(item)}
@@ -650,10 +650,10 @@ function SummaryTile({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-lg border bg-white p-4 shadow-sm text-left w-full transition-all focus:outline-none focus:ring-2 focus:ring-[#12335f]/20",
+        "w-full rounded-[22px] bg-white/95 p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all focus:outline-none focus:ring-2 focus:ring-[#12335f]/20",
         active
-          ? "border-[#12335f] ring-2 ring-[#12335f]/15 shadow-md bg-blue-50/10"
-          : "border-slate-200 hover:border-[#12335f]/60 hover:shadow-md"
+          ? "ring-2 ring-[#12335f]/20 shadow-md bg-blue-50/30"
+          : "hover:ring-[#12335f]/30 hover:shadow-md"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -661,7 +661,7 @@ function SummaryTile({
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
           <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
         </div>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#12335f] text-white">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12335f] text-white shadow-sm">
           <Icon className="h-5 w-5" />
         </span>
       </div>
@@ -701,7 +701,7 @@ function OpportunityProgress({ item }: { item: SellerOpportunity }) {
 function OpportunityDetailPanel({ item }: { item: SellerOpportunity }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Opportunity Details</p>
@@ -726,7 +726,7 @@ function OpportunityDetailPanel({ item }: { item: SellerOpportunity }) {
           <Metric label="Eligibility" value={item.eligibility} />
         </div>
 
-        <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 p-3">
+        <div className="mt-4 rounded-[18px] bg-blue-50 p-3 ring-1 ring-blue-100">
           <div className="flex items-start gap-2">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#12335f]" />
             <p className="text-xs font-semibold leading-relaxed text-slate-700">{item.nextAction}</p>
@@ -734,10 +734,10 @@ function OpportunityDetailPanel({ item }: { item: SellerOpportunity }) {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link href={item.detailsHref} className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">
+          <Link href={item.detailsHref} className="inline-flex h-9 items-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">
             <Eye className="mr-1.5 h-4 w-4" /> View Details
           </Link>
-          <Link href={item.href} className="inline-flex h-9 items-center rounded-md bg-[#12335f] px-3 text-xs font-black text-white">{item.actionLabel}</Link>
+          <Link href={item.href} className="inline-flex h-9 items-center rounded-2xl bg-[#12335f] px-3 text-xs font-black text-white">{item.actionLabel}</Link>
         </div>
       </section>
 
@@ -757,8 +757,8 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
   const detailRows = item.detailRows || [];
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="opportunity-dialog-title">
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
-        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] bg-white/95 shadow-2xl ring-1 ring-slate-200/70">
+        <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -772,7 +772,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-[#12335f] hover:text-[#12335f]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-[#12335f] hover:text-[#12335f]"
               aria-label="Close opportunity details"
             >
               <X className="h-4 w-4" />
@@ -783,7 +783,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
         <div className="overflow-y-auto p-5">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200/70">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement Brief</p>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-700 text-wrap-anywhere">
                   {item.description || 'No detailed description was provided by the buyer for this opportunity.'}
@@ -796,7 +796,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
                 </div>
               </section>
 
-              <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200/70">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Commercial And Buyer Information</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   <Metric label="Buyer" value={item.buyer || 'Buyer details controlled'} />
@@ -813,7 +813,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
                 )}
               </section>
 
-              <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200/70">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Documents, Terms And Compliance</p>
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <ListBlock title={`Required documents (${item.documentsCount || item.documents?.length || 0})`} items={item.documents || []} fallback="No mandatory documents are listed in this feed." />
@@ -823,7 +823,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
             </div>
 
             <aside className="space-y-4">
-              <section className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <section className="rounded-[22px] bg-blue-50 p-4 ring-1 ring-blue-100">
                 <div className="flex items-start gap-2">
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#12335f]" />
                   <div>
@@ -832,8 +832,8 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={item.href} className="inline-flex h-9 items-center rounded-md bg-[#12335f] px-3 text-xs font-black text-white">{item.actionLabel}</Link>
-                  <Link href={item.detailsHref} className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">Open source page</Link>
+                  <Link href={item.href} className="inline-flex h-9 items-center rounded-2xl bg-[#12335f] px-3 text-xs font-black text-white">{item.actionLabel}</Link>
+                  <Link href={item.detailsHref} className="inline-flex h-9 items-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">Open source page</Link>
                 </div>
               </section>
               <ProcurementLifecycleTracker
@@ -855,7 +855,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
 
 function ListBlock({ title, items, fallback }: { title: string; items: string[]; fallback: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200/70">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{title}</p>
       {items.length > 0 ? (
         <ul className="mt-2 space-y-1.5">
@@ -885,7 +885,7 @@ function SelectFilter({
   options: string[];
 }) {
   return (
-    <select value={value} onChange={event => onChange(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none">
+    <select value={value} onChange={event => onChange(event.target.value)} className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10">
       <option value="">{placeholder}</option>
       {options.map(option => <option key={option} value={option}>{option}</option>)}
     </select>
@@ -905,7 +905,7 @@ function TypeBadge({ type }: { type: OpportunityType }) {
 
 function OpportunityCard({ item, serial, onView }: { item: SellerOpportunity; serial: number; onView: () => void }) {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition hover:shadow-md">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -917,10 +917,10 @@ function OpportunityCard({ item, serial, onView }: { item: SellerOpportunity; se
           <p className="mt-1 text-xs font-semibold text-slate-500">{[item.buyer || 'Buyer details controlled', item.category || 'General procurement', item.quantity].filter(Boolean).join(' / ')}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <button type="button" onClick={onView} className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">
+          <button type="button" onClick={onView} className="inline-flex h-9 items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]">
             <Eye className="mr-1.5 h-4 w-4" /> View
           </button>
-          <Link href={item.href} className="inline-flex h-9 items-center justify-center rounded-md bg-[#12335f] px-3 text-xs font-black text-white">
+          <Link href={item.href} className="inline-flex h-9 items-center justify-center rounded-2xl bg-[#12335f] px-3 text-xs font-black text-white">
             {item.actionLabel}
           </Link>
         </div>
@@ -947,7 +947,7 @@ function OpportunityCard({ item, serial, onView }: { item: SellerOpportunity; se
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200/70">
       <p className="text-[9px] font-black uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 text-xs font-black text-slate-800 text-wrap-anywhere">{value}</p>
     </div>

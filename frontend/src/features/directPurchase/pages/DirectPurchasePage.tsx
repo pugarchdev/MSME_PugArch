@@ -190,7 +190,7 @@ export default function DirectPurchasePage({ listOnly = false }: { listOnly?: bo
                             <table className="w-full min-w-[920px] text-sm">
                                 <thead className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                     <tr>
-                                        <th className="px-4 py-2.5 text-left w-12">#</th>
+                                        <th className="px-4 py-2.5 text-left w-20">Sr. No</th>
                                         <th className="px-4 py-2.5 text-left w-44">Purchase ID</th>
                                         <th className="px-4 py-2.5 text-left">Buyer</th>
                                         <th className="px-4 py-2.5 text-left">Seller</th>
@@ -544,6 +544,7 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
                                         <table className="w-full text-xs">
                                             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                                 <tr>
+                                                    <th className="w-16 px-3 py-2 text-left">Sr. No</th>
                                                     <th className="px-3 py-2 text-left">Product / Service</th>
                                                     <th className="px-3 py-2 text-left">Specifications</th>
                                                     <th className="px-3 py-2 text-right w-16">Qty</th>
@@ -553,12 +554,13 @@ function DirectPurchaseDetail({ id, onClose }: { id: number; onClose: () => void
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {dp.requirement.items.map(item => {
+                                                {dp.requirement.items.map((item, index) => {
                                                     const price = Number(item.estimatedUnitPrice || 0);
                                                     const qty = Number(item.quantity || 0);
                                                     const lineTotal = price * qty;
                                                     return (
                                                         <tr key={item.id} className="hover:bg-slate-50/50">
+                                                            <td className="px-3 py-2 text-xs font-black text-slate-500">{String(index + 1).padStart(2, '0')}</td>
                                                             <td className="px-3 py-2 font-bold text-slate-900 text-wrap-anywhere">
                                                                 {item.itemName}
                                                             </td>
@@ -955,13 +957,14 @@ function DirectPurchaseCreator({ onClose, prefill }: { onClose: () => void; pref
                     <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
                         <table className="min-w-[760px] w-full text-xs">
                             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                <tr>{['Product / Service', 'Specification', 'Qty', 'Unit', 'Unit Price', 'Tax %', 'Total', 'Action'].map(head => <th key={head} className="px-2 py-2 text-left">{head}</th>)}</tr>
+                                <tr>{['Sr. No', 'Product / Service', 'Specification', 'Qty', 'Unit', 'Unit Price', 'Tax %', 'Total', 'Action'].map(head => <th key={head} className="px-2 py-2 text-left">{head}</th>)}</tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {items.map(item => {
+                                {items.map((item, index) => {
                                     const total = Number(item.qty || 0) * Number(item.price || 0) * (1 + Number(item.tax || 0) / 100);
                                     return (
                                         <tr key={item.id}>
+                                            <td className="px-2 py-2 text-xs font-black text-slate-500">{String(index + 1).padStart(2, '0')}</td>
                                             <td className="px-2 py-2"><Input value={item.name} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, name: e.target.value } : row))} /></td>
                                             <td className="px-2 py-2"><Input value={item.spec} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, spec: e.target.value } : row))} /></td>
                                             <td className="px-2 py-2"><Input type="number" value={item.qty} onChange={e => setItems(prev => prev.map(row => row.id === item.id ? { ...row, qty: Number(e.target.value) || 0 } : row))} /></td>

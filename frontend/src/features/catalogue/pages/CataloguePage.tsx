@@ -729,39 +729,40 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
       : 'Search approved products and services from active sellers.';
 
   return (
-    <div className="space-y-6 min-w-0">
+    <div className="min-w-0 space-y-6">
       {/* Premium Dashboard Banner Header */}
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 text-slate-800 shadow-sm relative">
+      <div className="relative overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_18%_18%,#1f6f63_0,#12335f_46%,#07172e_100%)] p-6 text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-emerald-300/20 blur-3xl" />
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between relative z-10">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#12335f]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-100">
               <Store className="h-3.5 w-3.5" /> {title}
             </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-900">Marketplace Catalogue</h1>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{subtitle}</p>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Marketplace Catalogue</h1>
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-blue-100/90">{subtitle}</p>
           </div>
           
           <div className="flex flex-wrap gap-2.5">
             {mode === 'seller' && (
               <>
-                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border-0 px-4">
+                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/products/new')} className="h-10 rounded-2xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-wider text-white shadow-md border-0 hover:bg-emerald-400">
                   <PackagePlus className="mr-2 h-4 w-4" /> Add Product
                 </Button>
-                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-[#12335f] hover:bg-[#0b2447] text-white shadow-md border-0 px-4">
+                <Button disabled={!sellerApproved} onClick={() => router.push('/seller/services/new')} className="h-10 rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wider text-white shadow-md hover:bg-white/15">
                   <Wrench className="mr-2 h-4 w-4" /> Add Service
                 </Button>
-                <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                <Button disabled={!sellerApproved} variant="outline" onClick={() => setImportKind('product')} className="h-10 rounded-2xl border-white/20 bg-white/10 text-xs font-black uppercase tracking-wider text-white hover:bg-white/15">
                   <FileUp className="mr-2 h-4 w-4" /> Import
                 </Button>
                 <Button disabled={!sellerApproved} variant="outline" onClick={() => {
                   downloadCatalogueFile('/api/catalogue/import/templates/products', 'catalogue_products_template.xlsx')
                     .catch(() => toast.error('Template download failed'));
-                }} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50" title="Download Product Template">
+                }} className="h-10 rounded-2xl border-white/20 bg-white/10 text-xs font-black uppercase tracking-wider text-white hover:bg-white/15" title="Download Product Template">
                   <Download className="mr-2 h-4 w-4" /> Template
                 </Button>
               </>
             )}
-            <Button variant="outline" onClick={() => loadCatalogue(true)} className="h-10 rounded-xl text-xs font-black uppercase tracking-wider border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+            <Button variant="outline" onClick={() => loadCatalogue(true)} className="h-10 rounded-2xl border-white/20 bg-white/10 text-xs font-black uppercase tracking-wider text-white hover:bg-white/15">
               <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
             <ViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -776,7 +777,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
         <InlineError message="Buyer procurement is locked until admin approval. You can browse the marketplace and view seller/item details, but purchase and RFQ actions are disabled." />
       )}
 
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Total Items" value={filtered.length} icon={Boxes} />
         <Metric label="Products" value={products.length} icon={PackageSearch} />
         <Metric label="Services" value={services.length} icon={Wrench} />
@@ -811,19 +812,19 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
 
       {error && <InlineError message={error} onRetry={loadCatalogue} />}
 
-      <Card className="border-slate-200/80 shadow-sm bg-white">
+      <Card className="rounded-[24px] border-0 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-col sm:flex-row gap-2 items-center">
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search name, seller, category..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
+              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search name, seller, category..." className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
             </div>
 
             <Button
               type="button"
               variant="outline"
               onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className="xl:hidden h-10 w-full sm:w-auto gap-2 rounded-lg text-xs font-black uppercase tracking-wider border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+              className="h-10 w-full shrink-0 gap-2 rounded-2xl border-slate-200 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 sm:w-auto xl:hidden"
             >
               <Settings2 className="h-4 w-4 text-slate-500" />
               <span>Filters {showMobileFilters ? '(Hide)' : '(Show)'}</span>
@@ -833,20 +834,20 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               "grid gap-3 items-center",
               showMobileFilters ? "grid grid-cols-2 sm:grid-cols-3" : "hidden xl:grid xl:grid-cols-[140px_160px_150px_150px_150px] xl:justify-between"
             )}>
-              <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <select value={kindFilter} onChange={event => setKindFilter(event.target.value as FilterKind)} className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10">
                 <option value="all">All types</option>
                 <option value="product">Products</option>
                 <option value="service">Services</option>
               </select>
-              <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10">
                 <option value="">All categories</option>
                 {categories.map(category => <option key={category} value={category}>{category}</option>)}
               </select>
-              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10">
                 <option value="">All statuses</option>
                 {statuses.map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
               </select>
-              <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 w-full">
+              <select value={priceFilter} onChange={event => setPriceFilter(event.target.value)} className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10">
                 <option value="">All prices</option>
                 <option value="high">Above Rs. 10k</option>
                 <option value="mid">Rs. 1k to 10k</option>
@@ -890,13 +891,13 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-200 bg-white">
-              <div className="relative overflow-x-auto">
-                <table className={cn("w-full table-fixed text-left", mode === 'seller' ? "min-w-[1040px]" : "min-w-[900px]")}>
-                  <thead className="bg-slate-50 border-b border-slate-200">
+            <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+              <div className="relative overflow-x-auto bg-slate-50/70 p-2">
+                <table className={cn("w-full table-fixed border-separate border-spacing-y-2 text-left", mode === 'seller' ? "min-w-[1040px]" : "min-w-[900px]")}>
+                  <thead>
                     <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500">
                       <th className="px-2 py-3 w-10 text-center">
-                        <CatalogueSortHead label="Sr." field="sr" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
+                        <CatalogueSortHead label="Sr. No" field="sr" sortKey={sortKey} sortDirection={sortDirection} onToggle={(k) => { setSortKey(k); setSortDirection(prev => sortKey === k ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'); }} />
                       </th>
                       <th className="px-2 py-3 w-14 text-center">Image</th>
                       <th className="px-3 py-3 w-[210px]">
@@ -928,7 +929,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                       <th className="sticky right-0 z-10 bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {pagedItems.map((item, index) => {
                       const value = cataloguePrice(item);
                       const status = item.status || 'DRAFT';
@@ -940,8 +941,8 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                           ? `RFQ ${String(actionState.rfq.status || 'sent').replace(/_/g, ' ')}`
                           : '';
                       return (
-                        <tr key={`${item.itemKind}-${item.id}`} className="group hover:bg-slate-50/50 transition-colors">
-                          <td className="px-3 py-3 text-center text-xs font-black text-slate-400">
+                        <tr key={`${item.itemKind}-${item.id}`} className="group bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm">
+                          <td className="rounded-l-2xl px-3 py-3 text-center text-xs font-black text-slate-400">
                             {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
                           </td>
                           <td className="px-2 py-3 text-center">
@@ -1041,7 +1042,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               {formatDateTime(item.createdAt)}
                             </td>
                           )}
-                          <td className="sticky right-0 z-[5] bg-white group-hover:bg-slate-50 px-2 py-3 w-[180px] min-w-[180px] align-top text-right whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">
+                          <td className="sticky right-0 z-[5] w-[180px] min-w-[180px] rounded-r-2xl bg-white px-2 py-3 text-right align-top whitespace-nowrap shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] group-hover:bg-slate-50">
                             <div className="inline-flex items-center justify-end gap-1">
                               {mode === 'seller' && (
                                 <>
@@ -1568,12 +1569,12 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
 
   if (viewMode === 'list') {
     return (
-      <Card className="hover:shadow-md hover:border-slate-350 transition-all duration-200 bg-white border-slate-200/80 w-full">
+      <Card className="w-full rounded-[22px] border-0 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-emerald-500/20">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0 flex-1">
               {srNo !== undefined && (
-                <div className="flex flex-col items-center justify-center shrink-0 w-14 h-12 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 select-none">
+                <div className="flex h-12 w-14 shrink-0 select-none flex-col items-center justify-center rounded-2xl bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 ring-1 ring-slate-200/70">
                   <span className="text-[8px] font-bold text-slate-400">SR. NO.</span>
                   <span className="text-sm font-black text-slate-700 leading-none mt-0.5">{srNo}</span>
                 </div>
@@ -1728,7 +1729,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
 
   // Grid layout (default)
   return (
-    <Card className="hover:shadow-md hover:border-slate-300 transition-all duration-200 bg-white border-slate-200/80">
+    <Card className="rounded-[22px] border-0 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-emerald-500/20">
       <CardContent className="p-4 flex flex-col h-full justify-between">
         <div>
           <div className="flex items-start gap-3">
@@ -1741,7 +1742,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                 <img src={imageSrc} alt={item.name} className="h-full w-full object-cover" />
               </div>
             ) : (
-              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white shadow-sm', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
                 {item.itemKind === 'product' ? <PackageSearch className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
               </div>
             )}
@@ -1867,14 +1868,14 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
 
 function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
   return (
-    <Card className="border-slate-250/70 shadow-sm bg-white hover:shadow-md hover:border-slate-350/80 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl relative overflow-hidden group">
+    <Card className="group relative overflow-hidden rounded-[22px] border-0 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:ring-emerald-500/20">
       <div className="absolute right-0 top-0 h-16 w-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition-all duration-300" />
       <CardContent className="flex items-center justify-between p-5">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
           <p className="mt-1.5 text-xl font-extrabold text-slate-900 font-mono tracking-tight">{value}</p>
         </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 shadow-sm group-hover:scale-105 group-hover:bg-emerald-50 group-hover:text-emerald-600 group-hover:border-emerald-100 transition-all duration-300 shrink-0">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm ring-1 ring-slate-100 transition-all duration-300 group-hover:scale-105 group-hover:bg-emerald-50 group-hover:text-emerald-600 group-hover:ring-emerald-100">
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>

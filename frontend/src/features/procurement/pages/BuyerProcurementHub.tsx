@@ -320,66 +320,69 @@ export default function BuyerProcurementHub() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1560px] space-y-6 pb-10">
+    <div className="mx-auto max-w-[1560px] space-y-6 pb-10 px-4 sm:px-6 lg:px-8">
       {/* Page Title Header */}
-      <div className="border border-slate-200 bg-white p-5 rounded-xl shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="border border-slate-200/60 bg-gradient-to-r from-white via-slate-50/30 to-white p-6 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Buyer Dashboard</p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950 mt-0.5">Procurement Command Center</h1>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#12335f]/5 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[#12335f] mb-1.5">
+            <span className="h-1 w-1 rounded-full bg-[#12335f] animate-pulse" />
+            Buyer Dashboard
+          </span>
+          <h1 className="text-2xl font-black tracking-tight text-slate-950">Procurement Command Center</h1>
           
           {/* Buyer Type Badging & Custom Helper Text */}
           {buyerType === 'PRIVATE_BUYER' ? (
-            <div className="flex flex-wrap items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2.5 mt-2.5">
               <BuyerTypeBadge buyerType="PRIVATE_BUYER" />
-              <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-bold leading-relaxed">
                 Supports corporate sourcing workflows (RFQ, RFP, Rate Contracts, Vendor comparison sheets, and internal approval flows).
               </p>
             </div>
           ) : buyerType === 'GOVERNMENT_BUYER' ? (
-            <div className="flex flex-wrap items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2.5 mt-2.5">
               <BuyerTypeBadge buyerType="GOVERNMENT_BUYER" />
-              <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-bold leading-relaxed">
                 Supports public procurement workflows (Open Tender, PAC single source exemption, Two-Packet bidding, compliance document auditing, and CFA approvals).
               </p>
             </div>
           ) : (
-            <p className="text-[11px] text-slate-500 font-semibold mt-1">
+            <p className="text-[11px] text-slate-500 font-bold mt-1.5">
               Supports private and government procurement workflows.
             </p>
           )}
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-9">
-            <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh Data
+        <div className="flex gap-2 shrink-0 sm:self-center">
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-9.5 rounded-xl border-slate-200/80 hover:bg-slate-50 hover:text-slate-800 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Refresh Data
           </Button>
           <Link href="/buyer/procurement/create">
-            <Button size="sm" className="h-9 bg-[#12335f] text-white hover:bg-[#0f2a4f]">
-              <PlusCircle className="h-4 w-4 mr-1.5" /> Create Procurement
+            <Button size="sm" className="h-9.5 rounded-xl bg-gradient-to-r from-[#12335f] to-[#0f2a4f] text-white hover:opacity-95 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all">
+              <PlusCircle className="h-3.5 w-3.5 mr-1.5" /> Create Procurement
             </Button>
           </Link>
         </div>
       </div>
-
+ 
       {/* KPI Cards Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
         {kpis.map((kpi, idx) => {
           const Icon = kpi.icon;
           return (
-            <Card key={idx} className="border-slate-200 shadow-2xs hover:shadow-xs transition-all duration-200 bg-white">
-              <CardContent className="p-3.5 flex flex-col justify-between h-full min-h-[105px]">
-                <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider leading-normal">
+            <Card key={idx} className="border-slate-200/80 shadow-2xs hover:shadow-xs hover:border-[#12335f]/20 hover:-translate-y-0.5 transition-all duration-300 bg-white rounded-2xl overflow-hidden">
+              <CardContent className="p-4 flex flex-col justify-between h-full min-h-[110px]">
+                <div className="flex justify-between items-start gap-1">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest leading-normal">
                     {kpi.label}
                   </span>
-                  <span className={`p-1.5 rounded-lg border ${kpi.color}`}>
+                  <span className={`p-1.5 rounded-xl border shrink-0 ${kpi.color}`}>
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                 </div>
-                <div className="mt-3">
-                  <span className="text-lg font-black text-slate-950 block tracking-tight">
+                <div className="mt-2">
+                  <span className="text-xl font-black text-slate-950 block tracking-tight">
                     {isSummaryLoading ? '...' : kpi.value}
                   </span>
-                  <span className="text-[8.5px] font-bold text-slate-400 mt-1 block">
+                  <span className="text-[8.5px] font-black text-slate-400 mt-1 block tracking-wider uppercase">
                     {kpi.change}
                   </span>
                 </div>
@@ -390,7 +393,7 @@ export default function BuyerProcurementHub() {
       </div>
 
       {/* Sourcing Filters panel */}
-      <Card className="border-slate-200 bg-white shadow-2xs">
+      <Card className="border-slate-200/60 bg-white shadow-2xs rounded-2xl">
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-xs font-black text-[#12335f] uppercase tracking-wider border-b border-slate-100 pb-2">
             <Filter className="h-4 w-4" /> Filters & Controls
@@ -523,14 +526,22 @@ export default function BuyerProcurementHub() {
             <Card
               key={idx}
               className={cn(
-                "border border-slate-250/80 shadow-2xs hover:shadow-xs transition-all duration-200 hover:border-[#12335f]/30 flex flex-col justify-between bg-white relative overflow-hidden",
+                "group border border-slate-200/80 shadow-2xs hover:shadow-sm hover:border-[#12335f]/20 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between bg-white relative overflow-hidden rounded-2xl",
                 card.highlight ? "border-l-4 border-amber-500" : ""
               )}
             >
-              <CardContent className="p-5 flex flex-col justify-between h-full min-h-[180px]">
+              {/* Premium Subtle Top Stripe */}
+              <div className={cn(
+                "absolute top-0 left-0 right-0 h-1",
+                card.highlight 
+                  ? "bg-gradient-to-r from-amber-500 to-amber-300" 
+                  : "bg-gradient-to-r from-[#12335f]/30 to-slate-200/20"
+              )} />
+              
+              <CardContent className="p-5 flex flex-col justify-between h-full min-h-[185px]">
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#12335f]/5 text-[#12335f]">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#12335f]/10 to-[#12335f]/5 text-[#12335f] transition-colors group-hover:from-[#12335f]/20">
                       <Icon className="h-4.5 w-4.5" />
                     </span>
                     {card.badge && (
@@ -544,12 +555,12 @@ export default function BuyerProcurementHub() {
                       </span>
                     )}
                   </div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">{card.title}</h3>
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide group-hover:text-[#12335f] transition-colors">{card.title}</h3>
                   <p className="text-[10px] text-slate-500 font-semibold leading-relaxed mt-1.5">{card.description}</p>
                 </div>
-                <Link href={card.href} className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-black uppercase tracking-wider text-[#12335f] hover:text-[#0b2445] group">
+                <Link href={card.href} className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-black uppercase tracking-wider text-[#12335f] group-hover:text-[#0f2a4f] transition-colors">
                   <span>{card.cta || 'Open List'}</span>
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" />
                 </Link>
               </CardContent>
             </Card>
@@ -562,6 +573,7 @@ export default function BuyerProcurementHub() {
         title="Procurement Requests"
         description="Unified command list for auditing and resuming sourcing activities."
         icon={ClipboardList}
+        className="rounded-2xl border-slate-200/60 shadow-2xs"
       >
         {isListLoading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3">
@@ -580,10 +592,10 @@ export default function BuyerProcurementHub() {
             onAction={() => router.push('/buyer/procurement/create')}
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/60">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70">
+                <tr className="border-b border-slate-200 bg-slate-50/50">
                   <th className="px-4 py-3 font-black uppercase text-slate-500">Procurement Number</th>
                   <th className="px-4 py-3 font-black uppercase text-slate-500">Title</th>
                   <th className="px-4 py-3 font-black uppercase text-slate-500">Method</th>

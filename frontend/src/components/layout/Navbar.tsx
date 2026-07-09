@@ -163,6 +163,19 @@ const preloadRoute = (path: string) => {
   }
 };
 
+const shouldPrefetchNavigation = () => {
+  if (typeof window === 'undefined') return false;
+  const nav = navigator as Navigator & {
+    connection?: {
+      saveData?: boolean;
+      effectiveType?: string;
+    };
+  };
+  if (nav.connection?.saveData) return false;
+  if (nav.connection?.effectiveType && /(^2g$|slow-2g)/i.test(nav.connection.effectiveType)) return false;
+  return window.matchMedia('(min-width: 1024px)').matches;
+};
+
 const collectPaths = (items: SidebarItem[]) =>
   items.flatMap(item => item.children?.length ? collectPaths(item.children) : item.path ? [item.path] : []);
 
@@ -573,10 +586,11 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
   useEffect(() => {
     if (!user) return;
     const runPrefetch = () => {
+      if (!shouldPrefetchNavigation()) return;
       const routes = new Set<string>([
         pathname || '/dashboard',
-        ...HIGH_PRIORITY_PREFETCH_ROUTES.slice(0, 4),
-        ...collectPaths(filteredNav).slice(0, 5)
+        ...HIGH_PRIORITY_PREFETCH_ROUTES.slice(0, 2),
+        ...collectPaths(filteredNav).slice(0, 2)
       ]);
       routes.forEach(path => {
         router.prefetch(path);
@@ -588,8 +602,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
       cancelIdleCallback?: (id: number) => void;
     };
     const idleId = idleWindow.requestIdleCallback
-      ? idleWindow.requestIdleCallback(runPrefetch, { timeout: 2500 })
-      : globalThis.setTimeout(runPrefetch, 600);
+      ? idleWindow.requestIdleCallback(runPrefetch, { timeout: 4500 })
+      : globalThis.setTimeout(runPrefetch, 1600);
     return () => {
       if (idleWindow.cancelIdleCallback && typeof idleId === 'number') {
         idleWindow.cancelIdleCallback(idleId);
@@ -973,7 +987,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
             </button>
 
             {isNotificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="fixed left-3 right-3 top-16 z-50 max-h-[75dvh] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <h3 className="text-xs font-black uppercase tracking-widest text-[#0b2447]">Notifications</h3>
                   <div className="flex items-center gap-2">

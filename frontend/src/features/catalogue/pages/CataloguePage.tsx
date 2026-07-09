@@ -953,7 +953,7 @@ export default function CataloguePage({ mode = 'buyer' }: { mode?: CatalogueMode
                               title="View details"
                             >
                               {imageSrc ? (
-                                <img src={imageSrc} alt={item.name} className="h-full w-full object-cover" />
+                                <img src={imageSrc} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                               ) : (
                                 <div className={cn('flex h-full w-full items-center justify-center text-white', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
                                   {item.itemKind === 'product' ? <PackageSearch className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
@@ -1404,7 +1404,7 @@ function CatalogueForm({
                   <div className="flex flex-wrap gap-2 mb-2">
                     {uploadedImages.map(img => (
                       <div key={img.id} className="relative h-16 w-16 rounded-lg overflow-hidden border border-slate-200 group bg-slate-50">
-                        <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} className="h-full w-full object-cover" />
+                        <img src={img.localUrl || getCatalogueImageUrl(img.id)} alt={img.originalName} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-white">
                           <button
                             type="button"
@@ -1585,7 +1585,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                   className="h-12 w-12 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-85 transition-opacity"
                   title="Click to view details"
                 >
-                  <img src={imageSrc} alt={item.name} className="h-full w-full object-cover" />
+                  <img src={imageSrc} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 </div>
               ) : (
                 <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-sm', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
@@ -1739,7 +1739,7 @@ function CatalogueCard({ item, mode, viewMode = 'grid', actionState, canPurchase
                 className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-85 transition-opacity"
                 title="Click to view details"
               >
-                <img src={imageSrc} alt={item.name} className="h-full w-full object-cover" />
+                <img src={imageSrc} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
               </div>
             ) : (
               <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm', item.itemKind === 'product' ? 'bg-[#059669]' : 'bg-emerald-600')}>
@@ -2016,7 +2016,7 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
                   title={activePhoto?.fileId ? 'View uploaded image' : undefined}
                 >
                   {activePhoto?.fileId ? (
-                    <img src={getCatalogueImageUrl(activePhoto.fileId)} alt={activePhoto.label || item.name} className="h-full w-full object-contain" />
+                    <img src={getCatalogueImageUrl(activePhoto.fileId)} alt={activePhoto.label || item.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
                   ) : (
                     <span className="flex flex-col items-center gap-2 text-xs font-bold text-slate-500">
                       <ImageIcon className="h-8 w-8" />
@@ -2045,7 +2045,7 @@ function ItemDetailsModal({ item, mode, actionState, canPurchase = true, onSelle
                         title={photo.label}
                       >
                         {photo.fileId ? (
-                          <img src={getCatalogueImageUrl(photo.fileId)} alt={photo.label} className="h-full w-full object-cover" />
+                          <img src={getCatalogueImageUrl(photo.fileId)} alt={photo.label} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center text-slate-400">
                             <ImageIcon className="h-4 w-4" />

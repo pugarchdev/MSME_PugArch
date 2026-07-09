@@ -168,6 +168,7 @@ export default function ProcurementDraftsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedDraftKey, setSelectedDraftKey] = useState<string | undefined>(undefined);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<number[]>([]);
 
   const openDetail = (d: DisplayDraft, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -334,7 +335,6 @@ export default function ProcurementDraftsPage() {
 
   /* ── Actions ── */
   const discardLocal = () => {
-    if (!window.confirm('Discard the unsaved local procurement draft from this browser?')) return;
     procurementWizardApi.clearLocalDraft();
     setLocalDraft(null);
     setSelectedDraftKey(undefined);
@@ -342,7 +342,8 @@ export default function ProcurementDraftsPage() {
   };
 
   const discardServer = async (d: DisplayDraft) => {
-    if (!window.confirm('Are you sure you want to delete this procurement draft from the server? This action cannot be undone.')) return;
+    if (!d.id || deletingIds.includes(d.id)) return;
+    setDeletingIds(prev => [...prev, d.id!]);
     try {
       if (d.raw?.payload?.isV2) {
         await bidWizardApi.deleteDraft(d.id!);
@@ -351,9 +352,11 @@ export default function ProcurementDraftsPage() {
       }
       toast.success('Procurement draft deleted successfully');
       setSelectedDraftKey(undefined);
-      loadAllDrafts();
+      await loadAllDrafts();
     } catch (err) {
       toast.error('Failed to delete draft: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setDeletingIds(prev => prev.filter(id => id !== d.id));
     }
   };
 
@@ -614,6 +617,7 @@ export default function ProcurementDraftsPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                disabled={!d.isLocal && deletingIds.includes(d.id!)}
                                 onClick={(e) => { e.stopPropagation(); d.isLocal ? discardLocal() : discardServer(d); }}
                                  className="h-7 border-red-200 px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"
                               >
@@ -714,6 +718,7 @@ export default function ProcurementDraftsPage() {
                         <Button
                           type="button"
                           variant="outline"
+                          disabled={!selectedDraft.isLocal && deletingIds.includes(selectedDraft.id!)}
                           onClick={() => selectedDraft.isLocal ? discardLocal() : discardServer(selectedDraft)}
                            className="h-10 border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50"
                         >

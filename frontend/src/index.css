@@ -52,6 +52,7 @@ body,
 #root {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   font-family: var(--font-body);
   background: #f5f7fb;
   color: #1f2937;
@@ -79,10 +80,54 @@ canvas {
   max-width: 100%;
 }
 
+table {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+.dashboard-main {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 @media (max-width: 640px) {
   :root,
   html {
     font-size: 12.8px !important;
+  }
+
+  .dashboard-main {
+    padding: 0.75rem !important;
+  }
+
+  .dashboard-main table th,
+  .dashboard-main table td {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .dashboard-main input,
+  .dashboard-main select,
+  .dashboard-main textarea {
+    font-size: 16px;
+  }
+
+  .dashboard-main .sticky.right-0 {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button:not(:disabled):not([aria-disabled="true"]):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    translate: 0 0;
+    filter: none;
   }
 }
 

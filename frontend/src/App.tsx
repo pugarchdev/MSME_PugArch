@@ -160,6 +160,19 @@ const scheduleIdle = (callback: () => void, timeout = 2500) => {
   };
 };
 
+const shouldRunBackgroundPreload = () => {
+  if (typeof window === 'undefined') return false;
+  const nav = navigator as Navigator & {
+    connection?: {
+      saveData?: boolean;
+      effectiveType?: string;
+    };
+  };
+  if (nav.connection?.saveData) return false;
+  if (nav.connection?.effectiveType && /(^2g$|slow-2g)/i.test(nav.connection.effectiveType)) return false;
+  return window.matchMedia('(min-width: 1024px)').matches;
+};
+
 const preloadInBatches = (loaders: ReadonlyArray<() => Promise<unknown>>) => {
   let cancelled = false;
   const run = (index: number) => {
@@ -167,7 +180,7 @@ const preloadInBatches = (loaders: ReadonlyArray<() => Promise<unknown>>) => {
     loaders[index]()
       .catch(() => undefined)
       .finally(() => {
-        if (!cancelled) window.setTimeout(() => run(index + 1), 80);
+        if (!cancelled) window.setTimeout(() => run(index + 1), 180);
       });
   };
   run(0);
@@ -186,26 +199,11 @@ const rolePreloaders = {
     () => import('./features/procurementWizard/pages/CreateProcurementPage'),
     () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
     // LEGACY: CreateBidPage preload removed — /buyer/create-bid now shows LegacyNoticePage
-    () => import('./views/Tenders'),
-    () => import('./views/Vendors'),
-    () => import('./features/requirements/pages/RequirementsPage'),
-    () => import('./features/cart/pages/CartPage'),
-    () => import('./features/procurement/pages/BuyerProcurementHub'),
-    () => import('./features/procurementCheckoutV2/pages/ProcurementCheckoutPage'),
-    () => import('./features/payments/pages/PaymentHistoryPage'),
-    () => import('./features/directPurchase/pages/DirectPurchasePage'),
-    () => import('./features/rfq/pages/RfqPage'),
   ],
   seller: [
     () => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'),
     () => import('./features/sellerOpportunities/pages/SellerProcurementHub'),
     () => import('./features/sellerOpportunities/pages/SellerEventListPage'),
-    () => import('./features/sellerOpportunities/pages/SellerEventDetailPage'),
-    () => import('./views/SellerTenders'),
-    () => import('./features/sellerDelivery/pages/SellerDeliveryManagementPage'),
-    () => import('./features/payments/pages/PaymentHistoryPage'),
-    () => import('./features/rfq/pages/RfqPage'),
-    () => import('./features/directPurchase/pages/DirectPurchasePage'),
   ],
   admin: [
     () => import('./features/admin/pages/AdminRecordsPage'),
@@ -414,8 +412,9 @@ export default function App() {
 
     let cancelBatches = () => { };
     const cancelIdle = scheduleIdle(() => {
+      if (!shouldRunBackgroundPreload()) return;
       cancelBatches = preloadInBatches(loaders);
-    });
+    }, 4500);
     return () => {
       cancelIdle();
       cancelBatches();
@@ -723,7 +722,7 @@ export default function App() {
         {showOrgApprovalBanner && <OrgApprovalBanner />}
         <main className={cn(
           "flex-1 min-w-0",
-          !showDashboardLayout ? "min-h-dvh p-0" : "overflow-y-auto p-3 sm:p-4 md:p-5"
+          !showDashboardLayout ? "min-h-dvh p-0" : "dashboard-main overflow-y-auto p-3 sm:p-4 md:p-5"
         )}>
           <Suspense fallback={<RouteFallback />}>
             {renderRoute()}

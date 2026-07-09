@@ -3,8 +3,6 @@ import { ApiError } from './ApiError.js';
 import { randomToken } from './crypto.js';
 import { logger } from '../config/logger.js';
 
-const localLocks = new Set<string>();
-
 export const withDistributedLock = async <T>(
   key: string,
   handler: () => Promise<T>,
@@ -15,21 +13,8 @@ export const withDistributedLock = async <T>(
   const lockValue = randomToken(16);
 
   if (!redis || !isRedisReady()) {
-    logger.warn({ lockKey }, 'Redis distributed lock backend is unavailable; falling back to in-memory lock');
-    if (localLocks.has(lockKey)) {
-      throw new ApiError(409, 'Operation is already being processed', 'LOCK_BUSY');
-    }
-    localLocks.add(lockKey);
-    const timeout = setTimeout(() => {
-      localLocks.delete(lockKey);
-    }, ttlMs);
-
-    try {
-      return await handler();
-    } finally {
-      clearTimeout(timeout);
-      localLocks.delete(lockKey);
-    }
+    logger.error({ lockKey }, 'Redis distributed lock backend is unavailable');
+    throw new ApiError(503, 'Distributed lock backend unavailable', 'LOCK_BACKEND_UNAVAILABLE');
   }
 
   const acquired = await redis.set(lockKey, lockValue, 'PX', ttlMs, 'NX');

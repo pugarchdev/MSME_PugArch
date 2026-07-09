@@ -250,7 +250,7 @@ const BuyerMarketplaceDiscovery = React.memo(function BuyerMarketplaceDiscovery(
               <Link key={`${type}-${item.id}`} href={href} className="group flex gap-3 rounded-[18px] bg-white p-3 ring-1 ring-slate-200/70 transition hover:shadow-sm hover:ring-[#12335f]/25">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-100 bg-slate-50">
                   {imageUrl ? (
-                    <img src={imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                    <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : type === 'service' ? (
                     <Wrench className="h-6 w-6 text-[#12335f]/45" />
                   ) : (

@@ -92,7 +92,7 @@ const roleBadgeClass = 'border-slate-200 bg-slate-50 text-slate-700';
 
 export default function TeamManagementPage() {
     const { user } = useAuth();
-    const { orgRole, orgStatus } = useOrgRole();
+    const { orgStatus } = useOrgRole();
     const { hasPermission, loading: permissionsLoading } = usePermissions();
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [editingMember, setEditingMember] = useState<Member | null>(null);
@@ -123,12 +123,12 @@ export default function TeamManagementPage() {
     const roles = Array.isArray(rolesData) ? rolesData : [];
     const transfers = Array.isArray(transfersData) ? transfersData : [];
     const permissionGroups = catalogData?.grouped || {};
-    const isOrgAdmin = orgRole === 'ORG_ADMIN';
-    const canViewTeam = isOrgAdmin || hasPermission('team.member.view');
-    const canInviteTeam = isOrgAdmin || hasPermission('team.member.invite');
-    const canManageRoles = isOrgAdmin || hasPermission('team.role.manage');
+    const currentOrgRole = orgStatus?.membership?.orgRole ?? '';
+    const canViewTeam = hasPermission('team.member.view');
+    const canInviteTeam = hasPermission('team.member.invite');
+    const canManageRoles = hasPermission('team.role.manage');
     const canAssignRoles = hasPermission('team.role.assign') || canManageRoles;
-    const canDisableMembers = isOrgAdmin || hasPermission('team.member.disable');
+    const canDisableMembers = hasPermission('team.member.disable');
     const roleOptions = useMemo(() => {
         const labels = new Map<string, string>();
         members.forEach(member => {
@@ -303,7 +303,7 @@ export default function TeamManagementPage() {
                 <MetricCard label="Total Members" value={members.length} icon={Users} />
                 <MetricCard label="Active" value={members.filter(m => m.isActive).length} icon={UserCheck} />
                 <MetricCard label="Pending Invites" value={invitations.length} icon={Mail} />
-                <MetricCard label="Org Role" value={orgRole?.replace(/_/g, ' ') || '—'} icon={Shield} />
+                <MetricCard label="Org Role" value={currentOrgRole ? currentOrgRole.replace(/_/g, ' ') : '—'} icon={Shield} />
             </div>
 
             <div className="flex flex-wrap gap-2 border-b border-slate-200">

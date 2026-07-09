@@ -262,7 +262,6 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  border-bottom: 1px solid #e2e8f0;
   padding-bottom: 1rem;
 }
 
@@ -318,9 +317,11 @@ table td.align-bottom {
    `position: sticky` cells continue to work relative to the inner
    `overflow-x: auto` scroller. */
 .table-shell {
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  background: #ffffff;
+  border: 0;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  outline: 1px solid rgba(226, 232, 240, 0.8);
   overflow: clip;
 }
 
@@ -335,6 +336,7 @@ table td.align-bottom {
 .table-shell-scroller {
   overflow-x: auto;
   width: 100%;
+  padding: 0.5rem;
 }
 
 /* Sticky right column helper — apply to <th> / <td> that need to remain
@@ -354,6 +356,31 @@ thead .col-sticky-right {
 
 tr:hover .col-sticky-right {
   background-color: #f8fafc;
+}
+
+.soft-surface {
+  border: 0;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  outline: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.soft-panel {
+  border: 0;
+  border-radius: 1.75rem;
+  background: rgba(248, 250, 252, 0.75);
+  outline: 1px solid rgba(226, 232, 240, 0.78);
+}
+
+.soft-field,
+input.soft-field,
+select.soft-field,
+textarea.soft-field {
+  border-radius: 0.875rem;
+  border-color: #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 /* ─── Marketplace utility-bar: cancel the global hover-translate ───────────

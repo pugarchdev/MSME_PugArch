@@ -202,9 +202,6 @@ export default function BuyerProcurementHub() {
 
   // KPI calculations
   const kpis = useMemo(() => {
-    const activeRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.statusGroup === 'active').length;
-    const expiredRateContracts = allProcurements.filter(p => p.type === 'rate_contract' && p.status === 'EXPIRED').length;
-    
     // Dynamic Awarded Value calculation
     const awardedProcurements = allProcurements.filter(p => 
       String(p.status).toUpperCase() === 'AWARDED' || 
@@ -226,137 +223,149 @@ export default function BuyerProcurementHub() {
 
     return [
       { label: 'Total Procurements', value: summary?.myTendersCount || 0, change: '+12% this month', icon: FolderOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-150' },
-      { label: 'Drafts', value: summary?.cartItemCount || 0, change: 'Saved drafts', icon: FileText, color: 'text-slate-600 bg-slate-50 border-slate-150' },
-      { label: 'Pending Approvals', value: summary?.pendingApprovalsCount || 0, change: 'Action required', icon: CheckSquare, color: 'text-amber-600 bg-amber-50 border-amber-150' },
-      { label: 'Active Events', value: summary?.myTendersCount || 0, change: 'Live sourcing', icon: Globe, color: 'text-blue-600 bg-blue-50 border-blue-150' },
-      { label: 'Active Rate Contracts', value: activeRateContracts, change: 'Available for call-off', icon: ShieldCheck, color: 'text-teal-600 bg-teal-50 border-teal-150' },
-      { label: 'Expired Contracts', value: expiredRateContracts, change: 'Renewal attention', icon: Clock, color: 'text-slate-600 bg-slate-50 border-slate-150' },
-      { label: 'Supplier Responses', value: summary?.myRfqsCount || 0, change: 'Pending review', icon: MessageSquare, color: 'text-cyan-600 bg-cyan-50 border-cyan-150' },
       { label: 'Awarded Value', value: formatAwardedValue(awardedSum), change: `${awardedCount} award${awardedCount === 1 ? '' : 's'} granted`, icon: Award, color: 'text-emerald-600 bg-emerald-50 border-emerald-150' },
-      { label: 'Open Purchase Orders', value: summary?.myActivePOsCount || 0, change: 'Sent to sellers', icon: ShoppingCart, color: 'text-sky-600 bg-sky-50 border-sky-150' },
-      { label: 'Pending Deliveries', value: summary?.grnsToApproveCount || 0, change: 'Tracking live', icon: Package, color: 'text-violet-600 bg-violet-50 border-violet-150' },
+      { label: 'Pending Actions', value: (summary?.pendingApprovalsCount || 0) + (summary?.grnsToApproveCount || 0), change: 'Approvals & GRNs pending', icon: CheckSquare, color: 'text-amber-600 bg-amber-50 border-amber-150' },
+      { label: 'Active Purchase Orders', value: summary?.myActivePOsCount || 0, change: 'Sent to sellers', icon: ShoppingCart, color: 'text-sky-600 bg-sky-50 border-sky-150' },
     ];
   }, [allProcurements, summary]);
 
-  // Unified Dashboard Cards list (10 cards)
-  const dashboardCards = [
+  // Sourcing Hub Stages / Phases list
+  const sourcingPhases = useMemo(() => [
     {
-      title: 'Create Procurement',
-      description: 'Unified guided flow for RFQ, RFP, Tenders, BOQ, PAC or Direct Sourcing.',
-      href: '/buyer/procurement/create',
-      cta: 'Create Sourcing Event',
-      icon: PlusCircle,
-      badge: 'Start Here',
-      badgeColor: 'bg-[#12335f] text-white',
+      title: 'Phase 1: Sourcing Initialization',
+      color: 'border-indigo-100 bg-indigo-50/10 text-indigo-900',
+      dot: 'bg-indigo-500',
+      cards: [
+        {
+          title: 'Create Procurement',
+          description: 'Unified guided flow for RFQ, RFP, Tenders, BOQ, PAC or Direct Sourcing.',
+          href: '/buyer/procurement/create',
+          cta: 'Create Sourcing Event',
+          icon: PlusCircle,
+          badge: 'Start Here',
+          badgeColor: 'bg-[#12335f] text-white',
+        },
+        {
+          title: 'My Procurement Requests',
+          description: 'View active sourcing requests, items, methods, and status details.',
+          href: '/buyer/my-procurements',
+          cta: 'View Requests',
+          icon: ClipboardList,
+        },
+        {
+          title: 'Drafts',
+          description: 'Resume or modify saved sourcing templates and incomplete wizard states.',
+          href: '/buyer/procurement/drafts',
+          cta: 'Manage Drafts',
+          icon: FileText,
+          count: summary?.cartItemCount || 0,
+        }
+      ]
     },
     {
-      title: 'My Procurement Requests',
-      description: 'View active sourcing requests, items, methods, and status details.',
-      href: '/buyer/my-procurements',
-      cta: 'View Requests',
-      icon: ClipboardList,
+      title: 'Phase 2: Bid Evaluation & Award',
+      color: 'border-amber-100 bg-amber-50/10 text-amber-900',
+      dot: 'bg-amber-500',
+      cards: [
+        {
+          title: 'Pending Approvals',
+          description: 'Review and approve sourcing requests, budget checks and PAC exemptions.',
+          href: '/buyer/procurement/approvals',
+          cta: 'Open Approvals Queue',
+          icon: CheckSquare,
+          count: summary?.pendingApprovalsCount || 0,
+          highlight: true,
+        },
+        {
+          title: 'Published Events',
+          description: 'Live competitive bids, tenders, reverse auctions actively open for bidding.',
+          href: '/buyer/tenders',
+          cta: 'View Live Bids',
+          icon: Globe,
+        },
+        {
+          title: 'Supplier Responses',
+          description: 'Review quotes, clarifying queries, and files submitted by sellers.',
+          href: '/buyer/procurement/responses',
+          cta: 'Analyze Responses',
+          icon: MessageSquare,
+          count: summary?.myRfqsCount || 0,
+        },
+        {
+          title: 'Evaluations & Awards',
+          description: 'Evaluate technical packets, score criteria matrices, and publish award notices.',
+          href: '/buyer/tenders',
+          cta: 'Technical / Price Eval',
+          icon: Layers,
+        }
+      ]
     },
     {
-      title: 'Drafts',
-      description: 'Resume or modify saved sourcing templates and incomplete wizard states.',
-      href: '/buyer/procurement/drafts',
-      cta: 'Manage Drafts',
-      icon: FileText,
-      count: summary?.cartItemCount || 0,
-    },
-    {
-      title: 'Pending Approvals',
-      description: 'Review and approve sourcing requests, budget checks and PAC exemptions.',
-      href: '/buyer/procurement/approvals',
-      cta: 'Open Approvals Queue',
-      icon: CheckSquare,
-      count: summary?.pendingApprovalsCount || 0,
-      highlight: true,
-    },
-    {
-      title: 'Published Events',
-      description: 'Live competitive bids, tenders, reverse auctions actively open for bidding.',
-      href: '/buyer/tenders',
-      cta: 'View Live Bids',
-      icon: Globe,
-    },
-    {
-      title: 'Supplier Responses',
-      description: 'Review quotes, clarifying queries, and files submitted by sellers.',
-      href: '/buyer/procurement/responses',
-      cta: 'Analyze Responses',
-      icon: MessageSquare,
-      count: summary?.myRfqsCount || 0,
-    },
-    {
-      title: 'Evaluations',
-      description: 'Evaluate technical packets, score criteria matrices, and run L1 comparison reports.',
-      href: '/buyer/tenders',
-      cta: 'Technical / Price Eval',
-      icon: Layers,
-    },
-    {
-      title: 'Awards',
-      description: 'Finalize L1 recommendations and publish award notices to selected suppliers.',
-      href: '/orders',
-      cta: 'Grant Awards',
-      icon: Award,
-    },
-    {
-      title: 'Purchase Orders',
-      description: 'Create and dispatch purchase orders linked to successful sourcing events.',
-      href: '/orders',
-      cta: 'View POs list',
-      icon: ShoppingCart,
-      count: summary?.myActivePOsCount || 0,
-    },
-    {
-      title: 'Reports',
-      description: 'MIS dashboards, procurement audit trail logs, and saving reports.',
-      href: '/reports',
-      cta: 'View Reports',
-      icon: BarChart3,
-    },
-  ];
+      title: 'Phase 3: Fulfillment & Insights',
+      color: 'border-emerald-100 bg-emerald-50/10 text-emerald-900',
+      dot: 'bg-emerald-500',
+      cards: [
+        {
+          title: 'Purchase Orders',
+          description: 'Create and dispatch purchase orders linked to successful sourcing events.',
+          href: '/orders',
+          cta: 'View POs list',
+          icon: ShoppingCart,
+          count: summary?.myActivePOsCount || 0,
+        },
+        {
+          title: 'Reports & Analytics',
+          description: 'MIS dashboards, procurement audit trail logs, and saving reports.',
+          href: '/reports',
+          cta: 'View Reports',
+          icon: BarChart3,
+        }
+      ]
+    }
+  ], [summary]);
 
   return (
-    <div className="mx-auto max-w-[1560px] space-y-6 pb-10 px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-[1560px] space-y-6 px-4 pb-10 sm:px-6 lg:px-8">
       {/* Page Title Header */}
-      <div className="border border-slate-200/60 bg-gradient-to-r from-white via-slate-50/30 to-white p-6 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#12335f]/5 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[#12335f] mb-1.5">
-            <span className="h-1 w-1 rounded-full bg-[#12335f] animate-pulse" />
-            Buyer Dashboard
+      <div className="relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_20%_20%,#24457c_0,#0b132b_42%,#081327_100%)] p-7 text-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-[28px]">
+        {/* Glow ambient effect */}
+        <div className="absolute right-[-10%] top-[-20%] h-96 w-96 rounded-full bg-blue-600/15 blur-[100px] pointer-events-none" />
+        <div className="absolute left-[30%] bottom-[-50%] h-64 w-64 rounded-full bg-[#12335f]/30 blur-[80px] pointer-events-none" />
+
+        <div className="relative z-10">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-[#a5c2f4] mb-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#3b82f6] animate-pulse" />
+            Control Center
           </span>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950">Procurement Command Center</h1>
+          <h1 className="text-3xl font-black tracking-tight text-white">Procurement Command Center</h1>
           
           {/* Buyer Type Badging & Custom Helper Text */}
           {buyerType === 'PRIVATE_BUYER' ? (
-            <div className="flex flex-wrap items-center gap-2.5 mt-2.5">
+            <div className="flex flex-wrap items-center gap-3 mt-3">
               <BuyerTypeBadge buyerType="PRIVATE_BUYER" />
-              <p className="text-[11px] text-slate-500 font-bold leading-relaxed">
+              <p className="text-xs text-slate-300 font-semibold leading-relaxed">
                 Supports corporate sourcing workflows (RFQ, RFP, Rate Contracts, Vendor comparison sheets, and internal approval flows).
               </p>
             </div>
           ) : buyerType === 'GOVERNMENT_BUYER' ? (
-            <div className="flex flex-wrap items-center gap-2.5 mt-2.5">
+            <div className="flex flex-wrap items-center gap-3 mt-3">
               <BuyerTypeBadge buyerType="GOVERNMENT_BUYER" />
-              <p className="text-[11px] text-slate-500 font-bold leading-relaxed">
+              <p className="text-xs text-slate-300 font-semibold leading-relaxed">
                 Supports public procurement workflows (Open Tender, PAC single source exemption, Two-Packet bidding, compliance document auditing, and CFA approvals).
               </p>
             </div>
           ) : (
-            <p className="text-[11px] text-slate-500 font-bold mt-1.5">
+            <p className="text-xs text-slate-300 font-semibold mt-2">
               Supports private and government procurement workflows.
             </p>
           )}
         </div>
-        <div className="flex gap-2 shrink-0 sm:self-center">
-          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-9.5 rounded-xl border-slate-200/80 hover:bg-slate-50 hover:text-slate-800 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+        <div className="flex gap-2 shrink-0 sm:self-center relative z-10">
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-10 rounded-full border-white/20 bg-white/10 px-4 text-white hover:bg-white/15 hover:text-white text-[10px] font-black uppercase tracking-wider shadow-2xs transition-all">
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Refresh Data
           </Button>
           <Link href="/buyer/procurement/create">
-            <Button size="sm" className="h-9.5 rounded-xl bg-gradient-to-r from-[#12335f] to-[#0f2a4f] text-white hover:opacity-95 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all">
+            <Button size="sm" className="h-10 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 px-4 text-slate-950 hover:from-amber-400 hover:to-amber-500 border-0 font-black text-[10px] uppercase tracking-wider shadow-md transition-all duration-200">
               <PlusCircle className="h-3.5 w-3.5 mr-1.5" /> Create Procurement
             </Button>
           </Link>
@@ -364,28 +373,36 @@ export default function BuyerProcurementHub() {
       </div>
  
       {/* KPI Cards Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi, idx) => {
           const Icon = kpi.icon;
+          // Extract border/indicator color matching KPI types
+          const bottomStripeColor =
+            idx === 0 ? 'bg-[#12335f]' :
+            idx === 1 ? 'bg-emerald-500' :
+            idx === 2 ? 'bg-amber-500' : 'bg-sky-500';
+
           return (
-            <Card key={idx} className="border-slate-200/80 shadow-2xs hover:shadow-xs hover:border-[#12335f]/20 hover:-translate-y-0.5 transition-all duration-300 bg-white rounded-2xl overflow-hidden">
-              <CardContent className="p-4 flex flex-col justify-between h-full min-h-[110px]">
+            <Card key={idx} className="group relative overflow-hidden rounded-[22px] border-0 bg-white/90 shadow-[0_10px_35px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(15,23,42,0.1)]">
+              <CardContent className="flex h-full min-h-[112px] flex-col justify-between p-4">
                 <div className="flex justify-between items-start gap-1">
-                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest leading-normal">
+                  <span className="text-[9px] font-black uppercase text-slate-450 tracking-widest leading-normal">
                     {kpi.label}
                   </span>
-                  <span className={`p-1.5 rounded-xl border shrink-0 ${kpi.color}`}>
+                   <span className={`p-1.5 rounded-full border shrink-0 transition-transform group-hover:scale-105 duration-200 ${kpi.color}`}>
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-xl font-black text-slate-950 block tracking-tight">
+                <div className="mt-2 relative z-10">
+                  <span className="text-2xl font-black text-slate-950 block tracking-tight">
                     {isSummaryLoading ? '...' : kpi.value}
                   </span>
-                  <span className="text-[8.5px] font-black text-slate-400 mt-1 block tracking-wider uppercase">
+                  <span className="text-[8.5px] font-black text-slate-450 mt-1 block tracking-wider uppercase">
                     {kpi.change}
                   </span>
                 </div>
+                {/* Bottom colored indicator stripe */}
+                <div className={`absolute bottom-0 left-0 right-0 h-1 ${bottomStripeColor}`} />
               </CardContent>
             </Card>
           );
@@ -393,9 +410,9 @@ export default function BuyerProcurementHub() {
       </div>
 
       {/* Sourcing Filters panel */}
-      <Card className="border-slate-200/60 bg-white shadow-2xs rounded-2xl">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-black text-[#12335f] uppercase tracking-wider border-b border-slate-100 pb-2">
+      <Card className="overflow-hidden rounded-[24px] border-0 bg-slate-50/80 shadow-none ring-1 ring-slate-200/70">
+        <CardContent className="space-y-4 p-4">
+          <div className="flex items-center gap-2 text-xs font-black text-[#12335f] uppercase tracking-wider">
             <Filter className="h-4 w-4" /> Filters & Controls
           </div>
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 text-xs font-semibold text-slate-700">
@@ -404,7 +421,7 @@ export default function BuyerProcurementHub() {
               <select
                 value={buyerTypeFilter}
                 onChange={e => setBuyerTypeFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Buyer Types</option>
                 <option value="PRIVATE">Private Buyer</option>
@@ -416,7 +433,7 @@ export default function BuyerProcurementHub() {
               <select
                 value={methodFilter}
                 onChange={e => setMethodFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Sourcing Methods</option>
                 <option value="DIRECT_PURCHASE">Direct Purchase</option>
@@ -432,7 +449,7 @@ export default function BuyerProcurementHub() {
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Statuses</option>
                 <option value="DRAFT">Draft</option>
@@ -448,7 +465,7 @@ export default function BuyerProcurementHub() {
                 type="date"
                 value={startDateFilter}
                 onChange={e => setStartDateFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               />
             </div>
             <div>
@@ -457,7 +474,7 @@ export default function BuyerProcurementHub() {
                 type="date"
                 value={endDateFilter}
                 onChange={e => setEndDateFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               />
             </div>
             <div>
@@ -465,7 +482,7 @@ export default function BuyerProcurementHub() {
               <input
                 value={departmentFilter}
                 onChange={e => setDepartmentFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2.5 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
                 placeholder="Department name"
               />
             </div>
@@ -474,7 +491,7 @@ export default function BuyerProcurementHub() {
               <select
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value)}
-                className="w-full h-9 border border-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Categories</option>
                 <option value="Office Supplies">Office Supplies & Stationery</option>
@@ -485,13 +502,13 @@ export default function BuyerProcurementHub() {
             </div>
           </div>
           
-          <div className="flex gap-2 items-center border-t border-slate-100 pt-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full h-9 pl-9 pr-4 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#12335f]"
+                className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-[#12335f]"
                 placeholder="Search by Title, Ref Number or ID..."
               />
             </div>
@@ -509,63 +526,73 @@ export default function BuyerProcurementHub() {
                   setEndDateFilter('');
                   setSearchQuery('');
                 }}
-                className="h-9 text-rose-600 border-rose-250 bg-rose-50/50 hover:bg-rose-50 font-black text-[10px] uppercase"
+                className="h-9 rounded-full text-rose-600 border-rose-250 bg-rose-50/50 hover:bg-rose-50 font-black text-[10px] uppercase"
               >
                 Clear Filters
               </Button>
             )}
           </div>
         </CardContent>
-      </Card>
+      </Card>      {/* Sourcing Hub Lifecycle Columns */}
+      <div className="grid gap-5 lg:grid-cols-3">
+        {sourcingPhases.map((phase, pIdx) => (
+          <div key={pIdx} className="space-y-3 rounded-[28px] bg-slate-50/70 p-3 ring-1 ring-slate-200/70">
+            <div className={cn("flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-black uppercase tracking-wider", phase.color)}>
+              <span className={cn("h-2 w-2 rounded-full", phase.dot)} />
+              {phase.title}
+            </div>
+            <div className="space-y-3">
+              {phase.cards.map((card, cIdx) => {
+                const Icon = card.icon;
+                return (
+                  <Card
+                    key={cIdx}
+                    className={cn(
+                       "group relative flex flex-col justify-between overflow-hidden rounded-[22px] border-0 bg-white/95 shadow-none ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_35px_rgba(15,23,42,0.08)]",
+                       card.highlight ? "ring-1.5 ring-amber-500/40" : ""
+                     )}
+                  >
+                    {/* Premium Top Line Accent */}
+                    <div className={cn(
+                       "absolute left-0 top-0 bottom-0 w-1",
+                      card.highlight
+                        ? "bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300"
+                        : "bg-gradient-to-r from-[#12335f]/40 to-slate-200/20"
+                    )} />
 
-      {/* Sourcing Hub Main Cards Grid (10 cards) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {dashboardCards.map((card, idx) => {
-          const Icon = card.icon;
-          return (
-            <Card
-              key={idx}
-              className={cn(
-                "group border border-slate-200/80 shadow-2xs hover:shadow-sm hover:border-[#12335f]/20 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between bg-white relative overflow-hidden rounded-2xl",
-                card.highlight ? "border-l-4 border-amber-500" : ""
-              )}
-            >
-              {/* Premium Subtle Top Stripe */}
-              <div className={cn(
-                "absolute top-0 left-0 right-0 h-1",
-                card.highlight 
-                  ? "bg-gradient-to-r from-amber-500 to-amber-300" 
-                  : "bg-gradient-to-r from-[#12335f]/30 to-slate-200/20"
-              )} />
-              
-              <CardContent className="p-5 flex flex-col justify-between h-full min-h-[185px]">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#12335f]/10 to-[#12335f]/5 text-[#12335f] transition-colors group-hover:from-[#12335f]/20">
-                      <Icon className="h-4.5 w-4.5" />
-                    </span>
-                    {card.badge && (
-                      <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${card.badgeColor}`}>
-                        {card.badge}
-                      </span>
-                    )}
-                    {card.count !== undefined && card.count > 0 && (
-                      <span className="h-5 min-w-[20px] px-1.5 flex items-center justify-center bg-amber-500 text-white rounded-full text-[10px] font-black">
-                        {card.count}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide group-hover:text-[#12335f] transition-colors">{card.title}</h3>
-                  <p className="text-[10px] text-slate-500 font-semibold leading-relaxed mt-1.5">{card.description}</p>
-                </div>
-                <Link href={card.href} className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-black uppercase tracking-wider text-[#12335f] group-hover:text-[#0f2a4f] transition-colors">
-                  <span>{card.cta || 'Open List'}</span>
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" />
-                </Link>
-              </CardContent>
-            </Card>
-          );
-        })}
+                    <CardContent className="relative z-10 flex h-full min-h-[150px] flex-col justify-between p-4.5">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 border border-slate-100 text-[#12335f] transition-all duration-300 group-hover:scale-105 group-hover:bg-[#12335f] group-hover:text-white group-hover:border-transparent shadow-3xs">
+                            <Icon className="h-4.5 w-4.5" />
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {card.badge && (
+                              <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${card.badgeColor}`}>
+                                {card.badge}
+                              </span>
+                            )}
+                            {card.count !== undefined && card.count > 0 && (
+                              <span className="h-5 min-w-[20px] px-1.5 flex items-center justify-center bg-amber-500 text-white rounded-full text-[10px] font-black">
+                                {card.count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide group-hover:text-[#12335f] transition-colors">{card.title}</h3>
+                        <p className="text-[10px] text-slate-500 font-semibold leading-relaxed mt-1.5">{card.description}</p>
+                      </div>
+                      <Link href={card.href} className="mt-4 flex items-center justify-between rounded-full bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500 transition-all duration-300 group-hover:bg-[#12335f] group-hover:text-white">
+                        <span>{card.cta || 'Open List'}</span>
+                        <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1.5" />
+                      </Link>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Procurement Command Center Data List / Table */}
@@ -573,7 +600,7 @@ export default function BuyerProcurementHub() {
         title="Procurement Requests"
         description="Unified command list for auditing and resuming sourcing activities."
         icon={ClipboardList}
-        className="rounded-2xl border-slate-200/60 shadow-2xs"
+        className="rounded-[24px] border-0 bg-white/95 shadow-[0_12px_40px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70"
       >
         {isListLoading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3">
@@ -592,25 +619,25 @@ export default function BuyerProcurementHub() {
             onAction={() => router.push('/buyer/procurement/create')}
           />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200/60">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto rounded-[20px] bg-slate-50/70 p-2">
+            <table className="w-full min-w-[1120px] border-separate border-spacing-y-2 text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/50">
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Procurement Number</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Title</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Method</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Buyer Type</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Category</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Estimated Value</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Status</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Created Date</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Deadline</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Responses</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500">Approval Status</th>
-                  <th className="px-4 py-3 font-black uppercase text-slate-500 text-right">Action</th>
+                <tr>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Procurement Number</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Title</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Method</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Buyer Type</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Category</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Estimated Value</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Status</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Created Date</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Deadline</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Responses</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500">Approval Status</th>
+                  <th className="px-4 py-2 font-black uppercase text-slate-500 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
+              <tbody className="font-medium text-slate-700">
                 {filteredProcurements.map(p => {
                   // Infer or determine isGov for the row
                   const isRowGov = p.typeLabel.toLowerCase().includes('bid') || p.type.toLowerCase().includes('bid') || p.method.toLowerCase().includes('tender') || p.type.toLowerCase().includes('tender');
@@ -620,8 +647,8 @@ export default function BuyerProcurementHub() {
                   const finalActionUrl = isDraft ? `/buyer/procurement/create?draftId=${p.id}` : p.actionUrl;
 
                   return (
-                    <tr key={`${p.type}-${p.id}`} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3.5 font-bold text-slate-900 truncate max-w-[120px]">
+                    <tr key={`${p.type}-${p.id}`} className="group bg-white shadow-3xs transition hover:shadow-sm">
+                      <td className="max-w-[120px] truncate rounded-l-2xl px-4 py-3.5 font-bold text-slate-900">
                         {p.referenceNumber || `REF-${p.id}`}
                       </td>
                       <td className="px-4 py-3.5 font-bold text-slate-900 max-w-[200px]">
@@ -661,11 +688,11 @@ export default function BuyerProcurementHub() {
                           {p.statusGroup.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-right shrink-0">
+                      <td className="shrink-0 rounded-r-2xl px-4 py-3.5 text-right">
                         <Link href={finalActionUrl}>
                           <Button
                             size="sm"
-                            className="h-7 text-[10px] uppercase font-black tracking-wide px-3 bg-[#12335f] text-white hover:bg-[#0f2a4f] rounded"
+                            className="h-7 rounded-full bg-[#12335f] px-3 text-[10px] font-black uppercase tracking-wide text-white hover:bg-[#0f2a4f]"
                           >
                             <Eye className="h-3 w-3 mr-1" /> {isDraft ? 'Resume' : 'View'}
                           </Button>

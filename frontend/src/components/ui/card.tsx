@@ -8,13 +8,19 @@ interface BaseProps extends React.HTMLProps<HTMLDivElement> {
 }
 
 const Card = ({ className, children, ...props }: BaseProps) => (
-  <div className={cn("rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden", className)} {...props}>
+  <div
+    className={cn(
+      "overflow-hidden rounded-[22px] border-0 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70",
+      className
+    )}
+    {...props}
+  >
     {children}
   </div>
 );
 
 const CardHeader = ({ className, children, ...props }: BaseProps) => (
-  <div className={cn("px-4 py-3 border-b border-slate-100", className)} {...props}>{children}</div>
+  <div className={cn("border-b border-slate-100/80 px-4 py-3", className)} {...props}>{children}</div>
 );
 
 const CardTitle = ({ className, children, ...props }: React.HTMLProps<HTMLHeadingElement>) => (
@@ -26,13 +32,13 @@ const CardContent = ({ className, children, ...props }: BaseProps) => (
 );
 
 const Table = ({ className, children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
-  <div className="w-full overflow-auto">
-    <table className={cn("w-full caption-bottom text-sm border-collapse", className)} {...props}>{children}</table>
+  <div className="w-full overflow-auto rounded-[18px] bg-slate-50/70 p-2">
+    <table className={cn("w-full caption-bottom border-separate border-spacing-y-2 text-sm", className)} {...props}>{children}</table>
   </div>
 );
 
 const TableHeader = ({ className, children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
-  <thead className={cn("bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-wider sticky top-0 z-10", className)} {...props}>{children}</thead>
+  <thead className={cn("sticky top-0 z-10 text-[10px] font-bold uppercase tracking-wider text-slate-500", className)} {...props}>{children}</thead>
 );
 
 const TableBody = ({ className, children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
@@ -40,15 +46,15 @@ const TableBody = ({ className, children, ...props }: React.HTMLAttributes<HTMLT
 );
 
 const TableRow = ({ className, children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
-  <tr className={cn("border-b border-slate-100 transition-colors hover:bg-slate-50/50 data-[state=selected]:bg-slate-50", props.onClick && "cursor-pointer", className)} {...props}>{children}</tr>
+  <tr className={cn("bg-white shadow-3xs transition-colors hover:bg-slate-50/80 hover:shadow-sm data-[state=selected]:bg-slate-50", props.onClick && "cursor-pointer", className)} {...props}>{children}</tr>
 );
 
 const TableHead = ({ className, children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
-  <th className={cn("h-10 px-4 text-left align-middle font-medium text-slate-500 [&:has([role=checkbox])]:pr-0", className)} {...props}>{children}</th>
+  <th className={cn("h-9 px-4 text-left align-middle font-medium text-slate-500 [&:has([role=checkbox])]:pr-0", className)} {...props}>{children}</th>
 );
 
 const TableCell = ({ className, children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-  <td className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0 text-slate-700 font-medium", className)} {...props}>{children}</td>
+  <td className={cn("p-4 align-middle font-medium text-slate-700 first:rounded-l-2xl last:rounded-r-2xl [&:has([role=checkbox])]:pr-0", className)} {...props}>{children}</td>
 );
 
 interface BadgeProps extends React.HTMLProps<HTMLSpanElement> {

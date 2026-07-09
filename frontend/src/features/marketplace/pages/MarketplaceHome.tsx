@@ -187,7 +187,7 @@ export default function MarketplaceHome() {
     });
 
     return (
-        <div className="flex min-h-dvh flex-col overflow-x-hidden bg-[#f1f3f6] text-slate-800">
+        <div className="flex min-h-dvh flex-col overflow-x-hidden bg-[radial-gradient(circle_at_top,#eef5ff_0,#f6f8fb_36%,#eef2f7_100%)] text-slate-800">
             <div className="brand-tricolor-strip w-full" />
             <MarketplaceHeader user={user} />
 
@@ -212,19 +212,19 @@ export default function MarketplaceHome() {
                 />
 
                 {activeCategory && (
-                    <div className="border-b border-blue-100 bg-blue-50/70">
+                    <div className="bg-blue-50/70">
                         <div className="mx-auto flex max-w-[1680px] flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 2xl:px-8">
                             <p className="text-xs font-bold text-[#0b2447]">
                                 Showing marketplace discovery for {activeCategory.name}
                             </p>
                             <div className="flex flex-wrap gap-2">
-                                <Link href={`/marketplace/products?categoryId=${activeCategory.id}`} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[11px] font-black text-white transition hover:bg-[#12335f]">
+                                <Link href={`/marketplace/products?categoryId=${activeCategory.id}`} className="inline-flex h-8 items-center rounded-full bg-[#0b2447] px-3 text-[11px] font-black text-white transition hover:bg-[#12335f]">
                                     Browse products
                                 </Link>
-                                <Link href={`/marketplace/services?categoryId=${activeCategory.id}`} className="inline-flex h-8 items-center rounded-md border border-[#0b2447]/20 bg-white px-3 text-[11px] font-black text-[#0b2447] transition hover:bg-slate-50">
+                                <Link href={`/marketplace/services?categoryId=${activeCategory.id}`} className="inline-flex h-8 items-center rounded-full bg-white px-3 text-[11px] font-black text-[#0b2447] ring-1 ring-[#0b2447]/20 transition hover:bg-slate-50">
                                     Browse services
                                 </Link>
-                                <button type="button" onClick={() => { setActiveCategoryId(''); router.replace('/', { scroll: false }); }} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-600 transition hover:bg-slate-50">
+                                <button type="button" onClick={() => { setActiveCategoryId(''); router.replace('/', { scroll: false }); }} className="inline-flex h-8 items-center rounded-full bg-white px-3 text-[11px] font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50">
                                     Clear category
                                 </button>
                             </div>
@@ -364,13 +364,13 @@ function MarketplacePromoTiles({ hasDiscounts, hasLocal, hasHerShg }: { hasDisco
     ];
 
     return (
-        <section className="border-b border-slate-100 bg-white">
+        <section className="bg-white/70">
             <div className="mx-auto grid max-w-[1680px] gap-3 px-4 py-4 sm:grid-cols-3 sm:px-6 2xl:px-8">
                 {tiles.map(tile => {
                     const Icon = tile.icon;
                     return (
-                        <Link key={tile.title} href={tile.href} className={`flex min-h-[92px] items-center gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${tile.tone}`}>
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/80">
+                        <Link key={tile.title} href={tile.href} className={`flex min-h-[92px] items-center gap-3 rounded-[22px] p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-white/70 transition hover:-translate-y-0.5 hover:shadow-md ${tile.tone}`}>
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80">
                                 <Icon className="h-5 w-5" />
                             </span>
                             <span className="min-w-0">

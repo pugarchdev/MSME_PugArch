@@ -391,9 +391,9 @@ export default function ProcurementDraftsPage() {
 
   /* ═══════════════════════════════════════════════════════════════════ */
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-8">
+    <div className="mx-auto max-w-[1560px] space-y-5 pb-8">
       {/* ── Page Header ── */}
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[24px] bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Procurement</p>
@@ -404,13 +404,13 @@ export default function ProcurementDraftsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ViewModeToggle value={viewMode} onChange={setViewMode} />
-            <Button type="button" variant="outline" onClick={loadAllDrafts} disabled={loading} className="h-10 rounded-md text-xs font-black uppercase">
+            <Button type="button" variant="outline" onClick={loadAllDrafts} disabled={loading} className="h-10 text-xs font-black uppercase">
               <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
             </Button>
             <Button
               type="button"
               onClick={() => router.push('/buyer/procurement')}
-              className="h-10 rounded-md bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
+              className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
             >
               <Plus className="mr-2 h-4 w-4" /> Create Procurement
             </Button>
@@ -463,7 +463,7 @@ export default function ProcurementDraftsPage() {
       </section>
 
       {/* ── Filters Bar ── */}
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-[24px] bg-slate-50/80 p-4 ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           {/* Search */}
           <div className="relative flex-1">
@@ -473,7 +473,7 @@ export default function ProcurementDraftsPage() {
               placeholder="Search drafts by title, category, item/service..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs font-semibold text-slate-900 outline-none transition-colors focus:border-[#12335f] focus:bg-white focus:ring-1 focus:ring-[#12335f]/20"
+              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-semibold text-slate-900 outline-none transition-colors focus:border-[#12335f] focus:bg-white focus:ring-1 focus:ring-[#12335f]/20"
             />
           </div>
 
@@ -483,7 +483,7 @@ export default function ProcurementDraftsPage() {
             <select
               value={methodFilter}
               onChange={e => setMethodFilter(e.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
             >
               <option value="">All Procurement Methods</option>
               <option value="direct-purchase">Direct Purchase</option>
@@ -496,7 +496,7 @@ export default function ProcurementDraftsPage() {
           <select
             value={sourceFilter}
             onChange={e => setSourceFilter(e.target.value)}
-            className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+            className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
           >
             <option value="">All Sources</option>
             <option value="local">Local Drafts</option>
@@ -514,7 +514,7 @@ export default function ProcurementDraftsPage() {
                 setSourceFilter('');
                 setActiveKpi(null);
               }}
-              className="h-10 rounded-md border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
+              className="h-10 border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
             >
               <XCircle className="mr-1.5 h-4 w-4" /> Clear
             </Button>
@@ -555,7 +555,7 @@ export default function ProcurementDraftsPage() {
 
       {/* ── Content ── */}
       {loading ? (
-        <section className="flex h-[400px] items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
+        <section className="flex h-[400px] items-center justify-center rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
           <div className="flex flex-col items-center gap-3">
             <RefreshCw className="h-8 w-8 animate-spin text-[#12335f]" />
             <p className="text-sm font-semibold text-slate-500">Loading procurement drafts...</p>
@@ -565,11 +565,11 @@ export default function ProcurementDraftsPage() {
         <>
           {/* ═══ LIST VIEW (Table) ═══ */}
           {viewMode === 'list' && (
-            <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+            <section className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+              <div className="overflow-x-auto bg-slate-50/70 p-2">
+                <table className="w-full border-separate border-spacing-y-2 text-left text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
+                    <tr>
                       <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500 w-[60px]">Sr. No</th>
                       <ThCell sortKey="title" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Title</ThCell>
                       <ThCell sortKey="methodSlug" currentSort={sortKey} sortDir={sortDir} onSort={handleSort}>Method</ThCell>
@@ -581,16 +581,16 @@ export default function ProcurementDraftsPage() {
                       <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-wide text-slate-500">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {sortedDrafts.map((d, idx) => {
                       const key = d.uniqueKey;
                       return (
                         <tr
                           key={key}
-                          className="cursor-pointer transition-colors hover:bg-slate-50/80"
+                           className="cursor-pointer bg-white shadow-3xs transition hover:shadow-sm"
                           onClick={() => openDetail(d)}
                         >
-                          <td className="px-4 py-3 text-center text-xs font-bold text-slate-500">{idx + 1}</td>
+                          <td className="rounded-l-2xl px-4 py-3 text-center text-xs font-bold text-slate-500">{idx + 1}</td>
                           <td className="w-[240px] min-w-[200px] whitespace-normal break-words px-4 py-3 font-bold text-slate-900">
                             {d.title}
                           </td>
@@ -600,13 +600,13 @@ export default function ProcurementDraftsPage() {
                           <td className="px-4 py-3 font-bold text-slate-900 tabular-nums">{formatCurrency(d.estimatedValue)}</td>
                           <td className="px-4 py-3 text-slate-600 tabular-nums">{[d.quantity, d.unit].filter(Boolean).join(' ') || '-'}</td>
                           <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{formatDateTime(d.updatedAt)}</td>
-                          <td className="px-4 py-3">
+                          <td className="rounded-r-2xl px-4 py-3">
                             <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
                               <Button
                                 type="button"
                                 size="sm"
                                 onClick={(e) => openDetail(d, e)}
-                                className="h-7 rounded bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
+                                 className="h-7 bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
                               >
                                 <Eye className="mr-1 h-3 w-3" /> View
                               </Button>
@@ -615,7 +615,7 @@ export default function ProcurementDraftsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={(e) => { e.stopPropagation(); d.isLocal ? discardLocal() : discardServer(d); }}
-                                className="h-7 rounded border-red-200 px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"
+                                 className="h-7 border-red-200 px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"
                               >
                                 <Trash2 className="mr-1 h-3 w-3" /> Delete
                               </Button>
@@ -623,7 +623,7 @@ export default function ProcurementDraftsPage() {
                                 type="button"
                                 size="sm"
                                 onClick={(e) => { e.stopPropagation(); handleContinue(d); }}
-                                className="h-7 rounded bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
+                                 className="h-7 bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
                               >
                                 Continue <ArrowRight className="ml-1 h-3 w-3" />
                               </Button>
@@ -635,7 +635,7 @@ export default function ProcurementDraftsPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+              <div className="bg-slate-50 px-4 py-2.5">
                 <p className="text-xs font-semibold text-slate-500">
                   {sortedDrafts.length} draft{sortedDrafts.length !== 1 ? 's' : ''} total
                   {mappedLocal ? ` · 1 local, ${mappedServers.length} server` : ''}
@@ -657,10 +657,10 @@ export default function ProcurementDraftsPage() {
                       key={d.uniqueKey}
                       onClick={() => setSelectedDraftKey(d.uniqueKey)}
                       className={cn(
-                        'w-full text-left rounded-lg border p-4 transition-all duration-200 shadow-sm hover:translate-y-[-1px]',
+                        'w-full rounded-[22px] p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-200 hover:translate-y-[-1px]',
                         isSelected
-                          ? 'border-[#12335f] bg-[#12335f]/5 ring-1 ring-[#12335f]'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
+                          ? 'bg-[#12335f]/5 ring-2 ring-[#12335f]/25'
+                          : 'bg-white/95 hover:ring-[#12335f]/25'
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -688,8 +688,8 @@ export default function ProcurementDraftsPage() {
               {/* Right: Selected Detail */}
               <div>
                 {selectedDraft ? (
-                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm transition-all duration-300">
-                    <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-50 p-5 lg:flex-row lg:items-start lg:justify-between">
+                  <section className="rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300">
+                    <div className="flex flex-col gap-4 bg-slate-50/80 p-5 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           {selectedDraft.isLocal ? (
@@ -715,14 +715,14 @@ export default function ProcurementDraftsPage() {
                           type="button"
                           variant="outline"
                           onClick={() => selectedDraft.isLocal ? discardLocal() : discardServer(selectedDraft)}
-                          className="h-10 rounded-md border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50"
+                           className="h-10 border-red-200 text-xs font-black uppercase text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="mr-2 h-4 w-4" /> Discard
                         </Button>
                         <Button
                           type="button"
                           onClick={() => handleContinue(selectedDraft)}
-                          className="h-10 rounded-md bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
+                           className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
                         >
                           Continue Draft <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
@@ -738,8 +738,8 @@ export default function ProcurementDraftsPage() {
                       <DraftMetric label="Required Date" value={selectedDraft.requiredDeliveryDate ? formatDate(selectedDraft.requiredDeliveryDate) : '-'} />
                       <DraftMetric label="Type" value={selectedDraft.isLocal ? 'Local Browser Cache' : 'Database Server Draft'} />
                     </div>
-                    <div className="border-t border-slate-200 p-5">
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <div className="p-5">
+                      <div className="rounded-[18px] bg-slate-50 p-4 ring-1 ring-slate-200/70">
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Specification snapshot</p>
                         <p className={cn('mt-2 text-sm font-medium leading-relaxed text-slate-700', !selectedDraft.specifications && 'text-slate-400')}>
                           {selectedDraft.specifications || 'No specification text captured yet.'}
@@ -753,7 +753,7 @@ export default function ProcurementDraftsPage() {
                     </div>
                   </section>
                 ) : (
-                  <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
+                  <section className="rounded-[24px] border border-dashed border-slate-300 bg-white/95 p-8 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
                     <p className="text-sm font-semibold text-slate-500">Please select a draft from the list to view its details.</p>
                   </section>
                 )}
@@ -763,7 +763,7 @@ export default function ProcurementDraftsPage() {
         </>
       ) : (
         /* Empty State */
-        <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
+        <section className="rounded-[24px] border border-dashed border-slate-300 bg-white/95 p-8 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-md bg-slate-50 text-[#12335f]">
             <FileText className="h-7 w-7" />
           </div>
@@ -918,17 +918,17 @@ function KpiCard({
     <button
       onClick={onClick}
       className={cn(
-        'group relative flex flex-col items-start gap-1 overflow-hidden rounded-xl border p-4 text-left transition-all duration-300 w-full',
-        'hover:shadow-lg hover:-translate-y-0.5',
+        'group relative flex w-full flex-col items-start gap-1 overflow-hidden rounded-[22px] bg-white/95 p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300',
+        'hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.1)]',
         isActive
-          ? 'border-[#12335f] bg-[#12335f]/5 ring-2 ring-[#12335f]/20 shadow-md'
-          : 'border-slate-200 bg-white hover:border-[#12335f]/30 shadow-sm'
+          ? 'bg-[#12335f]/5 ring-2 ring-[#12335f]/25 shadow-md'
+          : 'hover:ring-[#12335f]/25'
       )}
     >
       <div className={cn('absolute inset-0 opacity-[0.04] transition-opacity group-hover:opacity-[0.07]', gradient)} />
       <div className="relative z-10 flex w-full items-center justify-between">
         <div className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+          'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
           isActive ? 'bg-[#12335f] text-white' : 'bg-[#12335f]/10 text-[#12335f] group-hover:bg-[#12335f]/15'
         )}>
           <Icon className="h-4 w-4" />
@@ -947,7 +947,7 @@ function KpiCard({
 
 function DraftMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-3">
+    <div className="rounded-[18px] bg-white p-3 ring-1 ring-slate-200/70">
       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <p className="mt-1 break-words text-sm font-black text-slate-900">{value}</p>
     </div>

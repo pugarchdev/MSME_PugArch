@@ -1280,14 +1280,14 @@ export default function CreateProcurementPage() {
   const stepConfig = stepLibrary[currentStepKind];
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950 pb-20">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#eef5ff_0,#f7f9fc_42%,#eef2f7_100%)] pb-20 text-slate-950">
       {/* Accent Header Line */}
       <div className="h-1.5 w-full bg-[#12335f]" />
 
       <div className="mx-auto max-w-[1560px] px-4 py-6 lg:px-6">
         
         {/* Step Header Row */}
-        <div className="flex flex-col gap-4 border border-slate-200 bg-white p-4 rounded-xl shadow-xs lg:flex-row lg:items-center lg:justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-4 rounded-[24px] bg-white/95 p-4 shadow-[0_12px_36px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-wider">
               <span>Guided Procurement Wizard</span>
@@ -1319,7 +1319,7 @@ export default function CreateProcurementPage() {
           
           {/* Stepper Sidebar */}
           <aside className="space-y-4">
-            <div className="bg-slate-100/50 border border-slate-200 rounded-xl p-4">
+            <div className="rounded-[24px] bg-slate-50/80 p-4 ring-1 ring-slate-200/70">
               <h2 className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2.5 px-0.5">Wizard Progression</h2>
               <ProcurementStepper
                 steps={ALL_STEPS.map(s => ({
@@ -4498,8 +4498,8 @@ function Field({ label, required, className, children }: { label: string; requir
   );
 }
 
-const inputClass = 'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
-const textareaClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
+const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 shadow-3xs outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
+const textareaClass = 'w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-3xs outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
 
 // Compatibility payload mapping helper
 const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {

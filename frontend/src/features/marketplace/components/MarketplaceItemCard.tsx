@@ -166,8 +166,8 @@ export function MarketplaceItemCard({
     };
 
     return (
-        <article className={cn('group flex min-h-[310px] w-52 shrink-0 snap-start flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/90 shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:border-[#0b2447]/30 hover:shadow-lg sm:w-56 2xl:w-60', className)}>
-            <Link href={detailHref} onClick={cacheDetail} className="relative block h-32 overflow-hidden bg-gradient-to-b from-slate-50/50 to-slate-100/30 border-b border-slate-100">
+        <article className={cn('group flex min-h-[310px] w-52 shrink-0 snap-start flex-col overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)] hover:ring-[#0b2447]/25 sm:w-56 2xl:w-60', className)}>
+            <Link href={detailHref} onClick={cacheDetail} className="relative block h-32 overflow-hidden bg-gradient-to-b from-slate-50/50 to-slate-100/30">
                 {imageUrl ? (
                     <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-contain p-3 transition-all duration-500 ease-out group-hover:scale-110 group-hover:rotate-1" />
                 ) : (

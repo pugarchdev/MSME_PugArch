@@ -44,7 +44,7 @@ export function MarketplaceSectionCarousel({
     if (!loading && items.length === 0 && !emptyState) return null;
 
     return (
-        <section className={cn('border-b border-slate-100 bg-white', className)} data-section={sectionKey}>
+        <section className={cn('bg-white/70', className)} data-section={sectionKey}>
             <div className="mx-auto max-w-[1680px] px-4 pt-5 sm:px-6 2xl:px-8">
                 <div className="mb-3 flex items-end justify-between gap-3">
                     <div className="min-w-0">
@@ -74,7 +74,7 @@ export function MarketplaceSectionCarousel({
                 {loading ? (
                     <div className="flex gap-4 overflow-hidden pb-5">
                         {Array.from({ length: 5 }).map((_, index) => (
-                            <div key={index} className="h-[370px] w-56 shrink-0 rounded-2xl border border-slate-200/60 bg-white/90 p-3 shadow-sm sm:w-60 2xl:w-64">
+                            <div key={index} className="h-[370px] w-56 shrink-0 rounded-[24px] bg-white/90 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 sm:w-60 2xl:w-64">
                                 <div className="h-40 rounded-xl bg-slate-100" />
                                 <div className="mt-4 h-3 w-24 rounded bg-slate-100" />
                                 <div className="mt-3 h-4 w-full rounded bg-slate-100" />
@@ -99,7 +99,7 @@ export function MarketplaceSectionCarousel({
                         {viewAllUrl && (
                             <Link
                                 href={viewAllUrl}
-                                className="flex min-h-[370px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-4 text-center transition hover:bg-slate-100 hover:border-[#0b2447]/30 sm:w-56"
+                                className="flex min-h-[370px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-[24px] border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center transition hover:bg-slate-100 hover:border-[#0b2447]/30 sm:w-56"
                             >
                                 <PackageSearch className="h-8 w-8 text-[#0b2447] transition-transform duration-300 hover:scale-110" />
                                 <span className="text-xs font-extrabold text-[#0b2447]">View complete section</span>
@@ -107,7 +107,7 @@ export function MarketplaceSectionCarousel({
                         )}
                     </div>
                 ) : (
-                    <div className="mb-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                    <div className="mb-5 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
                         <PackageSearch className="mx-auto h-9 w-9 text-slate-300" />
                         <p className="mt-2 text-xs font-semibold text-slate-500">{emptyState}</p>
                     </div>

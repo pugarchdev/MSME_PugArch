@@ -166,17 +166,17 @@ function KpiCard({
     <button
       onClick={onClick}
       className={cn(
-        'group relative flex flex-col items-start gap-1 overflow-hidden rounded-xl border p-4 text-left transition-all duration-300',
-        'hover:shadow-lg hover:-translate-y-0.5',
+        'group relative flex flex-col items-start gap-1 overflow-hidden rounded-[22px] bg-white/95 p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300',
+        'hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.1)]',
         isActive
-          ? 'border-[#12335f] ring-2 ring-[#12335f]/20 shadow-md'
-          : 'border-slate-200/80 shadow-sm hover:border-[#12335f]/30'
+          ? 'ring-2 ring-[#12335f]/25 shadow-md'
+          : 'hover:ring-[#12335f]/25'
       )}
     >
       <div className={cn('absolute inset-0 opacity-[0.04] transition-opacity group-hover:opacity-[0.07]', gradient)} />
       <div className="relative z-10 flex w-full items-center justify-between">
         <div className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+          'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
           isActive ? 'bg-[#12335f] text-white' : 'bg-[#12335f]/10 text-[#12335f] group-hover:bg-[#12335f]/15'
         )}>
           <Icon className="h-4 w-4" />
@@ -345,9 +345,9 @@ export default function MyProcurementsPage() {
      ═══════════════════════════════════════════════ */
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-8">
+    <div className="mx-auto max-w-[1560px] space-y-5 pb-8">
       {/* ── Page Header ── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[24px] bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">
@@ -368,14 +368,14 @@ export default function MyProcurementsPage() {
               variant="outline"
               onClick={loadData}
               disabled={loading}
-              className="h-10 rounded-lg text-xs font-black uppercase"
+              className="h-10 text-xs font-black uppercase"
             >
               <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
             </Button>
             <Button
               type="button"
               onClick={() => router.push('/buyer/procurement')}
-              className="h-10 rounded-lg bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
+              className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
             >
               <ShoppingCart className="mr-2 h-4 w-4" /> New Procurement
             </Button>
@@ -444,7 +444,7 @@ export default function MyProcurementsPage() {
       </section>
 
       {/* ── Filters Bar ── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-[24px] bg-slate-50/80 p-4 ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           {/* Search */}
           <div className="relative flex-1">
@@ -454,7 +454,7 @@ export default function MyProcurementsPage() {
               placeholder="Search by title, reference, category..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-[#12335f] focus:bg-white focus:ring-1 focus:ring-[#12335f]/20"
+              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-[#12335f] focus:bg-white focus:ring-1 focus:ring-[#12335f]/20"
             />
           </div>
 
@@ -464,7 +464,7 @@ export default function MyProcurementsPage() {
             <select
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
             >
               {TYPE_FILTERS.map(f => (
                 <option key={f.key} value={f.key}>
@@ -481,7 +481,7 @@ export default function MyProcurementsPage() {
               setStatusFilter(e.target.value);
               setActiveKpi(e.target.value || null);
             }}
-            className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
+            className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-[#12335f] focus:ring-1 focus:ring-[#12335f]/20"
           >
             {STATUS_FILTERS.map(f => (
               <option key={f.key} value={f.key}>
@@ -501,7 +501,7 @@ export default function MyProcurementsPage() {
                 setSearchQuery('');
                 setActiveKpi(null);
               }}
-              className="h-10 rounded-lg border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
+              className="h-10 border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
             >
               <XCircle className="mr-1 h-3.5 w-3.5" /> Clear
             </Button>
@@ -536,7 +536,7 @@ export default function MyProcurementsPage() {
 
       {/* ── Content ── */}
       {loading ? (
-        <section className="flex h-[400px] items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section className="flex h-[400px] items-center justify-center rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-[#12335f]" />
             <p className="text-sm font-semibold text-slate-500">Loading procurements…</p>
@@ -546,11 +546,11 @@ export default function MyProcurementsPage() {
         <>
           {/* ═══ LIST VIEW ═══ */}
           {viewMode === 'list' && (
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+            <section className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+              <div className="overflow-x-auto bg-slate-50/70 p-2">
+                <table className="w-full border-separate border-spacing-y-2 text-left text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/80">
+                    <tr>
                       <th className="w-[50px] px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500">
                         #
                       </th>
@@ -586,20 +586,20 @@ export default function MyProcurementsPage() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {displayData.map((p, idx) => (
                       <tr
                         key={`${p.type}-${p.id}`}
-                        className="cursor-pointer transition-colors hover:bg-slate-50/80"
+                         className="cursor-pointer bg-white shadow-3xs transition hover:shadow-sm"
                         onClick={() => openDetail(p)}
                       >
-                        <td className="px-4 py-3 text-center text-xs font-bold text-slate-400">
+                          <td className="rounded-l-2xl px-4 py-3 text-center text-xs font-bold text-slate-400">
                           {idx + 1}
                         </td>
                         <td className="max-w-[280px] px-4 py-3 font-bold text-slate-900">
                           <span className="line-clamp-2 break-words whitespace-normal">{p.title}</span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="rounded-r-2xl px-4 py-3">
                           <span
                             className={cn(
                               'inline-flex whitespace-nowrap rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide',
@@ -645,7 +645,7 @@ export default function MyProcurementsPage() {
                               type="button"
                               size="sm"
                               onClick={e => openDetail(p, e)}
-                              className="h-7 rounded bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
+                               className="h-7 bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
                             >
                               <Eye className="mr-1 h-3 w-3" /> View
                             </Button>
@@ -656,7 +656,7 @@ export default function MyProcurementsPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="border-t border-slate-200 bg-slate-50/80 px-4 py-2.5">
+              <div className="bg-slate-50/80 px-4 py-2.5">
                 <p className="text-xs font-semibold text-slate-500">
                   {displayData.length} procurement{displayData.length !== 1 ? 's' : ''} shown
                   {hasActiveFilters ? ` (filtered from ${kpis.totalProcurements} total)` : ''}
@@ -672,7 +672,7 @@ export default function MyProcurementsPage() {
                 <button
                   key={`${p.type}-${p.id}`}
                   onClick={() => openDetail(p)}
-                  className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-md"
+                  className="group flex flex-col rounded-[22px] bg-white/95 p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-[#12335f]/25"
                 >
                   {/* Top row: type badge + ref number */}
                   <div className="flex items-center justify-between gap-2">
@@ -733,7 +733,7 @@ export default function MyProcurementsPage() {
         </>
       ) : (
         /* ── Empty State ── */
-        <section className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+        <section className="rounded-[24px] border border-dashed border-slate-300 bg-white/95 p-10 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-xl bg-slate-50 text-[#12335f]">
             <ClipboardList className="h-8 w-8" />
           </div>

@@ -56,7 +56,7 @@ export function ProcurementStepper({
   disabledFutureSteps = false
 }: ProcurementStepperProps) {
   return (
-    <nav className="space-y-1.5 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <nav className="space-y-1.5 rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
       {steps.map((step, idx) => {
         const isActive = idx === currentStep;
         const isCompleted = completedSteps.includes(step.id) || idx < currentStep;
@@ -70,13 +70,13 @@ export function ProcurementStepper({
             disabled={isDisabled}
             onClick={() => onStepClick && !isDisabled && onStepClick(idx)}
             className={cn(
-              "w-full flex items-start gap-3 rounded-lg p-2.5 text-left transition",
-              isActive ? "bg-slate-100 border-l-4 border-[#12335f] pl-1.5" : "hover:bg-slate-50",
+              "w-full flex items-start gap-3 rounded-2xl p-2.5 text-left transition",
+              isActive ? "bg-[#12335f]/10 ring-1 ring-[#12335f]/15" : "hover:bg-slate-50",
               isDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
             )}
           >
             <span className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-xs font-bold transition",
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition",
               isActive ? "bg-[#12335f] border-[#12335f] text-white" :
               isCompleted ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
               "bg-white border-slate-200 text-slate-455"
@@ -132,15 +132,15 @@ export function ProcurementMethodCard({
       disabled={isDisabled}
       onClick={onSelect}
       className={cn(
-        "flex flex-col justify-between border rounded-xl p-4 text-left transition w-full h-full bg-white",
-        isSelected ? "border-2 border-[#12335f] ring-2 ring-[#12335f]/15" : "border-slate-200 hover:border-[#12335f]/40 hover:shadow-xs",
+        "flex h-full w-full flex-col justify-between rounded-[22px] border-0 bg-white/95 p-4 text-left shadow-3xs ring-1 ring-slate-200/70 transition",
+        isSelected ? "ring-2 ring-[#12335f]/35 shadow-[0_14px_34px_rgba(18,51,95,0.12)]" : "hover:ring-[#12335f]/25 hover:shadow-sm",
         isDisabled ? "opacity-50 cursor-not-allowed bg-slate-50" : "cursor-pointer"
       )}
     >
       <div className="w-full">
         <div className="flex items-start justify-between gap-2">
           <span className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border",
             isSelected ? "bg-[#12335f] text-white border-[#12335f]" : "bg-slate-50 border-slate-200 text-slate-500"
           )}>
             <Icon className="h-4.5 w-4.5" />
@@ -239,7 +239,7 @@ interface MethodBadgeProps {
 
 export function MethodBadge({ method }: MethodBadgeProps) {
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-650 text-[9px] font-bold uppercase leading-none">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-bold uppercase leading-none text-slate-650">
       {String(method || '').replace(/_/g, ' ')}
     </span>
   );
@@ -266,11 +266,11 @@ export function SectionCard({
   className
 }: SectionCardProps) {
   return (
-    <div className={cn("bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4", className)}>
-      <div className="flex items-start justify-between border-b border-slate-100 pb-3 gap-2">
+    <div className={cn("space-y-4 rounded-[24px] border-0 bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70", className)}>
+      <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5">
           {Icon && (
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-600 border border-slate-100">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-50 text-slate-600 ring-1 ring-slate-100">
               <Icon className="h-4.5 w-4.5" />
             </span>
           )}
@@ -321,7 +321,7 @@ export function StickyActionBar({
   showSubmit = false
 }: StickyActionBarProps) {
   return (
-    <div className="flex items-center justify-between border border-slate-200 rounded-xl bg-white p-4 shadow-md sticky bottom-4 z-50">
+    <div className="sticky bottom-4 z-50 flex items-center justify-between rounded-[22px] border-0 bg-white/95 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.14)] ring-1 ring-slate-200/70 backdrop-blur">
       <Button
         variant="outline"
         onClick={onBack}

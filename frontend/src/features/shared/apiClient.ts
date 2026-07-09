@@ -1,4 +1,5 @@
 import { api } from '../../lib/api';
+import { getCookieValue } from '../../lib/auth';
 import type { PaginatedResult } from './types';
 
 export type ApiEnvelope<T> = { success?: boolean; data?: T } | T;
@@ -6,7 +7,11 @@ export type ApiEnvelope<T> = { success?: boolean; data?: T } | T;
 export const authHeaders = (): Record<string, string> => {
   if (typeof window === 'undefined') return {};
   const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const csrfToken = getCookieValue('csrfToken');
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  return headers;
 };
 
 export const unwrap = async <T>(response: Response): Promise<T> => {

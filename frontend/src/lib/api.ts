@@ -151,6 +151,30 @@ const shouldDispatchUnauthorized = (endpoint: string) =>
     '/api/notifications',
   ].some((path) => endpoint.startsWith(path));
 
+const isUnsafeMethod = (method: string) => !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+
+const isCsrfFailure = async (response: Response) => {
+  if (response.status !== 403) return false;
+  try {
+    const body = await response.clone().json();
+    const code = String(body?.code || body?.errorCode || body?.data?.code || body?.data?.errorCode || '');
+    const message = String(body?.message || body?.error || '');
+    return code === 'CSRF_TOKEN_INVALID' || /csrf/i.test(message);
+  } catch {
+    return false;
+  }
+};
+
+const refreshSessionCookies = async () => {
+  const response = await fetch(resolveUrl('/api/auth/refresh'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: normalizeHeaders(undefined, null),
+    body: '{}',
+  });
+  return response.ok;
+};
+
 const networkErrorResponse = (error: unknown) => {
   // Note: we used to hard-navigate to '/503.html' here but that nuked the
   // entire app on any transient blip (Neon cold start, Redis flap, brief
@@ -315,11 +339,21 @@ export const api = {
       }
     }
 
-    const request = fetch(url, {
+    const sendRequest = (requestHeaders: Record<string, string>) => fetch(url, {
       credentials: 'include',
       ...fetchOptions,
-      headers,
-    }).then(async (response) => {
+      headers: requestHeaders,
+    });
+
+    const request = sendRequest(headers).then(async (response) => {
+      if (isUnsafeMethod(method) && await isCsrfFailure(response)) {
+        const refreshed = await refreshSessionCookies().catch(() => false);
+        if (refreshed) {
+          const retryHeaders = normalizeHeaders(fetchOptions.headers, options.body as BodyInit | null);
+          response = await sendRequest(retryHeaders);
+        }
+      }
+
       if (response.status === 401 && shouldDispatchUnauthorized(endpoint)) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));

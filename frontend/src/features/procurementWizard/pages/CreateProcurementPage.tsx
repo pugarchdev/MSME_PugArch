@@ -22,7 +22,9 @@ import {
   ChevronRight,
   Info,
   ShoppingCart,
-  Trash2
+  Trash2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 
 import { Button } from '../../../components/ui/button';
@@ -38,6 +40,7 @@ import {
 } from '../api';
 import { api } from '../../../lib/api';
 import { authHeaders, unwrap } from '../../shared/apiClient';
+import { downloadCsv } from '../../shared/exportUtils';
 import { fetchDeliveryAddresses, createDeliveryAddress, type DeliveryAddressDto } from '../../directPurchase/api';
 import { useActiveCart } from '../../cart/hooks';
 import type { CartItemDto } from '../../cart/api';
@@ -78,8 +81,17 @@ import {
 
 type StepKind = 'basics' | 'internal' | 'items' | 'vendors' | 'schedule' | 'terms' | 'documents' | 'evaluation' | 'publish';
 
+type ItemAttachment = {
+  id: string;
+  name: string;
+  fileAssetId: number;
+  fileName: string;
+  uploadedAt?: string;
+};
+
 type ItemRow = {
   id: string;
+  itemType?: 'Product' | 'Service';
   name: string;
   specification: string;
   quantity: number;
@@ -94,6 +106,7 @@ type ItemRow = {
   hsn_sac_code?: string;
   brand_preference?: string;
   brand_flexible?: string;
+  attachments?: ItemAttachment[];
 };
 
 type DocumentRow = {
@@ -326,6 +339,99 @@ const nextWeekPlusOneHourDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86
 const makeId = () => Math.random().toString(36).substring(2, 9);
 const isReverseAuctionMethod = (method: ProcurementMethodId) => method === 'REVERSE_AUCTION' || method === 'BID_WITH_REVERSE_AUCTION';
 const isRateContractMethod = (method: ProcurementMethodId) => method === 'RATE_CONTRACT';
+const itemTemplateHeaders = [
+  'Item Type',
+  'Item Name',
+  'Description',
+  'Quantity',
+  'Unit',
+  'Unit Price',
+  'GST %',
+  'HSN/SAC',
+  'Preferred Brand',
+  'Brand Flexible',
+  'Delivery Date'
+];
+
+const parseCsvText = (text: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      value += '"';
+      i += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(value.trim());
+      value = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i += 1;
+      row.push(value.trim());
+      if (row.some(cell => cell.length > 0)) rows.push(row);
+      row = [];
+      value = '';
+      continue;
+    }
+
+    value += char;
+  }
+
+  row.push(value.trim());
+  if (row.some(cell => cell.length > 0)) rows.push(row);
+  return rows;
+};
+
+const normalizeImportHeader = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const importedCsvRowToItem = (headers: string[], row: string[], index: number): ItemRow | null => {
+  const get = (...names: string[]) => {
+    const headerIndex = headers.findIndex(header => names.includes(normalizeImportHeader(header)));
+    return headerIndex >= 0 ? String(row[headerIndex] || '').trim() : '';
+  };
+
+  const name = get('itemname', 'name', 'productservice');
+  if (!name) return null;
+
+  const rawType = get('itemtype', 'type').toLowerCase();
+  const itemType: 'Product' | 'Service' = rawType.includes('service') ? 'Service' : 'Product';
+  const quantity = Math.max(1, Math.round(Number(get('quantity', 'qty')) || 1));
+
+  return {
+    id: `import:${Date.now()}:${index}:${makeId()}`,
+    itemType,
+    name,
+    specification: get('description', 'specification', 'specifications', 'details'),
+    quantity,
+    unit: get('unit', 'uom', 'unitofmeasure') || (itemType === 'Service' ? 'Set' : 'Nos'),
+    unitPrice: Number(get('unitprice', 'rate', 'estimatedunitprice')) || 0,
+    gst: Number(get('gst', 'gstpercent', 'gstpercentage')) || 18,
+    deliveryDate: get('deliverydate', 'requireddate') || nextFortnight,
+    brandPolicy: 'Equivalent allowed',
+    technicalSpecification: get('description', 'specification', 'specifications', 'details'),
+    specificationFileName: '',
+    hsn_sac_code: get('hsnsac', 'hsn', 'sac', 'hsncode', 'saccode'),
+    brand_preference: get('preferredbrand', 'brandpreference', 'brand'),
+    brand_flexible: get('brandflexible', 'alternatebrandsallowed') || 'Yes',
+    fileAssetId: null,
+    attachments: [],
+  };
+};
 
 const defaultAuctionConfig = (method: ProcurementMethodId): AuctionConfig => ({
   auctionNumber: `RA-${Date.now()}`,
@@ -477,6 +583,7 @@ const cartItemToProcurementItem = (item: CartItemDto): ItemRow => {
 
   return {
     id: `cart:${item.id}`,
+    itemType: service ? 'Service' : 'Product',
     name: item.itemName || product?.name || service?.name || 'Catalogue Item',
     specification: description || '',
     quantity: Math.max(1, Number(item.quantity || 1)),
@@ -491,6 +598,7 @@ const cartItemToProcurementItem = (item: CartItemDto): ItemRow => {
     brand_preference: '',
     brand_flexible: 'Yes',
     fileAssetId: null,
+    attachments: [],
   };
 };
 
@@ -2654,10 +2762,10 @@ function ItemsDetailsForm({
   setSelectedItemForEdit: (item: ItemRow | null) => void;
 }) {
   const whatBuying = draft.basics.whatAreYouBuying;
-  const isCataloguePurchase = draft.type === 'CATALOG_PURCHASE';
-  const { data: activeCart, isLoading: isCartLoading } = useActiveCart({ enabled: isCataloguePurchase });
+  const { data: activeCart, isLoading: isCartLoading } = useActiveCart({ enabled: true });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [attachmentName, setAttachmentName] = useState('Specification');
 
   const handleSaveItemWithValidation = (item: ItemRow) => {
     const errs: Record<string, string> = {};
@@ -2710,10 +2818,10 @@ function ItemsDetailsForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.png', '.jpg', '.jpeg'];
     const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (!allowedExtensions.includes(extension)) {
-      toast.error('Invalid file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, JPEG');
+      toast.error('Invalid file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, CSV, PNG, JPG, JPEG');
       return;
     }
 
@@ -2737,13 +2845,24 @@ function ItemsDetailsForm({
       const fileId = Number(resData.fileId || asset.id || 0);
 
       if (selectedItemForEdit) {
+        const nextAttachment: ItemAttachment = {
+          id: makeId(),
+          name: attachmentName.trim() || 'Specification',
+          fileAssetId: fileId,
+          fileName: asset.originalName || file.name,
+          uploadedAt: new Date().toISOString(),
+        };
+        const nextAttachments = [...(selectedItemForEdit.attachments || []), nextAttachment];
         setSelectedItemForEdit({
           ...selectedItemForEdit,
           fileAssetId: fileId,
-          specificationFileName: asset.originalName || file.name
+          specificationFileName: asset.originalName || file.name,
+          attachments: nextAttachments,
         });
       }
-      toast.success('Technical Specs uploaded successfully');
+      setAttachmentName('Specification');
+      e.target.value = '';
+      toast.success('Item document uploaded successfully');
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Failed to upload file');
@@ -2774,13 +2893,68 @@ function ItemsDetailsForm({
     setSelectedItemForEdit(null);
   };
 
-  const handleAddNewItem = () => {
+  const handleDownloadItemTemplate = () => {
+    downloadCsv('procurement-items-services-template.csv', [
+      itemTemplateHeaders,
+      ['Product', 'M30 Concrete Paver Block', 'ISI marked paver block, 60mm thickness', 1000, 'Nos', 45, 18, '6810', '', 'Yes', nextFortnight],
+      ['Service', 'Annual Maintenance Contract', 'Preventive maintenance with quarterly visits and call support', 1, 'Set', 25000, 18, '9987', '', 'Yes', nextFortnight],
+    ]);
+  };
+
+  const handleImportItemTemplate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.txt')) {
+      toast.error('Use the CSV template format for item import.');
+      return;
+    }
+
+    try {
+      const rows = parseCsvText(await file.text());
+      if (rows.length < 2) {
+        toast.error('Template has no item rows to import.');
+        return;
+      }
+
+      const [headers, ...dataRows] = rows;
+      const importedItems = dataRows
+        .map((row, index) => importedCsvRowToItem(headers, row, index))
+        .filter((item): item is ItemRow => Boolean(item));
+
+      if (importedItems.length === 0) {
+        toast.error('No valid item rows found. Item Name is required.');
+        return;
+      }
+
+      updateDraft(current => {
+        const nextItems = [...current.items, ...importedItems];
+        const estimatedValue = nextItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
+        return {
+          ...current,
+          basics: {
+            ...current.basics,
+            estimatedValue,
+          },
+          items: nextItems,
+        };
+      });
+      toast.success(`Imported ${importedItems.length} item/service row${importedItems.length === 1 ? '' : 's'}`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to import template');
+    }
+  };
+
+  const handleAddNewItem = (itemType: 'Product' | 'Service' = 'Product') => {
     setSelectedItemForEdit({
       id: makeId(),
+      itemType,
       name: '',
       specification: '',
       quantity: 1,
-      unit: 'Nos',
+      unit: itemType === 'Service' ? 'Set' : 'Nos',
       unitPrice: 0,
       gst: 18,
       deliveryDate: nextFortnight,
@@ -2791,7 +2965,9 @@ function ItemsDetailsForm({
       brand_preference: '',
       brand_flexible: 'Yes',
       fileAssetId: null,
+      attachments: [],
     });
+    setAttachmentName('Specification');
     setShowItemDrawer(true);
   };
 
@@ -2811,7 +2987,6 @@ function ItemsDetailsForm({
         ...current,
         basics: {
           ...current.basics,
-          whatAreYouBuying: 'CATALOG_ITEM',
           estimatedValue,
         },
         items: nextItems,
@@ -2997,10 +3172,8 @@ function ItemsDetailsForm({
     );
   }
 
-  // 2. Service SOW Mode
-  if (whatBuying === 'Service') {
-    return (
-      <div className="space-y-6">
+  const serviceDetailsPanel = whatBuying === 'Service' ? (
+      <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
         <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-2">Service Contract Parameters</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Service Contract Title" required className="sm:col-span-2">
@@ -3078,79 +3251,118 @@ function ItemsDetailsForm({
           </Field>
         </div>
       </div>
-    );
-  }
+  ) : null;
 
-  // 3. Product Mode
+  // 2. Item / Service Schedule Mode
   return (
     <div className="space-y-5">
+      {serviceDetailsPanel}
       <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Line Items Schedule</h3>
-          <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Specify products or items to buy.</p>
+          <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Item / Service Schedule</h3>
+          <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Import, cart-map, or manually add product/service lines with named specification files.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isCataloguePurchase && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={handleImportCartItems}
-              disabled={isCartLoading}
-              className="h-8.5 font-bold"
+          <Button type="button" size="sm" variant="outline" onClick={handleDownloadItemTemplate} className="h-8.5 font-bold">
+            <Download className="h-4 w-4 mr-1" /> Template
+          </Button>
+          <div className="relative">
+            <input
+              type="file"
+              id="item-template-import"
+              accept=".csv,.txt"
+              onChange={handleImportItemTemplate}
+              className="hidden"
+            />
+            <label
+              htmlFor="item-template-import"
+              className="cursor-pointer inline-flex h-8.5 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-3xs transition hover:bg-slate-50"
             >
-              <ShoppingCart className="h-4 w-4 mr-1" />
-              {isCartLoading ? 'Reading Cart...' : `Import Cart${activeCart?.items?.length ? ` (${activeCart.items.length})` : ''}`}
-            </Button>
-          )}
-          <Button type="button" size="sm" onClick={handleAddNewItem} className="h-8.5 font-bold">
-            <Plus className="h-4 w-4 mr-1" /> Add Product Item
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Import CSV
+            </label>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleImportCartItems}
+            disabled={isCartLoading}
+            className="h-8.5 font-bold"
+          >
+            <ShoppingCart className="h-4 w-4 mr-1" />
+            {isCartLoading ? 'Reading Cart...' : `Import Cart${activeCart?.items?.length ? ` (${activeCart.items.length})` : ''}`}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => handleAddNewItem('Service')} className="h-8.5 font-bold">
+            <Plus className="h-4 w-4 mr-1" /> Add Service
+          </Button>
+          <Button type="button" size="sm" onClick={() => handleAddNewItem('Product')} className="h-8.5 font-bold">
+            <Plus className="h-4 w-4 mr-1" /> Add Product
           </Button>
         </div>
       </div>
 
-      {isCataloguePurchase && draft.items.length === 0 && (
+      <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/70 p-3 text-xs font-semibold text-[#12335f]">
-          Catalogue Purchase can import active marketplace cart items here. Add products in Marketplace, then click Import Cart.
+          Use Template for bulk product/service lines. CSV columns must not be renamed.
         </div>
-      )}
+        <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/70 p-3 text-xs font-semibold text-emerald-900">
+          Import Cart pulls current marketplace cart lines into this procurement.
+        </div>
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-xs font-semibold text-slate-600">
+          Manual rows support named attachments such as drawing, specification, scope, or datasheet.
+        </div>
+      </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
-        <table className="w-full min-w-[800px] border-collapse text-left text-xs">
+        <table className="w-full min-w-[1080px] border-collapse text-left text-xs">
           <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
             <tr>
+              <th className="px-3 py-2.5 w-24">Type</th>
               <th className="px-3 py-2.5">Item Name</th>
               <th className="px-3 py-2.5">Description</th>
               <th className="px-3 py-2.5 w-24">Quantity</th>
               <th className="px-3 py-2.5 w-24">Unit</th>
+              <th className="px-3 py-2.5 w-28">Rate</th>
               <th className="px-3 py-2.5 w-28">HSN/SAC</th>
               <th className="px-3 py-2.5 w-32">Pref. Brand</th>
               <th className="px-3 py-2.5 w-24">Flexible?</th>
-              <th className="px-3 py-2.5 w-36">Technical Specs</th>
+              <th className="px-3 py-2.5 w-36">Documents</th>
               <th className="px-3 py-2.5 w-24 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
             {draft.items.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={11} className="px-3 py-8 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center space-y-2">
                     <Package className="h-8 w-8 text-slate-350" />
-                    <p className="text-xs font-bold text-slate-500">No items added yet</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">Click the &quot;Add Product Item&quot; button above to specify your procurement items.</p>
+                    <p className="text-xs font-bold text-slate-500">No item/service rows added yet</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">Use Template, Import CSV, Import Cart, Add Product, or Add Service.</p>
                   </div>
                 </td>
               </tr>
             ) : (
               draft.items.map(item => {
+                const attachmentCount = item.attachments?.length || (item.specificationFileName ? 1 : 0);
                 return (
                   <tr key={item.id} className="align-middle hover:bg-slate-50/50">
+                    <td className="px-3 py-3">
+                      <span className={cn(
+                        "rounded-full px-2 py-1 text-[9px] font-black uppercase",
+                        item.itemType === 'Service' ? "border border-purple-100 bg-purple-50 text-purple-700" : "border border-blue-100 bg-blue-50 text-blue-700"
+                      )}>
+                        {item.itemType || 'Product'}
+                      </span>
+                    </td>
                     <td className="px-3 py-3 font-extrabold text-slate-900">{item.name || <span className="text-rose-500">Unnamed Item</span>}</td>
                     <td className="px-3 py-3 text-slate-450 truncate max-w-[180px] font-medium" title={item.specification}>{item.specification || 'No spec set'}</td>
                     <td className="px-3 py-3">{item.quantity}</td>
                     <td className="px-3 py-3">{item.unit}</td>
-                    <td className="px-3 py-3 font-medium text-slate-500">{item.hsn_sac_code || '—'}</td>
-                    <td className="px-3 py-3 font-medium text-slate-700">{item.brand_preference || '—'}</td>
+                    <td className="px-3 py-3 font-bold text-slate-900">
+                      {Number(item.unitPrice || 0) > 0 ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(item.unitPrice || 0)) : '-'}
+                    </td>
+                    <td className="px-3 py-3 font-medium text-slate-500">{item.hsn_sac_code || '-'}</td>
+                    <td className="px-3 py-3 font-medium text-slate-700">{item.brand_preference || '-'}</td>
                     <td className="px-3 py-3 font-bold">
                       {item.brand_flexible === 'No' ? (
                         <span className="text-amber-600 bg-amber-50/10 border border-amber-200/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-black">No</span>
@@ -3159,20 +3371,20 @@ function ItemsDetailsForm({
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {item.specificationFileName ? (
+                      {attachmentCount > 0 && (item.attachments?.[0] || item.specificationFileName) ? (
                         <a
-                          href={`/api/files/${item.fileAssetId}/view`}
+                          href={`/api/files/${item.attachments?.[0]?.fileAssetId || item.fileAssetId}/view`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center text-[#12335f] hover:underline gap-1 text-[11px] font-bold"
                         >
                           <FileText className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate max-w-[80px]" title={item.specificationFileName}>
-                            {item.specificationFileName}
+                          <span className="truncate max-w-[95px]" title={item.attachments?.[0]?.fileName || item.specificationFileName}>
+                            {attachmentCount} file{attachmentCount === 1 ? '' : 's'}
                           </span>
                         </a>
                       ) : (
-                        <span className="text-slate-400">—</span>
+                        <span className="text-slate-400">-</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-right space-x-2">
@@ -3219,7 +3431,30 @@ function ItemsDetailsForm({
               </div>
 
               <div className="space-y-4">
-                <Field label="Item / Product Name" required>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Line Type" required>
+                    <select
+                      value={selectedItemForEdit.itemType || 'Product'}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, itemType: e.target.value as 'Product' | 'Service' })}
+                      className={inputClass}
+                    >
+                      <option value="Product">Product</option>
+                      <option value="Service">Service</option>
+                    </select>
+                  </Field>
+                  <Field label="Unit Rate">
+                    <input
+                      type="number"
+                      min={0}
+                      value={selectedItemForEdit.unitPrice}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, unitPrice: Number(e.target.value || 0) })}
+                      className={inputClass}
+                      placeholder="0"
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Item / Service Name" required>
                   <input
                     value={selectedItemForEdit.name}
                     onChange={e => {
@@ -3301,6 +3536,20 @@ function ItemsDetailsForm({
                       <p className="text-[10px] font-bold text-rose-600 mt-1">{validationErrors.hsn_sac_code}</p>
                     )}
                   </Field>
+                  <Field label="GST %">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={selectedItemForEdit.gst}
+                      onChange={e => setSelectedItemForEdit({ ...selectedItemForEdit, gst: Number(e.target.value || 0) })}
+                      className={inputClass}
+                      placeholder="18"
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
                   <Field label="Preferred Brand">
                     <input
                       value={selectedItemForEdit.brand_preference || ''}
@@ -3329,13 +3578,19 @@ function ItemsDetailsForm({
                   </select>
                 </Field>
 
-                <Field label="Technical Specs File Attachment">
+                <Field label="Specification / Supporting Documents">
                   <div className="space-y-2">
-                    <div className="flex items-center gap-3">
+                    <input
+                      value={attachmentName}
+                      onChange={e => setAttachmentName(e.target.value)}
+                      className={inputClass}
+                      placeholder="Document name e.g. Technical Drawing, Scope, Datasheet"
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
                       <input
                         type="file"
                         id="item-file-upload"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg"
                         onChange={handleItemFileChange}
                         className="hidden"
                       />
@@ -3358,31 +3613,43 @@ function ItemsDetailsForm({
                           </>
                         )}
                       </label>
-                      <span className="text-[10px] text-slate-500">PDF, DOC, XLS or Image up to 5MB</span>
+                      <span className="text-[10px] text-slate-500">PDF, Office, CSV, or image up to 5MB</span>
                     </div>
 
-                    {selectedItemForEdit.specificationFileName && (
-                      <div className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs font-semibold text-slate-800 animate-fadeIn">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileText className="h-4 w-4 shrink-0 text-emerald-600" />
-                          <span className="truncate max-w-[220px]" title={selectedItemForEdit.specificationFileName}>
-                            {selectedItemForEdit.specificationFileName}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedItemForEdit({
-                              ...selectedItemForEdit,
-                              fileAssetId: null,
-                              specificationFileName: ''
-                            });
-                          }}
-                          className="p-1 rounded text-rose-500 hover:bg-rose-50 transition-all ml-2"
-                          title="Remove file"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                    {(selectedItemForEdit.attachments || []).length > 0 && (
+                      <div className="space-y-2">
+                        {(selectedItemForEdit.attachments || []).map(attachment => (
+                          <div key={attachment.id} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs font-semibold text-slate-800 animate-fadeIn">
+                            <a
+                              href={`/api/files/${attachment.fileAssetId}/view`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex min-w-0 items-center gap-2 text-[#12335f] hover:underline"
+                            >
+                              <FileText className="h-4 w-4 shrink-0 text-emerald-600" />
+                              <span className="truncate max-w-[180px]" title={`${attachment.name}: ${attachment.fileName}`}>
+                                {attachment.name}: {attachment.fileName}
+                              </span>
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextAttachments = (selectedItemForEdit.attachments || []).filter(file => file.id !== attachment.id);
+                                const first = nextAttachments[0];
+                                setSelectedItemForEdit({
+                                  ...selectedItemForEdit,
+                                  attachments: nextAttachments,
+                                  fileAssetId: first?.fileAssetId || null,
+                                  specificationFileName: first?.fileName || '',
+                                });
+                              }}
+                              className="p-1 rounded text-rose-500 hover:bg-rose-50 transition-all ml-2"
+                              title="Remove file"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -4595,17 +4862,21 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
         estimatedUnitPrice: item.estimatedRate,
       }))
     : draft.items.map(item => ({
+        itemType: item.itemType || 'Product',
         itemName: item.name,
         description: item.specification || '',
         quantity: item.quantity,
         unitOfMeasure: item.unit,
-        estimatedUnitPrice: 0,
+        estimatedUnitPrice: Number(item.unitPrice || 0),
         specifications: {
+          itemType: item.itemType || 'Product',
           hsn_sac_code: item.hsn_sac_code || '',
           brand_preference: item.brand_preference || '',
           brand_flexible: item.brand_flexible || 'Yes',
+          gst: Number(item.gst || 0),
           fileAssetId: item.fileAssetId || null,
           specificationFileName: item.specificationFileName || '',
+          attachments: item.attachments || [],
         }
       }));
 

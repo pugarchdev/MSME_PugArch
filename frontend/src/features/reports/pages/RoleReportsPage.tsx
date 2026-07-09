@@ -260,7 +260,7 @@ export default function RoleReportsPage() {
                         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                             <h2 className="text-base font-black text-slate-950">Where to Find Key Workflows</h2>
                             <div className="mt-4 space-y-3">
-                                <WorkflowLink icon={ShoppingCart} title="Create Tender / Procurement" text="Buyer: Procurement > Create Procurement. Use RFQ, tender, auction, requirement, or direct purchase as per need." href="/buyer/create-procurement" />
+                                <WorkflowLink icon={ShoppingCart} title="Create Tender / Procurement" text="Buyer: Procurement > Create Procurement. Use RFQ, tender, auction, requirement, or direct purchase as per need." href="/buyer/procurement/create" />
                                 <WorkflowLink icon={Truck} title="See Purchase Orders" text="Orders > Active Orders opens generated PO/work orders. Direct PO URLs are also available from award records." href="/orders" />
                                 <WorkflowLink icon={BarChart3} title="Review Reports" text="Reports shows conversion, order value, lifecycle readiness, aging, and exportable order details." href="/reports" />
                             </div>

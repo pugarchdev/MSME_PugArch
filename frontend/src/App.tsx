@@ -1,6 +1,6 @@
 'use client';
 import React, { Suspense, lazy, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from './hooks/useAuth';
 import { cn } from './lib/utils';
 import { isShgUser } from './lib/shg';
@@ -331,6 +331,9 @@ export default function App() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname() || '/';
+  const searchParams = useSearchParams();
+  const queryString = searchParams?.toString();
+  const canonicalCreateProcurementPath = `/buyer/procurement/create${queryString ? `?${queryString}` : ''}`;
   const [mounted, setMounted] = useState(globalMounted);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -539,7 +542,13 @@ export default function App() {
     if (pathname === '/buyer/create-bid' && roleOk(user.role, ['buyer'])) {
       return <Redirect to="/buyer/procurement/create" />;
     }
-    if ((pathname === '/buyer/create-procurement' || pathname === '/buyer/procurement/create' || /^\/buyer\/create-procurement\/[^/]+$/.test(pathname)) && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
+    if (pathname === '/buyer/create-procurement/direct-purchase/checkout' && roleOk(user.role, ['buyer'])) {
+      return <Redirect to="/buyer/procurement/checkout" />;
+    }
+    if ((pathname === '/buyer/create-procurement' || /^\/buyer\/create-procurement\/[^/]+$/.test(pathname)) && roleOk(user.role, ['buyer'])) {
+      return <Redirect to={canonicalCreateProcurementPath} />;
+    }
+    if (pathname === '/buyer/procurement/create' && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
     if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
     if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
     if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <Quotations />;
@@ -556,7 +565,7 @@ export default function App() {
       return <Redirect to="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
     }
     if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage listOnly />;
-    if ((pathname === '/buyer/direct-purchase/checkout' || pathname === '/buyer/create-procurement/direct-purchase/checkout') && roleOk(user.role, ['buyer'])) {
+    if (pathname === '/buyer/direct-purchase/checkout' && roleOk(user.role, ['buyer'])) {
       return <Redirect to="/buyer/procurement/checkout" />;
     }
     if (pathname === '/buyer/address-book' && roleOk(user.role, ['buyer'])) return <AddressBookPage />;

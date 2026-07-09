@@ -433,7 +433,7 @@ export default function BuyerPublishBidPage() {
           </div>
           <button
             type="button"
-            onClick={() => router.push('/buyer/create-procurement')}
+            onClick={() => router.push('/buyer/procurement/create')}
             className="inline-flex h-10 shrink-0 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black uppercase text-white"
           >
             Open Create Procurement

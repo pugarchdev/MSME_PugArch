@@ -75,7 +75,6 @@ interface SidebarProps {
 const preloadRegistry: Record<string, () => Promise<any>> = {
   '/dashboard': () => import('../../views/Dashboard'),
   '/master-admin': () => import('../../features/masterAdmin/pages/MasterAdminPage'),
-  '/buyer/create-procurement': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   // LEGACY: /buyer/create-bid now shows LegacyNoticePage → redirects to unified wizard
   '/buyer/create-bid': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),

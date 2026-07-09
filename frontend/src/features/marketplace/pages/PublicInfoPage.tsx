@@ -208,7 +208,7 @@ const sitemapGroups = [
     title: 'Buyer',
     links: [
       ['Buyer Registration', '/buyer/register'],
-      ['Create Procurement', '/buyer/create-procurement'],
+      ['Create Procurement', '/buyer/procurement/create'],
       ['RFQ', '/buyer/rfq'],
       ['Direct Purchase', '/buyer/direct-purchase'],
       ['Buyer Tenders', '/buyer/tenders'],

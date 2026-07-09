@@ -358,9 +358,9 @@ export default function ProcurementDraftsPage() {
   };
 
   const handleContinue = (d: DisplayDraft) => {
-    if (d.isLocal) router.push('/buyer/create-procurement');
+    if (d.isLocal) router.push('/buyer/procurement/create');
     else if (d.raw?.payload?.isV2) router.push(`/buyer/create-bid?draft=${d.id}`);
-    else router.push(`/buyer/create-procurement?id=${d.id}`);
+    else router.push(`/buyer/procurement/create?id=${d.id}`);
   };
 
   const handleSort = (key: SortKey) => {
@@ -771,7 +771,7 @@ export default function ProcurementDraftsPage() {
           <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">
             Start a Create Procurement process and click Save Draft. Your drafts will appear here for you to continue them at any time.
           </p>
-          <Button type="button" onClick={() => router.push('/buyer/create-procurement')} className="mt-5 h-10 rounded-md bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445]">
+          <Button type="button" onClick={() => router.push('/buyer/procurement/create')} className="mt-5 h-10 rounded-md bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445]">
             Create Procurement <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </section>

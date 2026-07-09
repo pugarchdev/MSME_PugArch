@@ -104,7 +104,7 @@ export default function PurchaseOrders() {
         const status = String(order.status || '').toLowerCase();
         if (isOpenPurchaseOrder(order)) acc.openValue += value;
         if (isSeller && status === 'accepted') acc.invoiceReady += 1;
-        if (isSeller && status === 'generated') acc.awaitingSeller += 1;
+        if (isSeller && (status === 'generated' || status === 'order_placed')) acc.awaitingSeller += 1;
         const expected = order.expectedDelivery ? new Date(order.expectedDelivery) : null;
         if (expected && expected < now && !['delivered', 'cancelled', 'completed'].includes(status)) {
           acc.deliveryRisk += 1;
@@ -212,6 +212,9 @@ export default function PurchaseOrders() {
         : `/api/purchase-orders/${confirming.order.id}/cancel`;
       const updated = await postApi<PurchaseOrderDto>(endpoint, {});
       setPagedOrders(current => current.map(order => order.id === updated.id ? { ...order, ...updated } : order));
+      if (viewingOrder && viewingOrder.id === updated.id) {
+        setViewingOrder(updated);
+      }
       toast.success(`PO ${readableStatus(updated.status)}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to update purchase order');
@@ -240,7 +243,7 @@ export default function PurchaseOrders() {
         <Button variant="outline" onClick={() => exportInvoicePdf(order, 'download')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />Invoice PDF</Button>
         <Button variant="outline" onClick={() => exportInvoicePdf(order, 'print')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Printer className="mr-1.5 h-3.5 w-3.5" />Print</Button>
         {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-200 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel</Button>}
-        {isSeller && statusLower === 'generated' && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white hover:bg-teal-700 shadow-sm"><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
+        {isSeller && (statusLower === 'generated' || statusLower === 'order_placed') && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white hover:bg-teal-700 shadow-sm"><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
         {isSeller && statusLower === 'accepted' && (
           <Button
             onClick={() => handleConvertToInvoice(order)}
@@ -663,18 +666,21 @@ export default function PurchaseOrders() {
                     <p className="text-[10px] font-semibold text-slate-500 mt-0.5">PO record successfully created from procurement bidding workflow.</p>
                   </div>
 
-                  {viewingOrder.status !== 'generated' && viewingOrder.status !== 'cancelled' && (
-                    <div className="relative">
-                      <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                        <span className="text-xs font-black text-slate-900">PO Acknowledged by Seller</span>
-                        <span className="text-[10px] font-mono font-bold text-slate-500">
-                          {viewingOrder.acceptedAt ? formatTimestamp(viewingOrder.acceptedAt) : 'Pending timestamp'}
-                        </span>
+                  {(() => {
+                    const viewingStatusLower = String(viewingOrder.status || '').toLowerCase();
+                    return viewingStatusLower !== 'generated' && viewingStatusLower !== 'order_placed' && viewingStatusLower !== 'cancelled' && (
+                      <div className="relative">
+                        <span className="absolute -left-[26px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                          <span className="text-xs font-black text-slate-900">PO Acknowledged by Seller</span>
+                          <span className="text-[10px] font-mono font-bold text-slate-500">
+                            {viewingOrder.acceptedAt ? formatTimestamp(viewingOrder.acceptedAt) : 'Pending timestamp'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Seller acknowledged and committed to fulfilling this order.</p>
                       </div>
-                      <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Seller acknowledged and committed to fulfilling this order.</p>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {viewingOrder.status === 'delivered' && (
                     <div className="relative">
@@ -792,7 +798,41 @@ export default function PurchaseOrders() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 shrink-0">
+              {(() => {
+                const viewingStatusLower = String(viewingOrder.status || '').toLowerCase();
+                return (
+                  <>
+                    {isSeller && (viewingStatusLower === 'generated' || viewingStatusLower === 'order_placed') && (
+                      <Button
+                        onClick={() => setConfirming({ action: 'acknowledge', order: viewingOrder })}
+                        className="h-10 bg-[#008080] text-xs font-black uppercase text-white hover:bg-teal-700 shadow-sm"
+                      >
+                        <Truck className="mr-2 h-4 w-4" /> Acknowledge PO
+                      </Button>
+                    )}
+                    {isSeller && viewingStatusLower === 'accepted' && (
+                      <Button
+                        onClick={() => {
+                          setViewingOrder(null);
+                          handleConvertToInvoice(viewingOrder);
+                        }}
+                        className="h-10 bg-emerald-600 text-xs font-black uppercase text-white hover:bg-emerald-700 shadow-sm"
+                      >
+                        Convert to Invoice
+                      </Button>
+                    )}
+                    {isBuyer && !['cancelled', 'delivered'].includes(viewingStatusLower) && (
+                      <Button
+                        onClick={() => setConfirming({ action: 'cancel', order: viewingOrder })}
+                        className="h-10 border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" /> Cancel PO
+                      </Button>
+                    )}
+                  </>
+                );
+              })()}
               <Button variant="outline" onClick={() => exportInvoicePdf(viewingOrder, 'print')} className="h-10 text-xs font-black uppercase">
                 <Printer className="mr-2 h-4 w-4" /> Print Invoice
               </Button>

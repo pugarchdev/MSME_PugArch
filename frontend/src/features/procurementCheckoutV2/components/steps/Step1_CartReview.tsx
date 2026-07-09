@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Minus, Plus, Trash2 } from 'lucide-react';
+import { Minus, PackagePlus, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../../components/ui/button';
 import { formatCurrency } from '../../../shared/format';
 import type { CartDto } from '../../../cart/api';
@@ -74,12 +74,21 @@ export default function Step1_CartReview({
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-sm">
         <span className="font-bold">Estimated total: {formatCurrency(total)}</span>
-        <Link
-          href="/marketplace/compare"
-          className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
-        >
-          Compare sellers
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/buyer/marketplace"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+          >
+            <PackagePlus className="h-3.5 w-3.5" />
+            Add Product
+          </Link>
+          <Link
+            href="/marketplace/compare"
+            className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Compare sellers
+          </Link>
+        </div>
       </div>
     </div>
   );

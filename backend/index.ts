@@ -415,6 +415,7 @@ const allowedFileEntityTypes = new Set([
   'catalogue_product',
   'catalogue_service',
   'procurement_checkout',
+  'procurement_draft',
   'general'
 ]);
 

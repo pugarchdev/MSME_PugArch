@@ -66,6 +66,20 @@ interface NormalizedProcurement {
   responsesCount?: number;
 }
 
+const resolveProcurementActionUrl = (p: NormalizedProcurement) => {
+  const statusLower = String(p.status || '').toLowerCase();
+  const statusGroup = String(p.statusGroup || '').toLowerCase();
+  const typeLower = String(p.type || '').toLowerCase();
+  const rawActionUrl = String(p.actionUrl || '');
+
+  if (statusLower === 'converted_to_order' || statusLower === 'completed') return '/buyer/orders';
+  if (typeLower === 'direct_purchase' && (statusLower === 'approved' || statusLower === 'completed')) return '/buyer/orders';
+  if (statusGroup === 'pending_approval') return '/buyer/procurement/approvals';
+  if (statusGroup === 'draft' || statusLower.includes('draft')) return '/buyer/procurement/drafts';
+  if (/\/buyer\/procurement\/checkout\?/i.test(rawActionUrl)) return '/buyer/my-procurements';
+  return rawActionUrl || '/buyer/my-procurements';
+};
+
 const formatCurrency = (val: number) => {
   if (!val) return '—';
   return new Intl.NumberFormat('en-IN', {
@@ -642,9 +656,8 @@ export default function BuyerProcurementHub() {
                   // Infer or determine isGov for the row
                   const isRowGov = p.typeLabel.toLowerCase().includes('bid') || p.type.toLowerCase().includes('bid') || p.method.toLowerCase().includes('tender') || p.type.toLowerCase().includes('tender');
                   
-                  // Map draft to direct creation wizard link
                   const isDraft = p.statusGroup === 'draft' || p.status.toLowerCase().includes('draft');
-                  const finalActionUrl = isDraft ? `/buyer/procurement/create?draftId=${p.id}` : p.actionUrl;
+                  const finalActionUrl = resolveProcurementActionUrl(p);
 
                   return (
                     <tr key={`${p.type}-${p.id}`} className="group bg-white shadow-3xs transition hover:shadow-sm">

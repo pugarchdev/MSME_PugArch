@@ -39,6 +39,8 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { getApi } from '../../shared/apiClient';
+import { openFileAsset } from '../../../lib/files';
+import { formatDate } from '../../shared/format';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
 
@@ -74,6 +76,23 @@ interface NormalizedProcurement {
   paymentTerms?: string;
   eligibilityCriteria?: string[];
   termsAndConditions?: string[];
+  budgetDetails?: {
+    budgetHead?: string;
+    financialYear?: string;
+    fundSource?: string;
+    sanctionAmount?: number;
+    sanctionOrderNumber?: string;
+    sanctionDate?: string;
+    approvingAuthority?: string;
+    payingAuthorityDesignation?: string;
+    paymentMode?: string;
+    priceReasonabilityRemarks?: string;
+    marketComparisonPrice?: number;
+    lastPurchasePrice?: number;
+    costCenter?: string;
+    justification?: string;
+    remarks?: string;
+  };
 }
 
 interface KpiData {
@@ -85,6 +104,33 @@ interface KpiData {
   cancelled: number;
   totalValue: number;
 }
+
+const resolveProcurementActionUrl = (p: NormalizedProcurement) => {
+  const statusLower = String(p.status || '').toLowerCase();
+  const statusGroup = String(p.statusGroup || '').toLowerCase();
+  const typeLower = String(p.type || '').toLowerCase();
+  const rawActionUrl = String(p.actionUrl || '');
+
+  if (statusLower === 'converted_to_order' || statusLower === 'completed') return '/buyer/orders';
+  if (typeLower === 'direct_purchase' && (statusLower === 'approved' || statusLower === 'completed')) return '/buyer/orders';
+  if (statusGroup === 'pending_approval') return '/buyer/procurement/approvals';
+  if (statusGroup === 'draft' || statusLower.includes('draft')) return '/buyer/procurement/drafts';
+  if (/\/buyer\/procurement\/checkout\?/i.test(rawActionUrl)) return '/buyer/my-procurements';
+  return rawActionUrl || '/buyer/my-procurements';
+};
+
+const procurementActionLabel = (p: NormalizedProcurement) => {
+  const statusLower = String(p.status || '').toLowerCase();
+  const statusGroup = String(p.statusGroup || '').toLowerCase();
+  const typeLower = String(p.type || '').toLowerCase();
+
+  if (statusLower === 'converted_to_order' || statusLower === 'completed') return 'View Purchase Order';
+  if (typeLower === 'direct_purchase' && (statusLower === 'approved' || statusLower === 'completed')) return 'View Purchase Order';
+  if (statusGroup === 'pending_approval') return 'View Approvals';
+  if (typeLower === 'bid_draft') return 'Resume Bid Wizard';
+  if (statusGroup === 'draft' || statusLower.includes('draft')) return 'View Drafts';
+  return 'Go to Procurement';
+};
 
 /* ═══════════════════════════════════════════════
    CONSTANTS
@@ -781,7 +827,7 @@ export default function MyProcurementsPage() {
           onClose={closeDetail}
           onGoTo={() => {
             closeDetail();
-            router.push(selectedProcurement.actionUrl);
+            router.push(resolveProcurementActionUrl(selectedProcurement));
           }}
         />
       )}
@@ -971,6 +1017,48 @@ function ProcurementDetailDialog({
             </div>
           )}
 
+          {/* Section: Budget & Sanction Details */}
+          {p.budgetDetails && (Object.values(p.budgetDetails).some(v => v !== '' && v !== undefined && v !== null)) && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5 border-t border-slate-100 pt-4">
+                <IndianRupee className="h-3.5 w-3.5 text-slate-400" />
+                Budget & Sanction Booking
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <DetailItem icon={Hash} label="Budget Head / Scheme" value={p.budgetDetails.budgetHead} />
+                <DetailItem icon={CalendarDays} label="Financial Year" value={p.budgetDetails.financialYear} />
+                <DetailItem icon={Layers} label="Fund Source" value={p.budgetDetails.fundSource} />
+                <DetailItem icon={IndianRupee} label="Sanction Amount" value={p.budgetDetails.sanctionAmount ? formatCurrency(p.budgetDetails.sanctionAmount) : undefined} />
+                <DetailItem icon={Hash} label="Sanction Order Number" value={p.budgetDetails.sanctionOrderNumber} />
+                <DetailItem icon={CalendarDays} label="Sanction Date" value={p.budgetDetails.sanctionDate ? formatDate(p.budgetDetails.sanctionDate) : undefined} />
+                <DetailItem icon={Building2} label="Approving Authority" value={p.budgetDetails.approvingAuthority} />
+                <DetailItem icon={Building2} label="Paying Authority Designation" value={p.budgetDetails.payingAuthorityDesignation} />
+                <DetailItem icon={Layers} label="Payment Mode" value={p.budgetDetails.paymentMode} />
+                <DetailItem icon={Hash} label="Cost Center" value={p.budgetDetails.costCenter} />
+                <DetailItem icon={IndianRupee} label="Market Comparison Price" value={p.budgetDetails.marketComparisonPrice ? formatCurrency(p.budgetDetails.marketComparisonPrice) : undefined} />
+                <DetailItem icon={IndianRupee} label="Last Purchase Price" value={p.budgetDetails.lastPurchasePrice ? formatCurrency(p.budgetDetails.lastPurchasePrice) : undefined} />
+              </div>
+              {p.budgetDetails.priceReasonabilityRemarks && (
+                <div className="mt-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Price Reasonability Justification</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700 leading-relaxed break-words whitespace-pre-wrap">{p.budgetDetails.priceReasonabilityRemarks}</p>
+                </div>
+              )}
+              {p.budgetDetails.justification && (
+                <div className="mt-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#12335f]">Justification</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700 leading-relaxed break-words whitespace-pre-wrap">{p.budgetDetails.justification}</p>
+                </div>
+              )}
+              {p.budgetDetails.remarks && (
+                <div className="mt-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#12335f]">Remarks</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700 leading-relaxed break-words whitespace-pre-wrap">{p.budgetDetails.remarks}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Section 4: Attachments */}
           {p.documents && p.documents.length > 0 && (
             <div>
@@ -980,12 +1068,19 @@ function ProcurementDetailDialog({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {p.documents.map((doc, idx) => (
-                  <a
+                  <button
                     key={idx}
-                    href={`/api/files/${doc.fileAssetId}/view`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-xs font-bold text-[#12335f] group"
+                    type="button"
+                    onClick={() => {
+                      openFileAsset({
+                        id: doc.fileAssetId,
+                        fileAssetId: doc.fileAssetId,
+                        originalName: doc.fileName,
+                      }, doc.fileName).catch(err => {
+                        toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                      });
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-xs font-bold text-[#12335f] group text-left w-full"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#12335f] group-hover:bg-[#12335f] group-hover:text-white transition-all">
@@ -997,7 +1092,7 @@ function ProcurementDetailDialog({
                       </div>
                     </div>
                     <Download className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-[#12335f] transition-colors ml-2" />
-                  </a>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1020,7 +1115,7 @@ function ProcurementDetailDialog({
             onClick={onGoTo}
             className="h-9 rounded-lg bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445]"
           >
-            <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Go to Procurement
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> {procurementActionLabel(p)}
           </Button>
         </div>
       </div>

@@ -75,23 +75,23 @@ const approvedProcurementStatuses = new Set(['approved_for_procurement', 'approv
 const ok = (res: Response, data: unknown, status = 200) => res.status(status).json(maskSensitive({ success: true, data }));
 
 const procurementMethodDefinitions = [
-  { slug: 'direct-purchase', code: 'DIRECT_PURCHASE', name: 'Direct Purchase', route: '/buyer/create-procurement/direct-purchase', handoffRoute: '/buyer/direct-purchase', badge: 'Common', valueHint: 'Best for low-value or approved direct buys' },
-  { slug: 'catalog-purchase', code: 'CATALOG_PURCHASE', name: 'Catalogue Purchase', route: '/buyer/create-procurement/catalog-purchase', handoffRoute: '/buyer/marketplace', badge: 'Fast-Track', valueHint: 'Pre-approved catalogue item purchase' },
-  { slug: 'rfq', code: 'RFQ', name: 'Request for Quotation (RFQ)', route: '/buyer/create-procurement/rfq', handoffRoute: '/buyer/rfq', badge: 'Common', valueHint: 'Useful for custom specs and supplier quotes' },
-  { slug: 'rfp', code: 'RFP', name: 'Request for Proposal (RFP)', route: '/buyer/create-procurement/rfp', handoffRoute: '/buyer/publish-bid?method=rfp', badge: 'Strategic', valueHint: 'Evaluate complex services with technical & financial proposals' },
-  { slug: 'rfi', code: 'RFI', name: 'Request for Information (RFI)', route: '/buyer/create-procurement/rfi', handoffRoute: '/buyer/publish-bid?method=rfi', badge: 'Market Research', valueHint: 'Gather interest and identify potential vendors' },
-  { slug: 'sealed-tender', code: 'SEALED_TENDER', name: 'Sealed Tender', route: '/buyer/create-procurement/sealed-tender', handoffRoute: '/buyer/publish-bid?method=sealed-tender', badge: 'Confidential', valueHint: 'Formal envelope-based bidding with blind opening' },
-  { slug: 'open-tender', code: 'OPEN_TENDER', name: 'Open Tender', route: '/buyer/create-procurement/open-tender', handoffRoute: '/buyer/publish-bid?method=open-tender', badge: 'Compliance Required', valueHint: 'Formal bids and higher-value procurement' },
-  { slug: 'limited-tender', code: 'LIMITED_TENDER', name: 'Limited Tender', route: '/buyer/create-procurement/limited-tender', handoffRoute: '/buyer/publish-bid?method=limited-tender', badge: 'Restricted Pool', valueHint: 'Bids invited from a selected list of suppliers' },
-  { slug: 'two-packet-bid', code: 'TWO_PACKET_BID', name: 'Two Packet Bid', route: '/buyer/create-procurement/two-packet-bid', handoffRoute: '/buyer/publish-bid?method=two-packet-bid', badge: 'Separated Evaluation', valueHint: 'Separate technical and financial openings' },
-  { slug: 'reverse-auction', code: 'REVERSE_AUCTION', name: 'Reverse Auction', route: '/buyer/create-procurement/reverse-auction', handoffRoute: '/reverse-auctions/create', badge: 'Advanced', valueHint: 'Use after technical qualification' },
-  { slug: 'bid-with-reverse-auction', code: 'BID_WITH_REVERSE_AUCTION', name: 'Bid with Reverse Auction', route: '/buyer/create-procurement/bid-with-reverse-auction', handoffRoute: '/buyer/publish-bid?method=bid-with-reverse-auction', badge: 'Hybrid Sourcing', valueHint: 'Formal bid followed by real-time downward pricing window' },
-  { slug: 'rate-contract', code: 'RATE_CONTRACT', name: 'Rate Contract', route: '/buyer/create-procurement/rate-contract', handoffRoute: '/buyer/publish-bid?method=rate-contract', badge: 'Standing Agreement', valueHint: 'For repeated demand over a validity period' },
-  { slug: 'repeat-order', code: 'REPEAT_ORDER', name: 'Repeat Order', route: '/buyer/create-procurement/repeat-order', handoffRoute: '/buyer/direct-purchase?method=repeat-order', badge: 'Quick Reorder', valueHint: 'Use with prior order reference' },
-  { slug: 'single-source', code: 'SINGLE_SOURCE', name: 'Single Source', route: '/buyer/create-procurement/single-source', handoffRoute: '/buyer/publish-bid?method=single-source', badge: 'Exception', valueHint: 'Direct negotiation with single vendor lock-in justification' },
-  { slug: 'pac', code: 'PAC', name: 'PAC / Proprietary Bid', route: '/buyer/create-procurement/pac', handoffRoute: '/buyer/publish-bid?method=pac', badge: 'PAC Standard', valueHint: 'Single-source justification with PAC certificate required' },
-  { slug: 'emergency-purchase', code: 'EMERGENCY_PURCHASE', name: 'Emergency Purchase', route: '/buyer/create-procurement/emergency-purchase', handoffRoute: '/buyer/publish-bid?method=emergency-purchase', badge: 'Urgent', valueHint: 'Use only with emergency justification' },
-  { slug: 'boq-based-bid', code: 'BOQ_BASED_BID', name: 'BOQ Based Bid', route: '/buyer/create-procurement/boq-based-bid', handoffRoute: '/buyer/publish-bid?method=boq-based-bid', badge: 'BOQ Sheet', valueHint: 'Works, AMC, item-wise rates via spreadsheet' },
+  { slug: 'direct-purchase', code: 'DIRECT_PURCHASE', name: 'Direct Purchase', route: '/buyer/procurement/create?method=DIRECT_PURCHASE', handoffRoute: '/buyer/procurement/create?method=DIRECT_PURCHASE', badge: 'Common', valueHint: 'Best for low-value or approved direct buys' },
+  { slug: 'catalog-purchase', code: 'CATALOG_PURCHASE', name: 'Catalogue Purchase', route: '/buyer/procurement/create?method=CATALOG_PURCHASE', handoffRoute: '/buyer/marketplace', badge: 'Fast-Track', valueHint: 'Pre-approved catalogue item purchase' },
+  { slug: 'rfq', code: 'RFQ', name: 'Request for Quotation (RFQ)', route: '/buyer/procurement/create?method=RFQ', handoffRoute: '/buyer/rfq', badge: 'Common', valueHint: 'Useful for custom specs and supplier quotes' },
+  { slug: 'rfp', code: 'RFP', name: 'Request for Proposal (RFP)', route: '/buyer/procurement/create?method=RFP', handoffRoute: '/buyer/publish-bid?method=rfp', badge: 'Strategic', valueHint: 'Evaluate complex services with technical & financial proposals' },
+  { slug: 'rfi', code: 'RFI', name: 'Request for Information (RFI)', route: '/buyer/procurement/create?method=RFI', handoffRoute: '/buyer/publish-bid?method=rfi', badge: 'Market Research', valueHint: 'Gather interest and identify potential vendors' },
+  { slug: 'sealed-tender', code: 'SEALED_TENDER', name: 'Sealed Tender', route: '/buyer/procurement/create?method=SEALED_TENDER', handoffRoute: '/buyer/publish-bid?method=sealed-tender', badge: 'Confidential', valueHint: 'Formal envelope-based bidding with blind opening' },
+  { slug: 'open-tender', code: 'OPEN_TENDER', name: 'Open Tender', route: '/buyer/procurement/create?method=OPEN_TENDER', handoffRoute: '/buyer/publish-bid?method=open-tender', badge: 'Compliance Required', valueHint: 'Formal bids and higher-value procurement' },
+  { slug: 'limited-tender', code: 'LIMITED_TENDER', name: 'Limited Tender', route: '/buyer/procurement/create?method=LIMITED_TENDER', handoffRoute: '/buyer/publish-bid?method=limited-tender', badge: 'Restricted Pool', valueHint: 'Bids invited from a selected list of suppliers' },
+  { slug: 'two-packet-bid', code: 'TWO_PACKET_BID', name: 'Two Packet Bid', route: '/buyer/procurement/create?method=TWO_PACKET_BID', handoffRoute: '/buyer/publish-bid?method=two-packet-bid', badge: 'Separated Evaluation', valueHint: 'Separate technical and financial openings' },
+  { slug: 'reverse-auction', code: 'REVERSE_AUCTION', name: 'Reverse Auction', route: '/buyer/procurement/create?method=REVERSE_AUCTION', handoffRoute: '/reverse-auctions/create', badge: 'Advanced', valueHint: 'Use after technical qualification' },
+  { slug: 'bid-with-reverse-auction', code: 'BID_WITH_REVERSE_AUCTION', name: 'Bid with Reverse Auction', route: '/buyer/procurement/create?method=BID_WITH_REVERSE_AUCTION', handoffRoute: '/buyer/publish-bid?method=bid-with-reverse-auction', badge: 'Hybrid Sourcing', valueHint: 'Formal bid followed by real-time downward pricing window' },
+  { slug: 'rate-contract', code: 'RATE_CONTRACT', name: 'Rate Contract', route: '/buyer/procurement/create?method=RATE_CONTRACT', handoffRoute: '/buyer/publish-bid?method=rate-contract', badge: 'Standing Agreement', valueHint: 'For repeated demand over a validity period' },
+  { slug: 'repeat-order', code: 'REPEAT_ORDER', name: 'Repeat Order', route: '/buyer/procurement/create?method=REPEAT_ORDER', handoffRoute: '/buyer/procurement/create?method=REPEAT_ORDER', badge: 'Quick Reorder', valueHint: 'Use with prior order reference' },
+  { slug: 'single-source', code: 'SINGLE_SOURCE', name: 'Single Source', route: '/buyer/procurement/create?method=SINGLE_SOURCE', handoffRoute: '/buyer/publish-bid?method=single-source', badge: 'Exception', valueHint: 'Direct negotiation with single vendor lock-in justification' },
+  { slug: 'pac', code: 'PAC', name: 'PAC / Proprietary Bid', route: '/buyer/procurement/create?method=PAC', handoffRoute: '/buyer/publish-bid?method=pac', badge: 'PAC Standard', valueHint: 'Single-source justification with PAC certificate required' },
+  { slug: 'emergency-purchase', code: 'EMERGENCY_PURCHASE', name: 'Emergency Purchase', route: '/buyer/procurement/create?method=EMERGENCY_PURCHASE', handoffRoute: '/buyer/publish-bid?method=emergency-purchase', badge: 'Urgent', valueHint: 'Use only with emergency justification' },
+  { slug: 'boq-based-bid', code: 'BOQ_BASED_BID', name: 'BOQ Based Bid', route: '/buyer/procurement/create?method=BOQ_BASED_BID', handoffRoute: '/buyer/publish-bid?method=boq-based-bid', badge: 'BOQ Sheet', valueHint: 'Works, AMC, item-wise rates via spreadsheet' },
   // Legacy alias entries kept for backward compatibility with old records
   { slug: 'l1-comparison', code: 'RFQ', name: 'L1 Comparison (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/marketplace', badge: 'Legacy', valueHint: 'Migrated to RFQ' },
   { slug: 'tender', code: 'OPEN_TENDER', name: 'Tender (Legacy)', route: '/buyer/procurement/create', handoffRoute: '/buyer/publish-bid?method=tender', badge: 'Legacy', valueHint: 'Migrated to Open Tender' },
@@ -995,7 +995,7 @@ const validateProcurementDraftForSubmit = (draft: any) => {
     const rateContractConfig = normalizeRateContractConfigForDraft(draft);
     validateRateContractConfigForDraft(rateContractConfig);
   }
-  if (methodSlug === 'catalog-purchase') {
+  if (methodSlug === 'catalog-purchase' && payload.catalog) {
     const catalog = payload.catalog || {};
     if (!catalog.catalogType) throw new ApiError(400, 'Catalog Type selection is required', 'CATALOG_TYPE_REQUIRED');
     if (!catalog.catalogId?.trim()) throw new ApiError(400, 'Catalog ID is required', 'CATALOG_ID_REQUIRED');
@@ -4049,7 +4049,7 @@ router.post('/procurement/submit', authenticate, authorize('buyer'), asyncRoute(
       const isProduct = specs.catalogItemType !== 'Service';
 
       if (!itemId) {
-        throw new ApiError(400, `Catalog Item ID is missing for item: ${item.itemName}`, 'CATALOG_ITEM_ID_MISSING');
+        continue;
       }
 
       if (isProduct) {
@@ -8113,6 +8113,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     paymentTerms?: string;
     eligibilityCriteria?: string[];
     termsAndConditions?: string[];
+    budgetDetails?: any;
   };
 
   const all: NormalizedProcurement[] = [];
@@ -8330,8 +8331,30 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       description: item?.product?.description || item?.service?.description || ''
     }));
 
+    const itemsList = Array.isArray(snap?.items) ? snap.items : (Array.isArray(snap) ? snap : []);
+    const calculatedValue = itemsList.reduce((sum: number, item: any) => {
+      const qty = Number(item?.quantity || 1);
+      const price = Number(item?.product?.price || item?.price || 0);
+      return sum + (qty * price);
+    }, 0);
+
+    const budget = pr.budgetSanction as any || {};
+    const payment = pr.paymentAuthority as any || {};
+    const reasonability = pr.priceReasonability as any || {};
+
     const termsAndConditions: string[] = [];
     if (td.paymentTerms) termsAndConditions.push(`Payment Terms: ${td.paymentTerms}`);
+
+    const prStatus = String(pr.status || 'DRAFT');
+    const prStatusGroup = statusGroupFor(prStatus);
+    const prActionUrl =
+      prStatusGroup === 'draft'
+        ? '/buyer/procurement/drafts'
+        : prStatusGroup === 'pending_approval'
+          ? '/buyer/procurement/approvals'
+          : prStatus === 'CONVERTED_TO_ORDER' || prStatus === 'COMPLETED' || prStatus === 'APPROVED'
+            ? '/buyer/orders'
+            : '/buyer/my-procurements';
 
     all.push({
       id: pr.id,
@@ -8339,12 +8362,12 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       typeLabel: 'Cart Checkout',
       title: `Procurement Request ${pr.requestNumber}`,
       referenceNumber: pr.requestNumber || `PR-${pr.id}`,
-      status: String(pr.status || 'DRAFT'),
-      statusLabel: statusLabel(String(pr.status || 'DRAFT')),
-      statusGroup: statusGroupFor(String(pr.status || 'DRAFT')),
+      status: prStatus,
+      statusLabel: statusLabel(prStatus),
+      statusGroup: prStatusGroup,
       method: selectedMethod,
       methodLabel: METHOD_LABEL_MAP[selectedMethod] || selectedMethod.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      estimatedValue: 0, 
+      estimatedValue: calculatedValue,
       category: prCategory,
       description: '',
       deliveryLocation: (pr as any).deliveryLocation || '',
@@ -8355,12 +8378,26 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       organizationName: '',
       createdAt: pr.createdAt?.toISOString?.() || '',
       updatedAt: pr.updatedAt?.toISOString?.() || '',
-      actionUrl: `/buyer/procurement/checkout?id=${pr.id}`,
+      actionUrl: prActionUrl,
       documents,
       items,
       paymentTerms: td.paymentTerms || '',
       eligibilityCriteria: [],
-      termsAndConditions
+      termsAndConditions,
+      budgetDetails: {
+        budgetHead: budget.budgetHead || '',
+        financialYear: budget.financialYear || '',
+        fundSource: budget.fundSource || '',
+        sanctionAmount: budget.sanctionAmount ? Number(budget.sanctionAmount) : undefined,
+        sanctionOrderNumber: budget.sanctionOrderNumber || '',
+        sanctionDate: budget.sanctionDate || '',
+        approvingAuthority: budget.approvingAuthority || '',
+        payingAuthorityDesignation: payment.payingAuthorityDesignation || '',
+        paymentMode: payment.paymentMode || '',
+        priceReasonabilityRemarks: reasonability.priceReasonabilityRemarks || '',
+        marketComparisonPrice: reasonability.marketComparisonPrice ? Number(reasonability.marketComparisonPrice) : undefined,
+        lastPurchasePrice: reasonability.lastPurchasePrice ? Number(reasonability.lastPurchasePrice) : undefined,
+      } as any
     });
   }
 
@@ -8401,7 +8438,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       items,
       paymentTerms: '',
       eligibilityCriteria: [],
-      termsAndConditions: []
+      termsAndConditions: [],
+      budgetDetails: {
+        budgetHead: dp.budgetHead || '',
+        costCenter: dp.costCenter || '',
+        justification: dp.justification || '',
+        remarks: dp.remarks || '',
+      } as any
     });
   }
 

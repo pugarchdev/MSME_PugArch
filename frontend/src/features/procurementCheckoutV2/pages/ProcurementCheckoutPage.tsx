@@ -2,7 +2,7 @@
 
 /**
  * ProcurementCheckoutPage — GeM-style marketplace/cart procurement checkout.
- * Replaces deprecated DirectPurchaseCheckoutPage (legacy direct-purchase checkout).
+ * Canonical checkout for active marketplace cart procurement only.
  */
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';

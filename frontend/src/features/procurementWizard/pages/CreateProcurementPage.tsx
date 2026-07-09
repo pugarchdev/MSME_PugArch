@@ -21,6 +21,7 @@ import {
   ArrowRight,
   ChevronRight,
   Info,
+  ShoppingCart,
   Trash2
 } from 'lucide-react';
 
@@ -38,6 +39,8 @@ import {
 import { api } from '../../../lib/api';
 import { authHeaders, unwrap } from '../../shared/apiClient';
 import { fetchDeliveryAddresses, createDeliveryAddress, type DeliveryAddressDto } from '../../directPurchase/api';
+import { useActiveCart } from '../../cart/hooks';
+import type { CartItemDto } from '../../cart/api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { Input } from '../../../components/ui/input';
 import { STATE_OPTIONS, getDistrictOptions } from '../../../data/indianLocations';
@@ -49,6 +52,7 @@ import {
   type BuyerType,
   type RecommendationResult
 } from '../procurementMethodsConfig';
+import { normalizeProcurementMethod } from '../procurementMethodHelpers';
 
 // Import Reusable Sourcing components from Loop 3
 import {
@@ -465,6 +469,31 @@ const rateScheduleFromDraftItems = (draft: Draft): RateContractItem[] => {
     }));
 };
 
+const cartItemToProcurementItem = (item: CartItemDto): ItemRow => {
+  const product = item.product;
+  const service = item.service;
+  const description = product?.description || service?.description || item.technicalNote || item.itemName;
+  const unitPrice = Number(item.unitPrice || product?.price || service?.basePrice || 0);
+
+  return {
+    id: `cart:${item.id}`,
+    name: item.itemName || product?.name || service?.name || 'Catalogue Item',
+    specification: description || '',
+    quantity: Math.max(1, Number(item.quantity || 1)),
+    unit: item.unitOfMeasure || product?.unitOfMeasure || 'Nos',
+    unitPrice,
+    gst: 18,
+    deliveryDate: nextFortnight,
+    brandPolicy: 'Equivalent allowed',
+    technicalSpecification: description || '',
+    specificationFileName: '',
+    hsn_sac_code: product?.hsnCode || '',
+    brand_preference: '',
+    brand_flexible: 'Yes',
+    fileAssetId: null,
+  };
+};
+
 const syncRateContractDefaults = (draft: Draft): Draft => {
   const base = draft.rateContractConfig || defaultRateContractConfig();
   const itemRateSchedule = base.itemRateSchedule.length ? base.itemRateSchedule : rateScheduleFromDraftItems(draft);
@@ -706,6 +735,10 @@ export default function CreateProcurementPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const draftIdParam = searchParams?.get('id') || searchParams?.get('draftId');
+  const initialMethod = useMemo<ProcurementMethodId>(
+    () => normalizeProcurementMethod(searchParams?.get('method'), 'RFQ'),
+    [searchParams]
+  );
 
   // Determine initial buyer type from profile
   const initialBuyerType = useMemo<BuyerType>(() => {
@@ -719,7 +752,7 @@ export default function CreateProcurementPage() {
     return isGov ? 'GOVERNMENT_BUYER' : 'PRIVATE_BUYER';
   }, [user]);
 
-  const [draft, setDraft] = useState<Draft>(() => defaultDraft('RFQ', initialBuyerType));
+  const [draft, setDraft] = useState<Draft>(() => defaultDraft(initialMethod, initialBuyerType));
   const [activeStep, setActiveStep] = useState(0);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submittingDraft, setSubmittingDraft] = useState(false);
@@ -834,9 +867,6 @@ export default function CreateProcurementPage() {
     } else {
       list.push({ label: 'Cost Center code is required', ok: d.internal.costCenter.trim().length > 0, severity: 'error' });
       list.push({ label: 'Buying Department name is required', ok: d.internal.department.trim().length > 0, severity: 'error' });
-      if (d.basics.estimatedValue >= 1000000) {
-        list.push({ label: 'Budget Head / Code is required for corporate spends >= 10L', ok: d.internal.budgetHead.trim().length > 0, severity: 'error' });
-      }
     }
 
     // Step 3 Sourcing specification items - Errors
@@ -1027,10 +1057,6 @@ export default function CreateProcurementPage() {
         }
         if (!d.internal.costCenter.trim()) {
           toast.error('Cost Center code is required for private buyers.');
-          return false;
-        }
-        if (d.basics.estimatedValue >= 1000000 && !d.internal.budgetHead.trim()) {
-          toast.error('Budget Head/Code is required for corporate spends >= 10 Lakhs.');
           return false;
         }
       }
@@ -2628,6 +2654,8 @@ function ItemsDetailsForm({
   setSelectedItemForEdit: (item: ItemRow | null) => void;
 }) {
   const whatBuying = draft.basics.whatAreYouBuying;
+  const isCataloguePurchase = draft.type === 'CATALOG_PURCHASE';
+  const { data: activeCart, isLoading: isCartLoading } = useActiveCart({ enabled: isCataloguePurchase });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
 
@@ -2734,8 +2762,10 @@ function ItemsDetailsForm({
       } else {
         nextItems.push(item);
       }
+      const estimatedValue = nextItems.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.unitPrice || 0), 0);
       return {
         ...current,
+        basics: { ...current.basics, estimatedValue },
         items: nextItems
       };
     });
@@ -2765,11 +2795,38 @@ function ItemsDetailsForm({
     setShowItemDrawer(true);
   };
 
+  const handleImportCartItems = () => {
+    const cartItems = activeCart?.items || [];
+    if (cartItems.length === 0) {
+      toast.error('Cart is empty. Add catalogue products from Marketplace first.');
+      return;
+    }
+
+    const importedItems = cartItems.map(cartItemToProcurementItem);
+    updateDraft(current => {
+      const manualItems = current.items.filter(item => !String(item.id).startsWith('cart:'));
+      const nextItems = [...manualItems, ...importedItems];
+      const estimatedValue = nextItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
+      return {
+        ...current,
+        basics: {
+          ...current.basics,
+          whatAreYouBuying: 'CATALOG_ITEM',
+          estimatedValue,
+        },
+        items: nextItems,
+      };
+    });
+    toast.success(`Imported ${importedItems.length} cart item${importedItems.length === 1 ? '' : 's'}`);
+  };
+
   const handleRemoveItem = (id: string) => {
     updateDraft(current => {
       const nextItems = current.items.filter(item => item.id !== id);
+      const estimatedValue = nextItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
       return {
         ...current,
+        basics: { ...current.basics, estimatedValue },
         items: nextItems
       };
     });
@@ -3027,15 +3084,36 @@ function ItemsDetailsForm({
   // 3. Product Mode
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Line Items Schedule</h3>
           <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Specify products or items to buy.</p>
         </div>
-        <Button type="button" size="sm" onClick={handleAddNewItem} className="h-8.5 font-bold">
-          <Plus className="h-4 w-4 mr-1" /> Add Product Item
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isCataloguePurchase && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleImportCartItems}
+              disabled={isCartLoading}
+              className="h-8.5 font-bold"
+            >
+              <ShoppingCart className="h-4 w-4 mr-1" />
+              {isCartLoading ? 'Reading Cart...' : `Import Cart${activeCart?.items?.length ? ` (${activeCart.items.length})` : ''}`}
+            </Button>
+          )}
+          <Button type="button" size="sm" onClick={handleAddNewItem} className="h-8.5 font-bold">
+            <Plus className="h-4 w-4 mr-1" /> Add Product Item
+          </Button>
+        </div>
       </div>
+
+      {isCataloguePurchase && draft.items.length === 0 && (
+        <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/70 p-3 text-xs font-semibold text-[#12335f]">
+          Catalogue Purchase can import active marketplace cart items here. Add products in Marketplace, then click Import Cart.
+        </div>
+      )}
 
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
         <table className="w-full min-w-[800px] border-collapse text-left text-xs">

@@ -524,7 +524,7 @@ export default function PurchaseOrders() {
       )}
 
       {confirming && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
             <h3 className="text-base font-black text-slate-950">Confirm {confirming.action}</h3>
             <p className="mt-2 text-sm font-semibold text-slate-500">Apply this action to {confirming.order.poNumber}?</p>

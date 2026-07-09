@@ -47,10 +47,39 @@ export default function Step8_PreviewSubmit({
         <PreviewBlock title="Procurement Method" lines={[PROCUREMENT_METHOD_LABELS[form.selectedMethod] || form.selectedMethod || '—']} />
         <PreviewBlock title="Buyer" lines={[String(form.buyerDetails.organizationName || '—'), String(form.buyerDetails.buyerOfficerName || '')]} />
         <PreviewBlock title="Delivery" lines={[String(form.deliveryDetails.deliveryAddress || '—'), String(form.deliveryDetails.deliveryPeriod || '')]} />
+        <PreviewBlock
+          title="Budget & Sanction"
+          lines={[
+            `Confirmed: ${form.budgetSanction.budgetAvailabilityConfirmed || 'No'}`,
+            `Budget Head/Scheme: ${form.budgetSanction.budgetHeadScheme || '—'}`,
+            `Financial Year: ${form.budgetSanction.financialYear || '—'}`,
+            `Fund Source: ${form.budgetSanction.fundSource || '—'}`,
+            `Sanction Amount: ${form.budgetSanction.sanctionAmount ? formatCurrency(Number(form.budgetSanction.sanctionAmount)) : '—'}`,
+            `Sanction Order No: ${form.budgetSanction.sanctionOrderNumber || 'Pending / Proposal note'}`,
+            `Approving Authority: ${form.budgetSanction.approvingAuthority || '—'}`,
+            `Estimated Price: ${form.priceReasonability.estimatedPrice ? formatCurrency(Number(form.priceReasonability.estimatedPrice)) : '—'}`,
+            ...(form.priceReasonability.portalL1Price ? [`Portal L1 Price: ${formatCurrency(Number(form.priceReasonability.portalL1Price))}`] : []),
+            `Remarks: ${form.priceReasonability.priceReasonabilityRemarks || '—'}`
+          ]}
+        />
       </div>
       {/* Uploaded Documents Preview */}
       {(() => {
-        const docs = Array.isArray((form.termsDocuments as any)?.documents) ? (form.termsDocuments as any).documents as { documentType: string; fileName: string; fileSize?: number }[] : [];
+        const docs = Array.isArray((form.termsDocuments as any)?.documents)
+          ? [...((form.termsDocuments as any).documents as any[])]
+          : [];
+        if (form.budgetSanction.budgetApprovalDocumentId && form.budgetSanction.budgetApprovalDocumentName) {
+          docs.push({
+            documentType: 'Budget Approval',
+            fileName: String(form.budgetSanction.budgetApprovalDocumentName),
+          });
+        }
+        if (form.budgetSanction.sanctionOrderDocumentId && form.budgetSanction.sanctionOrderDocumentName) {
+          docs.push({
+            documentType: 'Sanction Order',
+            fileName: String(form.budgetSanction.sanctionOrderDocumentName),
+          });
+        }
         const terms = form.termsDocuments as Record<string, unknown>;
         const termLines = ['deliveryTerms', 'paymentTerms', 'warrantyTerms', 'inspectionTerms'].map(k => String(terms[k] || '')).filter(Boolean);
         if (docs.length === 0 && termLines.length === 0) return null;

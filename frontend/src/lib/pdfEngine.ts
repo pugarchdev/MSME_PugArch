@@ -114,31 +114,35 @@ export class PdfEngine {
     this.doc.setFillColor(...PRIMARY_COLOR);
     this.doc.rect(0, 0, this.pageWidth, 36, 'F');
     
-    // Header Text
+    // Header Text - Left Brand
     this.doc.setTextColor(255, 255, 255);
     this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(18);
+    this.doc.setFontSize(13);
     if (config.logoBase64) {
       this.doc.addImage(config.logoBase64, 'PNG', 14, 5, 26, 26);
-      this.doc.text('JSGSMILE MSME Procurement', 45, 16);
-      this.doc.text('A Unified Enterprise Network', 45, 23);
+      this.doc.text('JSGSMILE MSME Procurement', 45, 14);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.setFontSize(9);
+      this.doc.text('A Unified Enterprise Network', 45, 20);
     } else {
-      this.doc.text('JSGSMILE MSME Procurement', 14, 16);
-      this.doc.text('A Unified Enterprise Network', 14, 23);
+      this.doc.text('JSGSMILE MSME Procurement', 14, 14);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.setFontSize(9);
+      this.doc.text('A Unified Enterprise Network', 14, 20);
     }
 
-    // Document Title & Number
-    this.doc.setFontSize(16);
+    // Document Title & Details - Right Column
+    this.doc.setFontSize(11);
     this.doc.setFont('helvetica', 'bold');
-    this.doc.text(config.documentTitle.toUpperCase(), this.pageWidth - 14, 16, { align: 'right' });
+    this.doc.text(config.documentTitle.toUpperCase(), this.pageWidth - 14, 14, { align: 'right' });
     
-    this.doc.setFontSize(10);
+    this.doc.setFontSize(8.5);
     this.doc.setFont('helvetica', 'normal');
-    this.doc.text(`No: ${config.documentNumber}`, this.pageWidth - 14, 23, { align: 'right' });
-    this.doc.text(`Date: ${config.dateStr}`, this.pageWidth - 14, 28, { align: 'right' });
+    this.doc.text(`No: ${config.documentNumber}`, this.pageWidth - 14, 20, { align: 'right' });
+    this.doc.text(`Date: ${config.dateStr}`, this.pageWidth - 14, 25, { align: 'right' });
     
     if (config.status) {
-      this.doc.text(`Status: ${config.status}`, this.pageWidth - 14, 33, { align: 'right' });
+      this.doc.text(`Status: ${config.status}`, this.pageWidth - 14, 30, { align: 'right' });
     }
 
     this.cursorY = 44;
@@ -220,6 +224,7 @@ export class PdfEngine {
 
   private drawFinancials(financials?: DocumentFinancials) {
     if (!financials) return;
+    this.doc.setTextColor(...TEXT_DARK);
 
     const boxWidth = 80;
     const startX = this.pageWidth - boxWidth - 14;

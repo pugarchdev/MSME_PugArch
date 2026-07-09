@@ -342,14 +342,14 @@ export default function BuyerProcurementHub() {
           {/* Buyer Type Badging & Custom Helper Text */}
           {buyerType === 'PRIVATE_BUYER' ? (
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              <BuyerTypeBadge buyerType="PRIVATE_BUYER" />
+              {/* <BuyerTypeBadge buyerType="PRIVATE_BUYER" /> */}
               <p className="text-xs text-slate-300 font-semibold leading-relaxed">
                 Supports corporate sourcing workflows (RFQ, RFP, Rate Contracts, Vendor comparison sheets, and internal approval flows).
               </p>
             </div>
           ) : buyerType === 'GOVERNMENT_BUYER' ? (
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              <BuyerTypeBadge buyerType="GOVERNMENT_BUYER" />
+              {/* <BuyerTypeBadge buyerType="GOVERNMENT_BUYER" /> */}
               <p className="text-xs text-slate-300 font-semibold leading-relaxed">
                 Supports public procurement workflows (Open Tender, PAC single source exemption, Two-Packet bidding, compliance document auditing, and CFA approvals).
               </p>

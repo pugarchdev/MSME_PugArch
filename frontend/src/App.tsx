@@ -563,7 +563,9 @@ export default function App() {
     if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) {
       return <Redirect to="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
     }
-    if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) return <DirectPurchasePage listOnly />;
+    if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) {
+      return <Redirect to="/buyer/my-procurements?type=DIRECT_PURCHASE" />;
+    }
     if (pathname === '/buyer/direct-purchase/checkout' && roleOk(user.role, ['buyer'])) {
       return <Redirect to="/buyer/procurement/checkout" />;
     }

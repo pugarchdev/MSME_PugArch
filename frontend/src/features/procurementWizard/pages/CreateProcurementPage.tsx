@@ -1608,7 +1608,7 @@ function BasicsStepForm({
               }}
               className={cn("h-9 rounded-md text-xs font-black uppercase transition-all", draft.basics.buyerType === 'PRIVATE_BUYER' ? "bg-white text-[#12335f] shadow-sm" : "text-slate-500 hover:text-slate-900")}
             >
-              Private Buyer (SAP)
+              Private Buyer
             </button>
             <button
               type="button"
@@ -1621,11 +1621,11 @@ function BasicsStepForm({
               }}
               className={cn("h-9 rounded-md text-xs font-black uppercase transition-all", draft.basics.buyerType === 'GOVERNMENT_BUYER' ? "bg-white text-[#12335f] shadow-sm" : "text-slate-500 hover:text-slate-900")}
             >
-              Govt Buyer (GeM)
+              Govt Buyer
             </button>
           </div>
           <p className="text-[10px] text-slate-500 font-semibold mt-1">
-            Private Buyer uses corporate SAP compliance. Govt Buyer uses GeM GFR-2017 rules.
+            Private Buyer uses corporate compliance. Govt Buyer uses public GFR-2017 rules.
           </p>
         </Field>
 

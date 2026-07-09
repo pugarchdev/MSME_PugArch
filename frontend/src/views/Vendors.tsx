@@ -283,9 +283,9 @@ const Vendors = () => {
   const { page, pageSize, pageItems: pagedVendors, total, setPage, setPageSize } = usePagination(filteredVendors, 18);
 
   return (
-    <div className="min-h-screen bg-[#f1f3f5] text-[#1a1c21]">
+    <div className="min-h-screen text-[#1a1c21]">
       {/* Main Header Container */}
-      <div className="bg-white border-b border-[#dfe3e8] px-6 py-4 shadow-sm">
+      <div className="mx-3 mt-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-4 shadow-sm md:mx-4 md:px-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black tracking-tight text-[#1a1c21] uppercase">Supplier Registry</h1>
@@ -299,13 +299,13 @@ const Vendors = () => {
 
       <div className="p-3 md:p-4 flex flex-col lg:flex-row gap-4 items-start">
         {/* Sidebar Filters (Government Style: Boxy, Rigid, Informative) */}
-        <div className="w-full lg:w-64 bg-white border border-[#dadce0] rounded-lg overflow-hidden flex-shrink-0 sticky top-3">
-          <div className="bg-[#f8f9fa] border-b border-[#dadce0] px-3 py-2.5 flex items-center gap-2">
+        <div className="w-full lg:w-72 bg-white/92 border border-slate-200/80 rounded-2xl overflow-hidden flex-shrink-0 lg:sticky lg:top-3 shadow-sm">
+          <div className="bg-slate-50/80 border-b border-slate-200 px-3 py-2.5 flex items-center gap-2">
             <Filter className="h-4 w-4 text-[#12335f]" />
             <h3 className="text-xs font-black uppercase tracking-wider text-[#12335f]">Search Parameters</h3>
           </div>
 
-          <div className="p-3 space-y-3">
+          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:block lg:space-y-3">
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Keyword Search</label>
               <div className="relative">
@@ -376,7 +376,7 @@ const Vendors = () => {
               </select>
             </div>
 
-            <div className="pt-2 border-t border-[#f1f3f4]">
+            <div className="pt-2 border-t border-[#f1f3f4] sm:col-span-2 lg:col-span-1">
               <button
                 onClick={() => setVerifiedOnly(!verifiedOnly)}
                 className="flex items-center gap-2 w-full text-left"
@@ -392,20 +392,21 @@ const Vendors = () => {
 
         {/* Results Space */}
         <div className="flex-1 w-full">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>Found {filteredVendors.length} registered vendors matching criteria</span>}
             </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verified procurement suppliers</span>
           </div>
 
           {loading ? (
             <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" : "space-y-3"}>
               {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-40 bg-white border border-[#dadce0] rounded-xl animate-pulse" />
+                <div key={i} className="h-40 bg-white border border-slate-200 rounded-2xl animate-pulse" />
               ))}
             </div>
           ) : filteredVendors.length === 0 ? (
-            <div className="bg-white border border-[#dadce0] rounded-xl p-12 text-center">
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
               <div className="h-16 w-16 bg-[#f8f9fa] border border-[#dadce0] rounded-full flex items-center justify-center mx-auto mb-4">
                 <Building2 className="h-8 w-8 text-[#12335f]/30" />
               </div>
@@ -415,7 +416,7 @@ const Vendors = () => {
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {pagedVendors.map((vendor) => (
-                <div key={vendor._id} className="bg-white border border-[#dadce0] rounded-xl p-5 flex flex-col shadow-sm hover:shadow transition-all">
+                <div key={vendor._id} className="bg-white border border-slate-200/80 rounded-2xl p-5 flex flex-col shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="h-10 w-10 shrink-0 rounded bg-[#f1f3f5] border border-[#dadce0] flex items-center justify-center text-[#12335f] font-black text-sm uppercase">
                       {vendor.sellerProfile?.businessName?.charAt(0) || vendor.name?.charAt(0) || 'V'}
@@ -488,7 +489,7 @@ const Vendors = () => {
             </div>
           ) : (
             /* LIST VIEW (Table style high density) */
-            <div className="overflow-x-auto bg-white border border-[#dadce0] rounded-xl shadow-sm">
+            <div className="overflow-x-auto bg-white border border-slate-200/80 rounded-2xl shadow-sm">
               <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-[#f8f9fa] border-b border-[#dadce0]">
                   <tr>

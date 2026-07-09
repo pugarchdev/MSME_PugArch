@@ -130,22 +130,22 @@ export function OrganizationBannerUploadCard() {
   const isEligible = Boolean(eligibility.data?.eligible);
 
   return (
-    <Card className="overflow-hidden border-slate-200/80 shadow-md bg-white rounded-2xl">
-      <CardContent className="space-y-6 p-5 md:p-6">
+    <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
+      <CardContent className="space-y-5 p-4 sm:p-5 lg:p-6">
         {/* Banner Eligibility Header & Status Panel */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] items-start border-b border-slate-100 pb-5">
+        <div className="grid gap-4 border-b border-slate-100 pb-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
           <div className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ad & Promotion Setup</span>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            <h2 className="text-xl font-black tracking-tight text-slate-950">
               Create Homepage Promotion Slide
             </h2>
-            <p className="text-sm font-semibold text-slate-500 leading-relaxed max-w-2xl">
+            <p className="max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
               Fill out the details below, upload a high-resolution hero background, and submit it for admin verification.
             </p>
           </div>
           
           {/* High-Fidelity Eligibility Widget */}
-          <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-slate-50 to-slate-100/50 p-4 shadow-sm">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Status</span>
               <span className={cn(
@@ -191,7 +191,7 @@ export function OrganizationBannerUploadCard() {
         )}
 
         {/* Main Interface Form & Simulator */}
-        <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <form onSubmit={submit} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_28rem]">
           <div className="space-y-4">
             {/* Input fields */}
             <div className="space-y-1.5">
@@ -205,7 +205,7 @@ export function OrganizationBannerUploadCard() {
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="Enter dynamic banner headline..."
-                className="h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
                 disabled={!isEligible}
               />
             </div>
@@ -221,7 +221,7 @@ export function OrganizationBannerUploadCard() {
                 onChange={e => setSubtitle(e.target.value)}
                 placeholder="Write a compelling short description or call to action..."
                 rows={3}
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5 resize-none"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
                 disabled={!isEligible}
               />
             </div>
@@ -244,7 +244,7 @@ export function OrganizationBannerUploadCard() {
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileUpload} className="sr-only" disabled={uploading || !isEligible} />
               </label>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3.5 flex flex-col justify-between">
+              <div className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-3.5">
                 <div>
                   <div className="mb-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
                     <LinkIcon className="h-3.5 w-3.5 text-slate-400" />
@@ -258,7 +258,7 @@ export function OrganizationBannerUploadCard() {
                       setPreviewError(false);
                     }}
                     placeholder="https://example.com/banner.webp"
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
                     disabled={!isEligible}
                   />
                 </div>
@@ -278,7 +278,7 @@ export function OrganizationBannerUploadCard() {
                 value={targetUrl}
                 onChange={e => setTargetUrl(e.target.value)}
                 placeholder="e.g., /buyer/marketplace or a custom path"
-                className="h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold outline-none transition-all focus:border-[#12335f] focus:ring-4 focus:ring-[#12335f]/5"
                 disabled={!isEligible}
               />
             </div>
@@ -290,7 +290,7 @@ export function OrganizationBannerUploadCard() {
             <Button
               type="submit"
               disabled={!isEligible || uploading || bannerUpload.isPending}
-              className="h-11 w-full bg-[#12335f] text-white hover:bg-[#0b2445] rounded-xl font-bold uppercase tracking-wider text-xs shadow-md shadow-blue-900/10 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none animate-in fade-in"
+              className="h-11 w-full rounded-xl bg-[#12335f] text-xs font-bold uppercase tracking-wider text-white shadow-sm shadow-blue-900/10 transition-all duration-200 hover:bg-[#0b2445] hover:shadow-md active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
             >
               {bannerUpload.isPending ? (
                 <>
@@ -306,8 +306,8 @@ export function OrganizationBannerUploadCard() {
 
           {/* Right Side Simulator and Guide Cards */}
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950 shadow-md">
-              <div className="relative aspect-[16/6] w-full overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm">
+              <div className="relative aspect-[16/7] w-full overflow-hidden sm:aspect-[16/6]">
                 {preview && !previewError ? (
                   <img src={preview} alt="Banner preview" onError={() => setPreviewError(true)} className="h-full w-full object-cover" />
                 ) : (
@@ -357,7 +357,7 @@ export function OrganizationBannerUploadCard() {
               </div>
               
               {/* Footer descriptor */}
-              <div className="border-t border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-500 flex justify-between items-center">
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-500">
                 <span className="truncate max-w-[65%]">{upload.name ? `File: ${upload.name}` : 'Live Banner Simulator'}</span>
                 {preview && !previewError ? (
                   <span className="text-emerald-600 font-extrabold uppercase text-[9px] tracking-wider flex items-center gap-1 shrink-0">
@@ -374,11 +374,11 @@ export function OrganizationBannerUploadCard() {
 
             {/* Information points */}
             <div className="grid gap-2.5 text-[11px] font-semibold text-slate-600">
-              <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm hover:border-slate-300 transition-colors">
+              <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-colors hover:border-slate-300">
                 <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 animate-pulse" />
                 <span>Pending uploads require admin approval before they appear on the homepage hero.</span>
               </div>
-              <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm hover:border-slate-300 transition-colors">
+              <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-colors hover:border-slate-300">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
                 <span>Approved banners will run for exactly 10 days unless customized by an admin.</span>
               </div>
@@ -397,8 +397,8 @@ export function OrganizationBannerUploadCard() {
             
             <div className="grid gap-4 md:grid-cols-2">
               {recentBanners.map((banner: any) => (
-                <div key={banner.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 flex flex-col hover:-translate-y-0.5">
-                  <div className="relative aspect-[16/6] bg-slate-950 overflow-hidden">
+                <div key={banner.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md">
+                  <div className="relative aspect-[16/7] overflow-hidden bg-slate-950 sm:aspect-[16/6]">
                     {banner.imageUrl ? (
                       <img src={imageSrc(banner.imageUrl)} alt={banner.title} className="h-full w-full object-cover" />
                     ) : (

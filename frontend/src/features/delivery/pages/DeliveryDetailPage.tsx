@@ -134,7 +134,7 @@ function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Card className={className}>
+    <Card className={cn('overflow-hidden rounded-2xl border-slate-200/80 bg-white/92 shadow-sm', className)}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -206,9 +206,10 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
   const isFetching = detailQuery.isFetching;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Delivery Tracking</p>
           <h1 className="text-2xl font-black tracking-tight text-slate-950 break-words">
             {po?.title || po?.poNumber || `Delivery #${delivery.id}`}
@@ -217,22 +218,23 @@ export function DeliveryDetailPage({ deliveryId, onClose }: DeliveryDetailPagePr
             {po?.poNumber} · {po?.seller?.name || 'Seller'} → {po?.buyer?.name || 'Buyer'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onClose || (() => window.history.back())} className="h-10 rounded-lg text-xs font-black uppercase">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={onClose || (() => window.history.back())} className="h-10 flex-1 rounded-lg text-xs font-black uppercase sm:flex-none">
             Back
           </Button>
           <Button
             variant="outline"
             onClick={() => detailQuery.refetch()}
-            className="h-10 rounded-lg text-xs font-black uppercase"
+            className="h-10 flex-1 rounded-lg text-xs font-black uppercase sm:flex-none"
           >
             <RefreshCw className={cn('mr-2 h-4 w-4', isFetching && 'animate-spin')} /> Refresh
           </Button>
         </div>
+        </div>
       </div>
 
       <CollapsibleSection title="Delivery Overview" icon={Package} defaultOpen>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Info label="Status">
             <DeliveryStatusBadge status={delivery.status} />
           </Info>

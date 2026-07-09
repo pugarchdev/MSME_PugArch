@@ -3,7 +3,9 @@ export type ProcurementMethodCode =
   | 'L1_PURCHASE'
   | 'BID_FROM_CART'
   | 'RA_FROM_CART'
-  | 'PAC_PROCUREMENT';
+  | 'PAC_PROCUREMENT'
+  | 'SINGLE_SOURCE'
+  | 'REPEAT_ORDER';
 
 export interface CartEvaluation {
   recommendedMethod: ProcurementMethodCode;

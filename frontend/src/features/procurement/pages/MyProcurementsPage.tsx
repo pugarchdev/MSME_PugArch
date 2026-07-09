@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -240,6 +240,8 @@ function ThSort({
 
 export default function MyProcurementsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialType = searchParams?.get('type') || '';
   const [loading, setLoading] = useState(true);
   const [procurements, setProcurements] = useState<NormalizedProcurement[]>([]);
   const [kpis, setKpis] = useState<KpiData>({
@@ -253,7 +255,7 @@ export default function MyProcurementsPage() {
   });
 
   // Filters
-  const [typeFilter, setTypeFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState(initialType);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeKpi, setActiveKpi] = useState<string | null>(null);

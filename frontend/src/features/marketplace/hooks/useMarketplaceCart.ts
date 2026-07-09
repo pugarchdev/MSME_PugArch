@@ -106,6 +106,7 @@ export function useMarketplaceCart() {
             }
 
             if (mappedItem.dbCartItemId) {
+                if (mappedItem.dbCartItemId < 0) return; // Ignore updates on optimistic items
                 updateCartItemMut.mutate(
                     { id: mappedItem.dbCartItemId, quantity: qty },
                     {
@@ -120,6 +121,7 @@ export function useMarketplaceCart() {
         const remove = (itemId: number, type: 'product' | 'service') => {
             const mappedItem = mappedItems.find(i => i.id === itemId && i.type === type);
             if (mappedItem?.dbCartItemId) {
+                if (mappedItem.dbCartItemId < 0) return; // Ignore deletions on optimistic items
                 removeCartItemMut.mutate(mappedItem.dbCartItemId, {
                     onSuccess: () => {
                         toast.info(`${mappedItem.name} removed from cart`);

@@ -113,9 +113,10 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
             {scope === 'admin' ? 'Admin Delivery Console' : 'Procurement Logistics'}
           </p>
@@ -126,7 +127,7 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
             {subtitle || 'PO-linked consignments routed through the procurement workflow.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewToggle viewMode={viewMode} onChange={setViewMode} />
           <Button
             variant="outline"
@@ -136,9 +137,10 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
             <RefreshCw className={cn('mr-2 h-4 w-4', isBackgroundFetching && 'animate-spin')} /> Refresh
           </Button>
         </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} loading={isInitialLoading} />
         <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} loading={isInitialLoading} />
         <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} loading={isInitialLoading} />
@@ -153,7 +155,7 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         />
       )}
 
-      <Card>
+      <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center gap-2 text-[#12335f]">
             <Filter className="h-4 w-4" />
@@ -274,7 +276,7 @@ interface ViewProps {
 
 function ListView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange, isFetching }: ViewProps) {
   return (
-    <Card className={cn('transition-opacity', isFetching && 'opacity-90')}>
+    <Card className={cn('overflow-hidden rounded-2xl border-slate-200/80 shadow-sm transition-opacity', isFetching && 'opacity-90')}>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <Table className="min-w-[960px]">

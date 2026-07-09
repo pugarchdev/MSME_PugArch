@@ -6,6 +6,7 @@ import { PdfEngine, DocumentConfig, moneyPdf } from '../lib/pdfEngine';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { api } from '../lib/api';
+import { openFileAsset } from '../lib/files';
 import { cn } from '../lib/utils';
 import { postApi } from '../features/shared/apiClient';
 import { EmptyState, InlineError, LoadingState } from '../features/shared/FeatureStates';
@@ -225,9 +226,10 @@ export default function PurchaseOrders() {
 
   const renderOrderActions = (order: PurchaseOrderDto) => {
     const statusLower = String(order.status || '').toLowerCase();
+    const baseActionClass = 'h-8 justify-start rounded-lg px-2.5 text-[10px] font-black uppercase tracking-wide shadow-none';
     return (
-      <div className="flex flex-wrap justify-end gap-2 items-center">
-        <Button variant="outline" onClick={() => setViewingOrder(order)} className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"><Eye className="mr-1.5 h-3.5 w-3.5" />View</Button>
+      <div className="ml-auto grid w-full max-w-[17rem] grid-cols-2 gap-1.5">
+        <Button variant="outline" onClick={() => setViewingOrder(order)} className={cn(baseActionClass, "border-slate-200 text-[#12335f] hover:bg-slate-50")}><Eye className="mr-1.5 h-3.5 w-3.5" />View</Button>
         {order.deliveryTrackings && order.deliveryTrackings.length > 0 && (
           <Button
             variant="outline"
@@ -235,19 +237,19 @@ export default function PurchaseOrders() {
               const trackId = order.deliveryTrackings?.[0]?.id;
               if (trackId) router.push(`/delivery/${trackId}`);
             }}
-            className="h-8 rounded-md text-[10px] font-black uppercase text-[#12335f] border-slate-200 hover:bg-slate-50"
+            className={cn(baseActionClass, "border-slate-200 text-[#12335f] hover:bg-slate-50")}
           >
             <Truck className="mr-1.5 h-3.5 w-3.5" /> Track
           </Button>
         )}
-        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'download')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Download className="mr-1.5 h-3.5 w-3.5" />Invoice PDF</Button>
-        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'print')} className="h-8 rounded-md text-[10px] font-black uppercase border-slate-200 hover:bg-slate-50"><Printer className="mr-1.5 h-3.5 w-3.5" />Print</Button>
-        {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className="h-8 rounded-md border-red-200 text-[10px] font-black uppercase text-red-600 hover:bg-red-50"><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel</Button>}
-        {isSeller && (statusLower === 'generated' || statusLower === 'order_placed') && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className="h-8 rounded-md bg-[#008080] text-[10px] font-black uppercase text-white hover:bg-teal-700 shadow-sm"><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
+        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'download')} className={cn(baseActionClass, "border-slate-200 hover:bg-slate-50")}><Download className="mr-1.5 h-3.5 w-3.5" />Invoice</Button>
+        <Button variant="outline" onClick={() => exportInvoicePdf(order, 'print')} className={cn(baseActionClass, "border-slate-200 hover:bg-slate-50")}><Printer className="mr-1.5 h-3.5 w-3.5" />Print</Button>
+        {isBuyer && !['cancelled', 'delivered'].includes(statusLower) && <Button variant="outline" onClick={() => setConfirming({ action: 'cancel', order })} className={cn(baseActionClass, "col-span-2 border-red-200 text-red-600 hover:bg-red-50")}><XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel order</Button>}
+        {isSeller && (statusLower === 'generated' || statusLower === 'order_placed') && <Button onClick={() => setConfirming({ action: 'acknowledge', order })} className={cn(baseActionClass, "col-span-2 bg-[#008080] text-white hover:bg-teal-700 shadow-sm")}><Truck className="mr-1.5 h-3.5 w-3.5" />Acknowledge</Button>}
         {isSeller && statusLower === 'accepted' && (
           <Button
             onClick={() => handleConvertToInvoice(order)}
-            className="h-8 rounded-md bg-emerald-600 text-[10px] font-black uppercase text-white hover:bg-emerald-700 shadow-sm"
+            className={cn(baseActionClass, "col-span-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm")}
           >
             Convert to Invoice
           </Button>
@@ -351,17 +353,19 @@ export default function PurchaseOrders() {
   if (loading && pagedOrders.length === 0) return <LoadingState label="Loading purchase orders..." />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement Fulfilment</p>
           <h1 className="text-2xl font-black tracking-tight text-slate-950">Purchase Orders</h1>
           <p className="mt-1 text-xs font-semibold text-slate-500">Live PO register from backend procurement workflows.</p>
         </div>
-        <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 rounded-lg text-xs font-black uppercase"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
+        <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 w-full rounded-lg text-xs font-black uppercase sm:w-auto"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
         <Metric label="Open POs" value={openCount} icon={FileText} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} />
         <Metric label="Delivered" value={deliveredCount} icon={CheckCircle2} onClick={() => setActiveTab('Delivered')} active={activeTab === 'Delivered'} />
         <Metric label="Total Value" value={formatCurrency(totalSpend)} icon={ShieldCheck} onClick={() => setActiveTab('All')} active={activeTab === 'All'} />
@@ -372,7 +376,7 @@ export default function PurchaseOrders() {
 
       {error && <InlineError message={error} onRetry={reload} />}
 
-      <Card>
+      <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="relative min-w-0 flex-1">
@@ -381,15 +385,15 @@ export default function PurchaseOrders() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full xl:w-auto">
-              <div className="flex flex-wrap items-center gap-3">
-                <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 min-w-[130px]">
+              <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+                <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 min-w-[130px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 sm:flex-none">
                   <option value="newest">Newest</option>
                   <option value="value_high">Value High</option>
                   <option value="value_low">Value Low</option>
                   <option value="status">Status</option>
                 </select>
 
-                <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:flex-none">
                   {(['Open', 'Delivered', 'Cancelled', 'All'] as const).map(tab => (
                     <button
                       key={tab}
@@ -416,7 +420,7 @@ export default function PurchaseOrders() {
 
       {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description={searchTerm || activeTab !== 'All' ? 'No purchase orders match the current search, status tab, or sorting filters.' : 'No purchase orders have been generated from procurement awards yet.'} /> : viewMode === 'grid' ? (
         <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {visibleOrders.map(order => (
               <Card key={order.id} className="border-slate-200 bg-white shadow-sm">
                 <CardContent className="space-y-4 p-4">
@@ -453,7 +457,7 @@ export default function PurchaseOrders() {
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -510,7 +514,7 @@ export default function PurchaseOrders() {
                         )}
                       </td>
                       <td className="p-3"><StatusPill status={order.status} /></td>
-                      <td className="p-3 text-right w-[380px] min-w-[380px]">
+                      <td className="p-3 text-right w-[18rem] min-w-[18rem]">
                         {renderOrderActions(order)}
                       </td>
                     </tr>
@@ -526,8 +530,18 @@ export default function PurchaseOrders() {
       {confirming && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
-            <h3 className="text-base font-black text-slate-950">Confirm {confirming.action}</h3>
-            <p className="mt-2 text-sm font-semibold text-slate-500">Apply this action to {confirming.order.poNumber}?</p>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-950 capitalize">Confirm {confirming.action}</h3>
+              <button
+                type="button"
+                onClick={() => setConfirming(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-slate-500">Apply this action to {confirming.order.poNumber}?</p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirming(null)}>No</Button>
               <Button onClick={completeAction} className="bg-[#12335f] text-white">Yes, continue</Button>
@@ -744,14 +758,21 @@ export default function PurchaseOrders() {
                                 <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                                 <div className="min-w-0 flex-1">
                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{doc.documentType}</p>
-                                  <a
-                                    href={`/api/files/${doc.fileAssetId}/view`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block truncate text-xs font-bold text-[#12335f] hover:underline"
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      openFileAsset({
+                                        id: doc.fileAssetId,
+                                        fileAssetId: doc.fileAssetId,
+                                        originalName: doc.fileName,
+                                      }, doc.fileName).catch(err => {
+                                        toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                                      });
+                                    }}
+                                    className="block truncate text-xs font-bold text-[#12335f] hover:underline text-left w-full"
                                   >
                                     {doc.fileName}
-                                  </a>
+                                  </button>
                                 </div>
                                 <span className="text-[10px] font-bold text-slate-400 shrink-0">({(doc.fileSize / 1024).toFixed(0)} KB)</span>
                               </div>

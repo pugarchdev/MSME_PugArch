@@ -15,6 +15,8 @@ export const PROCUREMENT_METHOD_LABELS: Record<string, string> = {
   BID_FROM_CART: 'Create Bid from Cart',
   RA_FROM_CART: 'Create RA from Cart',
   PAC_PROCUREMENT: 'PAC Procurement',
+  SINGLE_SOURCE: 'Single Source Procurement',
+  REPEAT_ORDER: 'Repeat Order Procurement',
 };
 
 export const DELIVERY_PERIOD_OPTIONS = [

@@ -94,6 +94,43 @@ button {
 .dashboard-main {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  background:
+    radial-gradient(circle at top left, rgba(18, 51, 95, 0.045), transparent 28rem),
+    linear-gradient(180deg, #f8fafc 0%, #f6f8fb 42%, #ffffff 100%);
+}
+
+.dashboard-main :where(.bg-white.border, .rounded-lg.border, .rounded-xl.border) {
+  border-color: rgba(203, 213, 225, 0.82);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.045);
+}
+
+.dashboard-main :where(.rounded-lg.border, .rounded-xl.border) {
+  border-radius: 0.75rem;
+}
+
+.dashboard-main :where(table thead) {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.dashboard-main :where(table tbody tr) {
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.dashboard-main :where(table tbody tr:hover) {
+  background-color: rgba(248, 250, 252, 0.92);
+}
+
+.dashboard-main :where(input, select, textarea) {
+  min-height: 2.5rem;
+}
+
+.dashboard-main :where(button, a) {
+  text-underline-offset: 3px;
+}
+
+.dashboard-main :where(.overflow-x-auto) {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 @media (max-width: 640px) {
@@ -120,6 +157,27 @@ button {
   .dashboard-main .sticky.right-0 {
     position: static;
     box-shadow: none;
+  }
+
+  .dashboard-main :where(.grid) {
+    min-width: 0;
+  }
+
+  .dashboard-main :where(.rounded-lg.border, .rounded-xl.border) {
+    border-radius: 0.875rem;
+  }
+
+  .dashboard-main :where(table) {
+    font-size: 0.875rem;
+  }
+
+  .dashboard-main :where(.overflow-x-auto) {
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+  }
+
+  .dashboard-main :where(.fixed.inset-0) {
+    padding: 0.75rem !important;
   }
 }
 

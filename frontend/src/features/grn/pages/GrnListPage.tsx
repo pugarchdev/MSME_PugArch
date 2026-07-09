@@ -95,17 +95,18 @@ export default function GrnListPage() {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
             <div className="brand-tricolor-strip rounded-full" />
-            <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-                <div>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Fulfillment</p>
                     <h1 className="text-2xl font-black text-slate-950">Goods Receipt Notes</h1>
                     <p className="mt-1 text-xs font-semibold text-slate-500">
                         Record received goods, run inspection, approve to trigger seller invoice.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-lg text-xs font-black uppercase">
                         <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
@@ -116,6 +117,7 @@ export default function GrnListPage() {
                         </Button>
                     )}
                 </div>
+            </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -129,7 +131,7 @@ export default function GrnListPage() {
             {error && <InlineError message={(error as Error).message} onRetry={() => refetch()} />}
 
             {grns.length > 0 && (
-                <Card className="border-slate-200/80 shadow-sm">
+                <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
                     <CardContent className="p-4">
                         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
                             <div className="relative">
@@ -156,11 +158,11 @@ export default function GrnListPage() {
             {isLoading ? (
                 <LoadingState label="Loading GRNs..." />
             ) : grns.length === 0 ? (
-                <Card><CardContent className="py-12">
+                <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm"><CardContent className="py-12">
                     <EmptyState title="No GRNs found" description="Create one against an active Purchase Order to record the receipt of goods." />
                 </CardContent></Card>
             ) : pageItems.length === 0 ? (
-                <Card><CardContent className="py-12">
+                <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm"><CardContent className="py-12">
                     <EmptyState title="No GRNs match these filters" description="Clear the search or status card filter to see all goods receipt notes." />
                 </CardContent></Card>
             ) : viewMode === 'grid' ? (
@@ -170,7 +172,7 @@ export default function GrnListPage() {
                             type="button"
                             key={g.id}
                             onClick={() => router.push(`/grn/${g.id}`)}
-                            className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-lg"
+                            className="rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#12335f]/30 hover:shadow-lg"
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -190,7 +192,7 @@ export default function GrnListPage() {
                     ))}
                 </div>
             ) : (
-                <Card className="border-slate-200/80 shadow-sm">
+                <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
                     <CardContent className="p-0">
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[920px] text-sm">

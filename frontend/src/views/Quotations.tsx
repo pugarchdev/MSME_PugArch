@@ -1140,9 +1140,10 @@ export default function Quotations() {
   }, [quotes]);
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-5 text-slate-900 sm:px-5 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div className="min-h-screen px-3 py-5 text-slate-900 sm:px-5 md:px-8">
+      <div className="mx-auto max-w-[118rem] space-y-5">
+        <div className="rounded-2xl border border-slate-200/80 bg-white/88 p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
               {user?.role === 'buyer' ? 'Bid Evaluation' : 'Market Participation'}
@@ -1159,11 +1160,12 @@ export default function Quotations() {
 
           <Button
             onClick={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
-            className="h-10 rounded-md bg-[#12335f] px-5 text-xs font-bold uppercase tracking-wide text-white hover:bg-[#0b2445]"
+            className="h-10 w-full rounded-lg bg-[#12335f] px-5 text-xs font-bold uppercase tracking-wide text-white shadow-sm shadow-[#12335f]/20 hover:bg-[#0b2445] sm:w-auto"
           >
             <Send className="mr-2 h-4 w-4" />
             {user?.role === 'seller' ? 'My Catalogue' : 'View Tenders'}
           </Button>
+          </div>
         </div>
 
         {/* <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -1180,7 +1182,7 @@ export default function Quotations() {
           <InsightTile icon={Percent} label="Document coverage" value={`${stats.documentCount}/${stats.total}`} helper="Records with RFQ or proposal documents attached." />
         </div>
 
-        <Card className="rounded-lg border border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border border-slate-200/80 bg-white/92 shadow-sm">
           <CardContent className="p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center">
               <div className="relative flex-1">
@@ -1210,7 +1212,7 @@ export default function Quotations() {
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value as 'all' | BidStatus)}
-                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:ring-2 focus:ring-[#12335f]"
+                  className="h-10 min-w-[9rem] flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:ring-2 focus:ring-[#12335f] sm:flex-none"
                 >
                   <option value="all">All status</option>
                   <option value="pending">Pending</option>
@@ -1246,7 +1248,7 @@ export default function Quotations() {
             onPrimary={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
           />
         ) : viewMode === 'list' ? (
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-clip">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left min-w-[1150px]">
                 <colgroup>

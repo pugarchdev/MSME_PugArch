@@ -63,14 +63,16 @@ export const useDeliveryDetail = (id: number | null | undefined) =>
     useQuery({
         queryKey: queryKeys.deliveries.detail(id || 0),
         queryFn: () => getDeliveryById(id as number),
-        enabled: Number.isFinite(id) && (id as number) > 0
+        enabled: Number.isFinite(id) && (id as number) > 0,
+        placeholderData: undefined
     });
 
 export const useDeliveryByPO = (purchaseOrderId: number | null | undefined) =>
     useQuery({
         queryKey: ['deliveries', 'by-po', purchaseOrderId],
         queryFn: () => getDeliveryByPurchaseOrder(purchaseOrderId as number),
-        enabled: Number.isFinite(purchaseOrderId) && (purchaseOrderId as number) > 0
+        enabled: Number.isFinite(purchaseOrderId) && (purchaseOrderId as number) > 0,
+        placeholderData: undefined
     });
 
 export const useDeliveryReport = (enabled = true) =>

@@ -260,7 +260,7 @@ export default function BuyerProcurementHub() {
           badgeColor: 'bg-[#12335f] text-white',
         },
         {
-          title: 'My Procurement Requests',
+          title: 'My Procurements',
           description: 'View active sourcing requests, items, methods, and status details.',
           href: '/buyer/my-procurements',
           cta: 'View Requests',

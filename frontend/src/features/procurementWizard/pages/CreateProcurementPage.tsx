@@ -934,7 +934,12 @@ export default function CreateProcurementPage() {
           ...base,
           ...payload,
           id: res.id,
-          basics: { ...base.basics, ...(payload.basics || {}) },
+          basics: {
+            ...base.basics,
+            ...(payload.basics || {}),
+            estimatedValue: Number(payload.basics?.estimatedValue || res.estimatedValue || base.basics.estimatedValue || 0),
+            deliveryLocation: payload.basics?.deliveryLocation || payload.tender?.deliveryLocation || base.basics.deliveryLocation || ''
+          },
           internal: { ...base.internal, ...(payload.internal || {}) },
           serviceDetails: { ...base.serviceDetails, ...(payload.serviceDetails || {}) },
           vendors: { ...base.vendors, ...(payload.vendors || {}) },
@@ -1017,7 +1022,7 @@ export default function CreateProcurementPage() {
     if (d.schedule.submissionDate && d.schedule.submissionStartDate) {
       list.push({ label: 'Submission deadline must be after submission start date', ok: new Date(d.schedule.submissionDate) > new Date(d.schedule.submissionStartDate), severity: 'error' });
     }
-    if (d.basics.isTechnicalEvaluationNeeded) {
+    if (d.basics.isTechnicalEvaluationNeeded || d.schedule.packetType === 'Two') {
       list.push({ label: 'Technical opening date is required', ok: Boolean(d.schedule.technicalOpeningDate), severity: 'error' });
       if (d.schedule.technicalOpeningDate && d.schedule.submissionDate) {
         list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) >= new Date(d.schedule.submissionDate), severity: 'error' });
@@ -1028,6 +1033,13 @@ export default function CreateProcurementPage() {
       if (d.schedule.financialOpeningDate && d.schedule.technicalOpeningDate) {
         list.push({ label: 'Financial opening date must be on or after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) >= new Date(d.schedule.technicalOpeningDate), severity: 'error' });
       }
+    }
+    if (isReverseAuctionMethod(d.type)) {
+      list.push({ label: 'Auction category is required', ok: Boolean(d.auctionConfig.auctionCategory.trim()) && d.auctionConfig.auctionCategory !== 'Other', severity: 'error' });
+      list.push({ label: 'Auction subcategory is required', ok: Boolean(d.auctionConfig.auctionSubCategory.trim()) && d.auctionConfig.auctionSubCategory !== 'Other', severity: 'error' });
+      list.push({ label: 'Auction currency is required', ok: Boolean(d.auctionConfig.currency.trim()) && d.auctionConfig.currency !== 'Other', severity: 'error' });
+      list.push({ label: 'Starting bid price must be greater than 0', ok: d.auctionConfig.startingBidPrice > 0, severity: 'error' });
+      list.push({ label: 'Minimum bid decrement must be greater than 0', ok: d.auctionConfig.minimumBidDecrement > 0, severity: 'error' });
     }
 
     // Step 6 Commercial Terms - Errors
@@ -1114,10 +1126,11 @@ export default function CreateProcurementPage() {
   }, [draft]);
 
   // Save Draft to Backend
-  const saveDraftLocally = async (silent = false) => {
+  const saveDraftLocally = async (silent = false, stepOverride?) => {
     setSavingDraft(true);
     try {
-      const payload = buildProcurementApiPayload(draft, activeStep);
+      const stepToSave = stepOverride !== undefined ? stepOverride : activeStep;
+      const payload = buildProcurementApiPayload(draft, stepToSave);
       const res = await saveProcurementDraft(payload);
       const serverId = Number(res?.id || res?.data?.id || draft.id || 0);
       if (serverId) {
@@ -1241,7 +1254,7 @@ export default function CreateProcurementPage() {
         toast.error('Submission closing date must be after submission start date.');
         return false;
       }
-      if (d.basics.isTechnicalEvaluationNeeded) {
+      if (d.basics.isTechnicalEvaluationNeeded || d.schedule.packetType === 'Two') {
         if (!d.schedule.technicalOpeningDate) {
           toast.error('Technical opening date is required.');
           return false;
@@ -1267,6 +1280,18 @@ export default function CreateProcurementPage() {
         const end = new Date(auction.endDateTime).getTime();
         if (!auction.auctionTitle.trim()) {
           toast.error('Auction title is required.');
+          return false;
+        }
+        if (!auction.auctionCategory.trim() || auction.auctionCategory === 'Other') {
+          toast.error('Auction category is required.');
+          return false;
+        }
+        if (!auction.auctionSubCategory.trim() || auction.auctionSubCategory === 'Other') {
+          toast.error('Auction subcategory is required.');
+          return false;
+        }
+        if (!auction.currency.trim() || auction.currency === 'Other') {
+          toast.error('Currency is required.');
           return false;
         }
         if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
@@ -1389,16 +1414,24 @@ export default function CreateProcurementPage() {
   };
 
   const goNext = async () => {
-    if (!validateStep(activeStep)) return;
-    await saveDraftLocally(true);
+    if (!validateStep(activeStep)) {
+      setTriedNext(true);
+      return;
+    }
+    setTriedNext(false);
+    const nextStep = activeStep < ALL_STEPS.length - 1 ? activeStep + 1 : activeStep;
+    await saveDraftLocally(true, nextStep);
     if (activeStep < ALL_STEPS.length - 1) {
       setActiveStep(step => step + 1);
     }
   };
 
-  const goBack = () => {
+  const goBack = async () => {
+    setTriedNext(false);
     if (activeStep > 0) {
-      setActiveStep(step => step - 1);
+      const prevStep = activeStep - 1;
+      await saveDraftLocally(true, prevStep);
+      setActiveStep(prevStep);
     } else {
       router.push('/buyer/procurement');
     }
@@ -1479,8 +1512,11 @@ export default function CreateProcurementPage() {
                 completedSteps={ALL_STEPS.slice(0, activeStep)}
                 onStepClick={async (idx) => {
                   if (idx < activeStep || validateStep(activeStep)) {
-                    await saveDraftLocally(true);
+                    setTriedNext(false);
+                    await saveDraftLocally(true, idx);
                     setActiveStep(idx);
+                  } else {
+                    setTriedNext(true);
                   }
                 }}
                 disabledFutureSteps={true}
@@ -1542,6 +1578,7 @@ export default function CreateProcurementPage() {
                 <ScheduleStepForm
                   draft={draft}
                   updateDraft={updateDraft}
+                  showErrors={triedNext}
                 />
               </SectionCard>
             )}
@@ -3853,10 +3890,12 @@ function VendorsStepForm({
 // ─────────────────────────────────────────────────────────────────────────────
 function ScheduleStepForm({
   draft,
-  updateDraft
+  updateDraft,
+  showErrors = false
 }: {
   draft: Draft;
   updateDraft: (updater: (current: Draft) => Draft) => void;
+  showErrors?: boolean;
 }) {
   const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
   const isTwoPacket = draft.schedule.packetType === 'Two';
@@ -3896,6 +3935,36 @@ function ScheduleStepForm({
   const updateRateContract = <K extends keyof RateContractConfig>(key: K, val: RateContractConfig[K]) => {
     updateDraft(c => ({ ...c, rateContractConfig: { ...c.rateContractConfig, [key]: val } }));
   };
+  const auctionCategoryOptions = [
+    'IT Hardware',
+    'Office Equipment',
+    'Electrical',
+    'Mechanical',
+    'Civil Works',
+    'Facility Management',
+    'Professional Services',
+    'Other'
+  ];
+  const auctionSubCategoryOptions = [
+    'Laptops',
+    'Desktops',
+    'Networking',
+    'Printers',
+    'Furniture',
+    'Spares',
+    'AMC',
+    'Other'
+  ];
+  const currencyOptions = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AED', 'SGD', 'Other'];
+  const isOtherAuctionCategory = draft.auctionConfig.auctionCategory === 'Other' || Boolean(draft.auctionConfig.auctionCategory && !auctionCategoryOptions.includes(draft.auctionConfig.auctionCategory));
+  const isOtherAuctionSubCategory = draft.auctionConfig.auctionSubCategory === 'Other' || Boolean(draft.auctionConfig.auctionSubCategory && !auctionSubCategoryOptions.includes(draft.auctionConfig.auctionSubCategory));
+  const isOtherCurrency = draft.auctionConfig.currency === 'Other' || Boolean(draft.auctionConfig.currency && !currencyOptions.includes(draft.auctionConfig.currency));
+  const auctionCategoryMissing = !draft.auctionConfig.auctionCategory.trim() || draft.auctionConfig.auctionCategory === 'Other';
+  const auctionSubCategoryMissing = !draft.auctionConfig.auctionSubCategory.trim() || draft.auctionConfig.auctionSubCategory === 'Other';
+  const currencyMissing = !draft.auctionConfig.currency.trim() || draft.auctionConfig.currency === 'Other';
+  const missing = (value: unknown) => showErrors && !String(value ?? '').trim();
+  const fieldError = (condition: boolean, message: string) => condition ? message : undefined;
+  const controlClass = (error?: string) => cn(inputClass, error && 'border-rose-400 bg-rose-50 focus:border-rose-500 focus:ring-rose-500/20');
   const updateRateItem = <K extends keyof RateContractItem>(id: string, key: K, val: RateContractItem[K]) => {
     updateDraft(c => ({
       ...c,
@@ -3958,6 +4027,11 @@ function ScheduleStepForm({
 
   return (
     <div className="space-y-6">
+      {showErrors && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+          Mandatory missing fields are highlighted below. Fill them before moving to the next section.
+        </div>
+      )}
       {warnings.length > 0 && (
         <div className="border border-rose-250 bg-rose-50 text-rose-800 p-4 rounded-xl text-xs space-y-1.5">
           <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-rose-955">
@@ -3985,20 +4059,65 @@ function ScheduleStepForm({
             <Field label="Procurement Method">
               <input value={draft.auctionConfig.procurementMethod} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
             </Field>
-            <Field label="Auction Title" required>
-              <input value={draft.auctionConfig.auctionTitle} onChange={e => updateAuction('auctionTitle', e.target.value)} className={inputClass} />
+            <Field label="Auction Title" required error={fieldError(missing(draft.auctionConfig.auctionTitle), 'Auction title is required.')}>
+              <input value={draft.auctionConfig.auctionTitle} onChange={e => updateAuction('auctionTitle', e.target.value)} className={controlClass(fieldError(missing(draft.auctionConfig.auctionTitle), 'Auction title is required.'))} />
             </Field>
             <Field label="Auction Description">
               <textarea value={draft.auctionConfig.auctionDescription} onChange={e => updateAuction('auctionDescription', e.target.value)} className={cn(inputClass, 'min-h-[76px]')} />
             </Field>
-            <Field label="Auction Category">
-              <input value={draft.auctionConfig.auctionCategory} onChange={e => updateAuction('auctionCategory', e.target.value)} className={inputClass} />
+            <Field label="Auction Category" required error={fieldError(showErrors && auctionCategoryMissing, 'Auction category is required.')}>
+              <select
+                value={isOtherAuctionCategory ? 'Other' : draft.auctionConfig.auctionCategory}
+                onChange={e => updateAuction('auctionCategory', e.target.value)}
+                className={controlClass(fieldError(showErrors && auctionCategoryMissing, 'Auction category is required.'))}
+              >
+                <option value="">Select category</option>
+                {auctionCategoryOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+              {isOtherAuctionCategory && (
+                <input
+                  value={draft.auctionConfig.auctionCategory === 'Other' ? '' : draft.auctionConfig.auctionCategory}
+                  onChange={e => updateAuction('auctionCategory', e.target.value)}
+                  className={controlClass(fieldError(showErrors && auctionCategoryMissing, 'Auction category is required.'))}
+                  placeholder="Enter auction category"
+                />
+              )}
             </Field>
-            <Field label="Auction Subcategory">
-              <input value={draft.auctionConfig.auctionSubCategory} onChange={e => updateAuction('auctionSubCategory', e.target.value)} className={inputClass} />
+            <Field label="Auction Subcategory" required error={fieldError(showErrors && auctionSubCategoryMissing, 'Auction subcategory is required.')}>
+              <select
+                value={isOtherAuctionSubCategory ? 'Other' : draft.auctionConfig.auctionSubCategory}
+                onChange={e => updateAuction('auctionSubCategory', e.target.value)}
+                className={controlClass(fieldError(showErrors && auctionSubCategoryMissing, 'Auction subcategory is required.'))}
+              >
+                <option value="">Select subcategory</option>
+                {auctionSubCategoryOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+              {isOtherAuctionSubCategory && (
+                <input
+                  value={draft.auctionConfig.auctionSubCategory === 'Other' ? '' : draft.auctionConfig.auctionSubCategory}
+                  onChange={e => updateAuction('auctionSubCategory', e.target.value)}
+                  className={controlClass(fieldError(showErrors && auctionSubCategoryMissing, 'Auction subcategory is required.'))}
+                  placeholder="Enter auction subcategory"
+                />
+              )}
             </Field>
-            <Field label="Currency" required>
-              <input value={draft.auctionConfig.currency} onChange={e => updateAuction('currency', e.target.value)} className={inputClass} />
+            <Field label="Currency" required error={fieldError(showErrors && currencyMissing, 'Currency is required.')}>
+              <select
+                value={isOtherCurrency ? 'Other' : draft.auctionConfig.currency}
+                onChange={e => updateAuction('currency', e.target.value)}
+                className={controlClass(fieldError(showErrors && currencyMissing, 'Currency is required.'))}
+              >
+                <option value="">Select currency</option>
+                {currencyOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+              {isOtherCurrency && (
+                <input
+                  value={draft.auctionConfig.currency === 'Other' ? '' : draft.auctionConfig.currency}
+                  onChange={e => updateAuction('currency', e.target.value.toUpperCase().slice(0, 3))}
+                  className={controlClass(fieldError(showErrors && currencyMissing, 'Currency is required.'))}
+                  placeholder="Enter 3-letter currency code"
+                />
+              )}
             </Field>
             <Field label="Estimated Value">
               <input value={draft.basics.estimatedValue || 0} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
@@ -4007,16 +4126,10 @@ function ScheduleStepForm({
               <input value={draft.auctionConfig.auctionStatus} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
             </Field>
             <Field label="Buyer Organization">
-              <input value={draft.auctionConfig.buyerOrganization} onChange={e => updateAuction('buyerOrganization', e.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Department">
-              <input value={draft.auctionConfig.department} onChange={e => updateAuction('department', e.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Purchase Group">
-              <input value={draft.auctionConfig.purchaseGroup} onChange={e => updateAuction('purchaseGroup', e.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Purchase Organization">
-              <input value={draft.auctionConfig.purchaseOrganization} onChange={e => updateAuction('purchaseOrganization', e.target.value)} className={inputClass} />
+              <input value={draft.auctionConfig.buyerOrganization || draft.internal.orgName} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">
+                Pulled from Internal Details. Purchase organization uses this buyer organization for this portal workflow.
+              </p>
             </Field>
             <Field label="Auction Type" required>
               <select value={draft.auctionConfig.auctionType} onChange={e => updateAuction('auctionType', e.target.value as AuctionConfig['auctionType'])} className={inputClass}>
@@ -4027,23 +4140,23 @@ function ScheduleStepForm({
             <Field label="Auction Mode" required>
               <input value={draft.auctionConfig.auctionMode} readOnly className={cn(inputClass, 'bg-slate-100 text-slate-500')} />
             </Field>
-            <Field label="Auction Start DateTime" required>
-              <input type="datetime-local" value={draft.auctionConfig.startDateTime} onChange={e => updateAuction('startDateTime', e.target.value)} className={inputClass} />
+            <Field label="Auction Start DateTime" required error={fieldError(showErrors && !draft.auctionConfig.startDateTime, 'Auction start datetime is required.')}>
+              <input type="datetime-local" value={draft.auctionConfig.startDateTime} onChange={e => updateAuction('startDateTime', e.target.value)} className={controlClass(fieldError(showErrors && !draft.auctionConfig.startDateTime, 'Auction start datetime is required.'))} />
             </Field>
-            <Field label="Auction End DateTime" required>
-              <input type="datetime-local" value={draft.auctionConfig.endDateTime} onChange={e => updateAuction('endDateTime', e.target.value)} className={inputClass} />
+            <Field label="Auction End DateTime" required error={fieldError(showErrors && (!draft.auctionConfig.endDateTime || new Date(draft.auctionConfig.endDateTime) <= new Date(draft.auctionConfig.startDateTime)), 'Auction end must be after start datetime.')}>
+              <input type="datetime-local" value={draft.auctionConfig.endDateTime} onChange={e => updateAuction('endDateTime', e.target.value)} className={controlClass(fieldError(showErrors && (!draft.auctionConfig.endDateTime || new Date(draft.auctionConfig.endDateTime) <= new Date(draft.auctionConfig.startDateTime)), 'Auction end must be after start datetime.'))} />
             </Field>
-            <Field label="Auction Duration (Minutes)" required>
-              <input type="number" min={1} value={draft.auctionConfig.durationMinutes || ''} onChange={e => updateAuction('durationMinutes', Number(e.target.value || 0))} className={inputClass} />
+            <Field label="Auction Duration (Minutes)" required error={fieldError(showErrors && draft.auctionConfig.durationMinutes <= 0, 'Auction duration must be greater than 0.')}>
+              <input type="number" min={1} value={draft.auctionConfig.durationMinutes || ''} onChange={e => updateAuction('durationMinutes', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.durationMinutes <= 0, 'Auction duration must be greater than 0.'))} />
             </Field>
-            <Field label="Starting Bid Price" required>
-              <input type="number" min={0} value={draft.auctionConfig.startingBidPrice || ''} onChange={e => updateAuction('startingBidPrice', Number(e.target.value || 0))} className={inputClass} />
+            <Field label="Starting Bid Price" required error={fieldError(showErrors && draft.auctionConfig.startingBidPrice <= 0, 'Starting bid price must be greater than 0.')}>
+              <input type="number" min={0} value={draft.auctionConfig.startingBidPrice || ''} onChange={e => updateAuction('startingBidPrice', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.startingBidPrice <= 0, 'Starting bid price must be greater than 0.'))} />
             </Field>
-            <Field label="Reserve Price">
-              <input type="number" min={0} value={draft.auctionConfig.reservePrice ?? ''} onChange={e => updateAuction('reservePrice', e.target.value ? Number(e.target.value) : null)} className={inputClass} />
+            <Field label="Reserve Price" error={fieldError(draft.auctionConfig.reservePrice !== null && draft.auctionConfig.reservePrice > draft.auctionConfig.startingBidPrice, 'Reserve price cannot exceed starting bid price.')}>
+              <input type="number" min={0} value={draft.auctionConfig.reservePrice ?? ''} onChange={e => updateAuction('reservePrice', e.target.value ? Number(e.target.value) : null)} className={controlClass(fieldError(draft.auctionConfig.reservePrice !== null && draft.auctionConfig.reservePrice > draft.auctionConfig.startingBidPrice, 'Reserve price cannot exceed starting bid price.'))} />
             </Field>
-            <Field label="Minimum Bid Decrement" required>
-              <input type="number" min={0} value={draft.auctionConfig.minimumBidDecrement || ''} onChange={e => updateAuction('minimumBidDecrement', Number(e.target.value || 0))} className={inputClass} />
+            <Field label="Minimum Bid Decrement" required error={fieldError(showErrors && draft.auctionConfig.minimumBidDecrement <= 0, 'Minimum bid decrement must be greater than 0.')}>
+              <input type="number" min={0} value={draft.auctionConfig.minimumBidDecrement || ''} onChange={e => updateAuction('minimumBidDecrement', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.minimumBidDecrement <= 0, 'Minimum bid decrement must be greater than 0.'))} />
             </Field>
             <Field label="Rank Visibility" required>
               <select value={draft.auctionConfig.rankVisibility} onChange={e => updateAuction('rankVisibility', e.target.value as AuctionConfig['rankVisibility'])} className={inputClass}>
@@ -4077,14 +4190,14 @@ function ScheduleStepForm({
             </label>
             {draft.auctionConfig.autoExtensionEnabled && (
               <>
-                <Field label="Extension Trigger Minutes" required>
-                  <input type="number" min={1} value={draft.auctionConfig.extensionTriggerMinutes || ''} onChange={e => updateAuction('extensionTriggerMinutes', Number(e.target.value || 0))} className={inputClass} />
+                <Field label="Extension Trigger Minutes" required error={fieldError(showErrors && draft.auctionConfig.extensionTriggerMinutes <= 0, 'Extension trigger is required.')}>
+                  <input type="number" min={1} value={draft.auctionConfig.extensionTriggerMinutes || ''} onChange={e => updateAuction('extensionTriggerMinutes', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.extensionTriggerMinutes <= 0, 'Extension trigger is required.'))} />
                 </Field>
-                <Field label="Extension Duration Minutes" required>
-                  <input type="number" min={1} value={draft.auctionConfig.extensionDurationMinutes || ''} onChange={e => updateAuction('extensionDurationMinutes', Number(e.target.value || 0))} className={inputClass} />
+                <Field label="Extension Duration Minutes" required error={fieldError(showErrors && draft.auctionConfig.extensionDurationMinutes <= 0, 'Extension duration is required.')}>
+                  <input type="number" min={1} value={draft.auctionConfig.extensionDurationMinutes || ''} onChange={e => updateAuction('extensionDurationMinutes', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.extensionDurationMinutes <= 0, 'Extension duration is required.'))} />
                 </Field>
-                <Field label="Maximum Extensions" required>
-                  <input type="number" min={1} value={draft.auctionConfig.maximumExtensions || ''} onChange={e => updateAuction('maximumExtensions', Number(e.target.value || 0))} className={inputClass} />
+                <Field label="Maximum Extensions" required error={fieldError(showErrors && draft.auctionConfig.maximumExtensions <= 0, 'Maximum extensions is required.')}>
+                  <input type="number" min={1} value={draft.auctionConfig.maximumExtensions || ''} onChange={e => updateAuction('maximumExtensions', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.maximumExtensions <= 0, 'Maximum extensions is required.'))} />
                 </Field>
               </>
             )}
@@ -4298,21 +4411,21 @@ function ScheduleStepForm({
           </p>
         </Field>
 
-        <Field label="Submission Start Date" required>
+        <Field label="Submission Start Date" required error={fieldError(showErrors && !draft.schedule.submissionStartDate, 'Submission start date is required.')}>
           <input
             type="date"
             value={draft.schedule.submissionStartDate}
             onChange={e => updateSchedule('submissionStartDate', e.target.value)}
-            className={inputClass}
+            className={controlClass(fieldError(showErrors && !draft.schedule.submissionStartDate, 'Submission start date is required.'))}
           />
         </Field>
 
-        <Field label="Submission End Date (Deadline)" required>
+        <Field label="Submission End Date (Deadline)" required error={fieldError(showErrors && (!draft.schedule.submissionDate || new Date(draft.schedule.submissionDate) <= new Date(draft.schedule.submissionStartDate)), 'Submission deadline must be after start date.')}>
           <input
             type="date"
             value={draft.schedule.submissionDate}
             onChange={e => updateSchedule('submissionDate', e.target.value)}
-            className={inputClass}
+            className={controlClass(fieldError(showErrors && (!draft.schedule.submissionDate || new Date(draft.schedule.submissionDate) <= new Date(draft.schedule.submissionStartDate)), 'Submission deadline must be after start date.'))}
           />
         </Field>
 
@@ -4325,13 +4438,13 @@ function ScheduleStepForm({
           />
         </Field>
 
-        {draft.basics.isTechnicalEvaluationNeeded && (
-          <Field label="Technical Opening Date" required>
+        {(draft.basics.isTechnicalEvaluationNeeded || isTwoPacket) && (
+          <Field label="Technical Opening Date" required error={fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)), 'Technical opening must be on or after submission deadline.')}>
             <input
               type="date"
               value={draft.schedule.technicalOpeningDate}
               onChange={e => updateSchedule('technicalOpeningDate', e.target.value)}
-              className={inputClass}
+              className={controlClass(fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)), 'Technical opening must be on or after submission deadline.'))}
             />
             <p className="text-[10px] text-slate-500 font-semibold mt-1">
               Technical envelope unlocking date. Must be after submission closing.
@@ -4340,12 +4453,12 @@ function ScheduleStepForm({
         )}
 
         {isTwoPacket && (
-          <Field label="Financial Opening Date" required>
+          <Field label="Financial Opening Date" required error={fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be on or after technical opening.')}>
             <input
               type="date"
               value={draft.schedule.financialOpeningDate}
               onChange={e => updateSchedule('financialOpeningDate', e.target.value)}
-              className={inputClass}
+              className={controlClass(fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be on or after technical opening.'))}
             />
             <p className="text-[10px] text-slate-500 font-semibold mt-1">
               Financial envelope unlocking date for technically qualified bidders. Must be after technical opening.
@@ -4845,13 +4958,14 @@ function PreviewPublishForm({
 // ─────────────────────────────────────────────────────────────────────────────
 // REUSABLE FORM FIELD
 // ─────────────────────────────────────────────────────────────────────────────
-function Field({ label, required, className, children }: { label: string; required?: boolean; className?: string; children: ReactNode }) {
+function Field({ label, required, className, children, error }: { label: string; required?: boolean; className?: string; children: ReactNode; error?: string }) {
   return (
     <label className={cn('block space-y-1.5', className)}>
-      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+      <span className={cn('text-[10px] font-black uppercase tracking-wider', error ? 'text-rose-700' : 'text-slate-500')}>
         {label} {required && <span className="text-rose-600">*</span>}
       </span>
       {children}
+      {error && <span className="block text-[10px] font-bold text-rose-600">{error}</span>}
     </label>
   );
 }
@@ -4949,8 +5063,13 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     auctionSubCategory: draft.auctionConfig.auctionSubCategory || draft.basics.subCategory,
     buyerOrganization: draft.auctionConfig.buyerOrganization || draft.internal.orgName,
     department: draft.auctionConfig.department || draft.internal.department || draft.basics.department,
+    purchaseOrganization: draft.auctionConfig.purchaseOrganization || draft.auctionConfig.buyerOrganization || draft.internal.orgName,
     estimatedValue,
-    qualifiedVendors: draft.vendors.invitedSellers,
+    qualifiedVendors: draft.vendors.invitedSellers.map(sellerOrgId =>
+      typeof sellerOrgId === 'object' && sellerOrgId !== null
+        ? sellerOrgId
+        : { sellerOrgId }
+    ),
   } : null;
 
   const rateContractConfigPayload = isRateContractMethod(draft.type) ? {

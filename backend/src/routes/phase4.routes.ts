@@ -1231,7 +1231,11 @@ const normalizeAuctionConfigForDraft = (draft: any) => {
     maximumExtensions: raw.maximumExtensions ?? raw.maxAutoExtensions ?? 0,
     rankVisibility: raw.rankVisibility || (rules.showLowestPrice ? 'SHOW_LOWEST_PRICE' : rules.showSellerRank ? 'SHOW_RANK_ONLY' : 'HIDDEN'),
     qualifiedVendors: Array.isArray(raw.qualifiedVendors)
-      ? raw.qualifiedVendors
+      ? raw.qualifiedVendors.map((vendor: unknown) =>
+        typeof vendor === 'object' && vendor !== null
+          ? vendor
+          : { sellerOrgId: vendor }
+      )
       : Array.isArray(payload.vendors?.invitedSellers)
         ? payload.vendors.invitedSellers.map((sellerOrgId: unknown) => ({ sellerOrgId }))
         : [],
@@ -8701,10 +8705,10 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       statusGroup: statusGroupFor(String(r.status || 'DRAFT')),
       method: methodSlug,
       methodLabel: METHOD_LABEL_MAP[methodSlug] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      estimatedValue: Number(r.estimatedValue || 0),
-      category: (r as any).category?.name || '',
-      description: r.description || '',
-      deliveryLocation: (r as any).deliveryLocation || '',
+      estimatedValue: Number(r.estimatedValue || payload.basics?.estimatedValue || 0),
+      category: (r as any).category?.name || payload.basics?.category || '',
+      description: r.description || payload.basics?.description || '',
+      deliveryLocation: payload.basics?.deliveryLocation || payload.tender?.deliveryLocation || (r as any).deliveryLocation || '',
       startDate: '',
       endDate: '',
       quantity: String((r as any).quantity || ''),

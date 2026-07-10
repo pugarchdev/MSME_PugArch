@@ -48,6 +48,12 @@ const getBidAmount = (bid: ReverseAuctionBid) => numberValue(bid.amount ?? bid.b
 
 const liveSummaryCache = new Map<number, any>();
 
+const liveAwareRefetch = (query: any) => {
+  const auction = query?.state?.data?.auction || query?.state?.data;
+  if (!auction) return 15_000;
+  return isAuctionLive(auction, query?.state?.data?.serverTime) ? 3_000 : 20_000;
+};
+
 export default function ReverseAuctionLivePage({ id }: { id: number }) {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -64,7 +70,9 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
       liveSummaryCache.set(id, result);
       return result;
     },
-    refetchInterval: 5_000,
+    staleTime: 3_000,
+    refetchInterval: liveAwareRefetch,
+    refetchOnWindowFocus: false,
     placeholderData: (previous) => {
       if (previous !== undefined) return previous;
       if (liveSummaryCache.has(id)) return liveSummaryCache.get(id);
@@ -77,14 +85,18 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
   const participants = useQuery({
     queryKey: ['reverse-auction-participants', id],
     queryFn: () => reverseAuctionApi.participants(id),
-    refetchInterval: 10_000,
+    staleTime: 5_000,
+    refetchInterval: liveAwareRefetch,
+    refetchOnWindowFocus: false,
     enabled: !summary.isError,
   });
 
   const bids = useQuery({
     queryKey: ['reverse-auction-bids', id],
     queryFn: () => reverseAuctionApi.bids(id),
-    refetchInterval: 5_000,
+    staleTime: 3_000,
+    refetchInterval: liveAwareRefetch,
+    refetchOnWindowFocus: false,
     enabled: !summary.isError,
   });
 
@@ -222,6 +234,19 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
               </>
             ) : null}
           </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <LiveInstruction
+            live={live}
+            status={status}
+            isBuyerOrAdmin={isBuyerOrAdmin}
+            startTime={auction.startTime}
+            endTime={auction.endTime}
+            minimumNextBid={minNextBid}
+          />
+          <MiniStatus label="Bid rule" value={minNextBid > 0 ? `Next bid <= ${formatCurrency(minNextBid)}` : 'Waiting for first bid'} />
+          <MiniStatus label="Refresh mode" value={live ? 'Fast live polling' : 'Slow review polling'} />
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -446,6 +471,44 @@ function SectionHeader({ icon: Icon, title, subtitle }: { icon: typeof Activity;
         <h2 className="text-sm font-black text-slate-950">{title}</h2>
         <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{subtitle}</p>
       </div>
+    </div>
+  );
+}
+
+function LiveInstruction({
+  live,
+  status,
+  isBuyerOrAdmin,
+  startTime,
+  endTime,
+  minimumNextBid
+}: {
+  live: boolean;
+  status: string;
+  isBuyerOrAdmin: boolean;
+  startTime: string;
+  endTime: string;
+  minimumNextBid: number;
+}) {
+  const title = live ? (isBuyerOrAdmin ? 'Monitor live bid movement' : 'Bidding is open') : 'Bidding is locked';
+  const description = live
+    ? isBuyerOrAdmin
+      ? 'Watch current L1, invited sellers, bid log, and close/pause only when sourcing rules permit.'
+      : `Enter a value at or below ${minimumNextBid > 0 ? formatCurrency(minimumNextBid) : 'the permitted next bid'}, accept terms, then confirm submission.`
+    : `Current status is ${status.replace(/_/g, ' ')}. Window: ${formatDateTime(startTime)} to ${formatDateTime(endTime)}.`;
+  return (
+    <div className={cn('rounded-lg border p-3', live ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50')}>
+      <p className={cn('text-xs font-black', live ? 'text-emerald-800' : 'text-amber-800')}>{title}</p>
+      <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-700">{description}</p>
+    </div>
+  );
+}
+
+function MiniStatus({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+      <p className="mt-1 text-xs font-black text-slate-900">{value}</p>
     </div>
   );
 }

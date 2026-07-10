@@ -23,26 +23,32 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
   const auction = useQuery({ 
     queryKey: ['reverse-auction', id], 
     queryFn: () => reverseAuctionApi.get(id), 
-    refetchInterval: 10_000 
+    staleTime: 30_000,
+    refetchInterval: isSeller ? false : 15_000,
+    refetchOnWindowFocus: false
   });
   
   const summary = useQuery({ 
     queryKey: ['reverse-auction-summary', id], 
     queryFn: () => reverseAuctionApi.liveSummary(id), 
-    refetchInterval: 5_000 
+    staleTime: 10_000,
+    refetchInterval: isSeller ? false : 10_000,
+    refetchOnWindowFocus: false
   });
 
   const participantsQuery = useQuery({
     queryKey: ['reverse-auction-participants', id],
     queryFn: () => reverseAuctionApi.participants(id),
-    refetchInterval: 10_000,
+    staleTime: 10_000,
+    refetchInterval: () => String(auction.data?.statusEnum || auction.data?.status || '').toUpperCase() === 'LIVE' ? 5_000 : 20_000,
     enabled: !isSeller
   });
 
   const bidsQuery = useQuery({
     queryKey: ['reverse-auction-bids', id],
     queryFn: () => reverseAuctionApi.bids(id),
-    refetchInterval: 5_000,
+    staleTime: 5_000,
+    refetchInterval: () => String(auction.data?.statusEnum || auction.data?.status || '').toUpperCase() === 'LIVE' ? 5_000 : 20_000,
     enabled: !isSeller
   });
 
@@ -129,20 +135,26 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
 
   if (isSeller) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4 pb-12">
+      <div className="mx-auto max-w-5xl space-y-4 pb-12">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
             <ArrowLeft className="mr-1 h-4 w-4" /> Back to Auctions
           </Link>
         </div>
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#12335f]">{auction.data.auctionCode || `RA-${id}`}</span>
             <h1 className="mt-1 text-xl font-black text-slate-900">{auction.data.title || 'Reverse Auction Sourcing'}</h1>
+            <p className="mt-2 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500">
+              Review rules here. Use live console for bid entry, rank updates, and server-time validation.
+            </p>
           </div>
           <Link href={`/reverse-auctions/${id}/live`}>
             <Button type="button"><Activity className="mr-2 h-4 w-4" />Open Live Bid Console</Button>
           </Link>
+          </div>
+          <SellerNextStep status={status} startTime={auction.data.startTime} endTime={auction.data.endTime} />
         </div>
 
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -158,7 +170,14 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
         </div>
 
         {/* Seller Info Cards */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="border-slate-200 shadow-sm md:col-span-3">
+            <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
+              <InfoRow label="Current Lowest" value={currentLowest > 0 ? formatCurrency(currentLowest) : 'No bid yet'} />
+              <InfoRow label="Tracked Savings" value={savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : 'Not established'} />
+              <InfoRow label="Window" value={`${formatDateTime(auction.data.startTime)} to ${formatDateTime(auction.data.endTime)}`} />
+            </CardContent>
+          </Card>
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-4 space-y-3">
               <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5"><FileText className="h-4 w-4 text-[#12335f]" /> Overview & Schedule</h3>
@@ -183,6 +202,16 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
                 <InfoRow label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} />
                 <InfoRow label="Auto-Extension" value={autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
                 {auction.data.termsDocumentName && <InfoRow label="Terms Document" value={auction.data.termsDocumentName} />}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-4 space-y-3">
+              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5"><HelpCircle className="h-4 w-4 text-[#12335f]" /> What Sellers Should Check</h3>
+              <div className="space-y-2 text-xs font-semibold leading-relaxed text-slate-600">
+                <p>1. Confirm opening price, decrement, reserve visibility, and auction end time.</p>
+                <p>2. Open live console before bidding; details page intentionally hides competitive movement.</p>
+                <p>3. Submit only after checking stock, delivery capacity, tax impact, and margin.</p>
               </div>
             </CardContent>
           </Card>
@@ -536,6 +565,27 @@ function EmptyPanel({ title, description }: { title: string; description: string
     <div className="rounded-lg border border-dashed border-slate-250 bg-slate-50 p-6 text-center">
       <p className="text-xs font-black text-slate-800">{title}</p>
       <p className="mt-1 text-[11px] font-semibold text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function SellerNextStep({ status, startTime, endTime }: { status: string; startTime: string; endTime: string }) {
+  const now = Date.now();
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const live = status === 'LIVE' && start <= now && end > now;
+  const title = live ? 'Auction is open for bidding' : status === 'SCHEDULED' ? 'Auction is scheduled' : status === 'CLOSED' ? 'Auction is closed' : 'Auction is not accepting bids';
+  const description = live
+    ? 'Go to live console to submit a lower commercial bid.'
+    : status === 'SCHEDULED'
+      ? `Prepare now. Bidding window starts at ${formatDateTime(startTime)}.`
+      : status === 'CLOSED'
+        ? 'Review final rules and bid history from live screen; new bid submission is locked.'
+        : `Current status is ${status.replace(/_/g, ' ')}.`;
+  return (
+    <div className={cn('mt-4 rounded-lg border p-3', live ? 'border-emerald-200 bg-emerald-50' : 'border-blue-200 bg-blue-50')}>
+      <p className={cn('text-xs font-black', live ? 'text-emerald-800' : 'text-[#12335f]')}>{title}</p>
+      <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">{description}</p>
     </div>
   );
 }

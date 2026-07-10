@@ -5,7 +5,7 @@ import { Clock3, Filter, Gavel, Plus, RadioTower, RefreshCw, Search, Trophy, Bui
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
-import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../../shared/format';
+import { formatCurrency, formatDate, formatDateTime, formatNumber, formatRelative } from '../../shared/format';
 import { Pagination } from '../../shared/Pagination';
 import { usePagination, useResponsiveViewMode } from '../../shared/hooks';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
@@ -40,7 +40,8 @@ export default function ReverseAuctionListPage() {
       globalAuctionsCache = result;
       return result;
     },
-    staleTime: 20_000,
+    staleTime: 45_000,
+    refetchOnWindowFocus: false,
     placeholderData: (previous) => {
       if (previous !== undefined) return previous;
       if (globalAuctionsCache !== null) return globalAuctionsCache;
@@ -78,12 +79,20 @@ export default function ReverseAuctionListPage() {
     const live = auctions.filter(auction => getAuctionStatus(auction) === 'LIVE').length;
     const scheduled = auctions.filter(auction => getAuctionStatus(auction) === 'SCHEDULED').length;
     const closed = auctions.filter(auction => ['CLOSED', 'AWARD_RECOMMENDED'].includes(getAuctionStatus(auction))).length;
+    const actionRequired = auctions.filter(auction => ['LIVE', 'PAUSED'].includes(getAuctionStatus(auction))).length;
     const savings = auctions.reduce((sum, auction) => {
       const start = Number(auction.startPrice || 0);
       const current = Number(auction.currentLowestAmount || 0);
       return current > 0 && start > current ? sum + (start - current) : sum;
     }, 0);
-    return { total: auctions.length, live, scheduled, closed, savings };
+    return { total: auctions.length, live, scheduled, closed, actionRequired, savings };
+  }, [auctions]);
+
+  const nextAuction = useMemo(() => {
+    const now = Date.now();
+    return auctions
+      .filter(auction => new Date(auction.endTime).getTime() >= now)
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0];
   }, [auctions]);
 
   const { page, pageSize, pageItems, total, setPage, setPageSize } = usePagination(filteredAuctions, 10);
@@ -99,7 +108,8 @@ export default function ReverseAuctionListPage() {
           <ArrowLeft className="mr-1 h-4 w-4" /> Back to Dashboard
         </Link>
       </div>
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
             {isSeller ? 'Sourcing Portal' : 'Procurement Sourcing'}
@@ -107,10 +117,10 @@ export default function ReverseAuctionListPage() {
           <h1 className="text-2xl font-black text-slate-950">
             {isSeller ? 'Unified Sourcing Auctions' : 'Reverse Auctions'}
           </h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">
+          <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500">
             {isSeller
-              ? 'Participate in live downward auctions, scheduled dynamic bids, and submit commercial offers.'
-              : 'Create, monitor, close, and recommend L1 awards for unified sourcing events.'}
+              ? 'Review upcoming auction windows, join live bidding consoles, and track your latest commercial position from one screen.'
+              : 'Create, monitor, close, and recommend L1 awards with clear visibility into schedule, rules, participation, and savings.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -125,12 +135,27 @@ export default function ReverseAuctionListPage() {
             </Link>
           )}
         </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+          <GuideTile
+            title={stats.live > 0 ? 'Live auction needs attention' : 'No live auction right now'}
+            description={stats.live > 0 ? 'Use the Live button to open the server-time bidding screen.' : 'Use timeline filters to prepare for upcoming sessions.'}
+          />
+          <GuideTile
+            title={nextAuction ? `Next window: ${formatRelative(nextAuction.startTime)}` : 'No upcoming window'}
+            description={nextAuction ? `${nextAuction.auctionCode || `RA-${nextAuction.id}`} starts ${formatDateTime(nextAuction.startTime)}.` : 'Create or schedule a reverse auction from procurement wizard.'}
+          />
+          <GuideTile
+            title={`${formatNumber(filteredAuctions.length)} visible after filters`}
+            description="Search and filters apply locally after first load, so switching views stays fast."
+          />
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiTile label="Total auctions" value={formatNumber(stats.total)} icon={Gavel} tone="navy" />
         <KpiTile label="Live now" value={formatNumber(stats.live)} icon={RadioTower} tone="green" />
-        <KpiTile label="Scheduled" value={formatNumber(stats.scheduled)} icon={Clock3} tone="amber" />
+        <KpiTile label={isSeller ? 'Action windows' : 'Scheduled'} value={formatNumber(isSeller ? stats.actionRequired : stats.scheduled)} icon={Clock3} tone="amber" />
         <KpiTile label="Tracked savings" value={formatCurrency(stats.savings)} icon={Trophy} tone="blue" />
       </div>
 
@@ -302,6 +327,15 @@ function KpiTile({ label, value, icon: Icon, tone }: { label: string; value: str
   );
 }
 
+function GuideTile({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-black text-slate-900">{title}</p>
+      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500">{description}</p>
+    </div>
+  );
+}
+
 function Select({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: Array<{ label: string; value: string }> }) {
   return (
     <select
@@ -315,6 +349,9 @@ function Select({ value, onChange, options }: { value: string; onChange: (value:
 }
 
 function AuctionCard({ auction, isSeller }: { auction: ReverseAuction; isSeller?: boolean }) {
+  const status = getAuctionStatus(auction);
+  const currentLowest = Number(auction.currentLowestAmount || auction.currentLowestBid || auction.currentBid || 0);
+  const savings = Number(auction.startPrice || 0) > currentLowest && currentLowest > 0 ? Number(auction.startPrice || 0) - currentLowest : 0;
   return (
     <Card className="h-full border-slate-200 shadow-sm">
       <CardContent className="flex h-full flex-col p-4">
@@ -323,7 +360,15 @@ function AuctionCard({ auction, isSeller }: { auction: ReverseAuction; isSeller?
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{auction.auctionCode || `Auction #${auction.id}`}</p>
             <h2 className="mt-1 text-base font-black text-slate-950 text-wrap-anywhere">{auction.title || 'Reverse auction'}</h2>
           </div>
-          <StatusBadge status={getAuctionStatus(auction)} />
+          <StatusBadge status={status} />
+        </div>
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            {status === 'LIVE' ? 'Join live console' : status === 'SCHEDULED' ? `Starts ${formatRelative(auction.startTime)}` : `Status: ${prettifyStatus(status)}`}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-600">
+            {savings > 0 ? `${formatCurrency(savings)} saved from opening price.` : 'No confirmed price movement yet.'}
+          </p>
         </div>
         {isSeller ? (
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs">

@@ -151,14 +151,55 @@ const recalculateRanks = async (tx: any, auctionId: number) => {
     const orgId = Number(bid.sellerOrgId || 0);
     if (orgId && !bestByOrg.has(orgId)) bestByOrg.set(orgId, bid);
   }
+
+  const participants = await tx.auctionParticipant.findMany({
+    where: { auctionId }
+  });
+  const participantMap = new Map<number, any>(participants.map(p => [Number(p.sellerOrgId), p]));
+
   let rank = 1;
+  const participantUpdates = [];
+  const bidUpdates = [];
+
   for (const bid of bestByOrg.values()) {
-    await tx.auctionParticipant.updateMany({
-      where: { auctionId, sellerOrgId: bid.sellerOrgId },
-      data: { currentRank: rank, lastBidAmount: bid.amount || bid.bidAmount }
-    });
-    await tx.auctionBid.update({ where: { id: bid.id }, data: { rankAtSubmission: rank } }).catch(() => undefined);
+    const orgId = Number(bid.sellerOrgId || 0);
+    const p = participantMap.get(orgId);
+    const bidAmount = bid.amount || bid.bidAmount;
+
+    if (p) {
+      if (p.currentRank !== rank || toNumber(p.lastBidAmount) !== toNumber(bidAmount)) {
+        participantUpdates.push(
+          tx.auctionParticipant.updateMany({
+            where: { auctionId, sellerOrgId: orgId },
+            data: { currentRank: rank, lastBidAmount: bidAmount }
+          })
+        );
+      }
+    } else {
+      participantUpdates.push(
+        tx.auctionParticipant.updateMany({
+          where: { auctionId, sellerOrgId: orgId },
+          data: { currentRank: rank, lastBidAmount: bidAmount }
+        })
+      );
+    }
+
+    if (bid.rankAtSubmission !== rank) {
+      bidUpdates.push(
+        tx.auctionBid.update({
+          where: { id: bid.id },
+          data: { rankAtSubmission: rank }
+        }).catch(() => undefined)
+      );
+    }
     rank += 1;
+  }
+
+  if (participantUpdates.length > 0) {
+    await Promise.all(participantUpdates);
+  }
+  if (bidUpdates.length > 0) {
+    await Promise.all(bidUpdates);
   }
 };
 

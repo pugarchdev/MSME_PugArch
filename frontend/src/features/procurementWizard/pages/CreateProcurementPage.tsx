@@ -1237,7 +1237,7 @@ export default function CreateProcurementPage() {
         toast.error('Please invite at least 1 supplier or change sourcing scope to Open.');
         return false;
       }
-      if (isReverseAuctionMethod(d.type) && d.vendors.invitedSellers.length < d.auctionConfig.minimumQualifiedBidders) {
+      if (isReverseAuctionMethod(d.type) && d.vendors.selection !== 'Open' && d.vendors.invitedSellers.length < d.auctionConfig.minimumQualifiedBidders) {
         toast.error(`Reverse auction requires at least ${d.auctionConfig.minimumQualifiedBidders} qualified suppliers.`);
         return false;
       }
@@ -3882,6 +3882,52 @@ function VendorsStepForm({
           </label>
         </div>
       </div>
+
+      {isReverseAuctionMethod(draft.type) && (
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs border ${
+          draft.vendors.selection === 'Open'
+            ? 'bg-blue-50/50 border-blue-200 text-blue-800'
+            : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+              ? 'bg-amber-50/50 border-amber-200 text-amber-800'
+              : 'bg-emerald-50/50 border-emerald-200 text-emerald-800'
+        }`}>
+          <span className="text-sm shrink-0 font-normal">
+            {draft.vendors.selection === 'Open'
+              ? 'ℹ️'
+              : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+                ? '⚠️'
+                : '✅'}
+          </span>
+          <div>
+            <span className={`font-black uppercase text-[9px] tracking-wider block ${
+              draft.vendors.selection === 'Open'
+                ? 'text-blue-900'
+                : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+                  ? 'text-amber-900'
+                  : 'text-emerald-900'
+            }`}>
+              {draft.vendors.selection === 'Open'
+                ? 'Public Sourcing Active'
+                : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+                  ? 'Minimum Invited Suppliers Required'
+                  : 'Supplier Requirement Satisfied'}
+            </span>
+            <p className={`mt-0.5 leading-relaxed font-medium ${
+              draft.vendors.selection === 'Open'
+                ? 'text-blue-700'
+                : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+                  ? 'text-amber-700'
+                  : 'text-emerald-700'
+            }`}>
+              {draft.vendors.selection === 'Open'
+                ? 'Anyone can bid. Specific suppliers will be qualified during/after the bidding stage.'
+                : draft.vendors.invitedSellers.length < (draft.auctionConfig.minimumQualifiedBidders || 2)
+                  ? `Reverse auction requires at least ${draft.auctionConfig.minimumQualifiedBidders || 2} qualified suppliers. Please invite at least ${Math.max(0, (draft.auctionConfig.minimumQualifiedBidders || 2) - draft.vendors.invitedSellers.length)} more below.`
+                  : `You have invited ${draft.vendors.invitedSellers.length} suppliers. The minimum requirement of ${draft.auctionConfig.minimumQualifiedBidders || 2} is met.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {draft.vendors.selection !== 'Open' && (
         <SupplierSelector

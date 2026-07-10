@@ -26,6 +26,7 @@ import { formatCurrency, formatDateTime, formatNumber, formatRelative } from '..
 import { cn } from '../../../lib/utils';
 import { useAuth } from '../../../hooks/useAuth';
 import { reverseAuctionApi, type ReverseAuction, type ReverseAuctionBid, type ReverseAuctionParticipant } from '../api';
+import { toast } from 'sonner';
 
 const numberValue = (value: unknown, fallback = 0) => {
   const parsed = Number(value ?? fallback);
@@ -109,10 +110,13 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
     onSuccess: () => {
       setAmount('');
       setLocalError('');
+      toast.success('Bid submitted successfully!');
       invalidate();
     },
     onError: (err: any) => {
-      setLocalError(err.message || 'Bid submission failed');
+      const errorMsg = err.message || 'Bid submission failed';
+      setLocalError(errorMsg);
+      toast.error(errorMsg);
     }
   });
 

@@ -1094,7 +1094,7 @@ const validateProcurementDraftForSubmit = (draft: any) => {
   }
   if (['reverse-auction', 'bid-with-reverse-auction'].includes(methodSlug)) {
     const auctionConfig = normalizeAuctionConfigForDraft(draft);
-    validateAuctionConfigForDraft(auctionConfig, methodSlug);
+    validateAuctionConfigForDraft(auctionConfig, methodSlug, payload.vendors?.selection);
   }
   if (methodSlug === 'rate-contract') {
     const rateContractConfig = normalizeRateContractConfigForDraft(draft);
@@ -1246,7 +1246,7 @@ const normalizeAuctionConfigForDraft = (draft: any) => {
   };
 };
 
-const validateAuctionConfigForDraft = (configInput: Record<string, unknown>, methodSlug: string) => {
+const validateAuctionConfigForDraft = (configInput: Record<string, unknown>, methodSlug: string, vendorSelection?: string) => {
   const parsed = auctionConfigSchema.safeParse(configInput);
   if (!parsed.success) {
     throw new ApiError(400, parsed.error.issues[0]?.message || 'Reverse auction configuration is invalid', 'PROCUREMENT_AUCTION_CONFIG_INVALID');
@@ -1264,7 +1264,7 @@ const validateAuctionConfigForDraft = (configInput: Record<string, unknown>, met
   if (config.reservePrice && Number(config.reservePrice) > Number(config.startingBidPrice)) {
     throw new ApiError(400, 'Reserve price must be less than or equal to starting bid price', 'PROCUREMENT_AUCTION_RESERVE_INVALID');
   }
-  if (config.qualifiedVendors.length < config.minimumQualifiedBidders) {
+  if (vendorSelection !== 'Open' && config.qualifiedVendors.length < config.minimumQualifiedBidders) {
     throw new ApiError(400, 'Qualified vendor list must meet the minimum qualified bidders requirement', 'PROCUREMENT_AUCTION_VENDOR_COUNT_INVALID');
   }
   if (config.autoExtensionEnabled && (!config.extensionTriggerMinutes || !config.extensionDurationMinutes || !config.maximumExtensions)) {
@@ -1492,7 +1492,7 @@ const createAuctionForSubmittedProcurement = async (req: AuthRequest, requiremen
   const existing = await db.auction.findFirst({ where: { linkedRequirementId: requirement.id } });
   if (existing) return existing;
 
-  const config = validateAuctionConfigForDraft(normalizeAuctionConfigForDraft(draftBody), methodSlug);
+  const config = validateAuctionConfigForDraft(normalizeAuctionConfigForDraft(draftBody), methodSlug, (draftBody.payload as any)?.vendors?.selection);
   const auction = await db.auction.create({
     data: {
       linkedRequirementId: requirement.id,

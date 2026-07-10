@@ -816,22 +816,26 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
     let eventSource: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
     let disposed = false;
+    let retryCount = 0;
 
     const scheduleReconnect = () => {
       if (disposed || retryTimeout) return;
+      const delay = Math.min(30000, 1000 * (2 ** retryCount));
+      retryCount += 1;
       retryTimeout = setTimeout(() => {
         retryTimeout = null;
         connectStream();
-      }, 1000);
+      }, delay);
     };
 
     const connectStream = () => {
-      if (disposed) return;
+      if (disposed || retryCount > 5) return;
       try {
         eventSource?.close();
         eventSource = new EventSource(streamUrl, { withCredentials: true });
 
         eventSource.addEventListener('connected', () => {
+          retryCount = 0;
           console.log('[SSE] Notification stream connected successfully');
         });
 
@@ -857,7 +861,10 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
 
         eventSource.addEventListener('error', (err) => {
           if (disposed) return;
-          console.warn('[SSE] EventSource connection error. Waiting for browser reconnect...', err);
+          console.warn('[SSE] EventSource connection error. Reconnecting with backoff...', err);
+          eventSource?.close();
+          eventSource = null;
+          scheduleReconnect();
         });
       } catch (err) {
         console.error('[SSE] Failed to initialize EventSource:', err);

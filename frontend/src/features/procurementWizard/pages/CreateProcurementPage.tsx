@@ -665,6 +665,18 @@ const CATEGORY_OPTIONS = [
   'Other',
 ];
 
+const SUBCATEGORY_OPTIONS = [
+  'Hardware Sourcing',
+  'Software Sourcing',
+  'Maintenance Services',
+  'Structural Steel',
+  'Piping Equipment',
+  'Safety Gear',
+  'Office Furniture',
+  'Electrical Cables',
+  'Other',
+];
+
 const stepLibrary = {
   basics: { id: 'basics', label: 'Procurement Intent', description: 'Buyer type, title, value & method', icon: ClipboardCheck },
   internal: { id: 'internal', label: 'Internal Details', description: 'Cost center, CFA & justifications', icon: ShieldCheck },
@@ -864,6 +876,7 @@ export default function CreateProcurementPage() {
   const [activeStep, setActiveStep] = useState(0);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submittingDraft, setSubmittingDraft] = useState(false);
+  const [triedNext, setTriedNext] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<ItemRow | null>(null);
   const [hasAutofilled, setHasAutofilled] = useState(false);
@@ -4914,6 +4927,8 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     financialEvaluationDate: draft.schedule.financialOpeningDate || undefined,
     performanceSecurityAmount: draft.terms.securityDeposit || 0,
     scopeOfWork: draft.serviceDetails.scopeOfWork || draft.basics.justification || '',
+    deliveryLocation,
+    deliveryAddress: deliveryLocation,
   };
 
   const basics = {
@@ -4922,6 +4937,8 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     description: `Sourcing Method: ${draft.type}\nValue: INR ${estimatedValue.toLocaleString('en-IN')}\nUrgency: ${draft.basics.priority}`,
     buyerType: draft.basics.buyerType,
     whatAreYouBuying: draft.basics.whatAreYouBuying,
+    estimatedValue,
+    deliveryLocation,
   };
 
   const auctionConfigPayload = isReverseAuctionMethod(draft.type) ? {

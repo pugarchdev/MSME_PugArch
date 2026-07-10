@@ -26,6 +26,9 @@ export type AuthRequest = Request & {
   user?: AuthenticatedUser;
 };
 
+const isNoisyNotificationStream = (req: Request) =>
+  req.method === 'GET' && req.originalUrl.split('?')[0] === '/api/notifications/stream';
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization || '';
   const [scheme, headerToken] = authHeader.split(' ');
@@ -37,13 +40,15 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       : getAccessTokenFromRequest(req);
 
   if (!token) {
-    void auditLog({
-      action: 'security.unauthorized_access',
-      entityType: 'api',
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: { path: req.originalUrl, method: req.method, reason: 'missing_token' }
-    });
+    if (!isNoisyNotificationStream(req)) {
+      void auditLog({
+        action: 'security.unauthorized_access',
+        entityType: 'api',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { path: req.originalUrl, method: req.method, reason: 'missing_token' }
+      });
+    }
     return apiResponse.error(res, 401, 'Authentication token is required', 'AUTH_TOKEN_MISSING');
   }
 
@@ -126,15 +131,17 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       );
     } catch (err: any) {
       if (err.message === 'SESSION_INVALID') {
-        void auditLog({
-          actorUserId: userId || undefined,
-          actorRole: String(decoded.role || ''),
-          action: 'security.unauthorized_access',
-          entityType: 'api',
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: { path: req.originalUrl, method: req.method, reason: 'invalid_session' }
-        });
+        if (!isNoisyNotificationStream(req)) {
+          void auditLog({
+            actorUserId: userId || undefined,
+            actorRole: String(decoded.role || ''),
+            action: 'security.unauthorized_access',
+            entityType: 'api',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { path: req.originalUrl, method: req.method, reason: 'invalid_session' }
+          });
+        }
         return apiResponse.error(res, 401, 'Session expired. Please sign in again.', 'SESSION_INVALID');
       }
       throw err;
@@ -164,13 +171,15 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     return next();
   } catch {
-    void auditLog({
-      action: 'security.unauthorized_access',
-      entityType: 'api',
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: { path: req.originalUrl, method: req.method, reason: 'invalid_token' }
-    });
+    if (!isNoisyNotificationStream(req)) {
+      void auditLog({
+        action: 'security.unauthorized_access',
+        entityType: 'api',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { path: req.originalUrl, method: req.method, reason: 'invalid_token' }
+      });
+    }
     return apiResponse.error(res, 401, 'Invalid authentication token', 'AUTH_TOKEN_INVALID');
   }
 };

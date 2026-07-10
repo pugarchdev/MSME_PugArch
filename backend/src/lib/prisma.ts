@@ -11,7 +11,9 @@ const AFFECTED_MODELS = new Set([
 const prismaClientSingleton = () => {
   let dbUrl = process.env.DATABASE_URL;
   if (dbUrl && !dbUrl.includes('connection_limit=')) {
-    dbUrl += (dbUrl.includes('?') ? '&' : '?') + 'connection_limit=30&pool_timeout=20';
+    const connectionLimit = process.env.PRISMA_CONNECTION_LIMIT || '50';
+    const poolTimeout = process.env.PRISMA_POOL_TIMEOUT || '30';
+    dbUrl += (dbUrl.includes('?') ? '&' : '?') + `connection_limit=${connectionLimit}&pool_timeout=${poolTimeout}`;
   }
   const client = new PrismaClient(dbUrl ? {
     datasources: {

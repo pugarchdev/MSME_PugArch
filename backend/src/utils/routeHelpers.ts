@@ -5,8 +5,12 @@ const isDatabaseUnavailableError = (err: any) => {
   const message = String(err?.message || '');
   return (
     err?.code === 'P1001' ||
+    err?.code === 'P1017' ||
     err?.code === 'P2024' ||
+    (err?.code === 'P2028' && message.includes('Transaction already closed')) ||
     message.includes("Can't reach database server") ||
+    message.includes('Server has closed the connection') ||
+    message.includes('Transaction already closed') ||
     message.toLowerCase().includes('timed out fetching a new connection')
   );
 };

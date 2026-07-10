@@ -43,6 +43,30 @@ import { ratingsService } from '../modules/ratings/ratings.service.js';
 import { STRICT_VERIFICATION } from '../config/verification.js';
 import { getDefaultCompanyId } from '../services/default-company.service.js';
 
+const safeCoercedDate = z.preprocess((val) => {
+  if (val === null || val === undefined || val === '') return val;
+  if (val instanceof Date) return val;
+  if (typeof val === 'object' && val !== null && Object.prototype.toString.call(val) === '[object Date]') {
+    return val;
+  }
+  if (typeof val === 'string' && val.trim() !== '') {
+    const parts = val.split('-');
+    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      const isoStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      const d = new Date(isoStr);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return val;
+}, z.any().refine(val => {
+  if (val === null || val === undefined) return true;
+  return val instanceof Date || (typeof val === 'object' && val !== null && Object.prototype.toString.call(val) === '[object Date]' && !isNaN((val as Date).getTime()));
+}, {
+  message: "Invalid date"
+}));
+
 const db = prisma as any;
 const router = Router();
 
@@ -761,7 +785,7 @@ const requirementBody = z.object({
   categoryId: z.coerce.number().int().positive().optional(),
   procurementMethod: z.enum(['DIRECT_PURCHASE', 'RFQ', 'TENDER', 'REVERSE_AUCTION', 'RATE_CONTRACT']).default('TENDER'),
   estimatedValue: z.coerce.number().nonnegative().optional(),
-  requiredBy: z.coerce.date().optional(),
+  requiredBy: safeCoercedDate.optional(),
   items: z.array(z.object({
     productId: z.coerce.number().int().positive().optional(),
     itemName: z.string().trim().min(2).max(200),
@@ -1148,8 +1172,8 @@ const auctionConfigSchema = z.object({
   purchaseOrganization: z.string().trim().max(160).optional(),
   auctionType: z.enum(['ENGLISH_REVERSE', 'RANK_BASED_REVERSE']),
   auctionMode: z.enum(['ONLINE']),
-  auctionStartDateTime: z.coerce.date(),
-  auctionEndDateTime: z.coerce.date(),
+  auctionStartDateTime: safeCoercedDate,
+  auctionEndDateTime: safeCoercedDate,
   auctionDurationMinutes: z.coerce.number().int().positive(),
   startingBidPrice: z.coerce.number().positive(),
   reservePrice: z.coerce.number().positive().optional().nullable(),
@@ -1275,8 +1299,8 @@ const rateContractConfigSchema = z.object({
   contractDescription: z.string().trim().max(4000).optional().default(''),
   contractCategory: z.string().trim().max(160).optional().default(''),
   contractSubCategory: z.string().trim().max(160).optional().default(''),
-  periodStartDate: z.coerce.date(),
-  periodEndDate: z.coerce.date(),
+  periodStartDate: safeCoercedDate,
+  periodEndDate: safeCoercedDate,
   rateValidityPeriod: z.string().trim().min(2).max(120),
   supplierSelectionStrategy: z.enum(['SINGLE_SUPPLIER', 'MULTI_SUPPLIER', 'PANEL_RATE_CONTRACT', 'ITEM_WISE_L1']),
   selectedSuppliers: z.array(z.object({
@@ -1403,17 +1427,20 @@ const saveProcurementDraft = async (req: AuthRequest, body: z.infer<typeof procu
   };
 
   const saved = body.id
-    ? await db.$transaction(async (tx: any) => {
-      const existing = await tx.requirement.findFirst({ where: { id: body.id, buyerId: userId(req) } });
+    ? await (async () => {
+      const existing = await db.requirement.findFirst({ where: { id: body.id, buyerId: userId(req) } });
       if (!existing) throw new ApiError(404, 'Procurement draft not found', 'PROCUREMENT_DRAFT_NOT_FOUND');
       if (!['DRAFT', 'REJECTED'].includes(String(existing.status))) throw new ApiError(409, 'Submitted procurement cannot be edited as a draft', 'PROCUREMENT_DRAFT_LOCKED');
-      await tx.requirementItem.deleteMany({ where: { requirementId: body.id } });
-      return tx.requirement.update({
-        where: { id: body.id },
-        data: { ...data, items: items.length ? { create: items } : undefined },
-        include: procurementDraftInclude
-      });
-    })
+      const [, updated] = await db.$transaction([
+        db.requirementItem.deleteMany({ where: { requirementId: body.id } }),
+        db.requirement.update({
+          where: { id: body.id },
+          data: { ...data, items: items.length ? { create: items } : undefined },
+          include: procurementDraftInclude
+        })
+      ], { maxWait: 10_000, timeout: 30_000 });
+      return updated;
+    })()
     : await procurementWorkflow.createRequirement(actorFrom(req), {
       ...data,
       items,
@@ -1567,7 +1594,7 @@ const tenderBody = z.object({
   budget: z.coerce.number().positive(),
   description: z.string().trim().min(5).max(5000),
   documentUrl: z.string().trim().max(1000).optional(),
-  closesAt: z.coerce.date().optional(),
+  closesAt: safeCoercedDate.optional(),
   quantityUnit: z.string().trim().max(40).optional(),
   paymentTerms: z.string().trim().max(80).optional(),
   deliveryType: z.string().trim().max(80).optional()
@@ -1580,7 +1607,7 @@ const bidBody = z.object({
   discountAmount: z.coerce.number().nonnegative().optional(),
   deliveryDays: z.coerce.number().int().positive(),
   warranty: z.string().trim().max(500).nullable().optional(),
-  validTill: z.coerce.date().nullable().optional(),
+  validTill: safeCoercedDate.nullable().optional(),
   note: z.string().trim().max(2000).nullable().optional(),
   documentUrl: z.string().trim().max(1000).nullable().optional(),
   fileAssetId: z.coerce.number().int().positive().nullable().optional()
@@ -1598,13 +1625,13 @@ const quoteRequestBody = z.object({
   message: z.string().trim().min(1).max(4000),
   documentUrl: z.string().trim().max(1000).optional(),
   estimatedValue: z.coerce.number().nonnegative().optional(),
-  deadlineDate: z.coerce.date().optional()
+  deadlineDate: safeCoercedDate.optional()
 });
 
 const quoteResponseBody = z.object({
   totalAmount: z.coerce.number().nonnegative().optional(),
   deliveryDays: z.coerce.number().int().positive().optional(),
-  validityDate: z.coerce.date().optional(),
+  validityDate: safeCoercedDate.optional(),
   notes: z.string().trim().max(2000).optional(),
   documentUrl: z.string().trim().max(1000).optional()
 });
@@ -3898,7 +3925,8 @@ router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(a
         isV2: true,
         basics: {
           title,
-          estimatedValue: Number(step3.estimatedValue || 0)
+          estimatedValue: Number(step3.estimatedValue || 0),
+          deliveryLocation
         },
         tender: {
           deliveryLocation
@@ -4209,7 +4237,7 @@ router.post('/procurement/rate-contracts/:id/call-off-orders', authenticate, aut
     sellerId: z.coerce.number().int().positive(),
     title: z.string().trim().min(3).max(200).optional(),
     deliveryAddress: z.string().trim().min(3).max(1000),
-    expectedDelivery: z.coerce.date().optional(),
+    expectedDelivery: safeCoercedDate.optional(),
     items: z.array(z.object({
       itemName: z.string().trim().min(2).max(240),
       quantity: z.coerce.number().positive(),
@@ -5509,7 +5537,7 @@ router.post('/tenders/:id/auction', authenticate, requirePermission('reverse_auc
   await assertBuyerProcurementApproved(req);
   const tender = await assertTenderAccess(req, id);
   if (!isAdmin(req) && tender.buyerId !== userId(req)) throw new ApiError(403, 'Access denied', 'ACCESS_DENIED');
-  const body = parse(z.object({ startPrice: z.coerce.number().positive(), minDecrement: z.coerce.number().positive(), startTime: z.coerce.date(), endTime: z.coerce.date() }).refine(value => value.endTime > value.startTime, {
+  const body = parse(z.object({ startPrice: z.coerce.number().positive(), minDecrement: z.coerce.number().positive(), startTime: safeCoercedDate, endTime: safeCoercedDate }).refine(value => value.endTime > value.startTime, {
     message: 'Auction end time must be after start time',
     path: ['endTime']
   }), req.body);
@@ -5601,7 +5629,7 @@ router.post('/tenders/:id/comparative-statement', authenticate, requirePermissio
 
 router.post('/contracts', authenticate, requirePermission('purchase_order.create', orgScope), asyncRoute(async (req, res) => {
   await assertBuyerProcurementApproved(req);
-  const body = parse(z.object({ tenderId: z.coerce.number().int().positive().optional(), bidId: z.coerce.number().int().positive().optional(), title: z.string().min(3), value: z.coerce.number().nonnegative(), contractType: z.enum(['PURCHASE', 'RATE_CONTRACT', 'SERVICE_AGREEMENT', 'FRAMEWORK_AGREEMENT']).default('PURCHASE'), startDate: z.coerce.date().optional(), endDate: z.coerce.date().optional(), metadata: z.record(z.string(), z.unknown()).optional() }), req.body);
+  const body = parse(z.object({ tenderId: z.coerce.number().int().positive().optional(), bidId: z.coerce.number().int().positive().optional(), title: z.string().min(3), value: z.coerce.number().nonnegative(), contractType: z.enum(['PURCHASE', 'RATE_CONTRACT', 'SERVICE_AGREEMENT', 'FRAMEWORK_AGREEMENT']).default('PURCHASE'), startDate: safeCoercedDate.optional(), endDate: safeCoercedDate.optional(), metadata: z.record(z.string(), z.unknown()).optional() }), req.body);
   const contract = await contractWorkflow.createAfterAward(actorFrom(req), body);
   await auditWrite(req, 'contract.created', 'contract', contract.id);
   ok(res, contract, 201);

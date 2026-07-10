@@ -22,7 +22,7 @@ const assertBuyer = (actor: WorkflowActor) => {
 export const procurementWorkflow = {
   async createRequirement(actor: WorkflowActor, input: RequirementInput) {
     assertBuyer(actor);
-    const requirement = await db.$transaction(async (tx: any) => tx.requirement.create({
+    const requirement = await db.requirement.create({
       data: {
         requirementNumber: numberSeries('REQ'),
         buyerId: actor.id,
@@ -39,7 +39,7 @@ export const procurementWorkflow = {
         items: input.items?.length ? { create: input.items } : undefined
       },
       include: { items: true }
-    }));
+    });
     await auditWorkflow(actor, 'workflow.requirement.created', 'requirement', requirement.id);
     return requirement;
   },

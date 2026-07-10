@@ -14,6 +14,8 @@ type RealtimeNotification = {
 };
 
 let subscriber: Redis | null = null;
+const channelHandlers = new Map<string, Set<(payload: unknown) => void>>();
+let messageListenerAttached = false;
 
 export const publishRealtimeEvent = async (channel: string, payload: unknown) => {
   if (!redis || !isRedisReady()) return false;
@@ -44,15 +46,39 @@ export const subscribeRealtimeChannel = async (channel: string, handler: (payloa
 
   if (subscriber.status !== 'ready') return false;
 
-  subscriber.on('message', (_channel, raw) => {
-    if (_channel !== channel) return;
-    try {
-      handler(JSON.parse(raw));
-    } catch {
-      handler(raw);
-    }
-  });
+  if (!messageListenerAttached) {
+    subscriber.on('message', (_channel, raw) => {
+      const handlers = channelHandlers.get(_channel);
+      if (!handlers?.size) return;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = raw;
+      }
+      handlers.forEach(currentHandler => currentHandler(payload));
+    });
+    messageListenerAttached = true;
+  }
 
-  await subscriber.subscribe(channel);
-  return true;
+  let handlers = channelHandlers.get(channel);
+  if (!handlers) {
+    handlers = new Set();
+    channelHandlers.set(channel, handlers);
+    await subscriber.subscribe(channel);
+  }
+  handlers.add(handler);
+
+  return {
+    unsubscribe: () => {
+      const currentHandlers = channelHandlers.get(channel);
+      currentHandlers?.delete(handler);
+      if (!currentHandlers?.size) {
+        channelHandlers.delete(channel);
+        void subscriber?.unsubscribe(channel).catch(error => {
+          logger.warn({ err: error, channel }, 'Redis realtime unsubscribe failed');
+        });
+      }
+    }
+  };
 };

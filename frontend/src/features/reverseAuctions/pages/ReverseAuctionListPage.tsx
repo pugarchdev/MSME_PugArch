@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Clock3, Filter, Gavel, Plus, RadioTower, RefreshCw, Search, Trophy, Building2, UserCheck, Eye, ClipboardList, type LucideIcon } from 'lucide-react';
+import { Clock3, Filter, Gavel, Plus, RadioTower, RefreshCw, Search, Trophy, Building2, UserCheck, Eye, ClipboardList, ArrowLeft, type LucideIcon } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
@@ -94,6 +94,11 @@ export default function ReverseAuctionListPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={isSeller ? "/dashboard" : "/buyer/dashboard"} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back to Dashboard
+        </Link>
+      </div>
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">

@@ -474,7 +474,7 @@ function AuctionRulesCard({ auction, minimumNextBid, live }: { auction: ReverseA
 
 function SellerPositionCard({ participant, myBestBid, latestBid, bidCount }: { participant: ReverseAuctionParticipant | null; myBestBid: number; latestBid?: ReverseAuctionBid; bidCount: number }) {
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="border-slate-100 shadow-sm transition hover:shadow-md">
       <CardContent className="p-4">
         <SectionHeader icon={Trophy} title="My Live Position" subtitle="Rank is recalculated after valid lower bids are submitted." />
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -492,21 +492,21 @@ function SellerPositionCard({ participant, myBestBid, latestBid, bidCount }: { p
 
 function Metric({ icon: Icon, label, value, hint, tone }: { icon: typeof IndianRupee; label: string; value: string; hint?: string; tone: 'green' | 'amber' | 'blue' | 'slate' }) {
   const toneClass = {
-    green: 'bg-emerald-50 text-emerald-700',
-    amber: 'bg-amber-50 text-amber-700',
-    blue: 'bg-blue-50 text-blue-700',
-    slate: 'bg-slate-100 text-slate-700',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    blue: 'bg-blue-50 text-[#12335f] border-blue-100',
+    slate: 'bg-slate-100 text-slate-700 border-slate-200',
   }[tone];
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="border-slate-100 shadow-sm transition hover:shadow-md hover:border-slate-200/60">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-            <p className="mt-2 text-base font-black text-slate-950 text-wrap-anywhere">{value}</p>
-            {hint && <p className="mt-1 text-[10px] font-bold text-slate-400">{hint}</p>}
+          <div className="min-w-0 space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+            <p className="text-sm font-extrabold text-slate-900 leading-tight text-wrap-anywhere">{value}</p>
+            {hint && <p className="text-[9px] font-bold text-slate-400 leading-normal">{hint}</p>}
           </div>
-          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md', toneClass)}>
+          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border', toneClass)}>
             <Icon className="h-4 w-4" />
           </span>
         </div>
@@ -517,18 +517,18 @@ function Metric({ icon: Icon, label, value, hint, tone }: { icon: typeof IndianR
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:bg-slate-50 transition">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-black text-slate-900 text-wrap-anywhere">{value}</p>
+      <p className="mt-1 text-xs font-bold text-slate-900 text-wrap-anywhere">{value}</p>
     </div>
   );
 }
 
 function BidGuardrail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 hover:bg-slate-50 transition">
       <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-black text-slate-950">{value}</p>
+      <p className="mt-1 text-xs font-bold text-slate-950">{value}</p>
     </div>
   );
 }

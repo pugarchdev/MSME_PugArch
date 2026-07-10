@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Gavel, Pause, Play, RefreshCw, Send, Square, UserPlus, Loader2, X, Building2, Tag, Activity, FileText, Users, Award, ShieldAlert, Scale, Clock, Settings, HelpCircle, ChevronRight } from 'lucide-react';
+import { Gavel, Pause, Play, RefreshCw, Send, Square, UserPlus, Loader2, X, Building2, Tag, Activity, FileText, Users, Award, ShieldAlert, Scale, Clock, Settings, HelpCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
@@ -130,6 +130,11 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
   if (isSeller) {
     return (
       <div className="mx-auto max-w-4xl space-y-4 pb-12">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
+            <ArrowLeft className="mr-1 h-4 w-4" /> Back to Auctions
+          </Link>
+        </div>
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#12335f]">{auction.data.auctionCode || `RA-${id}`}</span>
@@ -505,13 +510,13 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
 
 function MetricCard({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
   return (
-    <div className="rounded border border-slate-200 bg-white p-3 shadow-xs">
+    <div className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm transition hover:shadow-md hover:border-[#12335f]/25">
       <div className="flex justify-between items-start gap-2">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-          <p className="text-xs font-bold text-slate-900 mt-1">{value}</p>
+        <div className="space-y-1">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+          <p className="text-sm font-extrabold text-slate-900 leading-tight">{value}</p>
         </div>
-        <span className="rounded bg-slate-100 p-1.5 text-slate-500"><Icon className="h-3.5 w-3.5" /></span>
+        <span className="rounded-lg bg-blue-50 p-2 text-[#12335f]"><Icon className="h-4 w-4" /></span>
       </div>
     </div>
   );
@@ -519,9 +524,9 @@ function MetricCard({ label, value, icon: Icon }: { label: string; value: string
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-slate-200 bg-slate-50 p-2.5">
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-bold text-slate-900 text-wrap-anywhere">{value}</p>
+    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:bg-slate-50 transition">
+      <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]/80">{label}</p>
+      <p className="mt-1.5 text-xs font-bold text-slate-800 text-wrap-anywhere leading-relaxed">{value}</p>
     </div>
   );
 }

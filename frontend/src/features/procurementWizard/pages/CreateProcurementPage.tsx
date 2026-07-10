@@ -5152,6 +5152,14 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
         ? sellerOrgId
         : { sellerOrgId }
     ),
+    triggerConfiguration: {
+      preBidStageRequired: draft.type === 'BID_WITH_REVERSE_AUCTION',
+      auctionAfterTechnicalQualification: draft.type === 'BID_WITH_REVERSE_AUCTION',
+      auctionAmongAllTechnicallyQualified: draft.type !== 'BID_WITH_REVERSE_AUCTION' || draft.auctionConfig.triggerConfiguration?.trigger !== 'TOP_N_BIDDERS',
+      auctionAmongTopNBidders: (draft.type === 'BID_WITH_REVERSE_AUCTION' && draft.auctionConfig.triggerConfiguration?.trigger === 'TOP_N_BIDDERS')
+        ? Number(draft.auctionConfig.triggerConfiguration?.topN || 3)
+        : null,
+    }
   } : null;
 
   const rateContractConfigPayload = isRateContractMethod(draft.type) ? {

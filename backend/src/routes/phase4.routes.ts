@@ -1242,7 +1242,18 @@ const normalizeAuctionConfigForDraft = (draft: any) => {
     minimumQualifiedBidders: raw.minimumQualifiedBidders || payload.schedule?.minimumBidders || 2,
     auctionTermsDocument: raw.auctionTermsDocument,
     buyerMonitorSettings: raw.buyerMonitorSettings || {},
-    triggerConfiguration: raw.triggerConfiguration
+    triggerConfiguration: (() => {
+      const tc = raw.triggerConfiguration || {};
+      const method = raw.procurementMethod || payload.basics?.method || payload.fullProcurementMethod || draft.canonicalMethod || draft.method || draft.procurementMethod || '';
+      const isHybrid = method === 'BID_WITH_REVERSE_AUCTION';
+      const triggerVal = tc.trigger;
+      return {
+        preBidStageRequired: Boolean(tc.preBidStageRequired ?? isHybrid),
+        auctionAfterTechnicalQualification: Boolean(tc.auctionAfterTechnicalQualification ?? isHybrid),
+        auctionAmongAllTechnicallyQualified: Boolean(tc.auctionAmongAllTechnicallyQualified ?? (triggerVal !== 'TOP_N_BIDDERS')),
+        auctionAmongTopNBidders: tc.auctionAmongTopNBidders ?? (triggerVal === 'TOP_N_BIDDERS' ? Number(tc.topN || 3) : null)
+      };
+    })()
   };
 };
 

@@ -124,7 +124,9 @@ export const getCurrentUserPermissions = async (userId: number, scope?: RbacScop
         'invoice.approve',
         'payment.view',
         'escrow.view',
-        'dispute.view'
+        'dispute.view',
+        'reverse_auction.view',
+        'reverse_auction.bid.submit'
       );
     } else if (user.role === 'buyer') {
       defaults.push(
@@ -162,7 +164,14 @@ export const getCurrentUserPermissions = async (userId: number, scope?: RbacScop
         'payment.initiate',
         'escrow.release',
         'dispute.view',
-        'dispute.manage'
+        'dispute.manage',
+        'reverse_auction.view',
+        'reverse_auction.create',
+        'reverse_auction.update',
+        'reverse_auction.publish',
+        'reverse_auction.close',
+        'reverse_auction.invite_seller',
+        'reverse_auction.award'
       );
     } else if (user.role === 'admin' || user.role === 'master_admin') {
       defaults.push('*');

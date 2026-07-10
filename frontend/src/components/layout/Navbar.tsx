@@ -480,9 +480,9 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
     { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
-      { label: 'Sourcing Hub / Dashboard', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
+      { label: 'Sourcing Hub', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: PlusCircle, roles: ['buyer'] },
-      { label: 'My Procurement Requests', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'My Procurements', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
       
       { label: 'Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
       

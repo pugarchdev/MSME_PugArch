@@ -29,7 +29,7 @@ const paginationQuery = z.object({
     verifiedSeller: z.enum(['true', 'false']).optional(),
     sort: z.enum(['popular', 'newest', 'latest', 'price_asc', 'price_desc', 'discount', 'most_purchased', 'verified', 'name']).optional(),
     page: z.coerce.number().int().min(1).default(1),
-    pageSize: z.coerce.number().int().min(1).max(100).default(12),
+    pageSize: z.coerce.number().int().min(1).max(500).default(12),
 }).partial();
 
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });

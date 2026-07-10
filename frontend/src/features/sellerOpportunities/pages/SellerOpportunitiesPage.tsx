@@ -150,10 +150,10 @@ export default function SellerOpportunitiesPage() {
     setError('');
 
     Promise.allSettled([
-      procurementBidApi.list({ pageSize: 50 }),
-      marketplaceApi.getRequirements({ pageSize: 50 }),
-      fetchQuoteRequests({ pageSize: 50 }),
-      reverseAuctionApi.list({ pageSize: 50 }),
+      procurementBidApi.list({ pageSize: 200 }),
+      marketplaceApi.getRequirements({ pageSize: 200 }),
+      fetchQuoteRequests({ pageSize: 200 }),
+      reverseAuctionApi.list({ pageSize: 200 }),
     ]).then(results => {
       if (!alive) return;
       const next: SellerOpportunity[] = [];
@@ -544,8 +544,8 @@ export default function SellerOpportunitiesPage() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
-          <div className="overflow-x-auto bg-slate-50/70 p-2">
-            <table className="w-full min-w-[1180px] border-separate border-spacing-y-2 text-sm">
+          <div className="overflow-x-auto bg-slate-50/70 p-2 pb-3">
+            <table className="w-full min-w-[1420px] border-separate border-spacing-y-2 text-sm">
               <thead className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="w-16 px-4 py-3 text-left whitespace-nowrap">S.No.</th>
@@ -559,7 +559,7 @@ export default function SellerOpportunitiesPage() {
                   <th className="px-4 py-3 text-left whitespace-nowrap">Tracking</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">Value</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Eligibility</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
+                  <th className="sticky right-0 z-20 w-[280px] min-w-[280px] bg-slate-50/95 px-4 py-3 text-right whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -569,7 +569,7 @@ export default function SellerOpportunitiesPage() {
                     <React.Fragment key={item.id}>
                       <tr className={cn('bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm', expanded && 'bg-blue-50/50')}>
                         <td className="rounded-l-2xl px-4 py-3 text-xs font-black text-slate-500 whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
-                        <td className="rounded-r-2xl px-4 py-3 whitespace-nowrap">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => setSelectedItem(item)}
@@ -590,12 +590,12 @@ export default function SellerOpportunitiesPage() {
                         <td className="px-4 py-3 whitespace-nowrap"><OpportunityProgress item={item} /></td>
                         <td className="px-4 py-3 text-right text-xs font-black text-[#12335f] whitespace-nowrap">{formatMoney(item.estimatedValue)}</td>
                         <td className="px-4 py-3 text-xs font-semibold text-slate-600 whitespace-nowrap">{item.eligibility}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex justify-end gap-2">
+                        <td className="sticky right-0 z-10 w-[280px] min-w-[280px] rounded-r-2xl bg-white px-4 py-3 whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setExpandedId(expanded ? null : item.id)}
-                              className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
+                              className="inline-flex h-8 min-w-[74px] items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
                             >
                               {expanded ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}
                               Track
@@ -603,11 +603,13 @@ export default function SellerOpportunitiesPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedItem(item)}
-                              className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
+                              className="inline-flex h-8 min-w-[66px] items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
                             >
                               <Eye className="mr-1 h-3.5 w-3.5" /> View
                             </button>
-                            <Link href={item.href} className="inline-flex h-8 items-center rounded-md bg-[#12335f] px-3 text-[10px] font-black text-white">{item.actionLabel}</Link>
+                            <Link href={item.href} title={item.actionLabel} className="inline-flex h-8 min-w-[94px] max-w-[112px] items-center justify-center rounded-md bg-[#12335f] px-2.5 text-center text-[10px] font-black leading-tight text-white shadow-sm hover:bg-[#0e2a4f]">
+                              {shortActionLabel(item.actionLabel)}
+                            </Link>
                           </div>
                         </td>
                       </tr>
@@ -630,6 +632,19 @@ export default function SellerOpportunitiesPage() {
       {selectedItem && <OpportunityDetailsDialog item={selectedItem} onClose={() => setSelectedItem(null)} />}
     </div>
   );
+}
+
+function shortActionLabel(label: string) {
+  if (!label || typeof label !== 'string') return '';
+  const normalized = label.toLowerCase();
+  if (normalized.includes('auction')) return 'Join';
+  if (normalized.includes('respond')) return 'Respond';
+  if (normalized.includes('track')) return 'Track';
+  if (normalized.includes('quote')) return 'Quote';
+  if (normalized.includes('information')) return 'Info';
+  if (normalized.includes('rate')) return 'Rates';
+  if (normalized.includes('submit')) return 'Submit';
+  return label.length > 12 ? `${label.slice(0, 10)}...` : label;
 }
 
 function SummaryTile({

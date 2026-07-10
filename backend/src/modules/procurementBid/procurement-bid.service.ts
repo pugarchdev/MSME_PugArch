@@ -457,7 +457,7 @@ export const assertBuyerOwner = (actor: Actor, bid: any) => {
 
 export const listPublicBids = async (query: any, actor?: any) => {
   const page = Math.max(1, Number(query.page || 1));
-  const pageSize = Math.min(50, Math.max(1, Number(query.pageSize || 12)));
+  const pageSize = Math.min(500, Math.max(1, Number(query.pageSize || 12)));
   const takeForMergedPage = page * pageSize;
 
   const restrictedBidsCondition = actor

@@ -12,10 +12,31 @@ import { MethodBadge, ProcurementStatusBadge, BuyerTypeBadge } from '../../procu
 import { Pagination } from '../../shared/Pagination';
 import { usePagination } from '../../shared/hooks';
 
+type SellerEventView = 'all' | 'invited' | 'submitted' | 'clarifications';
+
+const getEventView = (filter: string | null): SellerEventView => {
+  if (filter === 'invited') return 'invited';
+  if (filter === 'submitted') return 'submitted';
+  if (filter === 'clarifications') return 'clarifications';
+  return 'all';
+};
+
+const isInvitedBid = (bid: ProcurementBid) => {
+  const eligibility = Array.isArray(bid.eligibility) ? bid.eligibility.join(' ') : String(bid.eligibility || '');
+  const method = String(bid.procurementType || bid.bidType || '').toUpperCase();
+  return eligibility.toLowerCase().includes('invite') || method === 'RFQ';
+};
+
+const hasClarification = (bid: ProcurementBid) => {
+  const status = String(bid.clarificationStatus || '').toLowerCase();
+  return status === 'pending' || status === 'responded' || Boolean(bid.clarifications?.length);
+};
+
 export default function SellerEventListPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get('filter');
+  const activeView = getEventView(filterParam);
 
   const [bids, setBids] = useState<ProcurementBid[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,10 +46,7 @@ export default function SellerEventListPage() {
   // Filters
   const [method, setMethod] = useState('');
   const [status, setStatus] = useState('');
-  const [submissionStatus, setSubmissionStatus] = useState(() => {
-    if (filterParam === 'invited') return 'invited';
-    return '';
-  });
+  const [submissionStatus, setSubmissionStatus] = useState('');
   const [techStatus, setTechStatus] = useState(() => {
     if (filterParam === 'technical-pending') return 'Pending';
     return '';
@@ -60,6 +78,19 @@ export default function SellerEventListPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setPage(1);
+    setQuery('');
+    setMethod('');
+    setStatus('');
+    setSubmissionStatus('');
+    setTechStatus('');
+    setFinStatus('');
+    setDeadlineRange('');
+    setCategory('');
+    setBuyerOrg('');
+  }, [activeView]);
+
   // Unique values for filter dropdowns
   const categories = useMemo(() => Array.from(new Set(bids.map(b => b.category).filter(Boolean))).sort(), [bids]);
   const buyerOrgs = useMemo(() => Array.from(new Set(bids.map(b => b.buyerName).filter(Boolean))).sort(), [bids]);
@@ -85,13 +116,14 @@ export default function SellerEventListPage() {
       if (category && bid.category !== category) return false;
       if (buyerOrg && bid.buyerName !== buyerOrg) return false;
 
-      // Submission status filter
-      if (submissionStatus === 'invited' && !bid.eligibility?.toString().toLowerCase().includes('invite')) {
-        // Fallback check if it's RFQ or direct invitation
-        const isRfq = bid.procurementType?.toUpperCase() === 'RFQ';
-        if (!isRfq && !bid.participated) return false;
-      }
-      if (submissionStatus === 'submitted' && !bid.participated) return false;
+      // Route-level views. These make sidebar pages distinct instead of cosmetic duplicates.
+      if (activeView === 'invited' && !isInvitedBid(bid)) return false;
+      if (activeView === 'submitted' && !bid.participated) return false;
+      if (activeView === 'clarifications' && !hasClarification(bid)) return false;
+
+      // Manual submission filter for the All view.
+      if (activeView === 'all' && submissionStatus === 'invited' && !isInvitedBid(bid)) return false;
+      if (activeView === 'all' && submissionStatus === 'submitted' && !bid.participated) return false;
 
       // Packet status filters
       if (techStatus && bid.technicalStatus !== techStatus) return false;
@@ -105,7 +137,7 @@ export default function SellerEventListPage() {
 
       return true;
     });
-  }, [bids, query, method, status, category, buyerOrg, submissionStatus, techStatus, finStatus, deadlineRange]);
+  }, [activeView, bids, query, method, status, category, buyerOrg, submissionStatus, techStatus, finStatus, deadlineRange]);
 
   const { page, pageSize, total, pageItems, setPage } = usePagination(filteredBids, 10);
 
@@ -129,12 +161,39 @@ export default function SellerEventListPage() {
     return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-650">PENDING</span>;
   };
 
-  const isInvitedFilter = filterParam === 'invited';
-  const pageTitle = isInvitedFilter ? 'Invited Bids & Tenders' : 'Bids & Tenders Portal';
-  const pageLabel = isInvitedFilter ? 'Invited Bids' : 'All Bids & Tenders';
-  const pageDesc = isInvitedFilter 
-    ? 'Procurement bids and auctions where your organization has been explicitly invited by the buyer.'
-    : 'Live procurement bids, RFQs, RFPs, reverse auctions, and rate contracts open for participation.';
+  const viewMeta = {
+    all: {
+      title: 'Bids & Tenders Portal',
+      label: 'All Bids & Tenders',
+      desc: 'Live procurement bids, RFQs, RFPs, reverse auctions, and rate contracts open for participation.',
+      empty: 'No active opportunities found'
+    },
+    invited: {
+      title: 'Invited Bids & Tenders',
+      label: 'Invited Bids',
+      desc: 'Procurement bids where your organization was invited or matched through an RFQ-style sourcing event.',
+      empty: 'No invited bids found'
+    },
+    submitted: {
+      title: 'Submitted Bids',
+      label: 'Submitted Bids',
+      desc: 'Bids and tenders where your organization has already submitted participation or commercial response.',
+      empty: 'No submitted bids found'
+    },
+    clarifications: {
+      title: 'Bid Clarifications',
+      label: 'Clarifications',
+      desc: 'Clarification requests and responses connected to your tender participation lifecycle.',
+      empty: 'No clarification items found'
+    }
+  }[activeView];
+
+  const viewTabs: Array<{ label: string; href: string; view: SellerEventView }> = [
+    { label: 'All', href: '/seller/procurement/events', view: 'all' },
+    { label: 'Invited', href: '/seller/procurement/events?filter=invited', view: 'invited' },
+    { label: 'Submitted', href: '/seller/procurement/events?filter=submitted', view: 'submitted' },
+    { label: 'Clarifications', href: '/seller/procurement/events?filter=clarifications', view: 'clarifications' },
+  ];
 
   return (
     <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12">
@@ -142,10 +201,10 @@ export default function SellerEventListPage() {
       <div className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">{pageLabel}</p>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950">{pageTitle}</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">{viewMeta.label}</p>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">{viewMeta.title}</h1>
             <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">
-              {pageDesc}
+              {viewMeta.desc}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -156,6 +215,22 @@ export default function SellerEventListPage() {
               <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
             </Button>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {viewTabs.map(tab => (
+            <Link
+              key={tab.view}
+              href={tab.href}
+              className={cn(
+                'inline-flex h-8 items-center rounded-md border px-3 text-[10px] font-black uppercase tracking-wide transition',
+                activeView === tab.view
+                  ? 'border-[#12335f] bg-[#12335f] text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-[#12335f] hover:text-[#12335f]'
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -235,9 +310,11 @@ export default function SellerEventListPage() {
         ) : pageItems.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <ClipboardList className="h-10 w-10 mx-auto text-slate-350" />
-            <p className="text-sm font-bold text-slate-800">No active opportunities found</p>
+            <p className="text-sm font-bold text-slate-800">{viewMeta.empty}</p>
             <p className="text-xs text-slate-500 max-w-sm mx-auto font-semibold">
-              Adjust filters or search query, or verify with buyer organization invitations.
+              {activeView === 'all'
+                ? 'Adjust filters or search query, or verify with buyer organization invitations.'
+                : 'This section is intentionally filtered. Use All Bids & Tenders to see the full list.'}
             </p>
           </div>
         ) : (

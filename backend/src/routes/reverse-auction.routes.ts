@@ -288,7 +288,7 @@ router.post('/reverse-auctions', requirePermission('reverse_auction.create', org
 router.get('/reverse-auctions', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
     const page = Math.max(1, Number(req.query.page || 1));
-    const pageSize = Math.min(50, Math.max(1, Number(req.query.pageSize || 20)));
+    const pageSize = Math.min(500, Math.max(1, Number(req.query.pageSize || 20)));
     const status = req.query.status ? String(req.query.status) : undefined;
     const where: any = status ? { status } : {};
     if (req.user?.role === 'seller') {

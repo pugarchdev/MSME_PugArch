@@ -976,87 +976,90 @@ export default function CreateProcurementPage() {
 
   // Sourcing Validation Checklist
   const getReadiness = (d: Draft) => {
-    const list: Array<{ label: string; ok: boolean; severity: 'error' | 'warning' | 'info' }> = [];
+    const list: Array<{ label: string; ok: boolean; severity: 'error' | 'warning' | 'info'; stepIdx?: number }> = [];
     
     // Step 1 Basics - Errors
-    list.push({ label: 'Title is required (min 3 chars)', ok: d.basics.title.trim().length >= 3, severity: 'error' });
-    list.push({ label: 'Estimated budget must be set (> 0)', ok: d.basics.estimatedValue > 0, severity: 'error' });
-    list.push({ label: 'Required by date is required', ok: Boolean(d.basics.requiredByDate), severity: 'error' });
-    list.push({ label: 'Delivery location is required', ok: d.basics.deliveryLocation.trim().length > 0, severity: 'error' });
+    list.push({ label: 'Title is required (min 3 chars)', ok: d.basics.title.trim().length >= 3, severity: 'error', stepIdx: 0 });
+    list.push({ label: 'Estimated budget must be set (> 0)', ok: d.basics.estimatedValue > 0, severity: 'error', stepIdx: 0 });
+    list.push({ label: 'Required by date is required', ok: Boolean(d.basics.requiredByDate), severity: 'error', stepIdx: 0 });
+    list.push({ label: 'Delivery location is required', ok: d.basics.deliveryLocation.trim().length > 0, severity: 'error', stepIdx: 0 });
 
     // Step 2 Internal Details - Errors
-    list.push({ label: 'Internal Org Name is required', ok: d.internal.orgName.trim().length > 0, severity: 'error' });
+    list.push({ label: 'Internal Org Name is required', ok: d.internal.orgName.trim().length > 0, severity: 'error', stepIdx: 1 });
     if (d.basics.buyerType === 'GOVERNMENT_BUYER') {
-      list.push({ label: 'Competent Authority (CFA) is required', ok: d.internal.competentAuthority.trim().length > 0, severity: 'error' });
-      list.push({ label: 'Department File / Case Number is required', ok: d.internal.internalFileNumber.trim().length > 0, severity: 'error' });
-      list.push({ label: 'Sanction Approval Authority is required', ok: d.internal.approvalAuthority.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Competent Authority (CFA) is required', ok: d.internal.competentAuthority.trim().length > 0, severity: 'error', stepIdx: 1 });
+      list.push({ label: 'Department File / Case Number is required', ok: d.internal.internalFileNumber.trim().length > 0, severity: 'error', stepIdx: 1 });
+      list.push({ label: 'Sanction Approval Authority is required', ok: d.internal.approvalAuthority.trim().length > 0, severity: 'error', stepIdx: 1 });
     } else {
-      list.push({ label: 'Cost Center code is required', ok: d.internal.costCenter.trim().length > 0, severity: 'error' });
-      list.push({ label: 'Buying Department name is required', ok: d.internal.department.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Cost Center code is required', ok: d.internal.costCenter.trim().length > 0, severity: 'error', stepIdx: 1 });
+      list.push({ label: 'Buying Department name is required', ok: d.internal.department.trim().length > 0, severity: 'error', stepIdx: 1 });
     }
 
     // Step 3 Sourcing specification items - Errors
     if (d.basics.whatAreYouBuying === 'BOQ') {
-      list.push({ label: 'At least one BOQ item is required', ok: d.boqTable.length > 0 && d.boqTable.some(r => r.description.trim()), severity: 'error' });
+      list.push({ label: 'At least one BOQ item is required', ok: d.boqTable.length > 0 && d.boqTable.some(r => r.description.trim()), severity: 'error', stepIdx: 2 });
       if (d.boqTable.length > 0) {
-        list.push({ label: 'All BOQ rows must have positive quantities & rates', ok: d.boqTable.every(r => r.quantity > 0 && r.estimatedRate >= 0), severity: 'error' });
+        list.push({ label: 'All BOQ rows must have positive quantities & rates', ok: d.boqTable.every(r => r.quantity > 0 && r.estimatedRate >= 0), severity: 'error', stepIdx: 2 });
       }
     } else if (d.basics.whatAreYouBuying === 'Service') {
-      list.push({ label: 'Service Contract SOW is required (min 10 chars)', ok: d.serviceDetails.scopeOfWork.trim().length >= 10, severity: 'error' });
-      list.push({ label: 'Service Deliverables list is required (min 5 chars)', ok: d.serviceDetails.deliverables.trim().length >= 5, severity: 'error' });
-      list.push({ label: 'Service Duration is required', ok: d.serviceDetails.duration.trim().length > 0, severity: 'error' });
+      list.push({ label: 'Service Contract SOW is required (min 10 chars)', ok: d.serviceDetails.scopeOfWork.trim().length >= 10, severity: 'error', stepIdx: 2 });
+      list.push({ label: 'Service Deliverables list is required (min 5 chars)', ok: d.serviceDetails.deliverables.trim().length >= 5, severity: 'error', stepIdx: 2 });
+      list.push({ label: 'Service Duration is required', ok: d.serviceDetails.duration.trim().length > 0, severity: 'error', stepIdx: 2 });
     } else {
-      list.push({ label: 'At least one product item is required', ok: d.items.length > 0, severity: 'error' });
+      list.push({ label: 'At least one product item is required', ok: d.items.length > 0, severity: 'error', stepIdx: 2 });
       if (d.items.length > 0) {
-        list.push({ label: 'All product items must have valid name & quantity > 0', ok: d.items.every(i => i.name.trim().length > 0 && i.quantity > 0), severity: 'error' });
+        list.push({ label: 'All product items must have valid name & quantity > 0', ok: d.items.every(i => i.name.trim().length > 0 && i.quantity > 0), severity: 'error', stepIdx: 2 });
       }
     }
 
     // Step 4 Sourcing reach - Errors
     if (d.vendors.selection !== 'Open') {
-      list.push({ label: 'At least one invited supplier is required for non-open strategy', ok: (d.vendors.invitedSellers || []).length > 0, severity: 'error' });
+      list.push({ label: 'At least one invited supplier is required for non-open strategy', ok: (d.vendors.invitedSellers || []).length > 0, severity: 'error', stepIdx: 3 });
     }
 
     // Step 5 Event timeline - Errors
-    list.push({ label: 'Submission deadline date is required', ok: Boolean(d.schedule.submissionDate), severity: 'error' });
+    list.push({ label: 'Submission deadline date is required', ok: Boolean(d.schedule.submissionDate), severity: 'error', stepIdx: 4 });
     if (d.schedule.submissionDate && d.schedule.submissionStartDate) {
-      list.push({ label: 'Submission deadline must be after submission start date', ok: new Date(d.schedule.submissionDate) > new Date(d.schedule.submissionStartDate), severity: 'error' });
+      list.push({ label: 'Submission deadline must be after submission start date', ok: new Date(d.schedule.submissionDate) > new Date(d.schedule.submissionStartDate), severity: 'error', stepIdx: 4 });
     }
     if (d.basics.isTechnicalEvaluationNeeded || d.schedule.packetType === 'Two') {
-      list.push({ label: 'Technical opening date is required', ok: Boolean(d.schedule.technicalOpeningDate), severity: 'error' });
+      list.push({ label: 'Technical opening date is required', ok: Boolean(d.schedule.technicalOpeningDate), severity: 'error', stepIdx: 4 });
       if (d.schedule.technicalOpeningDate && d.schedule.submissionDate) {
-        list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) >= new Date(d.schedule.submissionDate), severity: 'error' });
+        list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) >= new Date(d.schedule.submissionDate), severity: 'error', stepIdx: 4 });
       }
     }
     if (d.schedule.packetType === 'Two') {
-      list.push({ label: 'Financial opening date is required for two packet flows', ok: Boolean(d.schedule.financialOpeningDate), severity: 'error' });
+      list.push({ label: 'Financial opening date is required for two packet flows', ok: Boolean(d.schedule.financialOpeningDate), severity: 'error', stepIdx: 4 });
       if (d.schedule.financialOpeningDate && d.schedule.technicalOpeningDate) {
-        list.push({ label: 'Financial opening date must be on or after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) >= new Date(d.schedule.technicalOpeningDate), severity: 'error' });
+        list.push({ label: 'Financial opening date must be on or after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) >= new Date(d.schedule.technicalOpeningDate), severity: 'error', stepIdx: 4 });
       }
     }
     if (isReverseAuctionMethod(d.type)) {
-      list.push({ label: 'Auction category is required', ok: Boolean(d.auctionConfig.auctionCategory.trim()) && d.auctionConfig.auctionCategory !== 'Other', severity: 'error' });
-      list.push({ label: 'Auction subcategory is required', ok: Boolean(d.auctionConfig.auctionSubCategory.trim()) && d.auctionConfig.auctionSubCategory !== 'Other', severity: 'error' });
-      list.push({ label: 'Auction currency is required', ok: Boolean(d.auctionConfig.currency.trim()) && d.auctionConfig.currency !== 'Other', severity: 'error' });
-      list.push({ label: 'Starting bid price must be greater than 0', ok: d.auctionConfig.startingBidPrice > 0, severity: 'error' });
-      list.push({ label: 'Minimum bid decrement must be greater than 0', ok: d.auctionConfig.minimumBidDecrement > 0, severity: 'error' });
+      list.push({ label: 'Auction category is required', ok: Boolean(d.auctionConfig.auctionCategory.trim()) && d.auctionConfig.auctionCategory !== 'Other', severity: 'error', stepIdx: 4 });
+      list.push({ label: 'Auction subcategory is required', ok: Boolean(d.auctionConfig.auctionSubCategory.trim()) && d.auctionConfig.auctionSubCategory !== 'Other', severity: 'error', stepIdx: 4 });
+      list.push({ label: 'Auction currency is required', ok: Boolean(d.auctionConfig.currency.trim()) && d.auctionConfig.currency !== 'Other', severity: 'error', stepIdx: 4 });
+      list.push({ label: 'Starting bid price must be greater than 0', ok: d.auctionConfig.startingBidPrice > 0, severity: 'error', stepIdx: 4 });
+      list.push({ label: 'Minimum bid decrement must be greater than 0', ok: d.auctionConfig.minimumBidDecrement > 0, severity: 'error', stepIdx: 4 });
     }
 
     // Step 6 Commercial Terms - Errors
-    list.push({ label: 'Payment terms are required', ok: Boolean(d.terms.paymentTerms), severity: 'error' });
-    list.push({ label: 'Delivery terms location is required', ok: Boolean(d.terms.deliveryTerms), severity: 'error' });
+    list.push({ label: 'Payment terms are required', ok: Boolean(d.terms.paymentTerms), severity: 'error', stepIdx: 5 });
+    list.push({ label: 'Delivery terms location is required', ok: Boolean(d.terms.deliveryTerms), severity: 'error', stepIdx: 5 });
     if (d.terms.emdRequired) {
-      list.push({ label: 'EMD amount must be greater than 0 if EMD is required', ok: d.terms.emdAmount > 0, severity: 'error' });
+      list.push({ label: 'EMD amount must be greater than 0 if EMD is required', ok: d.terms.emdAmount > 0, severity: 'error', stepIdx: 5 });
+    }
+    if (d.terms.pbgRequired) {
+      list.push({ label: 'ePBG / Performance security amount must be greater than 0 if required', ok: d.terms.securityDeposit > 0, severity: 'error', stepIdx: 5 });
     }
 
     // Step 7 Documents - Errors
-    list.push({ label: 'At least one required document must be checklist', ok: d.requiredDocs.length > 0, severity: 'error' });
+    list.push({ label: 'At least one required document must be checklist', ok: d.requiredDocs.length > 0, severity: 'error', stepIdx: 6 });
     
     // Step 8 Evaluation criteria - Errors
-    list.push({ label: 'Evaluation method is required', ok: Boolean(d.evaluation.method), severity: 'error' });
+    list.push({ label: 'Evaluation method is required', ok: Boolean(d.evaluation.method), severity: 'error', stepIdx: 7 });
     if (d.evaluation.method === 'QCBS / weighted technical-commercial score') {
       const qcbsTotal = d.evaluation.technicalCriteria.reduce((sum, c) => sum + Number(c.weightage || 0), 0);
-      list.push({ label: 'QCBS evaluation weightage sum must be exactly 100%', ok: qcbsTotal === 100, severity: 'error' });
+      list.push({ label: 'QCBS evaluation weightage sum must be exactly 100%', ok: qcbsTotal === 100, severity: 'error', stepIdx: 7 });
     }
 
     // Warnings / Advisories
@@ -1390,6 +1393,10 @@ export default function CreateProcurementPage() {
         toast.error('Please specify an EMD amount greater than 0.');
         return false;
       }
+      if (d.terms.pbgRequired && d.terms.securityDeposit <= 0) {
+        toast.error('PBG Amount / Performance Security amount is required when enabled.');
+        return false;
+      }
     } else if (stepIdx === 6) {
       // Step 7 Documents
       if (d.requiredDocs.length === 0) {
@@ -1440,7 +1447,11 @@ export default function CreateProcurementPage() {
   const submitProcurement = async () => {
     const failed = readiness.filter(r => !r.ok && r.severity === 'error');
     if (failed.length > 0) {
-      toast.error(`Please fix missing details: ${failed.map(f => f.label).join(', ')}`);
+      toast.error(`Please fix missing details: ${failed[0].label}`);
+      if (failed[0].stepIdx !== undefined) {
+        setActiveStep(failed[0].stepIdx);
+        setTriedNext(true);
+      }
       return;
     }
     setSubmittingDraft(true);
@@ -1589,6 +1600,7 @@ export default function CreateProcurementPage() {
                 <CommercialTermsForm
                   draft={draft}
                   updateDraft={updateDraft}
+                  showErrors={triedNext}
                 />
               </SectionCard>
             )}
@@ -4501,15 +4513,21 @@ function ScheduleStepForm({
 // ─────────────────────────────────────────────────────────────────────────────
 function CommercialTermsForm({
   draft,
-  updateDraft
+  updateDraft,
+  showErrors = false
 }: {
   draft: Draft;
   updateDraft: (updater: (current: Draft) => Draft) => void;
+  showErrors?: boolean;
 }) {
   const isGov = draft.basics.buyerType === 'GOVERNMENT_BUYER';
   const updateTerms = (key: keyof Draft['terms'], val: any) => {
     updateDraft(c => ({ ...c, terms: { ...c.terms, [key]: val } }));
   };
+
+  const missing = (value: unknown) => showErrors && !String(value ?? '').trim();
+  const fieldError = (condition: boolean, message: string) => condition ? message : undefined;
+  const controlClass = (error?: string) => cn(inputClass, error && 'border-rose-400 bg-rose-50 focus:border-rose-500 focus:ring-rose-500/20');
 
   return (
     <div className="space-y-6">
@@ -4520,21 +4538,21 @@ function CommercialTermsForm({
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Payment & Delivery Terms</h3>
           </div>
 
-          <Field label="Payment terms" required>
+          <Field label="Payment terms" required error={fieldError(showErrors && !draft.terms.paymentTerms, 'Payment terms is required.')}>
             <select
               value={draft.terms.paymentTerms}
               onChange={e => updateTerms('paymentTerms', e.target.value)}
-              className={inputClass}
+              className={controlClass(fieldError(showErrors && !draft.terms.paymentTerms, 'Payment terms is required.'))}
             >
               {PAYMENT_TERMS.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </Field>
 
-          <Field label="Delivery terms location" required>
+          <Field label="Delivery terms location" required error={fieldError(showErrors && !draft.terms.deliveryTerms, 'Delivery terms location is required.')}>
             <select
               value={draft.terms.deliveryTerms}
               onChange={e => updateTerms('deliveryTerms', e.target.value)}
-              className={inputClass}
+              className={controlClass(fieldError(showErrors && !draft.terms.deliveryTerms, 'Delivery terms location is required.'))}
             >
               {DELIVERY_TYPES.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -4581,12 +4599,12 @@ function CommercialTermsForm({
               </label>
 
               {draft.terms.emdRequired && (
-                <Field label="EMD Amount (INR)">
+                <Field label="EMD Amount (INR)" required error={fieldError(showErrors && draft.terms.emdAmount <= 0, 'EMD amount must be greater than 0.')}>
                   <input
                     type="number"
                     value={draft.terms.emdAmount || ''}
                     onChange={e => updateTerms('emdAmount', Number(e.target.value || 0))}
-                    className={inputClass}
+                    className={controlClass(fieldError(showErrors && draft.terms.emdAmount <= 0, 'EMD amount must be greater than 0.'))}
                   />
                 </Field>
               )}
@@ -4598,7 +4616,7 @@ function CommercialTermsForm({
 
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none mt-3.5">
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none mt-3.5 flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={draft.terms.pbgRequired}
@@ -4608,25 +4626,39 @@ function CommercialTermsForm({
                 <span>PBG Guarantee?</span>
               </label>
 
-              <Field label="Document cost fee (INR)">
-                <input
-                  type="number"
-                  value={draft.terms.documentFee || ''}
-                  onChange={e => updateTerms('documentFee', Number(e.target.value || 0))}
-                  className={inputClass}
-                />
-              </Field>
+              <div className="flex flex-col gap-2">
+                {draft.terms.pbgRequired && (
+                  <Field label="PBG Amount / Performance Security (INR)" required error={fieldError(showErrors && draft.terms.securityDeposit <= 0, 'PBG amount must be greater than 0.')}>
+                    <input
+                      type="number"
+                      value={draft.terms.securityDeposit || ''}
+                      onChange={e => updateTerms('securityDeposit', Number(e.target.value || 0))}
+                      className={controlClass(fieldError(showErrors && draft.terms.securityDeposit <= 0, 'PBG amount must be greater than 0.'))}
+                      placeholder="0"
+                    />
+                  </Field>
+                )}
+
+                <Field label="Document cost fee (INR)">
+                  <input
+                    type="number"
+                    value={draft.terms.documentFee || ''}
+                    onChange={e => updateTerms('documentFee', Number(e.target.value || 0))}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
             </div>
             <p className="text-[10px] text-slate-500 font-semibold leading-normal">
               Performance Bank Guarantee secures contract delivery and warranty performance.
             </p>
           </div>
 
-          <Field label="Late Delivery (LD) Penalty Clause" required>
+          <Field label="Late Delivery (LD) Penalty Clause" required error={fieldError(showErrors && !draft.terms.penaltyClause, 'Penalty clause is required.')}>
             <input
               value={draft.terms.penaltyClause}
               onChange={e => updateTerms('penaltyClause', e.target.value)}
-              className={inputClass}
+              className={controlClass(fieldError(showErrors && !draft.terms.penaltyClause, 'Penalty clause is required.'))}
             />
           </Field>
         </div>

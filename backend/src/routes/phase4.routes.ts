@@ -1219,8 +1219,8 @@ const normalizeAuctionConfigForDraft = (draft: any) => {
     purchaseOrganization: raw.purchaseOrganization,
     auctionType: raw.auctionType || 'ENGLISH_REVERSE',
     auctionMode: raw.auctionMode || 'ONLINE',
-    auctionStartDateTime: raw.auctionStartDateTime || raw.startAt || rules.auctionStartDateTime,
-    auctionEndDateTime: raw.auctionEndDateTime || raw.endAt || rules.auctionEndDateTime,
+    auctionStartDateTime: raw.auctionStartDateTime || raw.startDateTime || raw.startAt || rules.auctionStartDateTime,
+    auctionEndDateTime: raw.auctionEndDateTime || raw.endDateTime || raw.endAt || rules.auctionEndDateTime,
     auctionDurationMinutes: raw.auctionDurationMinutes || raw.durationMinutes,
     startingBidPrice: raw.startingBidPrice || raw.startingPrice || rules.startPrice,
     reservePrice: raw.reservePrice || rules.reservePrice || null,
@@ -4201,15 +4201,23 @@ router.post('/procurement/submit', authenticate, authorize('buyer'), asyncRoute(
 
   const draft = parsed.id ? await assertProcurementDraftAccess(req, parsed.id) : await saveProcurementDraft(req, parsed);
   const submitted = await procurementWorkflow.submitRequirement(actorFrom(req), draft.id);
-  const auction = await createAuctionForSubmittedProcurement(req, submitted, parsed);
-  const rateContract = await createRateContractForSubmittedProcurement(req, submitted, parsed);
-  await auditWrite(req, 'procurement.submitted', 'requirement', submitted.id, { methodSlug: methodSlugForDraft(parsed) });
-  ok(res, {
-    procurement: serializeProcurementDraft({ ...submitted, items: draft.items || [] }),
-    auction,
-    rateContract,
-    referenceNumber: submitted.requirementNumber
-  });
+  try {
+    const auction = await createAuctionForSubmittedProcurement(req, submitted, parsed);
+    const rateContract = await createRateContractForSubmittedProcurement(req, submitted, parsed);
+    await auditWrite(req, 'procurement.submitted', 'requirement', submitted.id, { methodSlug: methodSlugForDraft(parsed) });
+    ok(res, {
+      procurement: serializeProcurementDraft({ ...submitted, items: draft.items || [] }),
+      auction,
+      rateContract,
+      referenceNumber: submitted.requirementNumber
+    });
+  } catch (error) {
+    await db.requirement.update({
+      where: { id: draft.id },
+      data: { status: 'DRAFT' }
+    });
+    throw error;
+  }
 }, 'Unable to submit procurement'));
 
 router.get('/procurement/rate-contracts', authenticate, authorize('buyer', 'admin', 'master_admin'), asyncRoute(async (req, res) => {

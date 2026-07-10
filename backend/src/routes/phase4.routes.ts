@@ -887,7 +887,7 @@ const procurementDraftBody = z.object({
   description: z.string().trim().max(4000).optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   estimatedValue: z.coerce.number().nonnegative().optional(),
-  requiredBy: z.coerce.date().optional(),
+  requiredBy: safeCoercedDate.optional(),
   draftStep: z.coerce.number().int().min(0).optional(),
   workflowStatus: z.string().trim().max(80).optional(),
   approvalStatus: z.string().trim().max(80).optional(),
@@ -1210,8 +1210,8 @@ const normalizeAuctionConfigForDraft = (draft: any) => {
     auctionTitle: raw.auctionTitle || payload.basics?.title || draft.title,
     auctionDescription: raw.auctionDescription || draft.description || payload.basics?.description,
     procurementMethod: raw.procurementMethod || payload.fullProcurementMethod || draft.canonicalMethod || draft.method || draft.procurementMethod,
-    category: raw.category || payload.basics?.category || payload.category,
-    subCategory: raw.subCategory || payload.basics?.subCategory,
+    category: raw.auctionCategory || raw.category || payload.basics?.category || payload.category,
+    subCategory: raw.auctionSubCategory || raw.subCategory || payload.basics?.subCategory,
     currency: raw.currency || payload.currency || payload.basics?.currency || draft.currency || 'INR',
     buyerOrganization: raw.buyerOrganization || payload.internal?.orgName,
     department: raw.department || payload.internal?.department,
@@ -4150,8 +4150,19 @@ router.post('/procurement/validate-catalog-items', authenticate, authorize('buye
 
 router.post('/procurement/submit', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   await assertBuyerProcurementApproved(req);
-  const parsed = procurementDraftBody.extend({ id: z.coerce.number().int().positive().optional() }).parse(req.body);
-  validateProcurementDraftForSubmit(parsed);
+  let parsed: any;
+  try {
+    parsed = procurementDraftBody.extend({ id: z.coerce.number().int().positive().optional() }).parse(req.body);
+  } catch (zodError: any) {
+    console.error('[SubmitProcurement] Zod parse failed:', JSON.stringify(zodError.issues || zodError.message, null, 2));
+    throw new ApiError(400, zodError.issues?.[0]?.message || 'Invalid procurement data', 'PROCUREMENT_VALIDATION_FAILED');
+  }
+  try {
+    validateProcurementDraftForSubmit(parsed);
+  } catch (validationError: any) {
+    console.error('[SubmitProcurement] Validation failed:', validationError.message, validationError.code);
+    throw validationError;
+  }
 
   const methodSlug = methodSlugForDraft(parsed);
   if (methodSlug === 'catalog-purchase') {

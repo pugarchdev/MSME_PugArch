@@ -1457,11 +1457,13 @@ export default function CreateProcurementPage() {
     setSubmittingDraft(true);
     try {
       const payload = buildProcurementApiPayload(draft, activeStep);
+      console.log('[SubmitProcurement] Sending payload with method:', payload.methodSlug, 'id:', payload.id);
       await submitProcurementDraft(payload);
       toast.success('Procurement request submitted successfully');
       router.push(`/buyer/procurement`);
     } catch (err: any) {
-      toast.error('Submission failed: ' + err.message);
+      console.error('[SubmitProcurement] Submission failed:', err);
+      toast.error('Submission failed: ' + (err.message || 'Unknown error'), { duration: 8000 });
     } finally {
       setSubmittingDraft(false);
     }

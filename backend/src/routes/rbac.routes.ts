@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { apiResponse } from '../utils/apiResponse.js';

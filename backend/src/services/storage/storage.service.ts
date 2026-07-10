@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import path from 'path';
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { normalizeSpaces } from '../../utils/sanitize.js';
 import { auditLog } from '../../modules/audit/audit.service.js';

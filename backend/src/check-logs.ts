@@ -1,4 +1,4 @@
-import prisma from './config/prisma.js';
+import prisma from './lib/prisma.js';
 
 async function checkLogs() {
   const db = prisma as any;

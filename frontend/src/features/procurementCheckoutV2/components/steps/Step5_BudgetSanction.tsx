@@ -7,7 +7,7 @@ import { openFileAsset } from '../../../../lib/files';
 import { uploadProcurementDocument } from '../../api';
 import { formatCurrency } from '../../../shared/format';
 import { Input, Select } from '../../../../components/ui/input';
-import { SearchableSelect } from '../common/SearchableSelect';
+import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import { api, readJsonResponse, unwrapApiData } from '../../../../lib/api';
 import { cn } from '../../../../lib/utils';
 import type { CartDto } from '../../../cart/api';

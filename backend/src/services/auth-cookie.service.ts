@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { isProduction } from '../config/env.js';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { randomToken, sha256 } from '../utils/crypto.js';
 import { issueAuthResponse, verifyRefreshToken } from './token.service.js';
 

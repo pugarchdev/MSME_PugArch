@@ -1,4 +1,4 @@
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import type { AuthRequest, AuthenticatedUser } from '../../middleware/authenticate.js';
 import { uploadFile } from '../../services/storage/storage.service.js';

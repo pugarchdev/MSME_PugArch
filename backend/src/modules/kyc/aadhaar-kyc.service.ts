@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { env, isProduction } from '../../config/env.js';
 import type { AuthenticatedUser } from '../../middleware/authenticate.js';
 import { logger } from '../../config/logger.js';

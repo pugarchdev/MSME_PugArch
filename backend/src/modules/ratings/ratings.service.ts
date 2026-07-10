@@ -6,7 +6,7 @@
  * rating for a PO).
  */
 
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 
 const db = prisma as any;

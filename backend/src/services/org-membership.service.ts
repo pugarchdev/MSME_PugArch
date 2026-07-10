@@ -18,7 +18,7 @@
  * before multi-tenant roles existed.
  */
 
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { OrgRole } from '@prisma/client';
 
 type PrismaLike = typeof prisma;

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, RefreshCw, Search, ShieldCheck, X, type LucideIcon } from 'lucide-react';
+import { Building2, CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, MapPin, RefreshCw, Search, ShieldCheck, X, type LucideIcon } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -545,21 +545,17 @@ export default function SellerOpportunitiesPage() {
       ) : (
         <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
           <div className="overflow-x-auto bg-slate-50/70 p-2 pb-3">
-            <table className="w-full min-w-[1420px] border-separate border-spacing-y-2 text-sm">
+            <table className="w-full min-w-[1200px] border-separate border-spacing-y-3 text-sm">
               <thead className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="w-16 px-4 py-3 text-left whitespace-nowrap">S.No.</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Reference</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Type</th>
+                  <th className="px-4 py-3 text-left w-28 min-w-[110px]">Reference</th>
+                  <th className="px-4 py-3 text-left w-36 min-w-[130px]">Type</th>
                   <th className="px-4 py-3 text-left">Opportunity</th>
-                  <th className="px-4 py-3 text-left">Buyer</th>
-                  <th className="px-4 py-3 text-left">Location</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Published</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Closing</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Tracking</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Value</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Eligibility</th>
-                  <th className="sticky right-0 z-20 w-[280px] min-w-[280px] bg-slate-50/95 px-4 py-3 text-right whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">Actions</th>
+                  <th className="px-4 py-3 text-left w-52 min-w-[190px]">Buyer / Location</th>
+                  <th className="px-4 py-3 text-left w-32 min-w-[110px]">Timeline</th>
+                  <th className="px-4 py-3 text-left w-40 min-w-[140px]">Tracking</th>
+                  <th className="px-4 py-3 text-right w-36 min-w-[120px]">Commercials</th>
+                  <th className="sticky right-0 z-20 w-44 min-w-[170px] bg-slate-50/95 px-4 py-3 text-right whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -568,46 +564,98 @@ export default function SellerOpportunitiesPage() {
                   return (
                     <React.Fragment key={item.id}>
                       <tr className={cn('bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm', expanded && 'bg-blue-50/50')}>
-                        <td className="rounded-l-2xl px-4 py-3 text-xs font-black text-slate-500 whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedItem(item)}
-                            className="text-left text-xs font-black text-[#c86413] underline-offset-4 hover:underline"
-                          >
-                            {item.sourceRef}
-                          </button>
+                        {/* 1. Reference */}
+                        <td className="rounded-l-2xl px-4 py-3.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex h-5 items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[9px] font-black text-slate-400 select-none">
+                              #{(page - 1) * pageSize + index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedItem(item)}
+                              className="text-left text-xs font-black text-[#c86413] underline-offset-4 hover:underline"
+                            >
+                              {item.sourceRef}
+                            </button>
+                          </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap"><TypeBadge type={item.type} /></td>
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-black text-slate-950 text-wrap-anywhere">{item.title}</p>
-                          <p className="mt-1 text-[10px] font-bold text-slate-500">{[item.category || 'General procurement', item.quantity, item.status].filter(Boolean).join(' / ')}</p>
+
+                        {/* 2. Type */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <TypeBadge type={item.type} />
                         </td>
-                        <td className="px-4 py-3 text-xs font-semibold text-slate-600">{item.buyer || 'Buyer details controlled'}</td>
-                        <td className="px-4 py-3 text-xs font-semibold text-slate-600">{item.location || 'Not specified'}</td>
-                        <td className="px-4 py-3 text-xs font-semibold text-slate-600 whitespace-nowrap">{formatDate(item.publishedAt)}</td>
-                        <td className="px-4 py-3 text-xs font-bold text-slate-700 whitespace-nowrap">{formatDate(item.closingDate)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap"><OpportunityProgress item={item} /></td>
-                        <td className="px-4 py-3 text-right text-xs font-black text-[#12335f] whitespace-nowrap">{formatMoney(item.estimatedValue)}</td>
-                        <td className="px-4 py-3 text-xs font-semibold text-slate-600 whitespace-nowrap">{item.eligibility}</td>
-                        <td className="sticky right-0 z-10 w-[280px] min-w-[280px] rounded-r-2xl bg-white px-4 py-3 whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">
+
+                        {/* 3. Opportunity Title & Subtext */}
+                        <td className="px-4 py-3.5">
+                          <div>
+                            <p className="text-xs font-black text-slate-950 leading-snug">{item.title}</p>
+                            <p className="mt-1 text-[10px] font-bold text-slate-500">
+                              {[item.category || 'General procurement', item.quantity].filter(Boolean).join(' / ')}
+                            </p>
+                          </div>
+                        </td>
+
+                        {/* 4. Buyer & Location */}
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                              <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[170px]" title={item.buyer}>{item.buyer || 'Buyer details controlled'}</span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[170px]" title={item.location}>{item.location || 'Not specified'}</span>
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 5. Timeline */}
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-col gap-1 text-[10px] font-bold">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">Published</span>
+                              <span className="text-slate-600">{formatDate(item.publishedAt)}</span>
+                            </div>
+                            <div className="flex flex-col mt-0.5">
+                              <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">Closing</span>
+                              <span className="text-slate-800 font-extrabold">{formatDate(item.closingDate)}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 6. Tracking */}
+                        <td className="px-4 py-3.5">
+                          <OpportunityProgress item={item} />
+                        </td>
+
+                        {/* 7. Commercials */}
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-black text-[#12335f]">{formatMoney(item.estimatedValue)}</span>
+                            <span className="text-[10px] font-bold text-slate-500">{item.eligibility}</span>
+                          </div>
+                        </td>
+
+                        {/* 8. Actions */}
+                        <td className="sticky right-0 z-10 w-44 min-w-[170px] rounded-r-2xl bg-white px-4 py-3.5 whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setExpandedId(expanded ? null : item.id)}
-                              className="inline-flex h-8 min-w-[74px] items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all"
+                              title={expanded ? "Collapse details" : "Expand tracking details"}
                             >
-                              {expanded ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}
-                              Track
+                              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </button>
                             <button
                               type="button"
                               onClick={() => setSelectedItem(item)}
-                              className="inline-flex h-8 min-w-[66px] items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 hover:border-[#12335f] hover:text-[#12335f]"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all"
+                              title="View details"
                             >
-                              <Eye className="mr-1 h-3.5 w-3.5" /> View
+                              <Eye className="h-4 w-4" />
                             </button>
-                            <Link href={item.href} title={item.actionLabel} className="inline-flex h-8 min-w-[94px] max-w-[112px] items-center justify-center rounded-md bg-[#12335f] px-2.5 text-center text-[10px] font-black leading-tight text-white shadow-sm hover:bg-[#0e2a4f]">
+                            <Link href={item.href} title={item.actionLabel} className="inline-flex h-8 min-w-[80px] max-w-[100px] items-center justify-center rounded-md bg-[#12335f] px-2.5 text-center text-[10px] font-black leading-tight text-white shadow-sm hover:bg-[#0e2a4f] transition-all">
                               {shortActionLabel(item.actionLabel)}
                             </Link>
                           </div>
@@ -615,7 +663,7 @@ export default function SellerOpportunitiesPage() {
                       </tr>
                       {expanded && (
                         <tr className="bg-blue-50/25">
-                          <td colSpan={12} className="px-4 py-4">
+                          <td colSpan={8} className="px-4 py-4">
                             <OpportunityDetailPanel item={item} />
                           </td>
                         </tr>

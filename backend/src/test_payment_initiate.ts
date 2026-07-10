@@ -1,5 +1,5 @@
 import { initiatePayment } from './modules/payments/payment.service.js';
-import prisma from './config/prisma.js';
+import prisma from './lib/prisma.js';
 
 async function main() {
   console.log('--- Simulating Payment Initiation ---');

@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, checkFeatureEnabled, requireAccountType, requirePermission, type AuthRequest } from '../../middleware/auth.js';
 import { upload } from '../../config/storage.js';
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { apiResponse } from '../../utils/apiResponse.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import { validate } from '../../middleware/validate.js';

@@ -1,5 +1,5 @@
 import { OrgRole, OrganizationType } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { ensureOrgMembership } from './org-membership.service.js';
 import { getDefaultCompanyId } from './default-company.service.js';
 

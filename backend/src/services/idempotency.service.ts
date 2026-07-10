@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { isRedisReady, redis } from '../config/redis.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { ApiError } from '../utils/ApiError.js';

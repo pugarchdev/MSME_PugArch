@@ -21,7 +21,7 @@
  * transactions; controlled by org settings (defaults: always-required).
  */
 
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { ApprovalStage, ApprovalDecision, OrgRole, Prisma } from '@prisma/client';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { notificationService } from '../services/notification.service.js';

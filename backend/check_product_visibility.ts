@@ -1,4 +1,4 @@
-import prisma from './src/config/prisma.js';
+import prisma from './src/lib/prisma.js';
 
 async function checkProductVisibility() {
   const allProducts = await prisma.product.findMany({

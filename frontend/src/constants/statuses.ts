@@ -1,3 +1,4 @@
+// SYNC: Keep in sync with backend/src/constants/statuses.ts
 export const USER_STATUSES = {
   PENDING: 'PENDING',
   ACTIVE: 'ACTIVE',

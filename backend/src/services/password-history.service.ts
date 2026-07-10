@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { verifyPassword } from './password.service.js';
 
 const PASSWORD_HISTORY_LIMIT = 10;

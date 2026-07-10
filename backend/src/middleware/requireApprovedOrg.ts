@@ -9,7 +9,7 @@
  * Platform admins and users without an organisationId bypass this check.
  */
 import type { NextFunction, Response } from 'express';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import type { AuthRequest } from './authenticate.js';
 

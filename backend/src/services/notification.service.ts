@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { publishNotificationEvent } from './realtime.service.js';
 import { getTransporter, getTransporterForCompany, compileEmailTemplate } from './mail.service.js';
 import { env } from '../config/env.js';

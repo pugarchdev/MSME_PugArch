@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { verifyAccessToken } from '../services/token.service.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { auditLog } from '../modules/audit/audit.service.js';

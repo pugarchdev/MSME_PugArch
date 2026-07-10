@@ -1,3 +1,4 @@
+// SYNC: Keep in sync with frontend/src/constants/statuses.ts
 export const ONBOARDING_STATUSES = {
   PENDING: 'pending',
   UNDER_COMPLIANCE_REVIEW: 'under_compliance_review',

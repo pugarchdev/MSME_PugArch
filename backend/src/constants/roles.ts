@@ -1,3 +1,4 @@
+// SYNC: Keep in sync with frontend/src/constants/roles.ts
 export const ROLES = {
   ADMIN: 'admin',
   BUYER: 'buyer',

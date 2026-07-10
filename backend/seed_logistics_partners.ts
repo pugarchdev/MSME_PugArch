@@ -7,7 +7,7 @@
  * Run with:  npx tsx seed_logistics_partners.ts
  */
 
-import prisma from './src/config/prisma.js';
+import prisma from './src/lib/prisma.js';
 
 const partners = [
     // Government / public sector

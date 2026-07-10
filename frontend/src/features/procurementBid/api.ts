@@ -131,7 +131,9 @@ export const normalizeBid = (raw: any): ProcurementBid => {
     participantsCount: Number(raw.participantsCount || participations.length || 0),
     rejectedReason: raw.rejectedReason,
     technicalStatus: toUiStage(raw.lifecycleStage),
-    clarificationStatus: raw.clarifications?.[0]?.status === 'RESPONDED' ? 'Responded' : raw.clarifications?.[0]?.status === 'COMPLETED' ? 'Completed' : 'Pending',
+    clarificationStatus: raw.clarifications && raw.clarifications.length > 0
+      ? (raw.clarifications[0].status === 'RESPONDED' ? 'Responded' : raw.clarifications[0].status === 'COMPLETED' ? 'Completed' : 'Pending')
+      : 'None',
     participated: Boolean(raw.myParticipation || participations.length),
     description: raw.description || 'No description provided.',
     eligibility: raw.eligibilityCriteria || [],

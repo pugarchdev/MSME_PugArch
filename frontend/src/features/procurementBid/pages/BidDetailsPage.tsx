@@ -90,7 +90,9 @@ export default function BidDetailsPage() {
               <div className="flex flex-wrap gap-2">
                 <StatusBadge label={bid.status} />
                 <StatusBadge label={bid.technicalStatus} />
-                <StatusBadge label={bid.clarificationStatus} />
+                {bid.clarificationStatus && bid.clarificationStatus !== 'None' && (
+                  <StatusBadge label={bid.clarificationStatus} />
+                )}
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[

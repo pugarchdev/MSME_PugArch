@@ -1,4 +1,4 @@
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { maskSensitive } from '../../utils/maskSensitive.js';
 import { createHashFingerprint, sha256 } from '../../utils/crypto.js';
 import { normalizeSpaces } from '../../utils/sanitize.js';

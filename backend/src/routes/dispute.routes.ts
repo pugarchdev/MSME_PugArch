@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, authorize, authorizeAdmin } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/authenticate.js';
 import { requireOrgPermission } from '../middleware/requireOrgPermission.js';

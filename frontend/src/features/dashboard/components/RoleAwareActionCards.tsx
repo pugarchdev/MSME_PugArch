@@ -14,7 +14,7 @@
  * dashboard makes ONE network call instead of 5+ parallel queries.
  */
 import { useQuery } from '@tanstack/react-query';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useEffect } from 'react';
 import {
     AlertTriangle, ArrowRight, ClipboardCheck, ClipboardList, FileText, Gavel,
     Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck, Landmark
@@ -176,8 +176,27 @@ function RoleAwareActionCards() {
         enabled: !!user && user.role !== 'admin',
         placeholderData: (prev) => prev,
         refetchOnWindowFocus: true,
-        staleTime: 15_000
+        staleTime: 15_000,
+        initialData: () => {
+            if (typeof window !== 'undefined' && user?.id) {
+                const cached = localStorage.getItem(`dashboard_summary_${user.id}`);
+                if (cached) {
+                    try {
+                        return JSON.parse(cached);
+                    } catch (e) {
+                        return undefined;
+                    }
+                }
+            }
+            return undefined;
+        }
     });
+
+    useEffect(() => {
+        if (summary.data && user?.id) {
+            localStorage.setItem(`dashboard_summary_${user.id}`, JSON.stringify(summary.data));
+        }
+    }, [summary.data, user?.id]);
 
     const data: DashboardSummary = summary.data || {};
     const isLoading = summary.isLoading && !summary.data;

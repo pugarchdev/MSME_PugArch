@@ -69,7 +69,9 @@ export function BidCard({ bid, viewHref, participationHref, participationLabel =
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusBadge label={bid.technicalStatus} />
-          <StatusBadge label={bid.clarificationStatus} />
+          {bid.clarificationStatus && bid.clarificationStatus !== 'None' && (
+            <StatusBadge label={bid.clarificationStatus} />
+          )}
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600">{bid.buyerType}</span>
         </div>
         <p className="line-clamp-2 text-xs leading-5 text-slate-500">{bid.description}</p>

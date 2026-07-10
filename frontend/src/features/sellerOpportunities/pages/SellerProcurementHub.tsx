@@ -113,7 +113,7 @@ export default function SellerProcurementHub() {
       label: 'Submitted Bids',
       desc: 'Manage your active quotations, bidding proposals, and technical packages.',
       count: data.sellerQuotationsCount || 0,
-      href: '/quotations',
+      href: '/seller/procurement/events?filter=submitted',
       icon: ClipboardCheck,
       tone: 'purple'
     },
@@ -129,7 +129,7 @@ export default function SellerProcurementHub() {
       label: 'Technical Bid Pending',
       desc: 'Bids requiring technical parameters, spec compliance files, or certifications.',
       count: data.techReviewCount || 0,
-      href: '/quotations',
+      href: '/seller/procurement/events?filter=submitted',
       icon: FileText,
       tone: 'amber'
     },
@@ -137,7 +137,7 @@ export default function SellerProcurementHub() {
       label: 'Financial Bid Pending',
       desc: 'Bids requiring commercial breakdowns, price sheets, and final rate submissions.',
       count: 0,
-      href: '/quotations',
+      href: '/seller/procurement/events?filter=submitted',
       icon: Landmark,
       tone: 'amber'
     },

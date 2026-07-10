@@ -15,7 +15,7 @@
  *    business operation but they are logged.
  */
 
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { auditLog } from '../audit/audit.service.js';
 import { notificationService } from '../../services/notification.service.js';

@@ -1,4 +1,4 @@
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { auditLog } from '../audit/audit.service.js';
 import { numberSeries } from '../../services/workflow/workflow-common.js';

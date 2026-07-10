@@ -16,7 +16,7 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { OrgRole, Role } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, requireAccountType } from '../middleware/auth.js';
 import { requireOrgRole } from '../middleware/requireOrgRole.js';
 import { shortCache } from '../middleware/httpCache.js';
@@ -539,10 +539,10 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                         }).catch(() => 0)
                         : Promise.resolve(0),
                     isSeller
-                        ? prisma.product.count({ where: { ...sellerCatalogueWhere, status: 'ACTIVE' as any } })
-                            .then(p => prisma.service.count({ where: { ...sellerCatalogueWhere, status: 'ACTIVE' as any } })
-                                .then(s => p + s).catch(() => p))
-                            .catch(() => 0)
+                        ? Promise.all([
+                            prisma.product.count({ where: { ...sellerCatalogueWhere, status: 'ACTIVE' as any } }),
+                            prisma.service.count({ where: { ...sellerCatalogueWhere, status: 'ACTIVE' as any } })
+                        ]).then(([p, s]) => p + s).catch(() => 0)
                         : Promise.resolve(0),
                     isSeller
                         ? prisma.invoice.count({

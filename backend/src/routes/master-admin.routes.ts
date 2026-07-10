@@ -1,5 +1,5 @@
 import { Router, type Response, type NextFunction } from 'express';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
 import { invalidateByPattern } from '../services/cache.service.js';
 import { authorize, requirePermission, createAuditLog } from '../middleware/authorize.js';

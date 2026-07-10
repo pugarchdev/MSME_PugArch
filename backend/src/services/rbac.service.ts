@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { legacyRoleToAccountType } from '../constants/dynamic-rbac.js';
 
 export type RbacScope = {

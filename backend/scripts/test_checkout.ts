@@ -1,5 +1,5 @@
 import '../src/config/env.js';
-import prisma from '../src/config/prisma.js';
+import prisma from '../src/lib/prisma.js';
 import { numberSeries } from '../src/services/workflow/workflow-common.js';
 
 async function main() {

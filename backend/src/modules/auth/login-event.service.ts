@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { sha256 } from '../../utils/crypto.js';
 import { normalizeSpaces } from '../../utils/sanitize.js';
 

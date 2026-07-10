@@ -1,6 +1,6 @@
 import type { NextFunction, Response } from 'express';
 import type { OrgRole } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import type { AuthRequest } from './authenticate.js';
 import { getActivePermissionCodes, isMasterAdmin } from '../services/rbac.service.js';

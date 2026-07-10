@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { Prisma } from '@prisma/client';
 import https from 'https';
 import { z } from 'zod';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { getFileContent, getSignedUrl, uploadFile } from '../services/storage/storage.service.js';
 import { authenticate, authorize, authorizeAdmin, requireAccountType, requirePermission, type AuthRequest } from '../middleware/auth.js';

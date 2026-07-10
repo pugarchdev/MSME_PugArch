@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 
 const db = prisma as any;
 

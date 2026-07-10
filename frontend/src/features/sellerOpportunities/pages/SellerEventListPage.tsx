@@ -11,6 +11,7 @@ import type { ProcurementBid } from '../../procurementBid/data';
 import { MethodBadge, ProcurementStatusBadge, BuyerTypeBadge } from '../../procurementWizard/components/SourcingWizardComponents';
 import { Pagination } from '../../shared/Pagination';
 import { usePagination } from '../../shared/hooks';
+import Quotations from '../../../views/Quotations';
 
 type SellerEventView = 'all' | 'invited' | 'submitted' | 'clarifications';
 
@@ -234,8 +235,12 @@ export default function SellerEventListPage() {
         </div>
       </div>
 
-      {/* Filters Panel */}
-      <div className="space-y-3 rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
+      {activeView === 'submitted' ? (
+        <Quotations inline={true} />
+      ) : (
+        <>
+          {/* Filters Panel */}
+          <div className="space-y-3 rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
         <div className="flex items-center gap-1.5 pl-0.5 text-xs font-bold text-slate-700">
           <Filter className="h-4 w-4 text-[#12335f]" /> Filter Bids & Tenders
         </div>
@@ -363,11 +368,20 @@ export default function SellerEventListPage() {
                       </div>
                     </td>
                     <td className="rounded-r-2xl px-4 py-3.5 text-center">
-                      <Link href={`/seller/procurement/events/${bid.id}`}>
-                        <Button type="button" size="sm" variant="outline" className="h-8 rounded-md text-[10px] font-extrabold uppercase tracking-wide">
-                          <Eye className="mr-1 h-3.5 w-3.5" /> View Details
-                        </Button>
-                      </Link>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Link href={`/seller/procurement/events/${bid.id}`}>
+                          <Button type="button" size="sm" variant="outline" className="h-8 rounded-md text-[10px] font-extrabold uppercase tracking-wide">
+                            <Eye className="mr-1 h-3.5 w-3.5" /> View Details
+                          </Button>
+                        </Link>
+                        {bid.participated && (
+                          <Link href={`/quotations?tenderId=${bid.id}`}>
+                            <Button type="button" size="sm" className="h-8 rounded-md bg-[#12335f] text-white hover:bg-[#0b2445] text-[10px] font-extrabold uppercase tracking-wide">
+                              View Quote
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -383,6 +397,8 @@ export default function SellerEventListPage() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

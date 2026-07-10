@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../../../../components/ui/button';
-import { SearchableSelect } from '../common/SearchableSelect';
+import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import { PROCUREMENT_METHOD_LABELS } from '../../constants';
 import type { CartEvaluation, ProcurementMethodCode } from '../../types';
 import { createL1ComparisonFromCart } from '../../api';

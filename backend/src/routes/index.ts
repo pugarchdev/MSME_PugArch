@@ -23,7 +23,7 @@ import aadhaarKycRoutes from '../modules/kyc/aadhaar-kyc.routes.js';
 import { aiRoutes } from './ai.routes.js';
 import factoringRoutes from './factoring.routes.js';
 import { buyerShowcaseRouter } from './buyer-showcase.routes.js';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import addressRoutes from './address.routes.js';
 import directPurchaseRoutes from './direct-purchase.routes.js';
 import procurementModeRoutes from '../modules/procurementMode/procurement-mode.routes.js';

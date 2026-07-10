@@ -16,7 +16,7 @@ export type BidStatus = 'Open' | 'Closing Soon' | 'Under Evaluation' | 'Awarded'
 export type BidType = 'Product' | 'Service' | 'Works' | 'Rate Contract';
 export type BuyerType = 'Large Industry' | 'MSME Buyer' | 'Government Buyer' | 'Private Enterprise' | 'PSU Buyer';
 export type EvaluationStatus = 'Pending' | 'Technical Evaluation' | 'Financial Evaluation' | 'Qualified' | 'Disqualified' | 'Awarded';
-export type ClarificationStatus = 'Pending' | 'Responded' | 'Completed' | 'Reopened' | 'Rejected';
+export type ClarificationStatus = 'Pending' | 'Responded' | 'Completed' | 'Reopened' | 'Rejected' | 'None';
 
 export interface ClarificationRecord {
   requestNumber: string;

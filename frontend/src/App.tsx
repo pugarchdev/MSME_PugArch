@@ -563,7 +563,8 @@ export default function App() {
     if (pathname === '/buyer/tenders' && roleOk(user.role, ['buyer'])) return <Tenders />;
     if (pathname === '/buyer/vendors' && roleOk(user.role, ['buyer'])) return <Vendors />;
     if (pathname === '/buyer/saved-suppliers' && roleOk(user.role, ['buyer'])) return <SavedSuppliersPage />;
-    if (pathname === '/quotations' && roleOk(user.role, ['buyer', 'seller'])) return <Quotations />;
+    if (pathname === '/quotations' && roleOk(user.role, ['seller'])) return <Redirect to="/seller/procurement/events?filter=submitted" />;
+    if (pathname === '/quotations' && roleOk(user.role, ['buyer'])) return <Quotations />;
     if (pathname === '/buyer/orders' && roleOk(user.role, ['buyer'])) return <PurchaseOrders />;
     if (pathname === '/buyer/inspection' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Inspection" eyebrow="Quality Control" description="Inspection reports connected to purchase orders." endpoint="/api/purchase-orders" />;
     if (pathname === '/buyer/invoices' && roleOk(user.role, ['buyer'])) return <InvoiceRegisterPage role="buyer" />;

@@ -383,7 +383,9 @@ export default function BidsListingPage() {
                       <div className="flex flex-wrap gap-2 mb-4">
                         <StatusBadge label={detailedBid.status} />
                         <StatusBadge label={detailedBid.technicalStatus} />
-                        <StatusBadge label={detailedBid.clarificationStatus} />
+                        {detailedBid.clarificationStatus && detailedBid.clarificationStatus !== 'None' && (
+                          <StatusBadge label={detailedBid.clarificationStatus} />
+                        )}
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">

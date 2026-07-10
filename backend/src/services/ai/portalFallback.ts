@@ -1,4 +1,4 @@
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { GenerateInsightInput, GenerateInsightResult } from './types.js';
 
 type ProductVolumeRow = {

@@ -12,7 +12,7 @@ import {
   markPaymentConfirmedFromGateway
 } from './payment.service.js';
 import { initiatePaymentSchema } from './payment.validation.js';
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { safeRouteMessage } from '../../utils/routeHelpers.js';
 import { randomToken } from '../../utils/crypto.js';
 import { auditLog } from '../audit/audit.service.js';

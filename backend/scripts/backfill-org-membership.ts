@@ -21,7 +21,7 @@
  */
 
 import 'dotenv/config';
-import prisma from '../src/config/prisma.js';
+import prisma from '../src/lib/prisma.js';
 import { OrgRole } from '@prisma/client';
 import { ensureOrgMembership } from '../src/services/org-membership.service.js';
 

@@ -1,4 +1,4 @@
-import prisma from '../../config/prisma.js';
+import prisma from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as procurementBidService from './procurement-bid.service.js';

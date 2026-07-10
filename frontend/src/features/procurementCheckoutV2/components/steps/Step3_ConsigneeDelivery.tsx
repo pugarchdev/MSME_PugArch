@@ -1,7 +1,7 @@
 'use client';
 
 import { Input } from '../../../../components/ui/input';
-import { SearchableSelect } from '../common/SearchableSelect';
+import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import { DELIVERY_PERIOD_OPTIONS, INSPECTION_TYPE_OPTIONS } from '../../constants';
 
 const RequiredMark = ({ required }: { required?: boolean }) =>

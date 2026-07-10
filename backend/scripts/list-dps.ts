@@ -1,5 +1,5 @@
 import '../src/config/env.js';
-import prisma from '../src/config/prisma.js';
+import prisma from '../src/lib/prisma.js';
 
 async function main() {
   const dps = await prisma.directPurchase.findMany({

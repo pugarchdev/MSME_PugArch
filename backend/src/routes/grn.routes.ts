@@ -14,7 +14,7 @@
  */
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, requirePermission } from '../middleware/auth.js';
 import { requireApprovedOrg } from '../middleware/requireApprovedOrg.js';
 import { shortCache } from '../middleware/httpCache.js';

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Permission } from '../constants/permissions.js';
 import { apiResponse } from '../utils/apiResponse.js';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { getAccountTypeForUser, getCurrentUserPermissions, isMasterAdmin, userHasPermission, type RbacScope } from '../services/rbac.service.js';
 

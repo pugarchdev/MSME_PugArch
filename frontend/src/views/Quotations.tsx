@@ -757,7 +757,7 @@ function BidEditModal({
   );
 }
 
-export default function Quotations() {
+export default function Quotations({ inline = false }: { inline?: boolean }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -771,6 +771,8 @@ export default function Quotations() {
   const [loading, setLoading] = useState(!(cachedSellerBids || cachedBuyerTenders));
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | BidStatus>('all');
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedTenderId, setSelectedTenderId] = useState('all');
   const [viewMode, setViewMode] = useResponsiveViewMode();
   const [buyerTendersReady, setBuyerTendersReady] = useState(false);
@@ -1076,6 +1078,10 @@ export default function Quotations() {
     }
   };
 
+  const categories = useMemo(() => {
+    return Array.from(new Set(quotes.map(q => q.tender?.category || 'General').filter(Boolean))).sort();
+  }, [quotes]);
+
   // Trigger Next.js SWC recompilation to clear stale build errors
   const filteredQuotes = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -1085,7 +1091,13 @@ export default function Quotations() {
       const buyerText = `${quote.buyer?.name || ''} ${quote.note || ''}`.toLowerCase();
       const matchesSearch = !query || tenderText.includes(query) || sellerText.includes(query) || buyerText.includes(query);
       const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesMethod = methodFilter === 'all' || 
+        (methodFilter === 'rfq' && quote.source === 'rfq') || 
+        (methodFilter === 'bid' && quote.source !== 'rfq');
+      const matchesCategory = categoryFilter === 'all' || 
+        (quote.tender?.category || 'General') === categoryFilter;
+
+      return matchesSearch && matchesStatus && matchesMethod && matchesCategory;
     });
 
     return list.sort((a, b) => {
@@ -1121,7 +1133,7 @@ export default function Quotations() {
         return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
       }
     });
-  }, [quotes, searchTerm, statusFilter, sortField, sortOrder]);
+  }, [quotes, searchTerm, statusFilter, methodFilter, categoryFilter, sortField, sortOrder]);
   const { page, pageSize, pageItems: pagedQuotes, total, setPage, setPageSize } = usePagination(filteredQuotes, 10);
 
   const stats = useMemo(() => {
@@ -1140,33 +1152,35 @@ export default function Quotations() {
   }, [quotes]);
 
   return (
-    <div className="min-h-screen px-3 py-5 text-slate-900 sm:px-5 md:px-8">
-      <div className="mx-auto max-w-[118rem] space-y-5">
-        <div className="rounded-2xl border border-slate-200/80 bg-white/88 p-4 shadow-sm sm:p-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              {user?.role === 'buyer' ? 'Bid Evaluation' : 'Market Participation'}
-            </p>
-            <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-[#071632] md:text-3xl">
-              {user?.role === 'buyer' ? 'Quotations' : 'Bids & RFQs'}
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">
-              {user?.role === 'buyer'
-                ? 'Review submitted quotations, compare pricing, and record procurement decisions.'
-                : 'Track submitted tender bids and respond to buyer RFQ requests from marketplace.'}
-            </p>
-          </div>
+    <div className={cn(!inline && "min-h-screen px-3 py-5 text-slate-900 sm:px-5 md:px-8")}>
+      <div className={cn("mx-auto space-y-5", !inline && "max-w-[118rem]")}>
+        {!inline && (
+          <div className="rounded-2xl border border-slate-200/80 bg-white/88 p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                {user?.role === 'buyer' ? 'Bid Evaluation' : 'Market Participation'}
+              </p>
+              <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-[#071632] md:text-3xl">
+                {user?.role === 'buyer' ? 'Quotations' : 'Bids & RFQs'}
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">
+                {user?.role === 'buyer'
+                  ? 'Review submitted quotations, compare pricing, and record procurement decisions.'
+                  : 'Track submitted tender bids and respond to buyer RFQ requests from marketplace.'}
+              </p>
+            </div>
 
-          <Button
-            onClick={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
-            className="h-10 w-full rounded-lg bg-[#12335f] px-5 text-xs font-bold uppercase tracking-wide text-white shadow-sm shadow-[#12335f]/20 hover:bg-[#0b2445] sm:w-auto"
-          >
-            <Send className="mr-2 h-4 w-4" />
-            {user?.role === 'seller' ? 'My Catalogue' : 'View Tenders'}
-          </Button>
+            <Button
+              onClick={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
+              className="h-10 w-full rounded-lg bg-[#12335f] px-5 text-xs font-bold uppercase tracking-wide text-white shadow-sm shadow-[#12335f]/20 hover:bg-[#0b2445] sm:w-auto"
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {user?.role === 'seller' ? 'My Catalogue' : 'View Tenders'}
+            </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryTile label={user?.role === 'buyer' ? 'Total Quotations' : 'Bids / RFQs'} value={stats.total} icon={ClipboardCheck} />
@@ -1175,62 +1189,79 @@ export default function Quotations() {
           <SummaryTile label={user?.role === 'buyer' ? 'Quoted Value' : 'Response Value'} value={formatMoney(stats.totalValue)} icon={FileText} />
         </div> */}
 
-        <div className="grid gap-3 lg:grid-cols-4">
-          <InsightTile icon={IndianRupee} label="Lowest quote" value={stats.lowestValue ? formatMoney(stats.lowestValue) : '-'} helper="Best available commercial value in the current quotation pool." />
-          <InsightTile icon={FileSpreadsheet} label="Average quote" value={stats.averageValue ? formatMoney(Math.round(stats.averageValue)) : '-'} helper="Useful baseline before comparing supplier outliers." />
-          <InsightTile icon={ShieldCheck} label="Decision progress" value={`${stats.decisionRate}%`} helper={`${stats.accepted + stats.rejected} of ${stats.total} quotation records finalized.`} />
-          <InsightTile icon={Percent} label="Document coverage" value={`${stats.documentCount}/${stats.total}`} helper="Records with RFQ or proposal documents attached." />
+        {!inline && (
+          <div className="grid gap-3 lg:grid-cols-4">
+            <InsightTile icon={IndianRupee} label="Lowest quote" value={stats.lowestValue ? formatMoney(stats.lowestValue) : '-'} helper="Best available commercial value in the current quotation pool." />
+            <InsightTile icon={FileSpreadsheet} label="Average quote" value={stats.averageValue ? formatMoney(Math.round(stats.averageValue)) : '-'} helper="Useful baseline before comparing supplier outliers." />
+            <InsightTile icon={ShieldCheck} label="Decision progress" value={`${stats.decisionRate}%`} helper={`${stats.accepted + stats.rejected} of ${stats.total} quotation records finalized.`} />
+            <InsightTile icon={Percent} label="Document coverage" value={`${stats.documentCount}/${stats.total}`} helper="Records with RFQ or proposal documents attached." />
+          </div>
+        )}
+
+        <div className="space-y-3 rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 lg:items-center">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder={user?.role === 'buyer' ? 'Search by seller, tender ID, or category' : 'Search by RFQ, buyer, tender ID, or title'}
+                className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+              />
+            </div>
+
+            {user?.role === 'buyer' && (
+              <select
+                value={selectedTenderId}
+                onChange={(event) => setSelectedTenderId(event.target.value)}
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+              >
+                <option value="all">All tenders</option>
+                {tenders.map(tender => (
+                  <option key={tender.id} value={tender.id}>{tender.tenderId} - {tender.title}</option>
+                ))}
+              </select>
+            )}
+
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as 'all' | BidStatus)}
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+            >
+              <option value="all">All status</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+            </select>
+
+            <select
+              value={methodFilter}
+              onChange={(event) => setMethodFilter(event.target.value)}
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+            >
+              <option value="all">All Methods</option>
+              <option value="rfq">Quick Quote (RFQ)</option>
+              <option value="bid">Tender Bid (BID)</option>
+            </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+            >
+              <option value="all">All Categories</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <div className="flex items-center justify-end">
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between border-t border-slate-200/60 pt-2.5 text-[10px] font-bold text-slate-500">
+            <span>{filteredQuotes.length} matching record{filteredQuotes.length === 1 ? '' : 's'} from {quotes.length} total</span>
+            <span>{stats.pending} pending decision{stats.pending === 1 ? '' : 's'}{user?.role === 'buyer' ? ' for buyer review' : ' across submitted bids and RFQs'}</span>
+          </div>
         </div>
-
-        <Card className="rounded-2xl border border-slate-200/80 bg-white/92 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder={user?.role === 'buyer' ? 'Search by seller, tender ID, or category' : 'Search by RFQ, buyer, tender ID, or title'}
-                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm font-medium outline-none transition focus:ring-2 focus:ring-[#12335f]"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {user?.role === 'buyer' && (
-                  <select
-                    value={selectedTenderId}
-                    onChange={(event) => setSelectedTenderId(event.target.value)}
-                    className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:ring-2 focus:ring-[#12335f]"
-                  >
-                    <option value="all">All tenders</option>
-                    {tenders.map(tender => (
-                      <option key={tender.id} value={tender.id}>{tender.tenderId} - {tender.title}</option>
-                    ))}
-                  </select>
-                )}
-
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as 'all' | BidStatus)}
-                  className="h-10 min-w-[9rem] flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:ring-2 focus:ring-[#12335f] sm:flex-none"
-                >
-                  <option value="all">All status</option>
-                  <option value="pending">Pending</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-
-                <div className="h-10 w-px bg-slate-200 mx-1 hidden md:block" />
-
-                <ViewModeToggle value={viewMode} onChange={setViewMode} />
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-500">
-              <span>{filteredQuotes.length} matching record{filteredQuotes.length === 1 ? '' : 's'} from {quotes.length} total</span>
-              <span>{stats.pending} pending decision{stats.pending === 1 ? '' : 's'}{user?.role === 'buyer' ? ' for buyer review' : ' across submitted bids and RFQs'}</span>
-            </div>
-          </CardContent>
-        </Card>
 
         {loading && quotes.length === 0 ? (
           <div className="flex min-h-[300px] items-center justify-center rounded-lg border border-slate-200 bg-white">
@@ -1248,91 +1279,86 @@ export default function Quotations() {
             onPrimary={() => router.push(user?.role === 'seller' ? '/seller/catalogue' : '/buyer/tenders')}
           />
         ) : viewMode === 'list' ? (
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left min-w-[1150px]">
-                <colgroup>
-                  <col className="w-[52px]" />
-                  <col className="w-[94px]" />
-                  <col />
-                  <col className="w-[138px]" />
-                  <col className="w-[108px]" />
-                  <col className="w-[48px]" />
-                  <col className="w-[124px]" />
-                  <col className="w-[96px]" />
-                  {(user?.role === 'buyer' || user?.role === 'seller') && <col className="w-[196px]" />}
-                </colgroup>
-                <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+          <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
+            <div className="overflow-x-auto bg-slate-50/70 p-2 pb-3">
+              <table className="w-full border-separate border-spacing-y-2 text-left min-w-[1240px]">
+                <thead className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-3 py-3">Sr.No</th>
-                    <th className="px-3 py-3"><SortHeader label="Bid ID" field="id" /></th>
-                    <th className="px-4 py-3"><SortHeader label={user?.role === 'seller' ? 'RFQ / Tender' : 'Tender'} field="title" /></th>
-                    <th className="px-3 py-3"><SortHeader label={user?.role === 'seller' ? 'Buyer' : 'Supplier'} field="seller" /></th>
-                    <th className="px-3 py-3 text-right"><SortHeader label="Rate" field="rate" className="w-full justify-end" /></th>
-                    <th className="px-2 py-3 text-center"><SortHeader label="Qty" field="qty" className="w-full justify-center" /></th>
-                    <th className="px-3 py-3 text-right"><SortHeader label="Net Value" field="netValue" className="w-full justify-end" /></th>
-                    <th className="px-3 py-3 text-center"><SortHeader label="Status" field="status" className="w-full justify-center" /></th>
-                    {(user?.role === 'buyer' || user?.role === 'seller') && <th className="px-3 py-3 text-right">Manage</th>}
+                    <th className="px-4 py-3 w-16">Sr.No</th>
+                    <th className="px-4 py-3 w-28">Bid ID</th>
+                    <th className="px-4 py-3">RFQ / Tender</th>
+                    <th className="px-4 py-3 w-44">Buyer</th>
+                    <th className="px-4 py-3 text-right w-32"><SortHeader label="Rate" field="rate" className="w-full justify-end" /></th>
+                    <th className="px-4 py-3 text-center w-20"><SortHeader label="Qty" field="qty" className="w-full justify-center" /></th>
+                    <th className="px-4 py-3 text-right w-36"><SortHeader label="Net Value" field="netValue" className="w-full justify-end" /></th>
+                    <th className="px-4 py-3 text-center w-32"><SortHeader label="Status" field="status" className="w-full justify-center" /></th>
+                    {(user?.role === 'buyer' || user?.role === 'seller') && <th className="px-4 py-3 text-right w-52">Manage</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 text-xs">
+                <tbody className="text-xs">
                   {pagedQuotes.map((quote, index) => {
                     const StatusIcon = statusIcons[quote.status] || Clock;
                     const totalValue = getQuotePricing(quote).totalAmount;
                     return (
-                      <tr key={`${quote.source || 'bid'}-${quote.id}`} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-3 py-4 font-black text-slate-400">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
-                        <td className="px-3 py-4 font-mono font-bold text-[#12335f]">
-                          <EntityIdLink
-                            label={`${quote.source === 'rfq' ? 'RFQ' : 'BID'}-${String(quote.id).padStart(4, '0')}`}
-                            id={quote.id}
-                            size="sm"
+                      <tr key={`${quote.source || 'bid'}-${quote.id}`} className="bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm group">
+                        <td className="rounded-l-2xl px-4 py-3.5 text-xs font-black text-slate-400 whitespace-nowrap">{String((page - 1) * pageSize + index + 1).padStart(2, '0')}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap font-mono font-bold text-[#12335f]">
+                          <button
+                            type="button"
                             onClick={() => handleViewQuote(quote)}
-                          />
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-[#c86413] hover:bg-slate-100 hover:border-[#12335f] transition-all"
+                          >
+                            {quote.source === 'rfq' ? 'RFQ' : 'BID'}-{String(quote.id).padStart(4, '0')}
+                          </button>
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="break-words font-bold text-slate-800">{quote.tender?.title || '-'}</div>
-                          <div className="break-words text-[10px] font-medium text-slate-500">{quote.tender?.tenderId} | {quote.tender?.category}</div>
-                          <div className="mt-1 text-[10px] font-semibold text-slate-400">
-                            Delivery: {quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} | Valid: {formatDateTime(quote.validTill)}
+                        <td className="px-4 py-3.5">
+                          <div className="break-words font-black text-slate-900 leading-snug line-clamp-1">{quote.tender?.title || '-'}</div>
+                          <div className="break-words text-[10px] font-bold text-slate-500 mt-0.5">
+                            {quote.source === 'rfq' ? 'Request for Quote' : 'Tender Bid'} | {quote.tender?.tenderId} | {quote.tender?.category}
+                          </div>
+                          <div className="mt-1 text-[9px] font-semibold text-slate-400">
+                            Delivery: {quote.deliveryDays ? `${quote.deliveryDays} days` : '-'} | Valid: {formatDate(quote.validTill)}
                             {quote.tender?.closesAt && <> | {quote.source === 'rfq' ? 'Deadline' : 'Closing'}: {formatDateTime(quote.tender.closesAt)}</>}
                           </div>
                         </td>
-                        <td className="px-3 py-4">
-                          <div className="break-words font-semibold text-slate-700">{user?.role === 'seller' ? quote.buyer?.name || '-' : quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-'}</div>
-                          <div className="mt-1 text-[10px] font-semibold text-slate-400">
-                            Updated: {formatDateTime(getQuoteUpdatedAt(quote))}
+                        <td className="px-4 py-3.5">
+                          <div className="break-words text-xs font-black text-slate-800 leading-tight">
+                            {user?.role === 'seller' ? quote.buyer?.name || '-' : quote.seller?.sellerProfile?.businessName || quote.seller?.name || '-'}
+                          </div>
+                          <div className="mt-0.5 text-[10px] font-bold text-slate-500">
+                            Updated: {formatDate(getQuoteUpdatedAt(quote))}
                           </div>
                         </td>
-                        <td className="px-3 py-4 text-right font-semibold text-slate-600">
-                          <span className="block min-w-0 whitespace-normal break-all leading-relaxed">{formatMoney(quote.unitPrice)}</span>
+                        <td className="px-4 py-3.5 text-right font-bold text-slate-700 whitespace-nowrap">
+                          {formatMoney(quote.unitPrice)}
                         </td>
-                        <td className="px-2 py-4 text-center font-medium">{quote.quantity}</td>
-                        <td className="px-3 py-4 text-right font-black text-[#12335f]">
-                          <div className="flex min-w-0 items-start justify-end gap-1">
-                            {quote.isLowest && <Trophy className="h-3 w-3 text-amber-500" />}
-                            <span className="min-w-0 whitespace-normal break-all leading-relaxed">{formatMoney(totalValue)}</span>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-700 whitespace-nowrap">
+                          {quote.quantity}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-black text-[#12335f] whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {quote.isLowest && <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                            <span>{formatMoney(totalValue)}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-4 text-center">
-                          <span className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase border shadow-sm', statusStyles[quote.status])}>
+                        <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                          <span className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide shadow-sm', statusStyles[quote.status])}>
                             {getStatusLabel(quote.status)}
                           </span>
                         </td>
                         {user?.role === 'buyer' && (
-                          <td className="px-3 py-4 text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2 text-[10px] font-black uppercase text-slate-700 hover:bg-slate-50" title="View quotation details">
-                                <Eye className="h-3.5 w-3.5" />
-                                View
+                          <td className="rounded-r-2xl px-4 py-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all" title="View details">
+                                <Eye className="h-4 w-4" />
                               </button>
                               {isDecisionOpen(quote) && (
                                 <>
-                                  <button onClick={() => handleStatusUpdate(quote, 'rejected')} className="h-7 w-7 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
-                                    <XCircle className="h-3.5 w-3.5" />
+                                  <button onClick={() => handleStatusUpdate(quote, 'rejected')} className="h-8 w-8 rounded border border-red-200 bg-white flex items-center justify-center text-red-600 hover:bg-red-50" title="Reject quotation">
+                                    <XCircle className="h-4 w-4" />
                                   </button>
-                                  <button onClick={() => handleStatusUpdate(quote, 'accepted')} className="h-7 w-7 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  <button onClick={() => handleStatusUpdate(quote, 'accepted')} className="h-8 w-8 rounded border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 hover:bg-emerald-50" title="Accept quotation">
+                                    <CheckCircle2 className="h-4 w-4" />
                                   </button>
                                 </>
                               )}
@@ -1350,22 +1376,19 @@ export default function Quotations() {
                           </td>
                         )}
                         {user?.role === 'seller' && (
-                          <td className="px-3 py-4 text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2 text-[10px] font-black uppercase text-slate-700 hover:bg-slate-50" title="View details">
-                                <Eye className="h-3.5 w-3.5" />
-                                View
+                          <td className="rounded-r-2xl px-4 py-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" onClick={() => handleViewQuote(quote)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all" title="View details">
+                                <Eye className="h-4 w-4" />
                               </button>
-                              <button type="button" onClick={() => setEditTarget(quote)} disabled={!canSellerManageBid(quote, user?.role)} className="inline-flex h-7 items-center gap-1 rounded border border-blue-200 bg-white px-2 text-[10px] font-black uppercase text-blue-700 hover:bg-blue-50 disabled:border-blue-100 disabled:bg-slate-50 disabled:text-slate-300" title="Edit quotation">
-                                <Edit3 className="h-3.5 w-3.5" />
-                                Edit
+                              <button type="button" onClick={() => setEditTarget(quote)} disabled={!canSellerManageBid(quote, user?.role)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-550 hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:hover:text-slate-350 disabled:hover:border-slate-200 transition-all" title="Edit quotation">
+                                <Edit3 className="h-4 w-4" />
                               </button>
-                              <button type="button" onClick={() => handleDeleteBid(quote)} disabled={!canSellerManageBid(quote, user?.role) || deletingId === quote.id} className="inline-flex h-7 items-center gap-1 rounded border border-red-200 bg-white px-2 text-[10px] font-black uppercase text-red-700 hover:bg-red-50 disabled:border-red-100 disabled:bg-slate-50 disabled:text-slate-300" title="Delete quotation">
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
+                              <button type="button" onClick={() => handleDeleteBid(quote)} disabled={!canSellerManageBid(quote, user?.role) || deletingId === quote.id} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-550 hover:border-red-600 hover:text-red-600 disabled:opacity-40 disabled:hover:text-slate-350 disabled:hover:border-slate-200 transition-all" title="Delete quotation">
+                                <Trash2 className="h-4 w-4" />
                               </button>
                               {quote.source === 'rfq' && (!quote.quoteResponses || quote.quoteResponses.length === 0) && (
-                                <Button onClick={() => setResponseTarget(quote)} className="h-7 rounded-md bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]">
+                                <Button onClick={() => setResponseTarget(quote)} className="h-8 rounded-md bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#0b2445] transition-all">
                                   Respond
                                 </Button>
                               )}

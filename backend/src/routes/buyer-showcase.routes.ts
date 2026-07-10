@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
-import prisma from '../config/prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, authorize, type AuthRequest } from '../middleware/auth.js';
 import { upload } from '../config/storage.js';
 import { ApiError } from '../utils/ApiError.js';

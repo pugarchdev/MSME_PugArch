@@ -174,10 +174,10 @@ function RoleAwareActionCards() {
         queryKey: ['dashboard', 'summary'] as const,
         queryFn: () => getApi<DashboardSummary>('/api/dashboard/summary', true).catch(() => null),
         enabled: !!user && user.role !== 'admin',
-        placeholderData: (prev) => prev,
         refetchOnWindowFocus: true,
         staleTime: 15_000,
-        initialData: () => {
+        placeholderData: (prev) => {
+            if (prev) return prev;
             if (typeof window !== 'undefined' && user?.id) {
                 const cached = localStorage.getItem(`dashboard_summary_${user.id}`);
                 if (cached) {

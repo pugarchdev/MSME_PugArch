@@ -585,6 +585,7 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                         ? prisma.requirement.count({
                             where: {
                                 status: { in: ['APPROVED', 'SOURCING'] },
+                                procurementMethod: { not: 'DIRECT_PURCHASE' },
                                 AND: [{ OR: [{ requiredBy: null }, { requiredBy: { gte: new Date() } }] }]
                             }
                         }).catch(() => 0)
@@ -596,7 +597,7 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                         }).then(rows => prisma.auction.count({
                             where: {
                                 id: { in: rows.map((r: any) => r.auctionId) },
-                                status: { in: ['SCHEDULED', 'LIVE', 'PAUSED', 'scheduled', 'live', 'paused'] }
+                                status: { in: ['SCHEDULED', 'LIVE', 'PAUSED', 'scheduled', 'live', 'paused', 'active', 'ACTIVE'] }
                             }
                         })).catch(() => 0)
                         : Promise.resolve(0)

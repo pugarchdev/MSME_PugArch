@@ -5087,6 +5087,8 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     whatAreYouBuying: draft.basics.whatAreYouBuying,
     estimatedValue,
     deliveryLocation,
+    category: draft.basics.category,
+    subCategory: draft.basics.subCategory,
   };
 
   const auctionConfigPayload = isReverseAuctionMethod(draft.type) ? {

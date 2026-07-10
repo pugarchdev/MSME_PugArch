@@ -1417,10 +1417,37 @@ const saveProcurementDraft = async (req: AuthRequest, body: z.infer<typeof procu
     payload: body.payload || null
   };
   const items = toDraftItems(body.items as Array<Record<string, unknown>> | undefined, methodSlug, draftMeta);
+
+  // Resolve categoryId from frontend category string
+  let resolvedCategoryId = body.categoryId;
+  if (!resolvedCategoryId && body.payload) {
+    const payloadBasics = (body.payload.basics || {}) as any;
+    const auctionConfig = (body.payload.auctionConfig || {}) as any;
+    const catName = payloadBasics.category || auctionConfig.category || auctionConfig.auctionCategory || body.payload.category || '';
+    if (catName && typeof catName === 'string') {
+      const FRONTEND_CATEGORY_TO_DB_MAP: Record<string, string> = {
+        'IT Hardware': 'IT & Computer Equipment',
+        'Office Equipment': 'Office Equipment & Stationery',
+        'Electrical': 'Electrical & Electronics',
+        'Mechanical': 'Mechanical & Engineering',
+        'Civil Works': 'Construction & Civil Work Services',
+        'Facility Management': 'Industrial Maintenance Services',
+        'Professional Services': 'Engineering Consultancy Services'
+      };
+      const dbCatName = FRONTEND_CATEGORY_TO_DB_MAP[catName] || catName;
+      const categoryObj = await db.category.findFirst({
+        where: { name: { equals: dbCatName.trim(), mode: 'insensitive' } }
+      });
+      if (categoryObj) {
+        resolvedCategoryId = categoryObj.id;
+      }
+    }
+  }
+
   const data = {
     title: body.title,
     description: body.description,
-    categoryId: body.categoryId,
+    categoryId: resolvedCategoryId,
     procurementMethod: methodCode,
     canonicalMethod: body.canonicalMethod || methodSlug.toUpperCase(),
     estimatedValue: body.estimatedValue,
@@ -1515,8 +1542,8 @@ const createAuctionForSubmittedProcurement = async (req: AuthRequest, requiremen
       remarks: 'Created from guided procurement wizard',
       startTime: config.auctionStartDateTime,
       endTime: config.auctionEndDateTime,
-      status: 'DRAFT',
-      statusEnum: 'DRAFT'
+      status: 'active',
+      statusEnum: 'LIVE'
     }
   });
 
@@ -4211,7 +4238,12 @@ router.post('/procurement/submit', authenticate, authorize('buyer'), asyncRoute(
   }
 
   const draft = parsed.id ? await assertProcurementDraftAccess(req, parsed.id) : await saveProcurementDraft(req, parsed);
-  const submitted = await procurementWorkflow.submitRequirement(actorFrom(req), draft.id);
+  let submitted = await procurementWorkflow.submitRequirement(actorFrom(req), draft.id);
+  // Auto-approve the requirement in development/guided mode to skip corporate approvals queue
+  submitted = await db.requirement.update({
+    where: { id: submitted.id },
+    data: { status: 'APPROVED' }
+  });
   try {
     const auction = await createAuctionForSubmittedProcurement(req, submitted, parsed);
     const rateContract = await createRateContractForSubmittedProcurement(req, submitted, parsed);
@@ -8216,6 +8248,18 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     }),
   ]);
 
+  // Load linked auctions to resolve action URLs for requirements
+  const linkedAuctions = requirements.length
+    ? await db.auction.findMany({
+        where: { linkedRequirementId: { in: requirements.map((r: any) => r.id) } }
+      })
+    : [];
+
+  const auctionsByRequirementId = linkedAuctions.reduce((acc: Record<number, any>, auc: any) => {
+    acc[auc.linkedRequirementId] = auc;
+    return acc;
+  }, {});
+
   const [cartApprovals, directPurchaseApprovals, tenderApprovals] = await Promise.all([
     procurementRequests.length
       ? db.procurementApproval.findMany({
@@ -8735,7 +8779,20 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       organizationName: '',
       createdAt: r.createdAt?.toISOString?.() || '',
       updatedAt: r.updatedAt?.toISOString?.() || '',
-      actionUrl: `/buyer/requirements`,
+      actionUrl: (() => {
+        const linkedAuction = auctionsByRequirementId[r.id];
+        if (linkedAuction) {
+          const s = String(linkedAuction.status).toUpperCase();
+          if (['PUBLISHED', 'OPEN', 'ACTIVE', 'SOURCING', 'LIVE'].includes(s)) {
+            return `/reverse-auctions/${linkedAuction.id}/live`;
+          }
+          if (['CLOSED', 'COMPLETED', 'AWARDED', 'FULFILLED'].includes(s)) {
+            return `/reverse-auctions/${linkedAuction.id}/results`;
+          }
+          return `/reverse-auctions/${linkedAuction.id}`;
+        }
+        return `/buyer/requirements`;
+      })(),
       documents,
       items,
       paymentTerms: '',

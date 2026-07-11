@@ -14,6 +14,7 @@ import {
 import { DEFAULT_CHECKOUT_FORM } from '../constants';
 import type { CartEvaluation, CheckoutFormData } from '../types';
 import { fetchDeliveryAddresses } from '../../directPurchase/api';
+import { api } from '../../../lib/api';
 
 export function useProcurementCheckout() {
   const { user } = useAuth();
@@ -30,25 +31,46 @@ export function useProcurementCheckout() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!user || formData.buyerDetails.organizationName) return;
-    const profile = (user as any).buyerProfile || {};
-    const org = (user as any).organization || {};
-    setFormData(prev => ({
-      ...prev,
-      buyerDetails: {
-        organizationName: profile.organizationName || org.organizationName || org.name || '',
-        buyerOfficerName: user.name || profile.representativeName || '',
-        designation: profile.designation || '',
-        email: user.email || '',
-        mobile: user.mobile || profile.mobile || '',
-        officeAddress: profile.registeredAddress || profile.corporateAddress || '',
-        financialYear: `${new Date().getFullYear()}-${String(new Date().getFullYear() + 1).slice(-2)}`,
-        budgetHead: '',
-        competentAuthorityName: '',
-        competentAuthorityDesignation: '',
-      },
-    }));
-  }, [user, formData.buyerDetails.organizationName]);
+    if (!user) return;
+    let alive = true;
+    const loadProfile = async () => {
+      try {
+        const res = await api.fetch('/api/auth/me', { skipCache: true });
+        if (!res.ok || !alive) return;
+        const data = await res.json();
+        const profile = data.profile || data.user?.buyerProfile || {};
+        const org = data.user?.organization || {};
+
+        setFormData(prev => {
+          const organizationName = prev.buyerDetails.organizationName || profile.organizationName || org.organizationName || org.name || '';
+          const designation = prev.buyerDetails.designation || profile.designation || '';
+          const officeAddress = prev.buyerDetails.officeAddress || profile.registeredAddress || profile.corporateAddress || org.addressLine1 || '';
+
+          return {
+            ...prev,
+            buyerDetails: {
+              ...prev.buyerDetails,
+              organizationName,
+              designation,
+              officeAddress,
+              buyerOfficerName: prev.buyerDetails.buyerOfficerName || user.name || profile.representativeName || '',
+              email: prev.buyerDetails.email || user.email || '',
+              mobile: prev.buyerDetails.mobile || user.mobile || profile.mobile || '',
+              financialYear: prev.buyerDetails.financialYear || `${new Date().getFullYear()}-${String(new Date().getFullYear() + 1).slice(-2)}`,
+              budgetHead: prev.buyerDetails.budgetHead || '',
+              competentAuthorityName: prev.buyerDetails.competentAuthorityName || '',
+              competentAuthorityDesignation: prev.buyerDetails.competentAuthorityDesignation || '',
+            }
+          };
+        });
+      } catch (err) {
+        console.error('Failed to auto-fetch buyer details', err);
+      }
+    };
+
+    loadProfile();
+    return () => { alive = false; };
+  }, [user]);
 
   useEffect(() => {
     if (!user || formData.deliveryDetails.deliveryAddress) return;

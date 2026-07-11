@@ -136,8 +136,8 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                         </div>
                         <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">Scroll verified buyer logos and click any buyer to list only requirements published by that buyer below.</p>
                     </div>
-                    <Link href="/marketplace/requirements" className="inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-[#0b2447] px-4 text-xs font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white sm:self-end">
-                        View All Requirements <ChevronRight className="h-3.5 w-3.5" />
+                    <Link href="/marketplace/buyers" className="inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-[#0b2447] px-4 text-xs font-bold text-[#0b2447] transition hover:bg-[#0b2447] hover:text-white sm:self-end">
+                        View All <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
                 </div>
 
@@ -162,7 +162,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                             aria-label="Buyers with requirements"
                         >
                             <Link
-                                href="/marketplace/requirements"
+                                href="/marketplace/buyers"
                                 className="group flex flex-col h-[175px] w-[160px] shrink-0 items-center justify-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 text-center backdrop-blur-md shadow-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.03] hover:border-[#0b2447]/35 hover:bg-white hover:shadow-lg hover:shadow-[#0b2447]/5 text-slate-800"
                             >
                                 <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/80 text-slate-600 shadow-sm transition-all duration-300 group-hover:scale-105">

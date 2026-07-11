@@ -16,20 +16,30 @@ import {
   MessageSquareText,
   Search,
   Send,
+  Clock,
+  Play,
+  User,
+  Gavel,
 } from 'lucide-react';
 import { formatDate, lifecycleLabels, money, type BidResultRow, type ProcurementBid } from './data';
 
 export function StatusBadge({ label }: { label: string }) {
+  const normalized = String(label || '').trim().toUpperCase();
   const tone =
-    label === 'Awarded' || label === 'Qualified' || label === 'Completed'
+    ['AWARDED', 'QUALIFIED', 'COMPLETED', 'PAYMENT_COMPLETED', 'CLOSED'].includes(normalized)
       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-emerald-100'
-      : label === 'Closing Soon' || label === 'Pending' || label === 'Reopened'
-        ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-amber-100'
-        : label === 'Rejected' || label === 'Disqualified' || label === 'Closed'
-          ? 'border-red-200 bg-red-50 text-red-700 shadow-red-100'
-          : 'border-blue-200 bg-blue-50 text-blue-700 shadow-blue-100';
+      : ['OPEN', 'OPEN_FOR_BIDDING', 'PUBLISHED'].includes(normalized)
+        ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-blue-100'
+        : ['PO_GENERATED', 'IN_PROGRESS', 'DELIVERED', 'GRN_COMPLETED', 'INVOICE_SUBMITTED'].includes(normalized)
+          ? 'border-purple-200 bg-purple-50 text-purple-700 shadow-purple-100'
+          : ['CLOSING SOON', 'PENDING', 'REOPENED', 'UNDER_EVALUATION', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'NEGOTIATION'].includes(normalized)
+            ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-amber-100'
+            : ['REJECTED', 'DISQUALIFIED', 'CANCELLED', 'EXPIRED'].includes(normalized)
+              ? 'border-red-200 bg-red-50 text-red-700 shadow-red-100'
+              : 'border-slate-200 bg-slate-50 text-slate-700 shadow-sm';
 
-  return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${tone}`}>{label}</span>;
+  const friendlyLabel = label ? label.replace(/_/g, ' ') : '';
+  return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${tone}`}>{friendlyLabel}</span>;
 }
 
 export function PageShell({ children }: { children: React.ReactNode }) {
@@ -85,9 +95,15 @@ export function BidCard({ bid, viewHref, participationHref, participationLabel =
               <Eye className="h-3.5 w-3.5" /> View Details
             </Link>
           )}
-          <Link href={participationHref || `/bids/${bid.id}/participate`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-[#c86413] bg-[#fff7ed] px-3 text-xs font-black text-[#9a4a0f] transition hover:bg-[#ffedd5]">
-            <Send className="h-3.5 w-3.5" /> {participationLabel}
-          </Link>
+          {['TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'L1_GENERATED', 'FINANCIAL_EVALUATION', 'UNDER_EVALUATION'].includes(String(bid.status)) ? (
+            <Link href={`/bids/${bid.id}/compare`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-[#c86413] bg-[#fff7ed] px-3 text-xs font-black text-[#9a4a0f] transition hover:bg-[#ffedd5]">
+              <Gavel className="h-3.5 w-3.5" /> Compare Bids
+            </Link>
+          ) : (
+            <Link href={participationHref || `/bids/${bid.id}/participate`} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-[#c86413] bg-[#fff7ed] px-3 text-xs font-black text-[#9a4a0f] transition hover:bg-[#ffedd5]">
+              <Send className="h-3.5 w-3.5" /> {participationLabel}
+            </Link>
+          )}
           <button className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 px-3 text-xs font-black text-slate-600 hover:bg-slate-50">
             <Download className="h-3.5 w-3.5" /> Docs
           </button>
@@ -197,5 +213,72 @@ export function ClarificationButton({ onClick }: { onClick: () => void }) {
     <button onClick={onClick} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:bg-slate-50">
       <MessageSquareText className="h-4 w-4 text-[#0b2447]" /> Clarification history
     </button>
+  );
+}
+
+export interface TimelineStage {
+  name: string;
+  label: string;
+  time: string | null;
+  user: { name: string; role: string } | null;
+  status: 'completed' | 'current' | 'pending';
+}
+
+export function ProcurementTimelineTracker({ stages }: { stages: TimelineStage[] }) {
+  if (!stages || stages.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      {stages.map((stage) => {
+        const isDone = stage.status === 'completed';
+        const isCurrent = stage.status === 'current';
+        
+        return (
+          <div key={stage.name} className="relative">
+            {/* Stage content */}
+            <div className={`h-full rounded-xl border p-4 shadow-sm transition duration-200 ${
+              isDone ? 'border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50' :
+              isCurrent ? 'border-blue-200 bg-blue-50/40 ring-1 ring-blue-100 animate-pulse' :
+              'border-slate-200 bg-white opacity-80'
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${
+                    isDone ? 'bg-emerald-500' : isCurrent ? 'bg-blue-500' : 'bg-slate-300'
+                  }`} />
+                  <span className={`text-[10px] font-black uppercase tracking-wider truncate ${
+                    isDone ? 'text-emerald-700' : isCurrent ? 'text-blue-700' : 'text-slate-400'
+                  }`}>
+                    {stage.name}
+                  </span>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide shrink-0 ${
+                  isDone ? 'bg-emerald-100 text-emerald-800' : 
+                  isCurrent ? 'bg-blue-100 text-blue-800' : 
+                  'bg-slate-100 text-slate-500'
+                }`}>
+                  {stage.status}
+                </span>
+              </div>
+              <h4 className="mt-1.5 text-xs font-black text-slate-900 leading-snug">{stage.label}</h4>
+              
+              {stage.time && (
+                <div className="mt-3 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                  <Clock className="h-3 w-3 text-slate-400" />
+                  <span>{new Date(stage.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              )}
+
+              {stage.user && (
+                <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                  <User className="h-3 w-3 text-slate-400" />
+                  <span className="truncate max-w-[120px]">{stage.user.name} ({stage.user.role.toUpperCase()})</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

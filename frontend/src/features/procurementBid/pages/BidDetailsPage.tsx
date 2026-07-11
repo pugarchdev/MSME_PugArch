@@ -5,37 +5,55 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
-import { ClarificationButton, LifecycleTracker, PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, ResultsTable, StatusBadge } from '../components';
+import { ClarificationButton, LifecycleTracker, PageShell, ProcurementEmptyState, ProcurementErrorState, ProcurementHero, ProcurementLoadingState, ResultsTable, StatusBadge, ProcurementTimelineTracker } from '../components';
 import { formatDate, money } from '../data';
 import type { ProcurementBid } from '../data';
 import { procurementBidApi } from '../api';
+import { api, unwrapApiData } from '../../../lib/api';
 import PremiumLoader from '../../../components/PremiumLoader';
+import { toast } from 'sonner';
 
 export default function BidDetailsPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const pathname = usePathname() || '';
   const bidId = pathname.split('/')[2];
   const [bid, setBid] = useState<ProcurementBid | null>(null);
+  const [timeline, setTimeline] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showClarifications, setShowClarifications] = useState(false);
   const participateHref = user ? `/bids/${bidId}/participate` : `/login?returnUrl=${encodeURIComponent(`/bids/${bidId}/participate`)}`;
   const isPendingApproval = bid?.approvalStatus === 'PENDING' || bid?.approvalStatus === 'DRAFT';
+  const authHeaders = React.useMemo(() => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }, [token]);
 
   const loadBid = React.useCallback(() => {
     let alive = true;
     setLoading(true);
     setError('');
-    procurementBidApi.detail(bidId)
-      .then(data => { if (alive) setBid(data); })
+    
+    Promise.all([
+      procurementBidApi.detail(bidId),
+      api.fetch(`/api/bids/${bidId}/timeline`, { headers: authHeaders }).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] }))
+    ])
+      .then(([bidData, timelineRes]) => {
+        if (alive) {
+          setBid(bidData);
+          setTimeline(unwrapApiData<any[]>(timelineRes) || []);
+        }
+      })
       .catch((err: any) => {
         if (!alive) return;
         setBid(null);
         setError(err?.message || 'Unable to load bid details right now.');
       })
       .finally(() => { if (alive) setLoading(false); });
+      
     return () => { alive = false; };
-  }, [bidId]);
+  }, [bidId, authHeaders]);
 
   useEffect(() => {
     return loadBid();
@@ -67,6 +85,8 @@ export default function BidDetailsPage() {
     );
   }
 
+  const isOwner = user?.role === 'buyer' && Number(bid.buyerId) === Number(user.id);
+
   return (
     <PageShell>
       <main className="mx-auto w-full max-w-7xl">
@@ -83,6 +103,109 @@ export default function BidDetailsPage() {
             )
           }
         />
+
+        {/* Buyer Control Panel */}
+        {isOwner && (
+          <div className="mt-4 rounded-xl border border-[#12335f]/25 bg-gradient-to-r from-[#12335f]/5 to-transparent p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-wider text-[#12335f]">Buyer Control Panel</p>
+              <h4 className="text-sm font-extrabold text-slate-900 mt-0.5">Manage Procurement Lifecycle</h4>
+              <p className="text-xs text-slate-500 font-semibold">As the owner, you can manage progress, evaluate compliance, and recommend awards.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {String(bid.status) === 'DRAFT' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      await procurementBidApi.submitBidForApproval(bid.id);
+                      toast.success('Bid published successfully!');
+                      loadBid();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to publish bid');
+                      setLoading(false);
+                    }
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f]"
+                >
+                  Publish Bid
+                </button>
+              )}
+              {['PUBLISHED', 'OPEN_FOR_BIDDING', 'OPEN'].includes(String(bid.status)) && (
+                <button
+                  onClick={async () => {
+                    const confirmEval = window.confirm("Are you sure you want to close bidding and enter technical evaluation?");
+                    if (!confirmEval) return;
+                    try {
+                      setLoading(true);
+                      const parts = await procurementBidApi.getBidParticipants(bid.id);
+                      if (parts.length === 0) {
+                        toast.error("Cannot evaluate: No sellers have participated in this bid yet.");
+                        setLoading(false);
+                        return;
+                      }
+                      await procurementBidApi.submitTechnicalEvaluation(bid.id, {
+                        evaluations: parts.map(p => ({ participationId: p.id, status: 'QUALIFIED', remarks: 'Technical criteria met' }))
+                      });
+                      toast.success('Technical evaluation initiated!');
+                      loadBid();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to initiate technical evaluation');
+                      setLoading(false);
+                    }
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f]"
+                >
+                  Start Evaluation
+                </button>
+              )}
+              {String(bid.status) === 'TECHNICAL_EVALUATION' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      await procurementBidApi.completeTechnicalEvaluation(bid.id);
+                      toast.success('Technical evaluation completed!');
+                      loadBid();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to complete technical evaluation');
+                      setLoading(false);
+                    }
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f]"
+                >
+                  Complete Tech Evaluation
+                </button>
+              )}
+              {String(bid.status) === 'TECHNICAL_EVALUATION_COMPLETED' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      await procurementBidApi.openFinancialEvaluation(bid.id);
+                      toast.success('Financial evaluation opened and ranking generated!');
+                      loadBid();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to open financial evaluation');
+                      setLoading(false);
+                    }
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-[#0b2447] px-4 text-xs font-black text-white shadow-sm transition hover:bg-[#12335f]"
+                >
+                  Open Financial Bids
+                </button>
+              )}
+              {['TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'L1_GENERATED', 'FINANCIAL_EVALUATION', 'UNDER_EVALUATION'].includes(String(bid.status)) && (
+                <Link
+                  href={`/bids/${bid.id}/compare`}
+                  className="inline-flex h-9 items-center justify-center rounded-md border border-[#c86413] bg-[#fff7ed] px-4 text-xs font-black text-[#9a4a0f] shadow-sm transition hover:bg-[#ffedd5]"
+                >
+                  Compare & Award
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_340px]">
           <section className="space-y-5">
@@ -114,8 +237,12 @@ export default function BidDetailsPage() {
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="text-base font-black text-[#0b2447]">Bid Lifecycle Tracker</h2>
-              <div className="mt-4"><LifecycleTracker current={bid.currentStage} /></div>
+              <h2 className="text-base font-black text-[#0b2447] mb-4">Bid Lifecycle Timeline</h2>
+              {timeline && timeline.length > 0 ? (
+                <ProcurementTimelineTracker stages={timeline} />
+              ) : (
+                <LifecycleTracker current={bid.currentStage} />
+              )}
             </div>
 
             <div className="grid gap-5 lg:grid-cols-2">

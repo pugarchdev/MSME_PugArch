@@ -285,6 +285,8 @@ const userSelect = {
   accountStatus: true,
   emailVerified: true,
   lastLoginAt: true,
+  failedLoginCount: true,
+  lockedUntil: true,
   createdAt: true,
   updatedAt: true,
   company: { select: { id: true, name: true } },
@@ -1916,6 +1918,20 @@ router.post('/master-admin/users/:id/reset-password', ...masterOnly, requirePerm
   });
   await createAuditLog(req, { action: 'user.password.reset', entityType: 'user', entityId: id, metadata: { reason } });
   jsonOk(res, { user, temporaryPassword }, 'Temporary password generated. Share it through an approved secure channel.');
+}));
+
+router.post('/master-admin/users/:id/unlock', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!(await checkNotMasterAdmin(id, res))) return;
+  const reason = ensureReason(res, req.body, 'unlock user');
+  if (!reason) return;
+  const user = await prisma.user.update({
+    where: { id },
+    data: { failedLoginCount: 0, lockedUntil: null },
+    select: userSelect
+  });
+  await createAuditLog(req, { action: 'user.unlock', entityType: 'user', entityId: id, metadata: { reason } });
+  jsonOk(res, user, 'User account unlocked successfully.');
 }));
 
 router.post('/master-admin/users/:id/invite', ...masterOnly, requirePermission(PERMISSIONS.USER_UPDATE), wrap(async (req, res) => {

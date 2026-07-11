@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Building2, CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, MapPin, RefreshCw, Search, ShieldCheck, X, type LucideIcon } from 'lucide-react';
+import { Building2, CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, MapPin, RefreshCw, Search, ShieldCheck, X, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -141,6 +141,9 @@ export default function SellerOpportunitiesPage() {
   const [selectedItem, setSelectedItem] = useState<SellerOpportunity | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode('seller:opportunities:view-mode');
   const [kpiFilter, setKpiFilter] = useState<'all' | 'open' | 'dueSoon' | 'auctions'>('all');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [category, setCategory] = useState('');
+  const [valueRange, setValueRange] = useState('');
 
   const load = React.useCallback(() => {
     let alive = true;
@@ -385,6 +388,7 @@ export default function SellerOpportunitiesPage() {
   const typeOptions = useMemo(() => Array.from(new Set(items.map(item => item.type))).sort(), [items]);
   const statusOptions = useMemo(() => Array.from(new Set(items.map(item => item.status).filter(Boolean))).sort(), [items]);
   const locationOptions = useMemo(() => Array.from(new Set(items.map(item => item.location).filter((value): value is string => Boolean(value)))).sort(), [items]);
+  const categoryOptions = useMemo(() => Array.from(new Set(items.map(item => item.category).filter((value): value is string => Boolean(value)))).sort(), [items]);
 
   const baseFiltered = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -394,13 +398,21 @@ export default function SellerOpportunitiesPage() {
       if (type && item.type !== type) return false;
       if (status && item.status !== status) return false;
       if (location && item.location !== location) return false;
+      if (category && item.category !== category) return false;
+      if (valueRange) {
+        const val = item.estimatedValue || 0;
+        if (valueRange === '5l' && val >= 500000) return false;
+        if (valueRange === '25l' && (val < 500000 || val >= 2500000)) return false;
+        if (valueRange === '1cr' && (val < 2500000 || val >= 10000000)) return false;
+        if (valueRange === 'above1cr' && val < 10000000) return false;
+      }
       if (closingDate === '7' && item.closingDate) {
         const diff = (new Date(item.closingDate).getTime() - Date.now()) / 86400000;
         if (diff > 7) return false;
       }
       return true;
     });
-  }, [closingDate, items, location, query, status, type]);
+  }, [closingDate, items, location, query, status, type, category, valueRange]);
 
   const summary = useMemo(() => {
     const openStatuses = new Set(['open', 'scheduled', 'live', 'pending', 'closing soon']);
@@ -434,12 +446,12 @@ export default function SellerOpportunitiesPage() {
   // Reset KPI filter when dropdown filters change
   useEffect(() => {
     setKpiFilter('all');
-  }, [query, type, status, location, closingDate]);
+  }, [query, type, status, location, closingDate, category, valueRange]);
 
   useEffect(() => {
     setPage(1);
     setExpandedId(null);
-  }, [closingDate, location, query, status, type, viewMode, kpiFilter]);
+  }, [closingDate, location, query, status, type, viewMode, kpiFilter, category, valueRange]);
 
   const pageRows = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page]);
 
@@ -449,8 +461,11 @@ export default function SellerOpportunitiesPage() {
     setStatus('');
     setLocation('');
     setClosingDate('');
+    setCategory('');
+    setValueRange('');
     setKpiFilter('all');
     setPage(1);
+    setShowAdvanced(false);
   };
 
   return (
@@ -501,27 +516,88 @@ export default function SellerOpportunitiesPage() {
         />
       </div>
 
-      <div className="rounded-[24px] bg-slate-50/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70">
-        <div className="grid gap-3 lg:grid-cols-[1fr_170px_170px_170px_150px_auto_auto] lg:items-center">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {/* Filters & Search Control Panel */}
+      <div className="rounded-[24px] bg-slate-50/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/60">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          {/* Search bar */}
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="Search opportunity, buyer, category, location..."
-              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+              onChange={event => { setQuery(event.target.value); setPage(1); }}
+              placeholder="Search opportunity reference, title, category, buyer..."
+              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-semibold text-slate-800 placeholder-slate-400 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10 shadow-[inset_0_1px_2px_rgba(15,23,42,0.02)]"
             />
           </div>
-          <SelectFilter value={type} onChange={(value) => setType(value as OpportunityType | '')} placeholder="All types" options={typeOptions} />
-          <SelectFilter value={status} onChange={setStatus} placeholder="All statuses" options={statusOptions} />
-          <SelectFilter value={location} onChange={setLocation} placeholder="All locations" options={locationOptions} />
-          <select value={closingDate} onChange={event => setClosingDate(event.target.value)} className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10">
-            <option value="">Any closing date</option>
-            <option value="7">Next 7 days</option>
-          </select>
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          <Button type="button" variant="outline" onClick={reset} className="h-10 rounded-md text-xs">Reset</Button>
+
+          {/* Quick Filters Group */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-40">
+              <SelectFilter value={type} onChange={(value) => { setType(value as OpportunityType | ''); setPage(1); }} placeholder="All types" options={typeOptions} />
+            </div>
+            <div className="w-40">
+              <SelectFilter value={status} onChange={(value) => { setStatus(value); setPage(1); }} placeholder="All statuses" options={statusOptions} />
+            </div>
+            
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={cn(
+                "inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border px-4 text-xs font-black transition-all",
+                showAdvanced 
+                  ? "border-[#12335f] bg-[#12335f]/5 text-[#12335f]" 
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-305"
+              )}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Advanced Filters
+            </button>
+
+            <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            <Button type="button" variant="outline" onClick={reset} className="h-10 rounded-2xl text-xs font-bold border-slate-200 bg-white hover:border-slate-300">Reset</Button>
+          </div>
         </div>
+
+        {/* Collapsible Advanced Filters Section */}
+        {showAdvanced && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4 rounded-2xl bg-white p-4 border border-slate-200/80 shadow-sm animate-in slide-in-from-top-1.5 duration-200">
+            <div className="space-y-1.5">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Category</span>
+              <SelectFilter value={category} onChange={(value) => { setCategory(value); setPage(1); }} placeholder="All Categories" options={categoryOptions} />
+            </div>
+            <div className="space-y-1.5">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Location</span>
+              <SelectFilter value={location} onChange={(value) => { setLocation(value); setPage(1); }} placeholder="All Locations" options={locationOptions} />
+            </div>
+            <div className="space-y-1.5">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Estimated Value</span>
+              <select 
+                value={valueRange} 
+                onChange={event => { setValueRange(event.target.value); setPage(1); }}
+                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+              >
+                <option value="">Any value</option>
+                <option value="5l">&lt; ₹5 Lakhs</option>
+                <option value="25l">₹5 Lakhs - ₹25 Lakhs</option>
+                <option value="1cr">₹25 Lakhs - ₹1 Crore</option>
+                <option value="above1cr">&gt; ₹1 Crore</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Closing Date</span>
+              <select 
+                value={closingDate} 
+                onChange={event => { setClosingDate(event.target.value); setPage(1); }}
+                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+              >
+                <option value="">Any closing date</option>
+                <option value="7">Next 7 days</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -642,7 +718,7 @@ export default function SellerOpportunitiesPage() {
                             <button
                               type="button"
                               onClick={() => setExpandedId(expanded ? null : item.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-555 hover:border-[#12335f] hover:text-[#12335f] transition-all"
                               title={expanded ? "Collapse details" : "Expand tracking details"}
                             >
                               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -650,7 +726,7 @@ export default function SellerOpportunitiesPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedItem(item)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-505 hover:border-[#12335f] hover:text-[#12335f] transition-all"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-555 hover:border-[#12335f] hover:text-[#12335f] transition-all"
                               title="View details"
                             >
                               <Eye className="h-4 w-4" />

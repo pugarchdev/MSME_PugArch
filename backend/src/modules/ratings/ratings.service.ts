@@ -22,17 +22,17 @@ const distribution = (rows: Array<{ rating: number }>) => {
     return STAR_BUCKETS.map(star => ({ star, count: counts[star] || 0 }));
 };
 
-const summarise = (rows: Array<{ rating: number; qualityScore?: number | null; deliveryScore?: number | null; communicationScore?: number | null; paymentTimelinessScore?: number | null }>) => {
+const summarise = (rows: Array<{ rating: number; qualityScore?: number | null; deliveryScore?: number | null; communicationScore?: number | null; paymentTimelinessScore?: number | null; documentationScore?: number | null }>) => {
     if (rows.length === 0) {
         return {
             count: 0,
             average: 0,
             distribution: distribution([]),
-            averages: { quality: 0, delivery: 0, communication: 0, paymentTimeliness: 0 }
+            averages: { quality: 0, delivery: 0, communication: 0, paymentTimeliness: 0, documentation: 0 }
         };
     }
     const sum = rows.reduce((acc, row) => acc + (row.rating || 0), 0);
-    const score = (key: 'qualityScore' | 'deliveryScore' | 'communicationScore' | 'paymentTimelinessScore') => {
+    const score = (key: 'qualityScore' | 'deliveryScore' | 'communicationScore' | 'paymentTimelinessScore' | 'documentationScore') => {
         const filtered = rows.filter(row => typeof row[key] === 'number');
         if (filtered.length === 0) return 0;
         return Number((filtered.reduce((acc, row) => acc + Number(row[key] || 0), 0) / filtered.length).toFixed(2));
@@ -45,7 +45,8 @@ const summarise = (rows: Array<{ rating: number; qualityScore?: number | null; d
             quality: score('qualityScore'),
             delivery: score('deliveryScore'),
             communication: score('communicationScore'),
-            paymentTimeliness: score('paymentTimelinessScore')
+            paymentTimeliness: score('paymentTimelinessScore'),
+            documentation: score('documentationScore')
         }
     };
 };
@@ -70,7 +71,7 @@ export const ratingsService = {
             }),
             db.supplierRating.findMany({
                 where: { sellerId },
-                select: { rating: true, qualityScore: true, deliveryScore: true, communicationScore: true }
+                select: { rating: true, qualityScore: true, deliveryScore: true, communicationScore: true, documentationScore: true }
             }),
             db.supplierRating.count({ where: { sellerId } })
         ]);
@@ -142,7 +143,7 @@ export const ratingsService = {
     async getSupplierSummary(sellerId: number) {
         const rows = await db.supplierRating.findMany({
             where: { sellerId },
-            select: { rating: true, qualityScore: true, deliveryScore: true, communicationScore: true }
+            select: { rating: true, qualityScore: true, deliveryScore: true, communicationScore: true, documentationScore: true }
         });
         return summarise(rows);
     },
@@ -161,7 +162,7 @@ export const ratingsService = {
      */
     async getSupplierSummariesForSellers(sellerIds: number[]) {
         if (sellerIds.length === 0) return {} as Record<number, ReturnType<typeof summarise>>;
-        const rows: Array<{ sellerId: number; rating: number; qualityScore: number | null; deliveryScore: number | null; communicationScore: number | null }> =
+        const rows: Array<{ sellerId: number; rating: number; qualityScore: number | null; deliveryScore: number | null; communicationScore: number | null; documentationScore: number | null }> =
             await db.supplierRating.findMany({
                 where: { sellerId: { in: sellerIds } },
                 select: {
@@ -169,7 +170,8 @@ export const ratingsService = {
                     rating: true,
                     qualityScore: true,
                     deliveryScore: true,
-                    communicationScore: true
+                    communicationScore: true,
+                    documentationScore: true
                 }
             });
         const grouped: Record<number, typeof rows> = {};

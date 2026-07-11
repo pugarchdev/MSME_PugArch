@@ -507,7 +507,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
     { label: 'Bids & Tenders', icon: FileSearch, roles: ['seller'], children: [
-      { label: 'Bidding Dashboard', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
+      // { label: 'Bidding Dashboard', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
       { label: 'Bidding Opportunities', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
       { label: 'All Bids & Tenders', path: '/seller/procurement/events', icon: ClipboardList, roles: ['seller'] },
       { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['seller'] },

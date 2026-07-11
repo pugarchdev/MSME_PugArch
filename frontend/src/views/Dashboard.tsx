@@ -709,12 +709,24 @@ export default function Dashboard() {
                 Start once, choose the business intent, and continue to marketplace, request quotations, large procurement, auction, or open requirement.
               </p>
             </div>
-            <Link href="/buyer/procurement">
-              <Button className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
-                Create Procurement
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Link href="/buyer/procurement">
+                <Button className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
+                  Create Procurement
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </Link>
+              <Link href="/bids">
+                <Button variant="outline" className="h-10 rounded-md border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50">
+                  Manage Bids
+                </Button>
+              </Link>
+              <Link href="/orders">
+                <Button variant="outline" className="h-10 rounded-md border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50">
+                  View Orders
+                </Button>
+              </Link>
+            </div>
           </div>
         </section>
       )}

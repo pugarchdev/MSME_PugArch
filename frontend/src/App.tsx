@@ -99,6 +99,7 @@ const BidsListingPage = lazy(() => import('./features/procurementBid/pages/BidsL
 const BidDetailsPage = lazy(() => import('./features/procurementBid/pages/BidDetailsPage'));
 const BidParticipationPage = lazy(() => import('./features/procurementBid/pages/BidParticipationPage'));
 const BidResultsPage = lazy(() => import('./features/procurementBid/pages/BidResultsPage'));
+const BidComparisonPage = lazy(() => import('./features/procurementBid/pages/BidComparisonPage'));
 const BuyerPublishBidPage = lazy(() => import('./features/procurementBid/pages/BuyerPublishBidPage'));
 const AdminBidManagementPage = lazy(() => import('./features/procurementBid/pages/AdminBidManagementPage'));
 const ProcurementOrdersPage = lazy(() => import('./features/procurementBid/pages/ProcurementOrdersPage'));
@@ -458,6 +459,7 @@ export default function App() {
     if (pathname === '/tenders') return <SellerTenders />;
     if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
+    if (/^\/bids\/[^/]+\/compare$/.test(pathname)) return <BidComparisonPage />;
     if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;
     if (pathname === '/buyer/publish-bid') {
       if (!user) return <Redirect to="/login?returnUrl=/buyer/publish-bid" />;

@@ -192,7 +192,17 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
     }
   }
   const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
-  return apiResponse.success(res, service.serializeBid(bid, { actor: actor || undefined, detail: true, includeParticipants: sellerCanSeeParticipants }), 200, 'Bid details fetched successfully');
+  
+  const sellerIds = (bid.participations || []).map((p: any) => p.sellerId);
+  const sellerRatings = await service.getAverageRatingsForSellers(sellerIds);
+
+  return apiResponse.success(res, service.serializeBid(bid, { actor: actor || undefined, detail: true, includeParticipants: sellerCanSeeParticipants, sellerRatings }), 200, 'Bid details fetched successfully');
+}));
+
+router.get('/bids/:bidId/timeline', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+  const bid = await service.resolveBid(req.params.bidId, {});
+  const timeline = await service.getProcurementTimeline(bid.id);
+  return apiResponse.success(res, timeline, 200, 'Procurement lifecycle timeline fetched');
 }));
 
 router.post('/bids/:bidId/participate', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {

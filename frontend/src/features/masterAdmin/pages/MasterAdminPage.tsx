@@ -3,6 +3,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   Archive,
+  ArrowRight,
   BarChart3,
   Bell,
   Building2,
@@ -34,6 +35,7 @@ import {
   ToggleRight,
   Trash2,
   Truck,
+  Unlock,
   UserPlus,
   Users,
   XCircle
@@ -49,7 +51,6 @@ import { api } from '../../../lib/api';
 import { openFileAsset } from '../../../lib/files';
 import { cn } from '../../../lib/utils';
 import { sanitizeIndianMobileInput, sanitizePersonNameInput, validateIndianMobile, validatePersonName } from '../../../lib/validation';
-import PremiumLoader from '../../../components/PremiumLoader';
 import { Pagination } from '../../shared/Pagination';
 import { SortableHeader, type SortDirection } from '../../shared/SortableHeader';
 import { useResponsiveViewMode, type ViewMode } from '../../shared/hooks';
@@ -108,6 +109,8 @@ type UserRecord = {
   role?: string | null;
   onboardingStatus?: string | null;
   accountStatus?: string | null;
+  failedLoginCount?: number;
+  lockedUntil?: string | null;
   createdAt?: string;
   organization?: { id: number; organizationName?: string | null; organizationType?: string | null } | null;
   company?: { id: number; name?: string | null } | null;
@@ -553,10 +556,10 @@ export default function MasterAdminPage() {
   const [mutating, setMutating] = useState(false);
   const debouncedFilters = useDebounce(filters, 350);
 
-  const fetchJson = async <T,>(path: string): Promise<T> => {
+  const fetchJson = async <T,>(path: string, options: { skipCache?: boolean } = {}): Promise<T> => {
     const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
     const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
-    const res = await api.fetch(path, { headers, skipCache: true });
+    const res = await api.fetch(path, { headers, skipCache: options.skipCache });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.message || 'Request failed');
     return (body?.data ?? body) as T;
@@ -1165,7 +1168,48 @@ export default function MasterAdminPage() {
     [companies.items, selectedCompanyId]
   );
 
-  const initialPageLoading = overviewLoading && activeTab === 'overview';
+  const overviewQueue = useMemo(() => {
+    const summary = overview?.summary || {};
+    return [
+      {
+        label: 'Organization approvals',
+        value: summary.pendingOrganizations || 0,
+        detail: 'Pending or under review organizations',
+        tab: 'organizations' as TabId,
+        icon: Building2,
+        tone: 'amber'
+      },
+      {
+        label: 'Bid approvals',
+        value: summary.pendingApprovals || 0,
+        detail: 'Buyer and seller procurement checks',
+        tab: 'procurement' as TabId,
+        icon: BarChart3,
+        tone: 'blue'
+      },
+      {
+        label: 'Settlements',
+        value: summary.pendingSettlements || 0,
+        detail: 'Payment releases needing finance review',
+        tab: 'payments' as TabId,
+        icon: CreditCard,
+        tone: 'green'
+      },
+      {
+        label: 'Security alerts',
+        value: summary.openFraudAlerts || 0,
+        detail: 'Open risk signals to investigate',
+        tab: 'security' as TabId,
+        icon: ShieldCheck,
+        tone: 'red'
+      }
+    ];
+  }, [overview]);
+
+  const activeQuickActions = useMemo(
+    () => quickActions.filter(([, tab]) => activeTab === 'overview' || tab === activeTab).slice(0, activeTab === 'overview' ? 5 : 4),
+    [activeTab]
+  );
 
   const updateFilter = (tab: FilterId, key: string, value: string) => {
     setFilters(prev => ({ ...prev, [tab]: { ...prev[tab], [key]: value } }));
@@ -1303,7 +1347,8 @@ export default function MasterAdminPage() {
           archive: () => masterAdminApi.archiveUser(id, reason),
           delete: () => masterAdminApi.deleteUser(id, reason),
           invite: () => masterAdminApi.sendUserInvite(id, reason),
-          resetPassword: () => masterAdminApi.resetUserPassword(id, reason)
+          resetPassword: () => masterAdminApi.resetUserPassword(id, reason),
+          unlock: () => masterAdminApi.unlockUser(id, reason)
         };
         const result: any = await actions[action]?.();
         if (action === 'resetPassword' && result?.temporaryPassword) {
@@ -1403,8 +1448,6 @@ export default function MasterAdminPage() {
     }
   };
 
-  if (initialPageLoading) return <PremiumLoader />;
-
   return (
     <div className="min-h-full bg-slate-50">
       <div className="mx-auto max-w-[1560px] space-y-5 px-3 py-4 sm:px-5 lg:px-6">
@@ -1422,31 +1465,53 @@ export default function MasterAdminPage() {
                 Complete portal governance, organization control, user management, feature settings, procurement monitoring, payment oversight, and security review.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {quickActions.map(([label, tab, Icon]) => (
-                <Button
-                  key={label}
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    router.push(getPathForTab(tab));
-                    if (label === 'Add Company') setEditor({ type: 'company', mode: 'create' });
-                    if (label === 'Edit Branding') setEditor({ type: 'company', mode: 'edit', record: portalSettings?.company || companies.items[0] || {} });
-                    if (label === 'Add Organization') setEditor({ type: 'organization', mode: 'create' });
-                    if (label === 'Add User') setEditor({ type: 'user', mode: 'create' });
-                    if (label === 'Configure Email') setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} });
-                  }}
-                  className="h-9 rounded-md text-xs font-black"
-                >
-                  <Icon className="mr-2 h-4 w-4" />
-                  {label}
-                </Button>
-              ))}
-              <Button type="button" onClick={refreshActive} className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b]">
-                <RefreshCw className="mr-2 h-4 w-4" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-2">
+                {activeQuickActions.map(([label, tab, Icon]) => (
+                  <Button
+                    key={label}
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      router.push(getPathForTab(tab));
+                      if (label === 'Add Company') setEditor({ type: 'company', mode: 'create' });
+                      if (label === 'Edit Branding') setEditor({ type: 'company', mode: 'edit', record: portalSettings?.company || companies.items[0] || {} });
+                      if (label === 'Add Organization') setEditor({ type: 'organization', mode: 'create' });
+                      if (label === 'Add User') setEditor({ type: 'user', mode: 'create' });
+                      if (label === 'Configure Email') setEditor({ type: 'email', mode: 'edit', record: emailSettings?.smtp || {} });
+                    }}
+                    className="h-9 rounded-md text-xs font-black"
+                  >
+                    <Icon className="mr-2 h-4 w-4" />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <Button type="button" onClick={refreshActive} disabled={overviewLoading && activeTab === 'overview'} className="h-9 rounded-md bg-[#12335f] text-xs font-black text-white hover:bg-[#0d274b] disabled:opacity-70">
+                <RefreshCw className={cn('mr-2 h-4 w-4', overviewLoading && activeTab === 'overview' && 'animate-spin')} />
                 Refresh
               </Button>
             </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+            {tabs.slice(0, 8).map(tab => {
+              const Icon = tab.icon;
+              return (
+                <Button
+                  key={tab.id}
+                  type="button"
+                  variant={activeTab === tab.id ? 'primary' : 'outline'}
+                  onClick={() => router.push(getPathForTab(tab.id))}
+                  className={cn(
+                    'h-8 rounded-md px-3 text-[11px] font-black',
+                    activeTab === tab.id ? 'bg-[#12335f] text-white hover:bg-[#0d274b]' : 'bg-white'
+                  )}
+                >
+                  <Icon className="mr-1.5 h-3.5 w-3.5" />
+                  {tab.label}
+                </Button>
+              );
+            })}
           </div>
         </header>
 
@@ -1486,22 +1551,59 @@ export default function MasterAdminPage() {
           <section className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               {summaryCards.map(([label, value, subtext, Icon, tone]: any) => (
-                <KpiCard key={label} label={label} value={value ?? 0} subtext={subtext} icon={Icon} tone={tone} />
+                <KpiCard key={label} label={label} value={value ?? 0} subtext={subtext} icon={Icon} tone={tone} loading={overviewLoading} />
               ))}
             </div>
-            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <Panel title="Priority Work Queue" icon={Bell} loading={overviewLoading} error={error.overview}>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {overviewQueue.map(item => (
+                    <QueueCard
+                      key={item.label}
+                      label={item.label}
+                      value={item.value}
+                      detail={item.detail}
+                      icon={item.icon}
+                      tone={item.tone}
+                      onClick={() => router.push(getPathForTab(item.tab))}
+                    />
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="Portal Health" icon={ShieldCheck} loading={overviewLoading}>
+                <div className="grid gap-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <HealthPill label="API" value={overview?.systemHealth?.api} />
+                    <HealthPill label="Database" value={overview?.systemHealth?.database} />
+                  </div>
+                  <StatusLine label="Master-only backend routes enforced" ok />
+                  <StatusLine label="Archive, suspend, restore require reason" ok />
+                  <StatusLine label="Payments, settlements, audit logs preserved" ok />
+                </div>
+              </Panel>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
               <Panel title="Recent Audit Trail" icon={FileClock} error={error.overview}>
                 <SimpleList rows={overview?.recentAuditLogs || []} primary="action" secondary="entityType" meta="createdAt" />
               </Panel>
-              <Panel title="Production Guardrails" icon={ShieldCheck}>
+              <Panel title="Fast Paths" icon={Grid2X2}>
                 <div className="grid gap-2">
                   {[
-                    'Master-only backend routes enforced',
-                    'Secrets are masked and sourced from environment',
-                    'Production CORS requires explicit origins',
-                    'Archive and restore actions require a reason',
-                    'Payments, settlements, audit logs are never hard-deleted'
-                  ].map(item => <StatusLine key={item} label={item} ok />)}
+                    ['Companies & organizations', 'organizations', Building2],
+                    ['Users & access', 'users', Users],
+                    ['Procurement monitor', 'procurement', BarChart3],
+                    ['Payment oversight', 'payments', CreditCard]
+                  ].map(([label, tab, Icon]: any) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => router.push(getPathForTab(tab))}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-black uppercase tracking-wide text-[#12335f] transition hover:border-[#12335f]/30 hover:bg-white"
+                    >
+                      <span className="flex items-center gap-2"><Icon className="h-4 w-4" />{label}</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
                 </div>
               </Panel>
             </div>
@@ -1708,7 +1810,21 @@ export default function MasterAdminPage() {
                 ['role', 'Role'],
                 ['company.name', 'Company'],
                 ['organization.organizationName', 'Organization'],
-                ['accountStatus', 'Account'],
+                ['accountStatus', 'Account', (row: any) => {
+                  const isLocked = row.lockedUntil && new Date(row.lockedUntil) > new Date();
+                  const baseStatus = formatCell(row.accountStatus);
+                  if (isLocked) {
+                    return (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>{baseStatus}</span>
+                        <span className="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-red-700 border border-red-200">
+                          Locked
+                        </span>
+                      </span>
+                    );
+                  }
+                  return baseStatus;
+                }],
                 ['onboardingStatus', 'Verification'],
                 ['createdAt', 'Created']
               ]}
@@ -1727,6 +1843,8 @@ export default function MasterAdminPage() {
                   onArchive={() => openAction({ entity: 'user', action: 'archive', id: row.id, label: row.email || 'user', danger: true })}
                   onInvite={() => openAction({ entity: 'user', action: 'invite', id: row.id, label: row.email || 'user' })}
                   onResetPassword={() => openAction({ entity: 'user', action: 'resetPassword', id: row.id, label: row.email || 'user', danger: true })}
+                  isLocked={row.lockedUntil && new Date(row.lockedUntil) > new Date()}
+                  onUnlock={() => openAction({ entity: 'user', action: 'unlock', id: row.id, label: row.email || 'user' })}
                 />
               )}
             />
@@ -2635,7 +2753,7 @@ function PaginatedTable<T extends Record<string, any>>({
   title: string;
   icon: any;
   rows: T[];
-  columns: Array<[string, string]>;
+  columns: Array<[string, string] | [string, string, (row: T) => React.ReactNode]>;
   total: number;
   page: number;
   pageSize: number;
@@ -2647,70 +2765,72 @@ function PaginatedTable<T extends Record<string, any>>({
   onPageSizeChange: (pageSize: number) => void;
   viewMode: ViewMode;
   actions?: (row: T) => React.ReactNode;
-}) {
-  if (viewMode === 'grid') {
-    return (
-      <Panel title={title} icon={Icon} loading={loading} error={error}>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map(row => (
-            <article key={row.id || JSON.stringify(row)} className="rounded-md border border-slate-200 bg-slate-50 p-4">
-              <div className="space-y-2">
-                {columns.slice(0, 5).map(([field, label]) => (
-                  <Detail key={field} label={label} value={formatCell(valueAt(row, field))} />
-                ))}
-              </div>
-              {actions && <div className="mt-3 flex flex-wrap gap-2">{actions(row)}</div>}
-            </article>
-          ))}
-          {rows.length === 0 && <EmptyState />}
-        </div>
-        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
-      </Panel>
-    );
-  }
+ }) {
+   if (viewMode === 'grid') {
+     return (
+       <Panel title={title} icon={Icon} loading={loading} error={error}>
+         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+           {rows.map(row => (
+             <article key={row.id || JSON.stringify(row)} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+               <div className="space-y-2">
+                 {columns.slice(0, 5).map(([field, label, renderer]) => (
+                   <Detail key={field} label={label} value={renderer ? (renderer as any)(row) : formatCell(valueAt(row, field))} />
+                 ))}
+               </div>
+               {actions && <div className="mt-3 flex flex-wrap gap-2">{actions(row)}</div>}
+             </article>
+           ))}
+           {rows.length === 0 && <EmptyState />}
+         </div>
+         <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
+       </Panel>
+     );
+   }
 
-  return (
-    <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-[#12335f]" />
-          <h2 className="text-sm font-black text-slate-900">{title}</h2>
-        </div>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
-      </div>
-      {error ? <ErrorState message={error} /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="w-16 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">S.No.</th>
-                {columns.map(([field, label]) => (
-                  <th key={field} className="px-4 py-3">
-                    <SortableHeader label={label} field={field} activeField={sort.field} direction={sort.direction} onSort={onSort} />
-                  </th>
-                ))}
-                {actions && <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((row, index) => (
-                <tr key={row.id || index} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-xs font-black text-slate-400">{(page - 1) * pageSize + index + 1}</td>
-                  {columns.map(([field]) => (
-                    <td key={field} className="max-w-72 truncate px-4 py-3 text-slate-700">{formatCell(valueAt(row, field))}</td>
-                  ))}
-                  {actions && <td className="px-4 py-3"><div className="flex justify-end gap-2">{actions(row)}</div></td>}
-                </tr>
-              ))}
-              {!loading && rows.length === 0 && <tr><td colSpan={columns.length + (actions ? 2 : 1)}><EmptyState /></td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
-    </section>
-  );
-}
+   return (
+     <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+         <div className="flex items-center gap-2">
+           <Icon className="h-4 w-4 text-[#12335f]" />
+           <h2 className="text-sm font-black text-slate-900">{title}</h2>
+         </div>
+         {loading && <Loader2 className="h-4 w-4 animate-spin text-[#12335f]" />}
+       </div>
+       {error ? <ErrorState message={error} /> : (
+         <div className="overflow-x-auto">
+           <table className="w-full min-w-[860px] text-left text-sm">
+             <thead className="bg-slate-50">
+               <tr>
+                 <th className="w-16 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">S.No.</th>
+                 {columns.map(([field, label]) => (
+                   <th key={field} className="px-4 py-3">
+                     <SortableHeader label={label} field={field} activeField={sort.field} direction={sort.direction} onSort={onSort} />
+                   </th>
+                 ))}
+                 {actions && <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>}
+               </tr>
+             </thead>
+             <tbody className="divide-y divide-slate-100">
+               {rows.map((row, index) => (
+                 <tr key={row.id || index} className="hover:bg-slate-50">
+                   <td className="px-4 py-3 text-xs font-black text-slate-400">{(page - 1) * pageSize + index + 1}</td>
+                   {columns.map(([field, , renderer]) => (
+                     <td key={field} className="max-w-72 truncate px-4 py-3 text-slate-700">
+                       {renderer ? (renderer as any)(row) : formatCell(valueAt(row, field))}
+                     </td>
+                   ))}
+                   {actions && <td className="px-4 py-3"><div className="flex justify-end gap-2">{actions(row)}</div></td>}
+                 </tr>
+               ))}
+               {!loading && rows.length === 0 && <tr><td colSpan={columns.length + (actions ? 2 : 1)}><EmptyState /></td></tr>}
+             </tbody>
+           </table>
+         </div>
+       )}
+       <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} pageSizeOptions={pageSizeOptions} />
+     </section>
+   );
+ }
 
 function Panel({ title, icon: Icon, children, loading, error }: { title: string; icon: any; children: React.ReactNode; loading?: boolean; error?: string | null }) {
   return (
@@ -2727,7 +2847,7 @@ function Panel({ title, icon: Icon, children, loading, error }: { title: string;
   );
 }
 
-const KpiCard = memo(function KpiCard({ label, value, subtext, icon: Icon, tone }: { label: string; value: number; subtext: string; icon: any; tone: string }) {
+const KpiCard = memo(function KpiCard({ label, value, subtext, icon: Icon, tone, loading }: { label: string; value: number; subtext: string; icon: any; tone: string; loading?: boolean }) {
   const tones: Record<string, string> = {
     blue: 'bg-sky-50 text-[#12335f]',
     green: 'bg-emerald-50 text-emerald-700',
@@ -2740,7 +2860,7 @@ const KpiCard = memo(function KpiCard({ label, value, subtext, icon: Icon, tone 
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
-            <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+            <p className={cn('mt-2 text-2xl font-black', loading ? 'text-slate-300' : 'text-slate-950')}>{loading ? '...' : value}</p>
           </div>
           <div className={cn('rounded-md p-2', tones[tone] || tones.blue)}><Icon className="h-5 w-5" /></div>
         </div>
@@ -2749,6 +2869,62 @@ const KpiCard = memo(function KpiCard({ label, value, subtext, icon: Icon, tone 
     </Card>
   );
 });
+
+const QueueCard = memo(function QueueCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+  onClick
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  icon: any;
+  tone: string;
+  onClick: () => void;
+}) {
+  const tones: Record<string, string> = {
+    blue: 'bg-sky-50 text-[#12335f] border-sky-100',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    red: 'bg-red-50 text-red-700 border-red-100'
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-md border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#12335f]/30 hover:bg-white hover:shadow-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+          <p className="mt-2 text-2xl font-black text-slate-950">{value.toLocaleString('en-IN')}</p>
+        </div>
+        <div className={cn('rounded-md border p-2', tones[tone] || tones.blue)}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold leading-5 text-slate-500">{detail}</p>
+        <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#12335f]" />
+      </div>
+    </button>
+  );
+});
+
+function HealthPill({ label, value }: { label: string; value?: string | null }) {
+  const ok = String(value || '').toLowerCase() === 'ok';
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+      <p className={cn('mt-1 text-sm font-black uppercase', ok ? 'text-emerald-700' : 'text-amber-700')}>
+        {value ? formatCell(value) : 'Checking'}
+      </p>
+    </div>
+  );
+}
 
 const MetricStrip = memo(function MetricStrip({ summary, labels }: { summary?: Record<string, number>; labels: Array<[string, string]> }) {
   return (
@@ -3010,10 +3186,16 @@ const OrganizationActions = memo(function OrganizationActions({
   );
 });
 
-const UserActions = memo(function UserActions(props: Parameters<typeof EntityActions>[0] & { onInvite: () => void; onResetPassword: () => void }) {
+const UserActions = memo(function UserActions(props: Parameters<typeof EntityActions>[0] & { onInvite: () => void; onResetPassword: () => void; isLocked?: boolean; onUnlock?: () => void }) {
   return (
     <>
       <EntityActions {...props} />
+      {props.isLocked && props.onUnlock && (
+        <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200" onClick={props.onUnlock} title="Unlock User Account">
+          <Unlock className="mr-1 h-3 w-3" />
+          Unlock
+        </Button>
+      )}
       <Button type="button" variant="outline" className="h-8 rounded-md px-2 text-[10px] font-black text-[#12335f]" onClick={props.onInvite}>
         <UserPlus className="mr-1 h-3 w-3" />
         Invite

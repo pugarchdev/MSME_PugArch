@@ -50,7 +50,8 @@ const updateBody = z.object({
     qualityScore: z.coerce.number().int().min(1).max(5).optional(),
     deliveryScore: z.coerce.number().int().min(1).max(5).optional(),
     communicationScore: z.coerce.number().int().min(1).max(5).optional(),
-    paymentTimelinessScore: z.coerce.number().int().min(1).max(5).optional()
+    paymentTimelinessScore: z.coerce.number().int().min(1).max(5).optional(),
+    documentationScore: z.coerce.number().int().min(1).max(5).optional()
 }).strict();
 
 /* --------- Read APIs --------- */

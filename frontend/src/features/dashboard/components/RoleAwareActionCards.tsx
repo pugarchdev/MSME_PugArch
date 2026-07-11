@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useCallback, useMemo, useEffect } from 'react';
 import {
     AlertTriangle, ArrowRight, ClipboardCheck, ClipboardList, FileText, Gavel,
-    Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck, Landmark
+    Inbox, Package, Receipt, Send, ShoppingCart, Store, Truck, Landmark, IndianRupee
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../hooks/useAuth';
@@ -49,6 +49,8 @@ interface DashboardSummary {
     reverseAuctionInvites?: number;
     reverseAuctionsLive?: number;
     reverseAuctionBidsSubmitted?: number;
+    buyerProcurementActiveBidsCount?: number;
+    buyerProcurementTotalSpentValue?: number;
     orgRole?: string;
     isAdmin?: boolean;
 }
@@ -158,7 +160,7 @@ const ActionCard = React.memo(function ActionCard({
                     "text-xl font-extrabold tracking-tight leading-none",
                     card.count > 0 ? (TONE_TEXT_COLORS[card.tone] || "text-slate-900") : "text-slate-800"
                 )}>
-                    {card.count}
+                    {(card as any).isCurrency ? `Rs. ${Number(card.count).toLocaleString('en-IN')}` : card.count}
                 </p>
             )}
             <p className={cn("text-[9px] font-bold uppercase tracking-wide mt-1 leading-tight", priority ? "text-slate-650" : "text-slate-500")}>{card.label}</p>
@@ -218,6 +220,25 @@ function RoleAwareActionCards() {
             show: isBuyer,
             priority: false
         },
+        {
+            label: 'Procurement Bids',
+            count: data.buyerProcurementActiveBidsCount || 0,
+            href: '/bids',
+            icon: Gavel,
+            tone: 'purple',
+            show: isBuyer,
+            priority: false
+        },
+        {
+            label: 'Procurement Spend',
+            count: data.buyerProcurementTotalSpentValue || 0,
+            href: '/orders/procurement',
+            icon: IndianRupee,
+            tone: 'emerald',
+            show: isBuyer,
+            priority: false,
+            isCurrency: true
+        } as any,
         {
             label: 'Tenders & Bids',
             count: data.myTendersCount || 0,

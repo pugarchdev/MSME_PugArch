@@ -458,7 +458,9 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 sellerProcurementParticipations,
                 sellerBuyerRequirements,
                 sellerLegacyRequirements,
-                sellerActiveAuctions
+                sellerActiveAuctions,
+                buyerProcurementActiveBids,
+                buyerProcurementTotalSpent
             ] = await Promise.all([
                     // cart item count
                     orgId
@@ -600,6 +602,19 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                                 status: { in: ['SCHEDULED', 'LIVE', 'PAUSED', 'scheduled', 'live', 'paused', 'active', 'ACTIVE'] }
                             }
                         })).catch(() => 0)
+                        : Promise.resolve(0),
+                    // buyer procurement active bids
+                    isBuyer
+                        ? (prisma as any).procurementBid.count({
+                            where: { ...buyerRecordWhere, status: { notIn: ['CLOSED', 'CANCELLED'] } }
+                        }).catch(() => 0)
+                        : Promise.resolve(0),
+                    // buyer procurement spent
+                    isBuyer
+                        ? prisma.purchaseOrder.aggregate({
+                            where: { ...buyerRecordWhere, sourceType: 'procurement_bid_award', status: { not: 'cancelled' } },
+                            _sum: { amount: true }
+                        }).then(r => Number(r._sum.amount || 0)).catch(() => 0)
                         : Promise.resolve(0)
             ]);
 
@@ -615,6 +630,8 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 myActivePOsCount: myActivePOs,
                 myPendingInvoicesCount: myPendingInvoices,
                 myRfqsCount: myRfqs,
+                buyerProcurementActiveBidsCount: buyerProcurementActiveBids,
+                buyerProcurementTotalSpentValue: buyerProcurementTotalSpent,
                 // Seller-side
                 sellerOpenTendersCount: sellerOpenTenders,
                 sellerActivePOsCount: sellerActivePOs,

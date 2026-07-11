@@ -6031,7 +6031,7 @@ router.post('/escrow/:id/unfreeze', authenticate, authorize('buyer', 'admin'), a
 // Ratings
 router.post('/ratings/supplier', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   await assertBuyerProcurementApproved(req);
-  const body = parse(z.object({ sellerId: z.coerce.number().int().positive(), purchaseOrderId: z.coerce.number().int().positive().optional(), rating: z.coerce.number().int().min(1).max(5), review: z.string().max(2000).optional(), qualityScore: z.coerce.number().int().min(1).max(5).optional(), deliveryScore: z.coerce.number().int().min(1).max(5).optional(), communicationScore: z.coerce.number().int().min(1).max(5).optional() }), req.body);
+  const body = parse(z.object({ sellerId: z.coerce.number().int().positive(), purchaseOrderId: z.coerce.number().int().positive().optional(), rating: z.coerce.number().int().min(1).max(5), review: z.string().max(2000).optional(), qualityScore: z.coerce.number().int().min(1).max(5).optional(), deliveryScore: z.coerce.number().int().min(1).max(5).optional(), communicationScore: z.coerce.number().int().min(1).max(5).optional(), documentationScore: z.coerce.number().int().min(1).max(5).optional() }), req.body);
   await ratingsService.assertNotAlreadyRatedPO(userId(req), String(req.user?.role), body.purchaseOrderId);
   const rating = await ratingWorkflow.rateSupplier(actorFrom(req), body);
   await auditWrite(req, 'rating.supplier_created', 'supplierRating', rating.id);

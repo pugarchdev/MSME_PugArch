@@ -47,6 +47,7 @@ export interface ProcurementBid {
   id: string;
   sourceModel?: 'PROCUREMENT_BID' | 'TENDER' | string;
   sourceId?: number;
+  buyerId?: number;
   title: string;
   itemName: string;
   buyerName: string;
@@ -150,6 +151,14 @@ export interface ProcurementBidParticipation {
   clarifications?: ProcurementClarification[];
   evaluations?: ProcurementEvaluation[];
   awards?: ProcurementBidAward[];
+  averageRating?: {
+    rating: number;
+    qualityScore: number;
+    deliveryScore: number;
+    communicationScore: number;
+    documentationScore: number;
+    count: number;
+  };
 }
 
 export const buyerNetwork: Array<{ icon: LucideIcon; title: string; description: string }> = [

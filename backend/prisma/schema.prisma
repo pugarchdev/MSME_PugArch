@@ -3147,6 +3147,7 @@ model SupplierRating {
   qualityScore       Int?
   deliveryScore      Int?
   communicationScore Int?
+  documentationScore Int?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   buyer              User     @relation("SupplierRatingBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
@@ -3487,11 +3488,21 @@ enum ProcurementBidStatus {
   DRAFT
   PENDING_ADMIN_APPROVAL
   APPROVED
+  PUBLISHED
   OPEN
-  CLOSED
+  OPEN_FOR_BIDDING
+  UNDER_EVALUATION
   TECHNICAL_EVALUATION
   FINANCIAL_EVALUATION
+  NEGOTIATION
   AWARDED
+  PO_GENERATED
+  IN_PROGRESS
+  DELIVERED
+  GRN_COMPLETED
+  INVOICE_SUBMITTED
+  PAYMENT_COMPLETED
+  CLOSED
   CANCELLED
   EXPIRED
 }

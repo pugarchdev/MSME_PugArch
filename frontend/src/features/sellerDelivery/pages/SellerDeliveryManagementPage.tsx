@@ -10,13 +10,14 @@
  *   DISPATCHED         → Update Status (in-transit / out-for-delivery / delivered)
  */
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, Clock, FileText, Package, RefreshCw, Send, Truck, Upload, X, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, FileText, Grid3x3, List, Package, RefreshCw, Search, Send, Truck, Upload, X, XCircle } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
-import { Card, CardContent } from '../../../components/ui/card';
+import { Card, CardContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../../../components/ui/card';
 import { EntityIdLink } from '../../shared/EntityIdLink';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
+import { useResponsiveViewMode } from '../../shared/hooks';
 import { formatCurrency, formatDateTime, formatRelative } from '../../shared/format';
 import { runWithToast } from '../../../lib/toast';
 import {
@@ -43,15 +44,102 @@ const STATUS_TONE: Record<string, string> = {
     RETURNED: 'border-orange-200 bg-orange-50 text-orange-800'
 };
 
+const STATUS_OPTIONS = [
+    { value: 'ALL', label: 'All Statuses' },
+    { value: 'AWAITING_ACCEPTANCE', label: 'Awaiting Acceptance (Created/Pending)' },
+    { value: 'IN_TRANSIT', label: 'In Transit' },
+    { value: 'COMPLETED', label: 'Completed' },
+    { value: 'CREATED', label: 'Created' },
+    { value: 'PENDING_ACCEPTANCE', label: 'Pending Acceptance' },
+    { value: 'SELLER_ACCEPTED', label: 'Seller Accepted' },
+    { value: 'PACKED', label: 'Packed' },
+    { value: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
+    { value: 'DISPATCHED', label: 'Dispatched' },
+    { value: 'DELIVERED', label: 'Delivered' },
+    { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'DISPUTED', label: 'Disputed' },
+    { value: 'RETURNED', label: 'Returned' }
+];
+
 export default function SellerDeliveryManagementPage() {
     const { data, isLoading, error, refetch, isFetching } = useDeliveries({ role: 'seller' });
     const [actionTarget, setActionTarget] = useState<{ kind: string; delivery: DeliveryDto } | null>(null);
+
+    const [viewMode, setViewMode] = useResponsiveViewMode('seller-delivery-management:view-mode');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [sortBy, setSortBy] = useState('newest');
 
     const items = (data?.records || data?.items || []) as DeliveryDto[];
     const total = data?.total ?? items.length;
     const pendingCount = items.filter(item => item.status === 'CREATED' || item.status === 'PENDING_ACCEPTANCE').length;
     const inTransitCount = items.filter(item => ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(String(item.status))).length;
     const completedCount = items.filter(item => ['DELIVERED', 'COMPLETED', 'CLOSED'].includes(String(item.status))).length;
+
+    // Apply filtering
+    const filteredItems = items.filter(item => {
+        // Status filter
+        if (statusFilter !== 'ALL') {
+            const status = String(item.status);
+            if (statusFilter === 'AWAITING_ACCEPTANCE') {
+                if (status !== 'CREATED' && status !== 'PENDING_ACCEPTANCE') return false;
+            } else if (statusFilter === 'IN_TRANSIT') {
+                if (!['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(status)) return false;
+            } else if (statusFilter === 'COMPLETED') {
+                if (!['DELIVERED', 'COMPLETED', 'CLOSED'].includes(status)) return false;
+            } else {
+                if (status !== statusFilter) return false;
+            }
+        }
+
+        // Search query filter
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            const dlvId = `dlv-${item.id}`.toLowerCase();
+            const poNumber = (item.purchaseOrder?.poNumber || '').toLowerCase();
+            const buyerName = (item.purchaseOrder?.buyer?.name || '').toLowerCase();
+            const title = (item.purchaseOrder?.title || '').toLowerCase();
+            const trackingNum = (item.trackingNumber || '').toLowerCase();
+            const carrier = (item.carrierName || '').toLowerCase();
+            const partner = (item.logisticsPartnerName || '').toLowerCase();
+            const amount = String(item.purchaseOrder?.amount || '').toLowerCase();
+
+            const match = dlvId.includes(q) ||
+                          poNumber.includes(q) ||
+                          buyerName.includes(q) ||
+                          title.includes(q) ||
+                          trackingNum.includes(q) ||
+                          carrier.includes(q) ||
+                          partner.includes(q) ||
+                          amount.includes(q);
+            if (!match) return false;
+        }
+
+        return true;
+    });
+
+    // Apply sorting
+    const sortedItems = [...filteredItems].sort((a, b) => {
+        if (sortBy === 'newest') {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }
+        if (sortBy === 'oldest') {
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        }
+        if (sortBy === 'value-desc') {
+            const valA = Number(a.purchaseOrder?.amount || 0);
+            const valB = Number(b.purchaseOrder?.amount || 0);
+            return valB - valA;
+        }
+        if (sortBy === 'value-asc') {
+            const valA = Number(a.purchaseOrder?.amount || 0);
+            const valB = Number(b.purchaseOrder?.amount || 0);
+            return valA - valB;
+        }
+        return 0;
+    });
+
+    const isFiltered = searchQuery.trim() !== '' || statusFilter !== 'ALL';
 
     return (
         <div className="space-y-4">
@@ -69,24 +157,299 @@ export default function SellerDeliveryManagementPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <SummaryTile label="Visible Deliveries" value={total} icon={Truck} />
-                <SummaryTile label="Awaiting Acceptance" value={pendingCount} icon={Clock} />
-                <SummaryTile label="In Transit" value={inTransitCount} icon={Send} />
-                <SummaryTile label="Completed" value={completedCount} icon={CheckCircle2} />
+                <SummaryTile 
+                    label="Visible Deliveries" 
+                    value={total} 
+                    icon={Truck} 
+                    active={statusFilter === 'ALL'}
+                    onClick={() => setStatusFilter('ALL')}
+                />
+                <SummaryTile 
+                    label="Awaiting Acceptance" 
+                    value={pendingCount} 
+                    icon={Clock} 
+                    active={statusFilter === 'AWAITING_ACCEPTANCE'}
+                    onClick={() => setStatusFilter('AWAITING_ACCEPTANCE')}
+                />
+                <SummaryTile 
+                    label="In Transit" 
+                    value={inTransitCount} 
+                    icon={Send} 
+                    active={statusFilter === 'IN_TRANSIT'}
+                    onClick={() => setStatusFilter('IN_TRANSIT')}
+                />
+                <SummaryTile 
+                    label="Completed" 
+                    value={completedCount} 
+                    icon={CheckCircle2} 
+                    active={statusFilter === 'COMPLETED'}
+                    onClick={() => setStatusFilter('COMPLETED')}
+                />
+            </div>
+
+            {/* Control Bar: Search & Filters & Layout Toggle */}
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs">
+                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by ID, PO, title, carrier..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-9 pr-4 text-xs font-semibold placeholder-slate-400 focus:border-slate-300 focus:bg-white focus:outline-none"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={statusFilter}
+                            onChange={e => setStatusFilter(e.target.value)}
+                            className="h-9 rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-xs font-bold text-slate-700 focus:border-slate-300 focus:bg-white focus:outline-none"
+                        >
+                            {STATUS_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={sortBy}
+                            onChange={e => setSortBy(e.target.value)}
+                            className="h-9 rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-xs font-bold text-slate-700 focus:border-slate-300 focus:bg-white focus:outline-none"
+                        >
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="value-desc">Value: High to Low</option>
+                            <option value="value-asc">Value: Low to High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
+                    {isFiltered && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setSearchQuery('');
+                                setStatusFilter('ALL');
+                            }}
+                            className="h-9 px-3 text-xs font-bold text-red-600 hover:bg-red-50"
+                        >
+                            Clear Filters
+                        </Button>
+                    )}
+
+                    <div className="flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/50 p-1">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('list')}
+                            title="List view"
+                            className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] font-black uppercase tracking-wide transition-all duration-150 ${
+                                viewMode === 'list'
+                                    ? 'bg-white text-[#12335f] shadow-sm'
+                                    : 'text-slate-500 hover:text-[#12335f]'
+                            }`}
+                        >
+                            <List className="h-3.5 w-3.5" /> List
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('grid')}
+                            title="Grid view"
+                            className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] font-black uppercase tracking-wide transition-all duration-150 ${
+                                viewMode === 'grid'
+                                    ? 'bg-white text-[#12335f] shadow-sm'
+                                    : 'text-slate-500 hover:text-[#12335f]'
+                            }`}
+                        >
+                            <Grid3x3 className="h-3.5 w-3.5" /> Grid
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {error ? <InlineError message={(error as Error).message} onRetry={() => refetch()} /> :
                 isLoading ? <LoadingState label="Loading deliveries..." /> :
-                    items.length === 0 ? (
+                    sortedItems.length === 0 ? (
                         <Card><CardContent className="py-12">
-                            <EmptyState title="No deliveries" description="No delivery records are linked to your seller account yet. Accepted purchase orders are converted into delivery tracking records before dispatch." />
+                            <EmptyState 
+                                title={isFiltered ? "No matching deliveries" : "No deliveries"} 
+                                description={isFiltered ? "Try clearing your filters or search query to find other deliveries." : "No delivery records are linked to your seller account yet. Accepted purchase orders are converted into delivery tracking records before dispatch."} 
+                            />
                         </CardContent></Card>
-                    ) : (
+                    ) : viewMode === 'grid' ? (
                         <div className="grid gap-3 lg:grid-cols-2">
-                            {items.map(delivery => (
+                            {sortedItems.map(delivery => (
                                 <DeliveryCard key={delivery.id} delivery={delivery} onAction={(kind) => setActionTarget({ kind, delivery })} />
                             ))}
                         </div>
+                    ) : (
+                        <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+                            <CardContent className="p-0">
+                                <div className="overflow-x-auto">
+                                    <Table className="min-w-[960px]">
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-24">Delivery ID</TableHead>
+                                                <TableHead>Purchase Order</TableHead>
+                                                <TableHead>Buyer</TableHead>
+                                                <TableHead className="text-right">Value</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                <TableHead>Carrier & Tracking</TableHead>
+                                                <TableHead>ETA / Expected</TableHead>
+                                                <TableHead className="text-right w-[200px]">Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {sortedItems.map(delivery => {
+                                                const status = String(delivery.status);
+                                                
+                                                const stage = (s: string) => {
+                                                    if (s === 'CREATED' || s === 'PENDING_ACCEPTANCE') return { label: 'Awaiting Acceptance', icon: Clock };
+                                                    if (s === 'SELLER_ACCEPTED') return { label: 'Pack & Ship', icon: Package };
+                                                    if (['PACKED', 'READY_FOR_PICKUP'].includes(s)) return { label: 'Ready to Dispatch', icon: Truck };
+                                                    if (['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(s)) return { label: 'In Transit', icon: Truck };
+                                                    if (s === 'DELIVERED') return { label: 'Delivered', icon: CheckCircle2 };
+                                                    return { label: s.replace(/_/g, ' '), icon: AlertCircle };
+                                                };
+                                                const { label: stageLabel } = stage(status);
+
+                                                return (
+                                                    <TableRow key={delivery.id}>
+                                                        <TableCell className="py-3">
+                                                            <EntityIdLink label={`DLV-${delivery.id}`} id={delivery.id} size="sm" to={`/delivery/${delivery.id}`} />
+                                                        </TableCell>
+                                                        <TableCell className="py-3">
+                                                            <div className="font-semibold text-slate-900 max-w-[200px] truncate" title={delivery.purchaseOrder?.title || 'Delivery'}>
+                                                                {delivery.purchaseOrder?.title || 'Delivery'}
+                                                            </div>
+                                                            {delivery.purchaseOrder?.poNumber && (
+                                                                <div className="mt-0.5">
+                                                                    <EntityIdLink label={delivery.purchaseOrder.poNumber} id={delivery.purchaseOrder.id} size="sm" to="/orders" />
+                                                                </div>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="py-3">
+                                                            <span className="font-bold text-slate-700">{delivery.purchaseOrder?.buyer?.name || `#${delivery.purchaseOrder?.buyerId}`}</span>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-bold text-slate-950 py-3">
+                                                            {delivery.purchaseOrder?.amount !== undefined ? formatCurrency(delivery.purchaseOrder.amount) : '—'}
+                                                        </TableCell>
+                                                        <TableCell className="py-3">
+                                                            <div className="flex flex-col gap-0.5 items-start">
+                                                                <span className={`inline-flex rounded-md border px-2 py-0.5 text-[9px] font-black uppercase ${STATUS_TONE[status] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                                                                    {status.replace(/_/g, ' ')}
+                                                                </span>
+                                                                <span className="text-[9px] font-semibold text-slate-400">{stageLabel}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-xs font-semibold text-slate-700 py-3">
+                                                            {delivery.trackingNumber || delivery.carrierName ? (
+                                                                <div>
+                                                                    {delivery.carrierName && <div className="font-bold text-slate-900">{delivery.carrierName}</div>}
+                                                                    {delivery.trackingNumber && <div className="font-mono text-[10px] text-slate-500">No: {delivery.trackingNumber}</div>}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-slate-400 italic text-[11px]">No details</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs font-semibold text-slate-700 py-3">
+                                                            {delivery.expectedDelivery ? (
+                                                                <div>
+                                                                    <div className="font-bold text-slate-900">{formatRelative(delivery.expectedDelivery)}</div>
+                                                                    <div className="text-[10px] text-slate-400">{formatDateTime(delivery.expectedDelivery).slice(0, 10)}</div>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-slate-400 italic text-[11px]">—</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right py-3">
+                                                            <div className="flex justify-end gap-1 flex-wrap max-w-[240px] ml-auto">
+                                                                {(status === 'CREATED' || status === 'PENDING_ACCEPTANCE') && (
+                                                                    <>
+                                                                        <button 
+                                                                            onClick={() => setActionTarget({ kind: 'accept', delivery })} 
+                                                                            className="h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                        >
+                                                                            Accept
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => setActionTarget({ kind: 'reject', delivery })} 
+                                                                            className="h-7 rounded-md border border-red-200 text-red-700 hover:bg-red-50 font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                        >
+                                                                            Reject
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                                {status === 'SELLER_ACCEPTED' && (
+                                                                    <button 
+                                                                        onClick={() => setActionTarget({ kind: 'packed', delivery })} 
+                                                                        className="h-7 rounded-md bg-[#12335f] text-white hover:bg-brand-deep font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                    >
+                                                                        Pack
+                                                                    </button>
+                                                                )}
+                                                                {['SELLER_ACCEPTED', 'PACKED', 'READY_FOR_PICKUP'].includes(status) && (
+                                                                    <button 
+                                                                        onClick={() => setActionTarget({ kind: 'dispatch-details', delivery })} 
+                                                                        className="h-7 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                        title="Tracking Details"
+                                                                    >
+                                                                        Track
+                                                                    </button>
+                                                                )}
+                                                                {status === 'PACKED' && (
+                                                                    <button 
+                                                                        onClick={() => setActionTarget({ kind: 'ready', delivery })} 
+                                                                        className="h-7 rounded-md bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                    >
+                                                                        Ready
+                                                                    </button>
+                                                                )}
+                                                                {status === 'READY_FOR_PICKUP' && (
+                                                                    <button 
+                                                                        onClick={() => setActionTarget({ kind: 'dispatched', delivery })} 
+                                                                        className="h-7 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                    >
+                                                                        Dispatch
+                                                                    </button>
+                                                                )}
+                                                                {['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(status) && (
+                                                                    <button 
+                                                                        onClick={() => setActionTarget({ kind: 'status', delivery })} 
+                                                                        className="h-7 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                    >
+                                                                        Update
+                                                                    </button>
+                                                                )}
+                                                                <button 
+                                                                    onClick={() => setActionTarget({ kind: 'upload-doc', delivery })} 
+                                                                    className="h-7 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[10px] uppercase px-2 transition active:scale-95"
+                                                                    title="Upload Doc"
+                                                                >
+                                                                    Upload
+                                                                </button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )
             }
 
@@ -101,15 +464,20 @@ export default function SellerDeliveryManagementPage() {
     );
 }
 
-function SummaryTile({ label, value, icon: Icon }: { label: string; value: number; icon: any }) {
+function SummaryTile({ label, value, icon: Icon, active, onClick }: { label: string; value: number; icon: any; active?: boolean; onClick?: () => void }) {
     return (
-        <Card className="border-slate-200/80 shadow-sm">
+        <Card 
+            className={`border-slate-200/80 shadow-sm transition-all duration-200 ${
+                onClick ? 'cursor-pointer hover:border-slate-300 hover:shadow-md hover:scale-[1.01]' : ''
+            } ${active ? 'ring-2 ring-[#12335f] bg-slate-50/50' : ''}`}
+            onClick={onClick}
+        >
             <CardContent className="flex items-center justify-between p-4">
                 <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className={`text-[9px] font-black uppercase tracking-widest transition-colors ${active ? 'text-[#12335f]' : 'text-slate-400'}`}>{label}</p>
                     <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg text-white transition-colors duration-200 ${active ? 'bg-emerald-600' : 'bg-[#12335f]'}`}>
                     <Icon className="h-5 w-5" />
                 </div>
             </CardContent>

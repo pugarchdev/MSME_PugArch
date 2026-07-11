@@ -3,6 +3,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import type { AuthRequest, AuthenticatedUser } from '../../middleware/authenticate.js';
 import { uploadFile } from '../../services/storage/storage.service.js';
 import { env } from '../../config/env.js';
+import { notificationService } from '../../services/notification.service.js';
 import { deliveryService, type DeliveryActor } from '../delivery/delivery.service.js';
 import { initiatePayment } from '../payments/payment.service.js';
 import { auditLog } from '../audit/audit.service.js';
@@ -39,6 +40,30 @@ const procurementOrderAudit = async (
   userAgent: req.headers?.['user-agent'],
   metadata: metadata as any
 });
+
+const updateBidStatus = async (tx: any, bidId: number, newStatus: string, action: string, req: AuthRequest) => {
+  const bid = await tx.procurementBid.findUnique({ where: { id: bidId } });
+  if (!bid) return;
+  
+  await tx.procurementBid.update({
+    where: { id: bidId },
+    data: { status: newStatus }
+  });
+  
+  await tx.procurementAuditLog.create({
+    data: {
+      userId: req.user?.id,
+      role: req.user?.role,
+      entityType: 'ProcurementBid',
+      entityId: String(bidId),
+      action,
+      oldValue: { status: bid.status } as any,
+      newValue: { status: newStatus } as any,
+      ipAddress: req.ip,
+      userAgent: req.headers?.['user-agent']
+    }
+  });
+};
 
 const poInclude = {
   buyer: { select: { id: true, name: true, email: true, organizationId: true, organization: { select: { id: true, organizationName: true, verificationStatus: true } } } },
@@ -172,10 +197,36 @@ export const createOrReuseProcurementPOForAward = async (req: AuthRequest, award
         remarks: 'Delivery shell created from procurement award.'
       }
     });
+    await tx.procurementBid.update({
+      where: { id: bid.id },
+      data: { status: 'PO_GENERATED' }
+    });
+    await tx.procurementAuditLog.create({
+      data: {
+        userId: req.user?.id,
+        role: req.user?.role,
+        entityType: 'ProcurementBid',
+        entityId: String(bid.id),
+        action: 'PO_GENERATED',
+        oldValue: { status: bid.status } as any,
+        newValue: { status: 'PO_GENERATED' } as any,
+        ipAddress: req.ip,
+        userAgent: req.headers?.['user-agent']
+      }
+    });
     return po;
   });
 
   await procurementOrderAudit(req, 'PO_GENERATED', 'PurchaseOrder', result.id, { purchaseOrderId: result.id, awardId: award.id, bidId: bid.id });
+
+  // Send notification to the seller
+  await notificationService.notifyUser(participation.sellerId, {
+    title: 'Purchase Order Issued',
+    message: `A purchase order ${result.poNumber} has been generated for your awarded bid on "${bid.title}".`,
+    type: 'purchase_order',
+    redirectUrl: `/orders/procurement/${result.id}`
+  });
+
   return { purchaseOrder: result, reused: false };
 };
 
@@ -217,7 +268,16 @@ export const acceptSellerAward = async (req: AuthRequest, awardId: number, body:
     where: { id: award.id },
     data: { awardStatus: 'ADMIN_APPROVED', awardedAt: award.awardedAt || now(), remarks: body.remarks || award.remarks }
   });
+  await updateBidStatus(db, award.bidId, 'IN_PROGRESS', 'SELLER_AWARD_ACCEPTED', req);
   await procurementOrderAudit(req, 'SELLER_AWARD_ACCEPTED', 'ProcurementBidAward', award.id, { purchaseOrderId: po.id });
+  
+  await notificationService.notifyUser(award.bid.buyerId, {
+    title: 'Purchase Order Accepted',
+    message: `Seller has accepted the purchase order for "${award.bid.title}".`,
+    type: 'purchase_order',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return { award: updatedAward, purchaseOrderId: po.id, delivery: updatedDelivery };
 };
 
@@ -229,25 +289,52 @@ export const rejectSellerAward = async (req: AuthRequest, awardId: number, reaso
     data: { awardStatus: 'REJECTED', remarks: reason }
   });
   await db.purchaseOrder.update({ where: { id: po.id }, data: { status: 'cancelled', poStatus: 'CANCELLED' } });
+  await updateBidStatus(db, award.bidId, 'CANCELLED', 'SELLER_AWARD_REJECTED', req);
   await procurementOrderAudit(req, 'SELLER_AWARD_REJECTED', 'ProcurementBidAward', award.id, { purchaseOrderId: po.id, reason });
+  
+  await notificationService.notifyUser(award.bid.buyerId, {
+    title: 'Purchase Order Rejected',
+    message: `Seller has rejected the purchase order for "${award.bid.title}". Reason: ${reason}`,
+    type: 'purchase_order',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return { award: updatedAward, purchaseOrderId: po.id, delivery: updatedDelivery };
 };
 
 export const updateOrderDelivery = async (req: AuthRequest, orderId: number, body: any) => {
   const po = await loadProcurementOrder(req.user!, orderId);
   const delivery = po.deliveryTrackings?.[0] || await deliveryService.ensureDeliveryForPO(actorFromReq(req), po.id, {});
-  if (body.status === 'READY_FOR_PICKUP') return deliveryService.markReadyForPickup(actorFromReq(req), delivery.id, body);
-  if (body.status === 'DISPATCHED') return deliveryService.markDispatched(actorFromReq(req), delivery.id, body);
-  if (body.status === 'PACKED') return deliveryService.setPacked(actorFromReq(req), delivery.id, body);
-  if (body.trackingNumber || body.carrierName || body.logisticsPartnerName) {
-    return deliveryService.updateDispatchDetails(actorFromReq(req), delivery.id, body);
+  
+  let result;
+  if (body.status === 'READY_FOR_PICKUP') result = await deliveryService.markReadyForPickup(actorFromReq(req), delivery.id, body);
+  else if (body.status === 'DISPATCHED') result = await deliveryService.markDispatched(actorFromReq(req), delivery.id, body);
+  else if (body.status === 'PACKED') result = await deliveryService.setPacked(actorFromReq(req), delivery.id, body);
+  else if (body.trackingNumber || body.carrierName || body.logisticsPartnerName) {
+    result = await deliveryService.updateDispatchDetails(actorFromReq(req), delivery.id, body);
+  } else {
+    result = await deliveryService.logisticsStatusUpdate(actorFromReq(req), delivery.id, {
+      status: body.status || 'IN_TRANSIT',
+      location: body.location || body.currentLocation,
+      remarks: body.remarks,
+      occurredAt: body.occurredAt
+    });
   }
-  return deliveryService.logisticsStatusUpdate(actorFromReq(req), delivery.id, {
-    status: body.status || 'IN_TRANSIT',
-    location: body.location || body.currentLocation,
-    remarks: body.remarks,
-    occurredAt: body.occurredAt
-  });
+
+  if (body.status === 'DELIVERED') {
+    const metadata = po.metadata as any;
+    if (metadata?.bidId) {
+      await updateBidStatus(db, Number(metadata.bidId), 'DELIVERED', 'DELIVERY_COMPLETED', req);
+      await notificationService.notifyUser(po.buyerId, {
+        title: 'Goods Delivered',
+        message: `Seller has marked purchase order ${po.poNumber} as DELIVERED.`,
+        type: 'delivery',
+        redirectUrl: `/orders/procurement/${po.id}`
+      });
+    }
+  }
+
+  return result;
 };
 
 export const addDeliveryDocument = async (req: AuthRequest & { file?: Express.Multer.File }, orderId: number, body: any) => {
@@ -317,9 +404,23 @@ export const approveOrderGrn = async (req: AuthRequest, orderId: number, grnId: 
   const updated = await db.$transaction(async (tx: any) => {
     const row = await tx.goodsReceiptNote.update({ where: { id: grn.id }, data: { status: 'APPROVED', approvedById: req.user!.id, approvedAt: now(), inspectionNote: body.inspectionNote || grn.inspectionNote } });
     await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: 'inspection_accepted', version: { increment: 1 } } });
+    
+    const metadata = po.metadata as any;
+    if (metadata?.bidId) {
+      await updateBidStatus(tx, Number(metadata.bidId), 'GRN_COMPLETED', 'GRN_COMPLETED', req);
+    }
+    
     return row;
   });
   await procurementOrderAudit(req, 'GRN_APPROVED', 'GoodsReceiptNote', grn.id, { orderId });
+  
+  await notificationService.notifyUser(po.sellerId, {
+    title: 'GRN Approved',
+    message: `Buyer has approved the Goods Receipt Note for purchase order ${po.poNumber}.`,
+    type: 'grn',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return updated;
 };
 
@@ -391,9 +492,23 @@ export const createOrderInvoice = async (req: AuthRequest, orderId: number, body
       include: { items: true, invoiceFile: true }
     });
     await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: 'invoice_submitted', version: { increment: 1 } } });
+    
+    const metadata = po.metadata as any;
+    if (metadata?.bidId) {
+      await updateBidStatus(tx, Number(metadata.bidId), 'INVOICE_SUBMITTED', 'INVOICE_SUBMITTED', req);
+    }
+    
     return created;
   });
   await procurementOrderAudit(req, 'INVOICE_SUBMITTED', 'Invoice', invoice.id, { orderId });
+
+  await notificationService.notifyUser(po.buyerId, {
+    title: 'Invoice Submitted',
+    message: `Seller has submitted invoice ${invoice.invoiceNumber} for purchase order ${po.poNumber}.`,
+    type: 'invoice',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return invoice;
 };
 
@@ -421,6 +536,14 @@ export const approveOrderInvoice = async (req: AuthRequest, orderId: number, inv
   const updated = await db.invoice.update({ where: { id: invoice.id }, data: { status: 'approved', invoiceStatus: 'APPROVED', approvedAt: now(), version: { increment: 1 } } });
   await db.purchaseOrder.update({ where: { id: po.id }, data: { status: 'payment_initiated', version: { increment: 1 } } });
   await procurementOrderAudit(req, 'INVOICE_APPROVED', 'Invoice', invoice.id, { orderId });
+  
+  await notificationService.notifyUser(po.sellerId, {
+    title: 'Invoice Approved',
+    message: `Buyer has approved invoice ${invoice.invoiceNumber} for purchase order ${po.poNumber}.`,
+    type: 'invoice',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return updated;
 };
 
@@ -492,7 +615,21 @@ export const markSettlementConfirmed = async (req: AuthRequest, orderId: number,
     }
   });
   await db.purchaseOrder.update({ where: { id: po.id }, data: { status: 'completed', poStatus: 'CLOSED', version: { increment: 1 } } });
+  
+  const metadata = po.metadata as any;
+  if (metadata?.bidId) {
+    await updateBidStatus(db, Number(metadata.bidId), 'PAYMENT_COMPLETED', 'PAYMENT_COMPLETED', req);
+  }
+  
   await procurementOrderAudit(req, 'SETTLEMENT_CONFIRMED', 'PaymentSettlement', settlement.id, { orderId, paymentId: payment.id });
+
+  await notificationService.notifyUser(po.sellerId, {
+    title: 'Payment Released',
+    message: `Payment has been released and confirmed for purchase order ${po.poNumber}.`,
+    type: 'payment',
+    redirectUrl: `/orders/procurement/${po.id}`
+  });
+
   return settlement;
 };
 

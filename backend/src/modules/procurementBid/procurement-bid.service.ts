@@ -20,17 +20,29 @@ const technicalEvaluationStatuses = ['CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION'
 const financialEvaluationReadyStatuses = ['TECHNICAL_EVALUATION_COMPLETED'];
 
 const bidTransitions: Record<string, string[]> = {
-  DRAFT: ['PENDING_ADMIN_APPROVAL', 'CANCELLED'],
-  PENDING_ADMIN_APPROVAL: ['APPROVED', 'OPEN', 'DRAFT', 'CANCELLED'],
-  APPROVED: ['OPEN', 'CANCELLED'],
-  OPEN: ['CLOSED', 'EXPIRED', 'CANCELLED'],
-  CLOSED: ['TECHNICAL_EVALUATION', 'CANCELLED'],
-  EXPIRED: ['TECHNICAL_EVALUATION', 'CANCELLED'],
-  TECHNICAL_EVALUATION: ['TECHNICAL_EVALUATION_COMPLETED', 'CANCELLED'],
-  TECHNICAL_EVALUATION_COMPLETED: ['FINANCIAL_EVALUATION', 'CANCELLED'],
-  FINANCIAL_EVALUATION: ['L1_GENERATED', 'AWARD_RECOMMENDED', 'CANCELLED'],
-  L1_GENERATED: ['AWARD_RECOMMENDED', 'CANCELLED'],
-  AWARD_RECOMMENDED: ['AWARDED', 'CANCELLED']
+  DRAFT: ['PENDING_ADMIN_APPROVAL', 'PUBLISHED', 'OPEN', 'OPEN_FOR_BIDDING', 'CANCELLED'],
+  PENDING_ADMIN_APPROVAL: ['APPROVED', 'PUBLISHED', 'OPEN', 'OPEN_FOR_BIDDING', 'DRAFT', 'CANCELLED'],
+  APPROVED: ['OPEN', 'OPEN_FOR_BIDDING', 'PUBLISHED', 'CANCELLED'],
+  PUBLISHED: ['OPEN', 'OPEN_FOR_BIDDING', 'CANCELLED'],
+  OPEN: ['CLOSED', 'EXPIRED', 'UNDER_EVALUATION', 'TECHNICAL_EVALUATION', 'CANCELLED'],
+  OPEN_FOR_BIDDING: ['CLOSED', 'EXPIRED', 'UNDER_EVALUATION', 'TECHNICAL_EVALUATION', 'CANCELLED'],
+  CLOSED: ['UNDER_EVALUATION', 'TECHNICAL_EVALUATION', 'CANCELLED'],
+  EXPIRED: ['UNDER_EVALUATION', 'TECHNICAL_EVALUATION', 'CANCELLED'],
+  TECHNICAL_EVALUATION: ['TECHNICAL_EVALUATION_COMPLETED', 'UNDER_EVALUATION', 'CANCELLED'],
+  TECHNICAL_EVALUATION_COMPLETED: ['FINANCIAL_EVALUATION', 'UNDER_EVALUATION', 'CANCELLED'],
+  FINANCIAL_EVALUATION: ['L1_GENERATED', 'AWARD_RECOMMENDED', 'UNDER_EVALUATION', 'CANCELLED'],
+  L1_GENERATED: ['AWARD_RECOMMENDED', 'AWARDED', 'CANCELLED'],
+  AWARD_RECOMMENDED: ['AWARDED', 'CANCELLED'],
+  AWARDED: ['PO_GENERATED', 'CANCELLED'],
+  PO_GENERATED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['DELIVERED', 'CANCELLED'],
+  DELIVERED: ['GRN_COMPLETED', 'CANCELLED'],
+  GRN_COMPLETED: ['INVOICE_SUBMITTED', 'CANCELLED'],
+  INVOICE_SUBMITTED: ['PAYMENT_COMPLETED', 'CANCELLED'],
+  PAYMENT_COMPLETED: ['CLOSED', 'CANCELLED'],
+  UNDER_EVALUATION: ['AWARDED', 'NEGOTIATION', 'CANCELLED'],
+  NEGOTIATION: ['AWARDED', 'CANCELLED'],
+  CANCELLED: []
 };
 
 const maskedQuote = {
@@ -167,7 +179,7 @@ export const refreshBidStatus = async (bid: any) => {
   return bid;
 };
 
-export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolean; includeParticipants?: boolean; includeFinancial?: boolean } = {}) => {
+export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolean; includeParticipants?: boolean; includeFinancial?: boolean; sellerRatings?: Record<number, any> } = {}) => {
   const actor = options.actor;
   const isAdmin = actor?.role === 'admin' || actor?.role === 'master_admin';
   const isBuyerOwner = actor?.role === 'buyer' && bid.buyerId === actor.id;
@@ -1116,4 +1128,160 @@ export const approveFinalAward = async (req: AuthRequest, bidId: string, body: a
   await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', updated.id, updated);
   const po = await createOrReuseProcurementPOForAward(req, updated, bid);
   return { award: updated, purchaseOrder: po.purchaseOrder, purchaseOrderReused: po.reused };
+};
+
+export const getAverageRatingsForSellers = async (sellerIds: number[]) => {
+  if (!sellerIds.length) return {};
+  const ratings = await db.supplierRating.findMany({
+    where: { sellerId: { in: sellerIds } }
+  });
+
+  const averages: Record<number, {
+    rating: number;
+    qualityScore: number;
+    deliveryScore: number;
+    communicationScore: number;
+    documentationScore: number;
+    count: number;
+  }> = {};
+
+  for (const sellerId of sellerIds) {
+    const sellerRatings = ratings.filter((r: any) => r.sellerId === sellerId);
+    if (!sellerRatings.length) {
+      averages[sellerId] = { rating: 0, qualityScore: 0, deliveryScore: 0, communicationScore: 0, documentationScore: 0, count: 0 };
+      continue;
+    }
+
+    const sum = (field: string) => sellerRatings.reduce((acc: number, curr: any) => acc + (curr[field] || 0), 0);
+    const validCount = (field: string) => sellerRatings.filter((r: any) => r[field] != null).length;
+
+    const ratingCount = validCount('rating');
+    const qualityCount = validCount('qualityScore');
+    const deliveryCount = validCount('deliveryScore');
+    const commCount = validCount('communicationScore');
+    const docCount = validCount('documentationScore');
+
+    averages[sellerId] = {
+      rating: ratingCount ? Number((sum('rating') / ratingCount).toFixed(1)) : 0,
+      qualityScore: qualityCount ? Number((sum('qualityScore') / qualityCount).toFixed(1)) : 0,
+      deliveryScore: deliveryCount ? Number((sum('deliveryScore') / deliveryCount).toFixed(1)) : 0,
+      communicationScore: commCount ? Number((sum('communicationScore') / commCount).toFixed(1)) : 0,
+      documentationScore: docCount ? Number((sum('documentationScore') / docCount).toFixed(1)) : 0,
+      count: sellerRatings.length
+    };
+  }
+
+  return averages;
+};
+
+export const getProcurementTimeline = async (bidId: number) => {
+  const bid = await db.procurementBid.findUnique({
+    where: { id: bidId },
+    include: {
+      buyer: { select: { name: true, role: true } },
+      awards: {
+        include: {
+          seller: { select: { name: true, role: true } }
+        }
+      }
+    }
+  });
+  if (!bid) return [];
+
+  const logs = await db.procurementAuditLog.findMany({
+    where: { entityType: 'ProcurementBid', entityId: String(bidId) },
+    include: { user: { select: { name: true, role: true } } },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  const awardIds = bid.awards.map((a: any) => a.id);
+  const pos = awardIds.length ? await db.purchaseOrder.findMany({
+    where: { sourceType: 'procurement_bid_award', sourceId: { in: awardIds } },
+    include: {
+      buyer: { select: { name: true, role: true } },
+      seller: { select: { name: true, role: true } },
+      grns: { include: { approvals: true } },
+      invoices: true,
+      payments: true,
+      deliveryTrackings: { include: { events: true } }
+    }
+  }) : [];
+
+  const po = pos[0];
+
+  const findLog = (actions: string[]) => logs.find((l: any) => actions.includes(l.action));
+
+  const draftLog = findLog(['BID_CREATED']);
+  const draftTime = draftLog ? draftLog.createdAt : bid.createdAt;
+  const draftUser = draftLog?.user || bid.buyer;
+
+  const pubLog = findLog(['BID_PUBLISHED', 'BID_APPROVED', 'BID_SUBMITTED_FOR_APPROVAL']);
+  const pubTime = pubLog ? pubLog.createdAt : (bid.status !== 'DRAFT' && bid.status !== 'PENDING_ADMIN_APPROVAL' ? bid.createdAt : null);
+  const pubUser = pubLog?.user || (pubTime ? bid.buyer : null);
+
+  const openLog = findLog(['BID_OPENED', 'BID_PUBLISHED']);
+  const openTime = openLog ? openLog.createdAt : (['OPEN', 'CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'AWARDED', 'PO_GENERATED', 'IN_PROGRESS', 'DELIVERED', 'GRN_COMPLETED', 'INVOICE_SUBMITTED', 'PAYMENT_COMPLETED', 'CLOSED'].includes(bid.status) ? bid.startDate : null);
+  const openUser = openLog?.user || (openTime ? { name: 'System', role: 'system' } : null);
+
+  const evalLog = findLog(['TECHNICAL_EVALUATION_STARTED', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION_OPENED', 'L1_GENERATED']);
+  const evalTime = evalLog ? evalLog.createdAt : (['TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'AWARDED', 'PO_GENERATED', 'IN_PROGRESS', 'DELIVERED', 'GRN_COMPLETED', 'INVOICE_SUBMITTED', 'PAYMENT_COMPLETED', 'CLOSED'].includes(bid.status) ? bid.updatedAt : null);
+  const evalUser = evalLog?.user || (evalTime ? bid.buyer : null);
+
+  const awardLog = findLog(['FINAL_AWARD_APPROVED', 'BID_AWARDED']);
+  const awardTime = awardLog ? awardLog.createdAt : (bid.awards[0]?.awardedAt || null);
+  const awardUser = awardLog?.user || (awardTime ? bid.buyer : null);
+
+  const poTime = po ? po.createdAt : null;
+  const poUser = po ? po.buyer : null;
+
+  const activeTracking = po?.deliveryTrackings?.[0];
+  const deliveryCompletedEvent = activeTracking?.events?.find((e: any) => e.status === 'DELIVERED' || e.status === 'COMPLETED');
+  const deliveryTime = deliveryCompletedEvent ? deliveryCompletedEvent.createdAt : (activeTracking ? activeTracking.updatedAt : null);
+  const deliveryUser = activeTracking ? po.seller : null;
+
+  const grn = po?.grns?.[0];
+  const grnTime = grn && grn.status === 'APPROVED' ? grn.updatedAt : null;
+  const grnUser = grn ? po.buyer : null;
+
+  const invoice = po?.invoices?.[0];
+  const invoiceTime = invoice && invoice.status === 'APPROVED' ? invoice.updatedAt : null;
+  const invoiceUser = invoice ? po.seller : null;
+
+  const payment = po?.payments?.[0];
+  const paymentTime = payment && (payment.status === 'SUCCESS' || payment.status === 'SETTLED') ? payment.updatedAt : null;
+  const paymentUser = payment ? { name: 'Finance System', role: 'finance' } : null;
+
+  const completedTime = bid.status === 'CLOSED' ? bid.updatedAt : null;
+  const completedUser = completedTime ? bid.buyer : null;
+
+  const stages = [
+    { name: 'Draft', label: 'Draft Created', time: draftTime, user: draftUser, status: 'completed' },
+    { name: 'Published', label: 'Published & Approved', time: pubTime, user: pubUser, status: pubTime ? 'completed' : 'pending' },
+    { name: 'Open for Bids', label: 'Bidding Open', time: openTime, user: openUser, status: openTime ? 'completed' : 'pending' },
+    { name: 'Evaluation', label: 'Under Evaluation', time: evalTime, user: evalUser, status: evalTime ? 'completed' : 'pending' },
+    { name: 'Award', label: 'Awarded to Seller', time: awardTime, user: awardUser, status: awardTime ? 'completed' : 'pending' },
+    { name: 'PO', label: 'PO Generated', time: poTime, user: poUser, status: poTime ? 'completed' : 'pending' },
+    { name: 'Delivery', label: 'Goods Delivered', time: deliveryTime, user: deliveryUser, status: deliveryTime ? 'completed' : (poTime ? 'current' : 'pending') },
+    { name: 'GRN', label: 'GRN Approved', time: grnTime, user: grnUser, status: grnTime ? 'completed' : (deliveryTime ? 'current' : 'pending') },
+    { name: 'Invoice', label: 'Invoice Approved', time: invoiceTime, user: invoiceUser, status: invoiceTime ? 'completed' : (grnTime ? 'current' : 'pending') },
+    { name: 'Payment', label: 'Payment Completed', time: paymentTime, user: paymentUser, status: paymentTime ? 'completed' : (invoiceTime ? 'current' : 'pending') },
+    { name: 'Completed', label: 'Closed', time: completedTime, user: completedUser, status: completedTime ? 'completed' : (paymentTime ? 'current' : 'pending') }
+  ];
+
+  let foundCurrent = false;
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (stages[i].time) {
+      stages[i].status = 'completed';
+      if (!foundCurrent && i < stages.length - 1) {
+        stages[i+1].status = 'current';
+        foundCurrent = true;
+      }
+    } else {
+      stages[i].status = 'pending';
+    }
+  }
+
+  if (stages[0].status === 'pending') stages[0].status = 'current';
+
+  return stages;
 };

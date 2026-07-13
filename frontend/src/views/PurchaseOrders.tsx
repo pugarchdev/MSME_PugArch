@@ -43,6 +43,57 @@ export default function PurchaseOrders() {
   const [confirming, setConfirming] = useState<{ action: 'acknowledge' | 'cancel'; order: PurchaseOrderDto } | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrderDto | null>(null);
   const { data: activeDelivery } = useDeliveryByPO(viewingOrder?.id);
+
+  const [repeatingOrder, setRepeatingOrder] = useState<PurchaseOrderDto | null>(null);
+  const [repeatQuantity, setRepeatQuantity] = useState(1);
+  const [repeatAddress, setRepeatAddress] = useState('');
+  const [repeatDeliveryDate, setRepeatDeliveryDate] = useState('');
+  const [repeatSubmitting, setRepeatSubmitting] = useState(false);
+
+  const handleOpenRepeatModal = (order: PurchaseOrderDto) => {
+    setRepeatingOrder(order);
+    const firstItem = order.items?.[0];
+    setRepeatQuantity(firstItem ? Number(firstItem.quantity) || 1 : 1);
+    setRepeatAddress(order.deliveryAddress || '');
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 14);
+    setRepeatDeliveryDate(defaultDate.toISOString().split('T')[0]);
+  };
+
+  const handleConfirmRepeatOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!repeatingOrder) return;
+    if (repeatQuantity <= 0) {
+      toast.error('Quantity must be greater than zero');
+      return;
+    }
+    if (!repeatAddress.trim()) {
+      toast.error('Delivery Address is required');
+      return;
+    }
+    if (!repeatDeliveryDate) {
+      toast.error('Delivery Date is required');
+      return;
+    }
+
+    setRepeatSubmitting(true);
+    try {
+      await api.post(`/api/purchase-orders/${repeatingOrder.id}/repeat`, {
+        quantity: repeatQuantity,
+        deliveryAddress: repeatAddress.trim(),
+        expectedDelivery: new Date(repeatDeliveryDate).toISOString()
+      });
+      toast.success('Repeat purchase order placed successfully!');
+      setRepeatingOrder(null);
+      setViewingOrder(null);
+      reload();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Failed to place repeat purchase order');
+    } finally {
+      setRepeatSubmitting(false);
+    }
+  };
   const viewerScope = `${user?.role || 'guest'}-${user?.id || 'none'}`;
 
   useEffect(() => {
@@ -353,116 +404,140 @@ export default function PurchaseOrders() {
   if (loading && pagedOrders.length === 0) return <LoadingState label="Loading purchase orders..." />;
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="space-y-6">
+      {/* Transparent Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between py-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement Fulfilment</p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950">Purchase Orders</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Live PO register from backend procurement workflows.</p>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#12335f] bg-[#12335f]/10 px-2.5 py-1 rounded-full">Procurement Fulfilment</span>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 mt-2">Purchase Orders</h1>
+          <p className="text-xs font-semibold text-slate-500 mt-1">Live PO register from backend procurement workflows.</p>
         </div>
-        <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 w-full rounded-lg text-xs font-black uppercase sm:w-auto"><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={refreshPurchaseOrders} className="h-10 rounded-lg text-xs font-black uppercase bg-white hover:bg-slate-50 border-slate-200 shadow-sm">
+            <RefreshCw className={cn("mr-2 h-4 w-4 text-[#12335f]", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
-        <Metric label="Open POs" value={openCount} icon={FileText} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} />
-        <Metric label="Delivered" value={deliveredCount} icon={CheckCircle2} onClick={() => setActiveTab('Delivered')} active={activeTab === 'Delivered'} />
-        <Metric label="Total Value" value={formatCurrency(totalSpend)} icon={ShieldCheck} onClick={() => setActiveTab('All')} active={activeTab === 'All'} />
-        <Metric label="Open Value" value={formatCurrency(poHealth.openValue)} icon={ShieldCheck} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} />
-        <Metric label={isSeller ? 'Invoice Ready' : 'Awaiting Seller'} value={isSeller ? poHealth.invoiceReady : allOrders.filter(order => String(order.status || '').toLowerCase() === 'generated').length} icon={Truck} onClick={() => setActiveTab('Open')} active={false} />
-        <Metric label="Delivery Risk" value={poHealth.deliveryRisk} icon={XCircle} onClick={() => setActiveTab('Open')} active={false} />
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-6">
+        <KpiCard label="Open POs" value={openCount} icon={FileText} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} color="blue" />
+        <KpiCard label="Delivered" value={deliveredCount} icon={CheckCircle2} onClick={() => setActiveTab('Delivered')} active={activeTab === 'Delivered'} color="green" />
+        <KpiCard label="Total Value" value={formatCurrency(totalSpend)} icon={ShieldCheck} onClick={() => setActiveTab('All')} active={activeTab === 'All'} color="indigo" />
+        <KpiCard label="Open Value" value={formatCurrency(poHealth.openValue)} icon={ShieldCheck} onClick={() => setActiveTab('Open')} active={activeTab === 'Open'} color="amber" />
+        <KpiCard label={isSeller ? 'Invoice Ready' : 'Awaiting Seller'} value={isSeller ? poHealth.invoiceReady : allOrders.filter(order => String(order.status || '').toLowerCase() === 'generated').length} icon={Truck} onClick={() => setActiveTab('Open')} active={false} color="purple" />
+        <KpiCard label="Delivery Risk" value={poHealth.deliveryRisk} icon={XCircle} onClick={() => setActiveTab('Open')} active={false} color="red" />
       </div>
 
       {error && <InlineError message={error} onRetry={reload} />}
 
-      <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
-        <CardContent className="space-y-3 p-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search PO, seller, buyer, status..." className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20" />
-            </div>
+      {/* Inline Filters Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="relative min-w-0 flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
+            placeholder="Search PO, seller, buyer, status..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          />
+        </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full xl:w-auto">
-              <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-                <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="h-10 min-w-[130px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 sm:flex-none">
-                  <option value="newest">Newest</option>
-                  <option value="value_high">Value High</option>
-                  <option value="value_low">Value Low</option>
-                  <option value="status">Status</option>
-                </select>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select
+            value={sortBy}
+            onChange={event => setSortBy(event.target.value)}
+            className="h-10 min-w-[130px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          >
+            <option value="newest">Newest</option>
+            <option value="value_high">Value High</option>
+            <option value="value_low">Value Low</option>
+            <option value="status">Status</option>
+          </select>
 
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:flex-none">
-                  {(['Open', 'Delivered', 'Cancelled', 'All'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setActiveTab(tab)}
-                      className={cn(
-                        'rounded-md px-3 py-1.5 text-[10px] font-black uppercase transition-all duration-200',
-                        activeTab === tab
-                          ? 'bg-[#12335f] text-white shadow-sm shadow-[#12335f]/15'
-                          : 'text-slate-600 hover:text-[#12335f] hover:bg-white'
-                      )}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <ViewModeToggle value={viewMode} onChange={setViewMode} className="ml-auto sm:ml-0" />
-            </div>
+          <div className="flex min-w-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+            {(['Open', 'Delivered', 'Cancelled', 'All'] as const).map(tab => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-[10px] font-black uppercase transition-all duration-200',
+                  activeTab === tab
+                    ? 'bg-[#12335f] text-white shadow-sm shadow-[#12335f]/15'
+                    : 'text-slate-600 hover:text-[#12335f] hover:bg-slate-50'
+                )}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
-        </CardContent>
-      </Card>
 
-      {visibleOrders.length === 0 ? <EmptyState title="No purchase orders" description={searchTerm || activeTab !== 'All' ? 'No purchase orders match the current search, status tab, or sorting filters.' : 'No purchase orders have been generated from procurement awards yet.'} /> : viewMode === 'grid' ? (
+          <ViewModeToggle value={viewMode} onChange={setViewMode} className="ml-auto sm:ml-0" />
+        </div>
+      </div>
+
+      {visibleOrders.length === 0 ? (
+        <EmptyState
+          title="No purchase orders"
+          description={searchTerm || activeTab !== 'All' ? 'No purchase orders match the current search, status tab, or sorting filters.' : 'No purchase orders have been generated from procurement awards yet.'}
+        />
+      ) : viewMode === 'grid' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-            {visibleOrders.map(order => (
-              <Card key={order.id} className="border-slate-200 bg-white shadow-sm">
-                <CardContent className="space-y-4 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <EntityIdLink label={order.poNumber} id={order.id} size="sm" onClick={() => setViewingOrder(order)} />
-                      <h3 className="mt-2 line-clamp-2 text-base font-black leading-snug text-slate-950">{order.title}</h3>
+            {visibleOrders.map((order, index) => {
+              const rowIndex = (page - 1) * pageSize + index + 1;
+              return (
+                <div
+                  key={order.id}
+                  className="group rounded-2xl border border-slate-200/85 bg-white p-4 shadow-sm transition hover:border-[#12335f]/40 hover:shadow-md flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[9px] font-black text-slate-500">
+                            {String(rowIndex).padStart(2, '0')}
+                          </span>
+                          <EntityIdLink label={order.poNumber} id={order.id} size="sm" onClick={() => setViewingOrder(order)} />
+                        </div>
+                        <h3 className="mt-2 line-clamp-2 text-sm font-black leading-snug text-slate-900 group-hover:text-[#12335f] transition-colors">{order.title}</h3>
+                      </div>
+                      <StatusPill status={order.status} />
                     </div>
-                    <StatusPill status={order.status} />
+
+                    <div className="grid grid-cols-2 gap-2.5 text-[10px] font-semibold text-slate-500 pt-1">
+                      <InfoTile label="Party" value={order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`} />
+                      <InfoTile label="Value" value={formatCurrency(order.amount || order.totalValue)} />
+                      <InfoTile label="Expected" value={formatDate(order.expectedDelivery)} />
+                      <InfoTile label="Created" value={formatDate(order.createdAt)} />
+                    </div>
+
+                    {(order.paymentTerms || order.deliveryType) && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {order.paymentTerms && <span className="rounded bg-teal-50 px-2 py-0.5 text-[9px] font-black uppercase text-teal-700">{readableStatus(order.paymentTerms)}</span>}
+                        {order.deliveryType && <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase text-blue-700">{readableStatus(order.deliveryType)}</span>}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <InfoTile label="Party" value={order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`} />
-                    <InfoTile label="Value" value={formatCurrency(order.amount || order.totalValue)} />
-                    <InfoTile label="Expected" value={formatDate(order.expectedDelivery)} />
-                    <InfoTile label="Updated" value={formatDate(order.updatedAt)} />
-                    <InfoTile label="Created" value={formatDate(order.createdAt)} />
-                  </div>
-
-                  {(order.paymentTerms || order.deliveryType) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {order.paymentTerms && <span className="rounded bg-teal-50 px-2 py-1 text-[9px] font-black uppercase text-teal-700">{readableStatus(order.paymentTerms)}</span>}
-                      {order.deliveryType && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">{readableStatus(order.deliveryType)}</span>}
-                    </div>
-                  )}
-
-                  <div className="border-t border-slate-100 pt-3">
+                  <div className="mt-4 border-t border-slate-100 pt-3">
                     {renderOrderActions(order)}
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              );
+            })}
           </div>
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="orders" />
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="p-3">Sr. No</th>
+            <table className="w-full min-w-[1000px] border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75">
+                  <th className="p-3 text-[10px] font-black uppercase tracking-wider text-slate-500 w-16">Sr. No</th>
                   <th className="p-3"><SortHeader label="PO" columnKey="po" /></th>
                   <th className="p-3"><SortHeader label="Title" columnKey="title" /></th>
                   <th className="p-3"><SortHeader label="Party" columnKey="party" /></th>
@@ -473,17 +548,19 @@ export default function PurchaseOrders() {
                   <th className="p-3 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                 {visibleOrders.map((order, index) => {
                   const rowIndex = (page - 1) * pageSize + index + 1;
                   return (
-                    <tr key={order.id} className="hover:bg-slate-50">
-                      <td className="p-3 text-xs font-black text-slate-600">{rowIndex}</td>
+                    <tr key={order.id} className="hover:bg-slate-50/50 transition">
+                      <td className="p-3 font-mono text-xs text-slate-500">
+                        {String(rowIndex).padStart(2, '0')}
+                      </td>
                       <td className="p-3 font-mono text-xs font-black text-[#12335f]">
                         <EntityIdLink label={order.poNumber} id={order.id} size="sm" onClick={() => setViewingOrder(order)} />
                       </td>
                       <td className="p-3">
-                        <p className="font-black text-slate-900">{order.title}</p>
+                        <p className="font-bold text-slate-900">{order.title}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           <span className="text-[9px] font-bold text-slate-500">{formatDate(order.createdAt)}</span>
                           {order.paymentTerms && (
@@ -498,19 +575,19 @@ export default function PurchaseOrders() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-xs font-bold text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
-                      <td className="p-3 text-xs font-black">{formatCurrency(order.amount || order.totalValue)}</td>
-                      <td className="p-3 text-xs font-bold text-slate-500">{formatDate(order.expectedDelivery)}</td>
+                      <td className="p-3 text-slate-600">{order.seller?.name || maskEmail(order.seller?.email) || `Seller #${order.sellerId || '-'}`}</td>
+                      <td className="p-3 font-bold text-slate-900">{formatCurrency(order.amount || order.totalValue)}</td>
+                      <td className="p-3 text-slate-500">{formatDate(order.expectedDelivery)}</td>
                       <td className="p-3">
                         {order.updatedAt ? (
                           <div>
-                            <p className="text-xs font-bold text-slate-700">{formatDate(order.updatedAt)}</p>
+                            <p className="text-slate-700">{formatDate(order.updatedAt)}</p>
                             <p className="text-[9px] font-semibold text-slate-400 mt-0.5">
                               {new Date(order.updatedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
                             </p>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-400">—</span>
+                          <span className="text-slate-400">—</span>
                         )}
                       </td>
                       <td className="p-3"><StatusPill status={order.status} /></td>
@@ -853,6 +930,14 @@ export default function PurchaseOrders() {
                         <XCircle className="mr-2 h-4 w-4" /> Cancel PO
                       </Button>
                     )}
+                    {isBuyer && viewingStatusLower === 'delivered' && (
+                      <Button
+                        onClick={() => handleOpenRepeatModal(viewingOrder)}
+                        className="h-10 bg-[#12335f] text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" /> Repeat Order
+                      </Button>
+                    )}
                   </>
                 );
               })()}
@@ -869,19 +954,141 @@ export default function PurchaseOrders() {
           </div>
         </div>
       )}
+      {repeatingOrder && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md overflow-hidden rounded-[24px] bg-white shadow-2xl ring-1 ring-slate-200">
+            <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-[#12335f]" />
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">Repeat Purchase Order</h3>
+              </div>
+              <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                Replicating completed order <span className="font-bold text-slate-800">{repeatingOrder.poNumber}</span>.
+              </p>
+            </div>
+            <form onSubmit={handleConfirmRepeatOrder} className="p-5 space-y-4 text-xs font-semibold text-slate-700">
+              <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200/50">
+                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">Product / Material</span>
+                <p className="mt-1 text-xs font-bold text-slate-900">{repeatingOrder.items?.[0]?.itemName || repeatingOrder.title}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200/60 pt-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block">Unit Price</span>
+                    <span className="font-bold text-slate-900">{formatCurrency(repeatingOrder.items?.[0]?.unitPrice || repeatingOrder.amount)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Supplier</span>
+                    <span className="font-bold text-slate-900">{repeatingOrder.seller?.name || 'Seller'}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value={repeatQuantity}
+                  onChange={(e) => setRepeatQuantity(Number(e.target.value))}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Expected Delivery Date</label>
+                <input
+                  type="date"
+                  required
+                  value={repeatDeliveryDate}
+                  onChange={(e) => setRepeatDeliveryDate(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Delivery Address</label>
+                <textarea
+                  required
+                  rows={2}
+                  value={repeatAddress}
+                  onChange={(e) => setRepeatAddress(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+                />
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Estimated Value</span>
+                <span className="text-sm font-black text-[#12335f]">
+                  {formatCurrency((Number(repeatingOrder.items?.[0]?.unitPrice) || Number(repeatingOrder.amount)) * repeatQuantity)}
+                </span>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <Button type="button" variant="outline" onClick={() => setRepeatingOrder(null)} className="h-9 text-[10px] font-black uppercase">Cancel</Button>
+                <Button type="submit" disabled={repeatSubmitting} className="h-9 bg-[#12335f] text-[10px] font-black uppercase text-white hover:bg-[#0b2445]">
+                  {repeatSubmitting ? 'Placing Order...' : 'Confirm Order'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Metric({ label, value, icon: Icon, onClick, active }: { label: string; value: number | string; icon: any; onClick: () => void; active: boolean }) {
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  icon: any;
+  onClick?: () => void;
+  active?: boolean;
+  color?: 'blue' | 'green' | 'red' | 'purple' | 'amber' | 'indigo' | 'slate';
+}
+
+function KpiCard({ label, value, icon: Icon, onClick, active, color = 'slate' }: KpiCardProps) {
+  const colorMap = {
+    blue: 'border-blue-100 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:border-blue-300 ring-blue-600/10',
+    green: 'border-green-100 bg-green-50/50 hover:bg-green-50 text-green-700 hover:border-green-300 ring-green-600/10',
+    red: 'border-red-100 bg-red-50/50 hover:bg-red-50 text-red-700 hover:border-red-300 ring-red-600/10',
+    purple: 'border-purple-100 bg-purple-50/50 hover:bg-purple-50 text-purple-700 hover:border-purple-300 ring-purple-600/10',
+    amber: 'border-amber-100 bg-amber-50/50 hover:bg-amber-50 text-amber-700 hover:border-amber-300 ring-amber-600/10',
+    indigo: 'border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 hover:border-indigo-300 ring-indigo-600/10',
+    slate: 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 text-slate-700 hover:border-slate-300 ring-slate-600/10',
+  };
+
+  const activeColorMap = {
+    blue: 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20',
+    green: 'border-green-500 bg-green-50 text-green-800 ring-2 ring-green-500/20',
+    red: 'border-red-500 bg-red-50 text-red-800 ring-2 ring-red-500/20',
+    purple: 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-500/20',
+    amber: 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20',
+    indigo: 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500/20',
+    slate: 'border-slate-500 bg-slate-50 text-slate-800 ring-2 ring-slate-500/20',
+  };
+
+  const iconBgMap = {
+    blue: 'bg-blue-500 text-white',
+    green: 'bg-green-500 text-white',
+    red: 'bg-red-500 text-white',
+    purple: 'bg-purple-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    indigo: 'bg-indigo-500 text-white',
+    slate: 'bg-slate-500 text-white',
+  };
+
   return (
-    <button type="button" onClick={onClick} className="text-left">
-      <Card className={cn(active && 'border-[#12335f] ring-1 ring-[#12335f]/10')}>
-        <CardContent className="flex items-center justify-between p-4">
-          <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-slate-950">{value}</p></div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white"><Icon className="h-5 w-5" /></div>
-        </CardContent>
-      </Card>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left rounded-2xl border p-4 shadow-sm transition-all duration-300 flex items-center justify-between',
+        active ? activeColorMap[color] : colorMap[color]
+      )}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</p>
+        <p className="mt-1 text-xl font-black tracking-tight leading-none">{value}</p>
+      </div>
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-110', iconBgMap[color])}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
     </button>
   );
 }

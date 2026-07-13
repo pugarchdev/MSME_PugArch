@@ -76,6 +76,8 @@ model User {
   buyerPurchaseOrders                PurchaseOrder[]                         @relation("BuyerPurchaseOrders")
   sentRequests                       QuoteRequest[]                          @relation("BuyerRequests")
   receivedRequests                   QuoteRequest[]                          @relation("SellerRequests")
+  quoteRequestClarificationsAsked    QuoteRequestClarification[]             @relation("QuoteRequestClarificationAskedBy")
+  quoteRequestClarificationsAnswered QuoteRequestClarification[]             @relation("QuoteRequestClarificationAnsweredBy")
   sellerInvoices                     Invoice[]                               @relation("SellerInvoices")
   sellerPurchaseOrders               PurchaseOrder[]                         @relation("SellerPurchaseOrders")
   sellerProfile                      SellerProfile?
@@ -1472,14 +1474,36 @@ model QuoteResponse {
   deliveryDays   Int?
   validityDate   DateTime?
   notes          String?
-  documentUrl    String?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  quoteRequest   QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  seller         User                @relation("QuoteResponseSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  documentUrl     String?
+  acknowledgement Json?
+  isShortlisted  Boolean             @default(false)
+
+  // L1 evaluation fields
+  technicalStatus   String?             @default("PENDING")
+  financialStatus   String?             @default("PENDING")
+  evaluatedPrice    Decimal?            @db.Decimal(18, 2)
+  rank              Int?
+  warrantyPeriod    String?
+  paymentTerms      String?
+  gstRate           Decimal?            @db.Decimal(5, 2)
+  taxAmount         Decimal?            @db.Decimal(18, 2)
+  discountPercent   Decimal?            @db.Decimal(5, 2)
+  discountAmount    Decimal?            @db.Decimal(18, 2)
+  deliveryLocation  String?
+  technicalRemarks  String?
+  commercialRemarks String?
+  buyerRemarks      String?
+  complianceStatus  String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  quoteRequest    QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  seller          User                @relation("QuoteResponseSeller", fields: [sellerId], references: [id], onDelete: Restrict)
 
   @@index([quoteRequestId])
   @@index([sellerId, status])
+  @@index([quoteRequestId, status, technicalStatus])
+  @@index([quoteRequestId, isShortlisted])
 }
 
 model Tender {
@@ -1504,10 +1528,12 @@ model Tender {
   paymentTerms          String?
   deliveryType          String?
   itemCondition         String?
-  awardedBidId          Int?
-  createdAt             DateTime                      @default(now())
-  updatedAt             DateTime                      @updatedAt
-  Auction               Auction?
+  awardedBidId    Int?
+  version         Int                           @default(1)
+  allowWithdrawal Boolean                       @default(true)
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  Auction         Auction?
   conversations         Conversation[]
   bids                  Bid[]
   buyer                 User                          @relation(fields: [buyerId], references: [id])
@@ -1563,6 +1589,7 @@ model Bid {
   deviceHash        String?
   status            String     @default("pending") // pending, accepted, rejected
   statusEnum        BidStatus?
+  acknowledgement   Json?
 
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
@@ -1868,21 +1895,26 @@ model KycAuditLog {
 }
 
 model QuoteRequest {
-  id             Int                 @id @default(autoincrement())
-  buyerId        Int
-  sellerId       Int
-  subject        String
-  message        String
-  documentUrl    String?
-  estimatedValue Decimal?            @db.Decimal(18, 2)
-  deadlineDate   DateTime?
-  status         String              @default("pending")
-  statusEnum     QuoteRequestStatus?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  buyer          User                @relation("BuyerRequests", fields: [buyerId], references: [id])
-  seller         User                @relation("SellerRequests", fields: [sellerId], references: [id])
-  quoteResponses QuoteResponse[]
+  id                  Int                 @id @default(autoincrement())
+  buyerId             Int
+  sellerId            Int
+  subject             String
+  message             String
+  documentUrl         String?
+  estimatedValue      Decimal?            @db.Decimal(18, 2)
+  deadlineDate        DateTime?
+  status               String              @default("pending")
+  statusEnum           QuoteRequestStatus?
+  version              Int                 @default(1)
+  allowWithdrawal      Boolean             @default(true)
+  allowSellerRevision  Boolean             @default(false)
+  revisionRequestedAt  DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  buyer               User                @relation("BuyerRequests", fields: [buyerId], references: [id])
+  seller              User                @relation("SellerRequests", fields: [sellerId], references: [id])
+  quoteResponses      QuoteResponse[]
+  clarifications      QuoteRequestClarification[]
 
   @@index([buyerId, status])
   @@index([sellerId, status])
@@ -2201,9 +2233,13 @@ model FileAsset {
   originalName        String
   status              String              @default("active")
   fileStatus          FileStatus?
+  parentId            Int?
+  version             Int                 @default(1)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   owner               User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent              FileAsset?          @relation("FileAssetVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  versions            FileAsset[]         @relation("FileAssetVersions")
   organizationLogos   Organization[]      @relation("OrganizationLogo")
   sellerDocuments     SellerDocument[]
   shgDocuments        ShgDocument[]
@@ -3222,6 +3258,7 @@ model ProcurementBid {
   status                ProcurementBidStatus      @default(DRAFT)
   approvalStatus        ProcurementApprovalStatus @default(DRAFT)
   lifecycleStage        ProcurementLifecycleStage @default(BID_PUBLISHED)
+  visibility            ProcurementVisibility     @default(PUBLIC)
   evaluationMethod      String                    @default("L1")
   isEmdRequired         Boolean                   @default(false)
   emdAmount             Decimal?                  @db.Decimal(18, 2)
@@ -3238,6 +3275,8 @@ model ProcurementBid {
   approvedById          Int?
   approvedAt            DateTime?
   rejectedReason        String?
+  version               Int                       @default(1)
+  allowWithdrawal       Boolean                   @default(true)
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -3249,6 +3288,7 @@ model ProcurementBid {
   clarifications    ProcurementBidClarification[]
   evaluations       ProcurementBidEvaluation[]
   awards            ProcurementBidAward[]
+  invitations       ProcurementBidInvitation[]
 
   @@index([status, approvalStatus])
   @@index([buyerId, status])
@@ -3265,6 +3305,24 @@ model ProcurementBid {
   @@index([title])
   @@index([canonicalMethod])
   @@index([canonicalMethod, status])
+  @@index([visibility, status])
+}
+
+model ProcurementBidInvitation {
+  id           Int      @id @default(autoincrement())
+  bidId        Int
+  sellerOrgId  Int?
+  sellerUserId Int?
+  invitedById  Int?
+  createdAt    DateTime @default(now())
+
+  bid ProcurementBid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, sellerOrgId])
+  @@unique([bidId, sellerUserId])
+  @@index([bidId])
+  @@index([sellerOrgId])
+  @@index([sellerUserId])
 }
 
 model BidWizardDraft {
@@ -3329,6 +3387,7 @@ model ProcurementBidParticipation {
   isWithdrawn            Boolean                     @default(false)
   withdrawnAt            DateTime?
   rejectionReason        String?
+  acknowledgement        Json?
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
 
@@ -3418,6 +3477,27 @@ model ProcurementBidClarificationFile {
 
   @@index([clarificationId])
   @@index([uploadedById])
+}
+
+model QuoteRequestClarification {
+  id                Int      @id @default(autoincrement())
+  quoteRequestId    Int
+  question          String
+  response          String?
+  visibility        String   @default("PUBLIC")
+  askedById         Int
+  answeredById      Int?
+  askedAt           DateTime @default(now())
+  answeredAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  quoteRequest QuoteRequest @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  askedBy      User         @relation("QuoteRequestClarificationAskedBy", fields: [askedById], references: [id], onDelete: Restrict)
+  answeredBy   User?        @relation("QuoteRequestClarificationAnsweredBy", fields: [answeredById], references: [id])
+
+  @@index([quoteRequestId, visibility])
+  @@index([askedById])
 }
 
 model ProcurementBidEvaluation {
@@ -3555,6 +3635,11 @@ enum ProcurementDocumentVisibility {
   PUBLIC
   SELLER_AFTER_LOGIN
   BUYER_ADMIN_ONLY
+}
+
+enum ProcurementVisibility {
+  PUBLIC
+  PRIVATE
 }
 
 enum ProcurementTechnicalStatus {
@@ -3833,6 +3918,7 @@ enum QuoteRequestStatus {
 enum QuoteResponseStatus {
   DRAFT
   SUBMITTED
+  SHORTLISTED
   ACCEPTED
   REJECTED
   EXPIRED
@@ -4315,6 +4401,7 @@ enum BuyerRequirementStatus {
 }
 
 enum RequirementResponseStatus {
+  DRAFT
   SUBMITTED
   UNDER_REVIEW
   SHORTLISTED

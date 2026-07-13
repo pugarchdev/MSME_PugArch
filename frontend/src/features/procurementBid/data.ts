@@ -84,6 +84,14 @@ export interface ProcurementBid {
   awards?: ProcurementBidAward[];
   technicalPacket?: any;
   documents?: any[];
+  consigneeDetails?: any;
+  emdAmount?: number;
+  isEmdRequired?: boolean;
+  evaluationMethod?: string;
+  allowClarification?: boolean;
+  allowReverseAuction?: boolean;
+  packetType?: string;
+  version?: number;
 }
 
 export interface ProcurementBidDocument {

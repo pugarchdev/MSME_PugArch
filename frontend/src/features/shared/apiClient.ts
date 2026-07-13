@@ -17,6 +17,14 @@ export const authHeaders = (): Record<string, string> => {
 export const unwrap = async <T>(response: Response): Promise<T> => {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('msme_user_cache');
+        document.cookie = 'token=; path=/; max-age=0; SameSite=Strict';
+        window.location.href = '/login?expired=true';
+      }
+    }
     const message = body?.message || body?.error || 'Request failed';
     throw new Error(message);
   }

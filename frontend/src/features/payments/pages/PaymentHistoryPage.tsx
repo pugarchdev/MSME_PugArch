@@ -123,51 +123,33 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   if (loading) return <LoadingState label="Loading payment history..." />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">{admin ? 'Admin Finance' : 'Finance'}</p>
-          <h1 className="text-2xl font-black text-slate-950">Payment History</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">
+    <div className="space-y-6">
+      {/* Transparent Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between py-2">
+        <div className="min-w-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#12335f] bg-[#12335f]/10 px-2.5 py-1 rounded-full">{admin ? 'Admin Finance' : 'Finance'}</span>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 mt-2">Payment History</h1>
+          <p className="text-xs font-semibold text-slate-500 mt-1">
             Payment status, escrow linkage, tax/TDS summary, and immutable ledger entries.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-            <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase bg-white hover:bg-slate-50 border-slate-200 shadow-sm">
+            <RefreshCw className={cn("mr-2 h-4 w-4 text-[#12335f]", refreshing && "animate-spin")} /> Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Payments" value={total || payments.length} icon={CreditCard} />
-        <Metric
-          label="Successful"
-          value={paymentSummary.successful}
-          icon={ShieldCheck}
-        />
-        <Metric
-          label="Visible Value"
-          value={formatCurrency(paymentSummary.totalAmount)}
-          icon={IndianRupee}
-        />
-        <Metric
-          label="Success Rate"
-          value={`${paymentSummary.successRate}%`}
-          icon={CheckCircle2}
-        />
-        <Metric
-          label="Settled Value"
-          value={formatCurrency(paymentSummary.settledValue)}
-          icon={Receipt}
-        />
-        <Metric
-          label="Escrow Held"
-          value={formatCurrency(paymentSummary.escrowHeldValue)}
-          icon={Lock}
-        />
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label="Payments" value={total || payments.length} icon={CreditCard} active={true} color="blue" />
+        <KpiCard label="Successful" value={paymentSummary.successful} icon={ShieldCheck} color="green" />
+        <KpiCard label="Visible Value" value={formatCurrency(paymentSummary.totalAmount)} icon={IndianRupee} color="indigo" />
+        <KpiCard label="Success Rate" value={`${paymentSummary.successRate}%`} icon={CheckCircle2} color="purple" />
+        <KpiCard label="Settled Value" value={formatCurrency(paymentSummary.settledValue)} icon={Receipt} color="blue" />
+        <KpiCard label="Escrow Held" value={formatCurrency(paymentSummary.escrowHeldValue)} icon={Lock} color="amber" />
       </div>
 
       {error && <InlineError message={error} onRetry={reload} />}
@@ -177,58 +159,56 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
         </div>
       )}
 
-      <Card className="border-slate-200/80 shadow-sm bg-white">
-        <CardContent className="p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_140px_140px_120px] lg:items-end">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={searchTerm}
-                onChange={event => { setSearchTerm(event.target.value); setPage(1); }}
-                placeholder="Search reference, invoice, PO, payer, payee..."
-                className="h-10 w-full rounded-lg border border-slate-200 pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
-              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
-            >
-              <option value="">All statuses</option>
-              <option value="initiated">Initiated</option>
-              <option value="gateway_order_created">Gateway order</option>
-              <option value="success">Success</option>
-              <option value="escrow_released">Escrow released</option>
-              <option value="failed">Failed</option>
-              <option value="refunded">Refunded</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <select
-              value={gatewayFilter}
-              onChange={event => { setGatewayFilter(event.target.value); setPage(1); }}
-              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
-            >
-              <option value="">All gateways</option>
-              <option value="bank_transfer">Bank transfer</option>
-              <option value="razorpay">Razorpay</option>
-              <option value="cashfree">Cashfree</option>
-            </select>
-            <select
-              value={escrowFilter}
-              onChange={event => { setEscrowFilter(event.target.value); setPage(1); }}
-              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none w-full"
-            >
-              <option value="">Escrow / any</option>
-              <option value="funded">Funded</option>
-              <option value="not_funded">Not funded</option>
-            </select>
-          </div>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-slate-500">Showing {filtered.length} payments</div>
+      {/* Inline Filters Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="relative min-w-0 flex-1 max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
+            placeholder="Search reference, invoice, PO..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          />
+        </div>
 
-          </div>
-        </CardContent>
-      </Card>
+        <div className="flex items-center gap-3 justify-end">
+          <select
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+            className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          >
+            <option value="">All statuses</option>
+            <option value="initiated">Initiated</option>
+            <option value="gateway_order_created">Gateway order</option>
+            <option value="success">Success</option>
+            <option value="escrow_released">Escrow released</option>
+            <option value="failed">Failed</option>
+            <option value="refunded">Refunded</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+
+          <select
+            value={gatewayFilter}
+            onChange={e => { setGatewayFilter(e.target.value); setPage(1); }}
+            className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          >
+            <option value="">Gateway / any</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="razorpay">Razorpay</option>
+            <option value="cashfree">Cashfree</option>
+          </select>
+
+          <select
+            value={escrowFilter}
+            onChange={e => { setEscrowFilter(e.target.value); setPage(1); }}
+            className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          >
+            <option value="">Escrow / any</option>
+            <option value="funded">Funded</option>
+            <option value="not_funded">Not funded</option>
+          </select>
+        </div>
+      </div>
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -240,56 +220,60 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
               : 'No transactions are linked to your account yet. Payments appear after invoice checkout, offline proof verification, or escrow release.'}
         />
       ) : viewMode === 'grid' ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {pagedPayments.map((payment, index) => {
             const tax = payment.metadata?.taxSummary || {};
+            const rowIndex = (page - 1) * pageSize + index + 1;
             return (
-              <Card key={payment.id} className="rounded-3xl border-slate-200 shadow-sm">
-                <CardContent className="space-y-4 p-4">
+              <div key={payment.id} className="group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#12335f]/40 hover:shadow-md flex flex-col justify-between">
+                <div className="w-full space-y-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Sr. No</p>
-                      <p className="text-lg font-black text-slate-950">{(page - 1) * pageSize + index + 1}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[9px] font-black text-slate-500">
+                          {String(rowIndex).padStart(2, '0')}
+                        </span>
+                        <EntityIdLink label={payment.referenceId} id={payment.id} size="sm" onClick={() => { setDetailTab('receipt'); setSelected(payment); }} />
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-slate-500 font-semibold">Invoice: {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}</p>
                     </div>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase text-slate-700">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-black uppercase text-slate-700">
                       {String(payment.status || 'initiated').replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Reference</p>
-                    <EntityIdLink label={payment.referenceId} id={payment.id} size="sm" onClick={() => { setDetailTab('receipt'); setSelected(payment); }} />
-                    <p className="text-[10px] text-slate-500">Invoice {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}</p>
+
+                  <div className="grid grid-cols-2 gap-2.5 text-[10px] font-semibold text-slate-500 border-t border-slate-100 pt-3">
+                    <InfoTile label="Gateway" value={`${payment.gateway || 'manual'} / ${payment.method || 'bank_transfer'}`} />
+                    <InfoTile label="Amount" value={formatCurrency(payment.amount)} />
+                    <InfoTile label="PO Number" value={payment.purchaseOrder?.poNumber || '-'} />
+                    <InfoTile label="Tax/TDS" value={`GST ${formatCurrency(tax.totalTaxAmount || 0)} | TDS ${formatCurrency(tax.tdsAmount || 0)}`} />
                   </div>
-                  <div className="grid gap-2 text-[10px] text-slate-600">
-                    <p><span className="font-black text-slate-900">Gateway:</span> {payment.gateway || 'manual'} / {payment.method || 'bank_transfer'}</p>
-                    <p><span className="font-black text-slate-900">Amount:</span> {formatCurrency(payment.amount)}</p>
-                    <p><span className="font-black text-slate-900">PO:</span> {payment.purchaseOrder?.poNumber || '-'}</p>
-                    <p><span className="font-black text-slate-900">Tax/TDS:</span> GST {formatCurrency(tax.totalTaxAmount || 0)} | TDS {formatCurrency(tax.tdsAmount || 0)}</p>
+
+                  <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-500 border-t border-slate-100 pt-3">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5">Payer: {payment.payer?.name || `Payer #${payment.payer?.id}`}</span>
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5">Payee: {payment.payee?.name || `Payee #${payment.payee?.id}`}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-slate-700">
-                    <span className="rounded-full bg-slate-100 px-2 py-1">{payment.payer?.name || `Payer #${payment.payer?.id}`}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1">{payment.payee?.name || `Payee #${payment.payee?.id}`}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { setDetailTab('receipt'); setSelected(payment); }}>
-                      <Receipt className="mr-1 h-3.5 w-3.5" />View
+
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                    <Button size="sm" variant="outline" className="h-8 text-[10px] font-black uppercase rounded-lg" onClick={() => { setDetailTab('receipt'); setSelected(payment); }}>
+                      <Receipt className="mr-1.5 h-3.5 w-3.5" />View Receipt
                     </Button>
-                    <Button size="sm" onClick={() => { setDetailTab('timeline'); setSelected(payment); }}>
-                      <Clock3 className="mr-1 h-3.5 w-3.5" />Track
+                    <Button size="sm" className="h-8 text-[10px] font-black uppercase rounded-lg" onClick={() => { setDetailTab('timeline'); setSelected(payment); }}>
+                      <Clock3 className="mr-1.5 h-3.5 w-3.5" />Track Payment
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="p-3">Sr. No</th>
+            <table className="w-full min-w-[1080px] border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75 hover:bg-transparent">
+                  <th className="p-3 text-[10px] font-black uppercase tracking-wider text-slate-500 w-16">Sr. No</th>
                   <th className="p-3"><SortableHeader label="Reference" field="reference" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3"><SortableHeader label="Parties" field="parties" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3"><SortableHeader label="Gateway" field="gateway" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
@@ -299,19 +283,19 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                   <th className="p-3">Ledger Entries</th>
                   <th className="p-3"><SortableHeader label="Status" field="status" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
                   <th className="p-3"><SortableHeader label="Date" field="date" activeField={sortKey} direction={sortDirection} onSort={toggleSort} /></th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3 text-right w-44">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                 {pagedPayments.map((payment, index) => {
                   const tax = payment.metadata?.taxSummary || {};
                   const isSuccess = ['success', 'escrow_released'].includes(payment.status || '');
                   const rowNumber = (page - 1) * pageSize + index + 1;
 
                   return (
-                    <tr key={payment.id} className="hover:bg-slate-50">
-                      <td className="p-3 text-xs font-black text-slate-700">{rowNumber}</td>
-                      <td className="p-3">
+                    <tr key={payment.id} className="hover:bg-slate-50/50 transition cursor-pointer" onClick={() => { setDetailTab('receipt'); setSelected(payment); }}>
+                      <td className="p-3 font-mono text-xs text-slate-500">{rowNumber}</td>
+                      <td className="p-3" onClick={e => e.stopPropagation()}>
                         <EntityIdLink label={payment.referenceId} id={payment.id} size="sm" onClick={() => { setDetailTab('receipt'); setSelected(payment); }} />
                         <p className="mt-1 text-[10px] font-semibold text-slate-500">
                           Invoice {payment.invoice?.invoiceNumber || payment.invoiceId || '-'}
@@ -325,7 +309,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                       <td className="p-3 text-xs font-bold uppercase text-slate-600">
                         {payment.gateway || 'manual'} / {payment.method || 'bank_transfer'}
                       </td>
-                      <td className="p-3 text-xs font-black">{formatCurrency(payment.amount)}</td>
+                      <td className="p-3 text-xs font-black text-slate-900">{formatCurrency(payment.amount)}</td>
                       <td className="p-3 text-[10px] font-bold text-slate-500">
                         GST {formatCurrency(tax.totalTaxAmount || 0)} | TDS {formatCurrency(tax.tdsAmount || 0)}
                       </td>
@@ -359,7 +343,7 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
                       <td className="p-3 text-xs font-bold text-slate-500">
                         {formatDate(payment.completedAt || payment.createdAt)}
                       </td>
-                      <td className="p-3 text-right space-y-2 sm:space-y-0 sm:flex sm:justify-end sm:items-center sm:gap-2">
+                      <td className="p-3 text-right space-y-2 sm:space-y-0 sm:flex sm:justify-end sm:items-center sm:gap-2" onClick={e => e.stopPropagation()}>
                         <Button
                           variant="outline"
                           onClick={() => { setDetailTab('receipt'); setSelected(payment); }}
@@ -397,19 +381,72 @@ export default function PaymentHistoryPage({ admin = false }: { admin?: boolean 
   );
 }
 
-function Metric({ label, value, icon: Icon }: { label: string; value: number | string; icon: any }) {
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  icon: any;
+  onClick?: () => void;
+  active?: boolean;
+  color?: 'blue' | 'green' | 'red' | 'purple' | 'amber' | 'indigo' | 'slate';
+}
+
+function KpiCard({ label, value, icon: Icon, onClick, active, color = 'slate' }: KpiCardProps) {
+  const colorMap = {
+    blue: 'border-blue-100 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:border-blue-300 ring-blue-600/10',
+    green: 'border-green-100 bg-green-50/50 hover:bg-green-50 text-green-700 hover:border-green-300 ring-green-600/10',
+    red: 'border-red-100 bg-red-50/50 hover:bg-red-50 text-red-700 hover:border-red-300 ring-red-600/10',
+    purple: 'border-purple-100 bg-purple-50/50 hover:bg-purple-50 text-purple-700 hover:border-purple-300 ring-purple-600/10',
+    amber: 'border-amber-100 bg-amber-50/50 hover:bg-amber-50 text-amber-700 hover:border-amber-300 ring-amber-600/10',
+    indigo: 'border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 hover:border-indigo-300 ring-indigo-600/10',
+    slate: 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 text-slate-700 hover:border-slate-300 ring-slate-600/10',
+  };
+
+  const activeColorMap = {
+    blue: 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20',
+    green: 'border-green-500 bg-green-50 text-green-800 ring-2 ring-green-500/20',
+    red: 'border-red-500 bg-red-50 text-red-800 ring-2 ring-red-500/20',
+    purple: 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-500/20',
+    amber: 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20',
+    indigo: 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500/20',
+    slate: 'border-slate-500 bg-slate-50 text-slate-800 ring-2 ring-slate-500/20',
+  };
+
+  const iconBgMap = {
+    blue: 'bg-blue-500 text-white',
+    green: 'bg-green-500 text-white',
+    red: 'bg-red-500 text-white',
+    purple: 'bg-purple-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    indigo: 'bg-indigo-500 text-white',
+    slate: 'bg-slate-500 text-white',
+  };
+
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">
-          <Icon className="h-5 w-5" />
-        </div>
-      </CardContent>
-    </Card>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left rounded-2xl border p-4 shadow-sm transition-all duration-300 flex items-center justify-between',
+        active ? activeColorMap[color] : colorMap[color]
+      )}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</p>
+        <p className="mt-1 text-xl font-black tracking-tight leading-none">{value}</p>
+      </div>
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-110', iconBgMap[color])}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+    </button>
+  );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-slate-800">{value || '-'}</p>
+    </div>
   );
 }
 

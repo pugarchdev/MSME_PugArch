@@ -98,6 +98,17 @@ const TONE_TEXT_COLORS: Record<string, string> = {
     cyan: 'text-cyan-700'
 };
 
+const CARD_STYLES: Record<string, string> = {
+    indigo: 'bg-indigo-50/40 text-indigo-950 ring-indigo-600/15 hover:bg-indigo-50/80 hover:ring-indigo-600/30',
+    emerald: 'bg-emerald-50/40 text-emerald-950 ring-emerald-600/15 hover:bg-emerald-50/80 hover:ring-emerald-600/30',
+    blue: 'bg-blue-50/40 text-blue-950 ring-blue-600/15 hover:bg-blue-50/80 hover:ring-blue-600/30',
+    rose: 'bg-rose-50/40 text-rose-950 ring-rose-600/15 hover:bg-rose-50/80 hover:ring-rose-600/30',
+    slate: 'bg-slate-50/40 text-slate-900 ring-slate-600/15 hover:bg-slate-100 hover:ring-slate-600/30',
+    amber: 'bg-amber-50/40 text-amber-950 ring-amber-600/15 hover:bg-amber-50/80 hover:ring-amber-600/30',
+    purple: 'bg-purple-50/40 text-purple-950 ring-purple-600/15 hover:bg-purple-50/80 hover:ring-purple-600/30',
+    cyan: 'bg-cyan-50/40 text-cyan-950 ring-cyan-600/15 hover:bg-cyan-50/80 hover:ring-cyan-600/30'
+};
+
 const ActionCard = React.memo(function ActionCard({
     card,
     isLoading,
@@ -117,53 +128,32 @@ const ActionCard = React.memo(function ActionCard({
             type="button"
             onClick={handleClick}
             className={cn(
-                "group flex min-h-[92px] w-full flex-col text-left rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2",
+                "group flex min-h-[96px] w-full flex-col text-left rounded-2xl p-4 ring-1 transition hover:scale-[1.02] duration-200 active:scale-[0.98] focus:outline-none focus:ring-2",
                 priority && "relative overflow-hidden",
-                TONE_HOVER_BORDERS[card.tone] || TONE_HOVER_BORDERS.slate
+                CARD_STYLES[card.tone] || CARD_STYLES.slate
             )}
         >
-            {priority && card.count > 0 && (
-                <div className={cn(
-                    "absolute top-0 bottom-0 left-0 w-0.5",
-                    card.tone === 'amber' ? "bg-amber-500" :
-                    card.tone === 'blue' ? "bg-blue-500" :
-                    card.tone === 'purple' ? "bg-purple-500" :
-                    card.tone === 'emerald' ? "bg-emerald-500" : "bg-slate-500"
-                )} />
-            )}
-
-            <div className="flex items-center justify-between mb-1.5">
-                <div className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-105",
-                    TONES[card.tone] || TONES.slate
-                )}>
-                    <Icon className="h-3.5 w-3.5" />
+            <div className="flex items-center justify-between w-full">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-current/15 transition-transform duration-200 group-hover:scale-105">
+                    <Icon className="h-4 w-4 text-current" />
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                     {priority && card.count > 0 && (
-                        <span className={cn(
-                            "inline-flex items-center px-1 py-0.5 rounded text-[7.5px] font-extrabold uppercase tracking-wider animate-pulse",
-                            card.tone === 'amber' ? "bg-amber-100 text-amber-850" :
-                            card.tone === 'rose' ? "bg-rose-100 text-rose-850" :
-                            card.tone === 'emerald' ? "bg-emerald-100 text-emerald-850" : "bg-blue-100 text-blue-850"
-                        )}>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-current/10 text-current animate-pulse">
                             Pending
                         </span>
                     )}
-                    <ArrowRight className={cn("h-3 w-3 text-slate-400 transition-transform duration-200 group-hover:translate-x-0.5", priority ? "group-hover:text-slate-800" : "group-hover:text-slate-700")} />
+                    <ArrowRight className="h-4 w-4 text-current/60 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </div>
             </div>
             {isLoading ? (
-                <div className="h-6 w-10 rounded bg-slate-100 animate-pulse mb-0.5" />
+                <div className="h-6 w-10 rounded bg-slate-200 animate-pulse mt-3 mb-0.5" />
             ) : (
-                <p className={cn(
-                    "text-xl font-extrabold tracking-tight leading-none",
-                    card.count > 0 ? (TONE_TEXT_COLORS[card.tone] || "text-slate-900") : "text-slate-800"
-                )}>
-                    {(card as any).isCurrency ? `Rs. ${Number(card.count).toLocaleString('en-IN')}` : card.count}
+                <p className="text-2xl font-black tracking-tight leading-none mt-3 text-slate-900">
+                    {(card as any).isCurrency ? `₹${Number(card.count).toLocaleString('en-IN')}` : card.count}
                 </p>
             )}
-            <p className={cn("text-[9px] font-bold uppercase tracking-wide mt-1 leading-tight", priority ? "text-slate-650" : "text-slate-500")}>{card.label}</p>
+            <p className="text-[9px] font-black uppercase tracking-wider mt-1.5 leading-tight text-slate-500">{card.label}</p>
         </button>
     );
 });
@@ -210,11 +200,11 @@ function RoleAwareActionCards() {
     }, [permissions]);
 
     const cards: ActionCardConfig[] = useMemo(() => [
-        // ─── Buyer baseline tiles ───
+        // ─── Buyer baseline tiles (Exactly 10) ───
         {
             label: 'Active Procurements',
             count: data.myTendersCount || 0,
-            href: '/buyer/procurements',
+            href: '/buyer/my-procurements',
             icon: ClipboardList,
             tone: 'indigo',
             show: isBuyer,
@@ -223,7 +213,7 @@ function RoleAwareActionCards() {
         {
             label: 'Procurement Bids',
             count: data.buyerProcurementActiveBidsCount || 0,
-            href: '/bids',
+            href: '/marketplace',
             icon: Gavel,
             tone: 'purple',
             show: isBuyer,
@@ -232,22 +222,13 @@ function RoleAwareActionCards() {
         {
             label: 'Procurement Spend',
             count: data.buyerProcurementTotalSpentValue || 0,
-            href: '/orders/procurement',
+            href: '/payments/transactions',
             icon: IndianRupee,
             tone: 'emerald',
             show: isBuyer,
             priority: false,
             isCurrency: true
         } as any,
-        {
-            label: 'Tenders & Bids',
-            count: data.myTendersCount || 0,
-            href: '/buyer/tenders',
-            icon: Gavel,
-            tone: 'indigo',
-            show: isBuyer,
-            priority: false
-        },
         {
             label: 'Active Orders',
             count: data.myActivePOsCount || 0,
@@ -290,11 +271,29 @@ function RoleAwareActionCards() {
             href: '/orders/delivery-confirmation',
             icon: ClipboardCheck,
             tone: 'emerald',
-            show: isBuyer,
-            priority: true
+            show: isBuyer && hasPermission('inspection.view'),
+            priority: false
+        },
+        {
+            label: 'Carts to Approve',
+            count: data.cartApprovalsCount || 0,
+            href: '/cart/approvals',
+            icon: ClipboardCheck,
+            tone: 'blue',
+            show: isBuyer && hasPermission('checkout.approve'),
+            priority: false
+        },
+        {
+            label: 'Approvals Pending',
+            count: data.pendingApprovalsCount || 0,
+            href: '/approvals',
+            icon: Inbox,
+            tone: 'amber',
+            show: isBuyer && hasPermission('approval.view'),
+            priority: false
         },
 
-        // ─── Seller baseline tiles ───
+        // ─── Seller baseline tiles (Exactly 10) ───
         {
             label: 'New Opportunities',
             count: data.sellerOpportunitiesCount || 0,
@@ -370,7 +369,7 @@ function RoleAwareActionCards() {
         {
             label: 'Live Auctions',
             count: data.reverseAuctionsLive || data.reverseAuctionInvites || 0,
-            href: '/reverse-auctions',
+            href: '/seller/opportunities/auctions',
             icon: Gavel,
             tone: 'amber',
             show: isSeller,
@@ -384,82 +383,22 @@ function RoleAwareActionCards() {
             tone: 'indigo',
             show: isSeller,
             priority: false
-        },
-        {
-            label: 'Factoring Console',
-            count: 0,
-            href: '/factoring',
-            icon: Landmark,
-            tone: 'indigo',
-            show: user?.role === 'financier',
-            priority: false
-        },
-
-        // ─── Org Admin / Role specific buyer priority task tiles ───
-        {
-            label: 'Approvals Pending',
-            count: data.pendingApprovalsCount || 0,
-            href: '/approvals',
-            icon: Inbox,
-            tone: 'amber',
-            show: isBuyer && hasPermission('approval.view'),
-            priority: true
-        },
-        {
-            label: 'Carts to Approve',
-            count: data.cartApprovalsCount || 0,
-            href: '/cart/approvals',
-            icon: ClipboardCheck,
-            tone: 'blue',
-            show: isBuyer && hasPermission('checkout.approve'),
-            priority: true
-        },
-        {
-            label: 'Tech Review Queue',
-            count: data.techReviewCount || 0,
-            href: '/cart/technical-review',
-            icon: FileText,
-            tone: 'purple',
-            show: isBuyer && hasPermission('inspection.view'),
-            priority: true
         }
-    ], [data, hasPermission, isBuyer, isSeller]);
+    ], [data, isBuyer, isSeller]);
 
     const visible = useMemo(() => cards.filter(c => c.show), [cards]);
-    const priorityActions = useMemo(() => visible.filter(c => c.priority), [visible]);
-    const generalMonitoring = useMemo(() => visible.filter(c => !c.priority), [visible]);
     const openCard = useCallback((href: string) => router.push(href), [router]);
 
     if (visible.length === 0) return null;
 
     return (
-        <div className="space-y-4">
-            {/* Group 1: Priority Action Queue */}
-            {priorityActions.length > 0 && (
-                <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 pl-0.5">
-                        <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        <h4 className="text-[9px] font-black uppercase tracking-widest text-[#12335f]">
-                            Priority Actions Required {data.orgRole && `· ${data.orgRole.replace(/_/g, ' ')}`}
-                        </h4>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                        {priorityActions.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} priority onOpen={openCard} />)}
-                    </div>
-                </div>
-            )}
-
-            {/* Group 2: General Monitoring */}
-            {generalMonitoring.length > 0 && (
-                <div className="space-y-2">
-                    <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400 pl-0.5">
-                        General Monitoring
-                    </h4>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                        {generalMonitoring.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} onOpen={openCard} />)}
-                    </div>
-                </div>
-            )}
+        <div className="space-y-2">
+            <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 pl-0.5">
+                General Monitoring
+            </h4>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                {visible.map(card => <ActionCard key={card.label} card={card} isLoading={isLoading} onOpen={openCard} />)}
+            </div>
         </div>
     );
 }

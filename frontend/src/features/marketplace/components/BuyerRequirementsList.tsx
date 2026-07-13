@@ -165,12 +165,25 @@ export function BuyerRequirementsList({
         setPage(1);
     }, [tab, query, sort, location, minBudget, maxBudget, buyerOrganizationId]);
 
-    const handleSubmit = (requirement: BuyerRequirement) => {
-        if (!user) {
-            router.push(`/login?redirect=${encodeURIComponent(`/marketplace/requirements/${requirement.id}`)}`);
-            return;
+    const getRequirementHref = (req: BuyerRequirement) => {
+        const method = String(req.canonicalMethod || req.procurementMethod || '').toUpperCase();
+        const sourceId = req.sourceId || Math.abs(req.id);
+        
+        if (['RFQ', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'RATE_CONTRACT'].includes(method)) {
+            return `/seller/rfq?requirementId=${sourceId}`;
+        } else if (['RFP', 'SINGLE_SOURCE', 'PAC'].includes(method)) {
+            return `/seller/rfp?requirementId=${sourceId}`;
+        } else if (['OPEN_TENDER', 'LIMITED_TENDER', 'TWO_STAGE_TENDER', 'EMERGENCY_PURCHASE'].includes(method)) {
+            return `/seller/rfq?requirementId=${sourceId}`;
+        } else if (method === 'REVERSE_AUCTION') {
+            return `/seller/rfq?requirementId=${sourceId}`;
         }
-        setSelected(requirement);
+        
+        return `/seller/rfq?requirementId=${sourceId}`;
+    };
+
+    const handleViewDetails = (req: BuyerRequirement) => {
+        router.push(getRequirementHref(req));
     };
 
     const isLegacyRequirement = (req: BuyerRequirement) => {
@@ -426,16 +439,10 @@ export function BuyerRequirementsList({
                                             <td className="px-5 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button 
-                                                        onClick={() => setSelected(req)} 
+                                                        onClick={() => handleViewDetails(req)} 
                                                         className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-center text-xs font-black text-slate-700 hover:bg-slate-100 transition shadow-sm"
                                                     >
-                                                        View
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? setSelected(req) : handleSubmit(req)} 
-                                                        className="inline-flex items-center justify-center gap-1 rounded-md bg-[#0b2447] px-2.5 py-1.5 text-xs font-black text-white hover:bg-[#12335f] transition shadow-sm"
-                                                    >
-                                                        {isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : 'Quote'}
+                                                        View Details
                                                     </button>
                                                 </div>
                                             </td>
@@ -525,15 +532,11 @@ export function BuyerRequirementsList({
                                                 {daysRemaining <= 0 ? 'Closed' : `${daysRemaining}d remaining`}
                                             </span>
                                             <div className="flex items-center gap-2">
-                                                <button onClick={() => setSelected(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:border-[#0b2447] hover:text-[#0b2447] shadow-sm">
-                                                    <Eye className="h-3.5 w-3.5" />
-                                                    View
-                                                </button>
-                                                <button onClick={() => isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? setSelected(req) : handleSubmit(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-black text-white transition hover:bg-[#12335f] active:scale-95 shadow-sm">
-                                                    <Send className="h-3.5 w-3.5" />
-                                                    {isLegacy || badge.label === 'Closed' || badge.label === 'Awarded' ? 'Details' : actionLabel}
-                                                </button>
-                                            </div>
+                                                 <button onClick={() => handleViewDetails(req)} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[11px] font-black text-white hover:bg-[#12335f] transition active:scale-95 shadow-sm">
+                                                     <Eye className="h-3.5 w-3.5" />
+                                                     View Details
+                                                 </button>
+                                             </div>
                                         </div>
                                     </div>
                                 </article>

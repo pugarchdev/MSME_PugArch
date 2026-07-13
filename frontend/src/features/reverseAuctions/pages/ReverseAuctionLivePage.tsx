@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -10,7 +10,7 @@ import {
   Gavel,
   History,
   IndianRupee,
-  LineChart,
+  LineChart as LineChartIcon,
   RadioTower,
   RefreshCw,
   Send,
@@ -18,11 +18,22 @@ import {
   Trophy,
   Users,
   X,
+  Gauge,
+  Percent,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip
+} from 'recharts';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
-import { formatCurrency, formatDateTime, formatNumber, formatRelative } from '../../shared/format';
+import { formatCurrency, formatDateTime, formatNumber } from '../../shared/format';
 import { cn } from '../../../lib/utils';
 import { useAuth } from '../../../hooks/useAuth';
 import { reverseAuctionApi, type ReverseAuction, type ReverseAuctionBid, type ReverseAuctionParticipant } from '../api';
@@ -136,16 +147,41 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
   
   const loading = summary.isLoading && !auction;
 
+  // Countdown timer logic
+  const [timeLeft, setTimeLeft] = useState('00:00:00');
+  const live = auction ? isAuctionLive(auction, summary.data?.serverTime || liveSummaryCache.get(id)?.serverTime) : false;
+  const status = auction ? getStatus(auction) : 'DRAFT';
+
+  useEffect(() => {
+    if (!live || !auction?.endTime) {
+      setTimeLeft('00:00:00');
+      return;
+    }
+    const updateTimer = () => {
+      const end = new Date(auction.endTime).getTime();
+      const now = Date.now();
+      const diff = end - now;
+      if (diff <= 0) {
+        setTimeLeft('00:00:00');
+      } else {
+        const hrs = String(Math.floor(diff / 3600000)).padStart(2, '0');
+        const mins = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+        const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+        setTimeLeft(`${hrs}:${mins}:${secs}`);
+      }
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [live, auction?.endTime]);
+
   if (loading) return <LoadingState label="Loading live auction..." />;
   if (summary.error) return <InlineError message={(summary.error as Error).message} onRetry={() => summary.refetch()} />;
-
   if (!auction) return <EmptyState title="Auction not found" />;
 
   const participant = (summary.data?.participant || liveSummaryCache.get(id)?.participant) as ReverseAuctionParticipant | null | undefined;
   const participantRows = participants.data?.participants || [];
   const bidRows = (bids.data?.bids || []).slice().sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
-  const status = getStatus(auction);
-  const live = isAuctionLive(auction, summary.data?.serverTime || liveSummaryCache.get(id)?.serverTime);
   const currentLowest = getCurrentLowest(auction);
   const startPrice = numberValue(auction.startPrice);
   const savings = startPrice > currentLowest && currentLowest > 0 ? startPrice - currentLowest : 0;
@@ -185,213 +221,312 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
     bid.mutate(nextAmount);
   };
 
+  // Process data for the real-time bid chart
+  // Group bids chronologically to show pricing drops
+  const chartData = bidRows
+    .slice()
+    .reverse()
+    .map((b, idx) => ({
+      index: idx + 1,
+      amount: getBidAmount(b),
+      time: new Date(b.submittedAt || 0).toLocaleTimeString(),
+      label: b.sellerOrgName || `Bid #${idx + 1}`
+    }));
+
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-6 pb-8 bg-white text-zinc-900 p-6 rounded-3xl border border-zinc-200 shadow-xl animate-in fade-in duration-500">
+      
+      {/* Error alert */}
       {localError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 flex justify-between items-center">
+        <div className="rounded-xl border border-red-500/30 bg-red-950/40 p-4 text-xs font-bold text-red-400 flex justify-between items-center shadow-lg shadow-red-950/20 backdrop-blur-md">
           <span>{localError}</span>
-          <button onClick={() => setLocalError('')}><X className="h-4 w-4" /></button>
+          <button onClick={() => setLocalError('')} className="text-red-400 hover:text-red-300">
+            <X className="h-4.5 w-4.5" />
+          </button>
         </div>
       )}
-      
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
-                <ArrowLeft className="mr-1 h-4 w-4" /> Auctions
-              </Link>
-              <StatusPill status={status} />
-              {auction.auctionCode && <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[#c86413]">{auction.auctionCode}</span>}
-              {auction.referenceNo && <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">{auction.referenceNo}</span>}
-            </div>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-[#12335f]">Live Reverse Auction</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 text-wrap-anywhere">{auction.title || `Auction #${id}`}</h1>
-            <p className="mt-2 max-w-4xl text-sm font-semibold leading-relaxed text-slate-600">
-              {auction.description || 'Participate in a price-only reverse auction with server-time validation, rank tracking, decrement controls, and audit-backed bid submission.'}
-            </p>
+
+      {/* Header section */}
+      <section className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 border-b border-zinc-200 pb-6">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 transition">
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All Auctions
+            </Link>
+            
+            {/* Live Indicator */}
+            {live ? (
+              <span className="inline-flex items-center rounded-full bg-red-50 border border-red-200 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-red-600">
+                <span className="mr-2 h-2 w-2 rounded-full bg-red-500 animate-ping" />
+                Live Auction
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full bg-zinc-100 border border-zinc-200 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-600">
+                {status.replace(/_/g, ' ')}
+              </span>
+            )}
+            
+            {auction.auctionCode && (
+              <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                {auction.auctionCode}
+              </span>
+            )}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <Button type="button" variant="outline" onClick={invalidate} disabled={summary.isFetching}>
-              <RefreshCw className={cn('mr-2 h-4 w-4', summary.isFetching && 'animate-spin')} /> Refresh
+          
+          <h1 className="text-2xl font-black tracking-tight text-zinc-900">{auction.title || `Auction #${id}`}</h1>
+          <p className="max-w-4xl text-sm font-semibold leading-relaxed text-zinc-500">
+            {auction.description || 'Participate in a price-only reverse auction with server-time validation, rank tracking, decrement controls, and audit-backed bid submission.'}
+          </p>
+        </div>
+
+        {/* Controls and Countdown */}
+        <div className="flex flex-col sm:items-end gap-3.5 shrink-0">
+          {/* Glowing Red Countdown Timer */}
+          <div className="flex flex-col sm:items-end">
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Remaining Time</p>
+            <div className="mt-1 text-3xl font-mono font-extrabold text-red-600 tracking-wider drop-shadow-[0_0_8px_rgba(220,38,38,0.2)]">
+              ( {timeLeft} )
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={invalidate} disabled={summary.isFetching} className="border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700">
+              <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', summary.isFetching && 'animate-spin')} /> Refresh
             </Button>
-            <Link href={`/reverse-auctions/${id}`}><Button type="button" variant="outline">Details</Button></Link>
-            {isBuyerOrAdmin ? (
+            <Link href={`/reverse-auctions/${id}`}>
+              <Button type="button" variant="outline" className="border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700">Details</Button>
+            </Link>
+            
+            {isBuyerOrAdmin && (
               <>
                 {status === 'DRAFT' && (
-                  <Button onClick={() => transition.mutate('schedule')} variant="outline">Schedule</Button>
+                  <Button onClick={() => transition.mutate('schedule')} variant="outline" className="border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700">Schedule</Button>
                 )}
                 {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(status) && (
-                  <Button onClick={() => transition.mutate('start')} className="bg-emerald-600 hover:bg-emerald-700 text-white">Start</Button>
+                  <Button onClick={() => transition.mutate('start')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Start</Button>
                 )}
                 {status === 'LIVE' && (
-                  <Button onClick={() => transition.mutate('pause')} variant="secondary">Pause</Button>
+                  <Button onClick={() => transition.mutate('pause')} variant="secondary" className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800">Pause</Button>
                 )}
                 {['LIVE', 'PAUSED'].includes(status) && (
-                  <Button onClick={() => transition.mutate('close')} variant="danger">Close</Button>
+                  <Button onClick={() => transition.mutate('close')} className="bg-red-600 hover:bg-red-500 text-white font-bold">Close</Button>
                 )}
-                <Link href={`/reverse-auctions/${id}/results`}><Button type="button" variant="secondary">Results</Button></Link>
+                <Link href={`/reverse-auctions/${id}/results`}>
+                  <Button type="button" variant="secondary" className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800">Results</Button>
+                </Link>
               </>
-            ) : null}
+            )}
           </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
-          <LiveInstruction
-            live={live}
-            status={status}
-            isBuyerOrAdmin={isBuyerOrAdmin}
-            startTime={auction.startTime}
-            endTime={auction.endTime}
-            minimumNextBid={minNextBid}
-          />
-          <MiniStatus label="Bid rule" value={minNextBid > 0 ? `Next bid <= ${formatCurrency(minNextBid)}` : 'Waiting for first bid'} />
-          <MiniStatus label="Refresh mode" value={live ? 'Fast live polling' : 'Slow review polling'} />
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <Metric icon={IndianRupee} label="Current lowest" value={currentLowest > 0 ? formatCurrency(currentLowest) : 'No bids yet'} tone="green" />
-          {isBuyerOrAdmin ? (
-            <Metric icon={Users} label="Invited Sellers" value={formatNumber(participantRows.length)} tone="amber" />
-          ) : (
-            <Metric icon={Trophy} label="My rank" value={participant?.currentRank ? `L${participant.currentRank}` : 'Not ranked'} tone="amber" />
-          )}
-          <Metric icon={LineChart} label="Savings from start" value={savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : 'Not established'} tone="blue" />
-          <Metric icon={Clock3} label="Ends" value={formatRelative(auction.endTime)} hint={formatDateTime(auction.endTime)} tone="slate" />
-          <Metric icon={RadioTower} label="Server time" value={formatDateTime(summary.data?.serverTime)} tone="slate" />
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_390px]">
-        <main className="space-y-4">
-          <section className="grid gap-4 lg:grid-cols-2">
-            <AuctionRulesCard auction={auction} minimumNextBid={minNextBid} live={live} />
-            <SellerPositionCard participant={participant || null} myBestBid={myBestBid} latestBid={latestBid} bidCount={bidRows.length} />
-          </section>
+      {/* Stats Row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatsCard
+          icon={IndianRupee}
+          label="Current Lowest Bid"
+          value={currentLowest > 0 ? formatCurrency(currentLowest) : 'No bids yet'}
+          color="emerald"
+        />
+        <StatsCard
+          icon={Trophy}
+          label="My Current Rank"
+          value={isBuyerOrAdmin ? 'N/A (Buyer Mode)' : participant?.currentRank ? `L${participant.currentRank}` : 'Not ranked'}
+          color="amber"
+        />
+        <StatsCard
+          icon={Users}
+          label="Active Participants"
+          value={formatNumber(participantRows.length)}
+          color="blue"
+        />
+        <StatsCard
+          icon={Percent}
+          label="Savings Generated"
+          value={savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : '0.0%'}
+          color="cyan"
+        />
+      </div>
 
-          <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <Card className="border-slate-200 shadow-sm">
-              <CardContent className="p-4">
-                <SectionHeader icon={History} title="Bid History And Price Movement" subtitle="Seller view shows your own bid log; buyer/admin view may include all valid bids." />
-                {bidRows.length === 0 ? (
-                  <EmptyPanel title="No bids submitted yet" description="Once bidding starts, valid submissions and rank-at-submission details will appear here." />
-                ) : (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-left text-xs">
-                      <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2">S.No.</th>
-                          {isBuyerOrAdmin && <th className="px-3 py-2">Seller Organization</th>}
-                          <th className="px-3 py-2">Bid amount</th>
-                          <th className="px-3 py-2">Rank</th>
-                          <th className="px-3 py-2">Submitted</th>
-                          <th className="px-3 py-2">Validity</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {bidRows.slice(0, 10).map((row, index) => (
-                          <tr key={row.id} className="hover:bg-slate-50">
-                            <td className="px-3 py-2 font-black text-slate-500">{index + 1}</td>
-                            {isBuyerOrAdmin && <td className="px-3 py-2 font-bold text-slate-700">{row.sellerOrgName || `Organization #${row.sellerOrgId}`}</td>}
-                            <td className="px-3 py-2 font-black text-[#12335f]">{formatCurrency(getBidAmount(row))}</td>
-                            <td className="px-3 py-2 font-semibold text-slate-700">{row.rankAtSubmission ? `L${row.rankAtSubmission}` : '-'}</td>
-                            <td className="px-3 py-2 font-semibold text-slate-600">{formatDateTime(row.submittedAt)}</td>
-                            <td className="px-3 py-2"><span className={cn('rounded-full px-2 py-1 text-[10px] font-black uppercase', row.isValid === false ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700')}>{row.isValid === false ? 'Invalid' : 'Valid'}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+      {/* Real-time price chart */}
+      <Card className="border-zinc-200 bg-white shadow-md overflow-hidden">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 border-b border-zinc-200 pb-4 mb-4">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <LineChartIcon className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Live Bidding Price Movement</h2>
+              <p className="text-[11px] text-zinc-500 font-semibold mt-0.5">Visual mapping of bid downward progression over server time.</p>
+            </div>
+          </div>
 
-            <Card className="border-slate-200 shadow-sm">
-              <CardContent className="p-4">
-                <SectionHeader icon={Users} title="Participation Snapshot" subtitle="Supplier identities remain protected unless buyer enables disclosure." />
-                <div className="mt-4 grid gap-2">
-                  <InfoRow label="Invited/visible participants" value={formatNumber(participantRows.length)} />
-                  <InfoRow label="My participant status" value={participant?.status || 'Not available'} />
-                  <InfoRow label="My last bid" value={participant?.lastBidAmount ? formatCurrency(participant.lastBidAmount) : myBestBid ? formatCurrency(myBestBid) : '-'} />
-                  <InfoRow label="Rank visibility" value={auction.rankVisibility || auction.visibilityMode || (auction.allowCompetitorNames ? 'SHOW_LOWEST_PRICE' : 'SHOW_RANK_ONLY')} />
-                  <InfoRow label="Minimum qualified bidders" value={String(auction.minimumQualifiedBidders || 2)} />
-                </div>
-                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-start gap-2">
-                    <EyeOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-                    <p className="text-xs font-semibold leading-relaxed text-slate-600">
-                      Competitor identity is hidden in seller view. Use rank, minimum next bid, decrement rule, and your own margin plan before submitting a lower offer.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        </main>
+          <div className="h-72 w-full mt-4">
+            {chartData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full border border-dashed border-zinc-200 rounded-xl bg-zinc-50 text-zinc-400 p-6">
+                <LineChartIcon className="h-10 w-10 text-zinc-300 mb-2 stroke-[1.5]" />
+                <p className="text-xs font-bold">Waiting for bidding data to populate chart...</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="time" stroke="#71717a" fontSize={9} tickLine={false} />
+                  <YAxis stroke="#71717a" fontSize={9} tickLine={false} domain={['auto', 'auto']} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px' }}
+                    labelClassName="text-[10px] font-black text-zinc-500"
+                    itemStyle={{ fontSize: '11px', color: '#059669', fontWeight: 'bold' }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="#10b981"
+                    strokeWidth={2.5}
+                    dot={{ fill: '#10b981', strokeWidth: 1, r: 4 }}
+                    activeDot={{ r: 6, fill: '#059669', stroke: '#10b981' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="space-y-4 p-4">
+      {/* Bottom Grid Layout */}
+      <div className="grid gap-6 xl:grid-cols-[1fr_390px]">
+        
+        {/* Left Column: Live Bidding History Table */}
+        <Card className="border-zinc-200 bg-white shadow-md overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 border-b border-zinc-200 pb-4 mb-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">
+                <History className="h-5 w-5" />
+              </span>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
-                  {isBuyerOrAdmin ? 'Sourcing Control' : 'Submit Lower Bid'}
+                <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Live Bidding Log</h2>
+                <p className="text-[11px] text-zinc-500 font-semibold mt-0.5">Real-time sequence of valid downward commercial offers.</p>
+              </div>
+            </div>
+
+            {bidRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center text-zinc-500">
+                <p className="text-xs font-bold">No bids submitted yet.</p>
+                <p className="text-[10px] mt-1">Once live bids are validated by the server, they will populate here.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-zinc-50 text-[10px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-200">
+                    <tr>
+                      <th className="px-4 py-3">Rank</th>
+                      {isBuyerOrAdmin && <th className="px-4 py-3">Seller Organization</th>}
+                      <th className="px-4 py-3">Bid Time</th>
+                      <th className="px-4 py-3">Bid Amount</th>
+                      <th className="px-4 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {bidRows.map((row) => (
+                      <tr key={row.id} className="hover:bg-zinc-50 transition duration-150">
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-extrabold",
+                            row.rankAtSubmission === 1 ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50" : "bg-zinc-100 text-zinc-600"
+                          )}>
+                            L{row.rankAtSubmission || '-'}
+                          </span>
+                        </td>
+                        {isBuyerOrAdmin && (
+                          <td className="px-4 py-3 font-bold text-zinc-800">
+                            {row.sellerOrgName || `Org #${row.sellerOrgId}`}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 font-semibold text-zinc-500">
+                          {formatDateTime(row.submittedAt)}
+                        </td>
+                        <td className="px-4 py-3 font-black text-zinc-900">
+                          {formatCurrency(getBidAmount(row))}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase",
+                            row.isValid === false ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
+                          )}>
+                            {row.isValid === false ? 'Invalid' : 'Valid'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right Column: PLACE YOUR BID Console Card */}
+        <aside className="space-y-4">
+          <Card className="border-zinc-200 bg-white shadow-md overflow-hidden">
+            <CardContent className="p-6 space-y-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
+                  {isBuyerOrAdmin ? 'Live Console' : 'Bid Console'}
                 </p>
-                <h2 className="mt-1 text-base font-black text-slate-950">
-                  {isBuyerOrAdmin ? 'Live Sourcing Console' : 'Bidding Console'}
+                <h2 className="mt-1 text-base font-black text-zinc-900">
+                  {isBuyerOrAdmin ? 'Sourcing Monitor' : 'Place Your Bid'}
                 </h2>
-                <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-zinc-500">
                   {isBuyerOrAdmin
-                    ? 'Monitor MSME bid activities, adjust live parameters, or pause/close the event.'
-                    : 'Your bid must be lower than or equal to the permitted next amount. Final check occurs on server time.'}
+                    ? 'Monitor active MSME participant bids, adjust parameters, or close the event.'
+                    : 'Submit a lower downward offer. Bids are verified using UTC server timestamps.'}
                 </p>
               </div>
 
-              {/* Warning/Status locks */}
+              {/* Status constraints warning */}
               {!live && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <p className="text-xs font-bold leading-relaxed text-amber-800">
-                      Bidding is disabled because this auction is {status.toLowerCase().replace(/_/g, ' ')} or outside the scheduled time window.
+                      Bidding console is locked. Auction status: {status.toLowerCase().replace(/_/g, ' ')}.
                     </p>
                   </div>
                 </div>
               )}
 
-              {!isBuyerOrAdmin && participant?.status === 'DISQUALIFIED' && (
-                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
-                  Disqualified: {participant.disqualificationReason || 'No reason specified'}
-                </div>
-              )}
-
-              {!isBuyerOrAdmin && participant?.status === 'INVITED' && (
-                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs font-bold text-blue-800 leading-normal">
-                  Invitation pending. Bidding will activate automatically when you place a bid or accept terms below.
-                </div>
-              )}
-
-              {/* Bid limits and guardrails */}
-              <div className="grid grid-cols-2 gap-2">
-                <BidGuardrail label="Minimum next bid" value={minNextBid > 0 ? formatCurrency(minNextBid) : '-'} />
-                <BidGuardrail label="Decrement" value={decrement > 0 ? formatCurrency(decrement) : '-'} />
-                <BidGuardrail label="Reserve price" value={isBuyerOrAdmin && auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not shown'} />
-                <BidGuardrail label="Auto extensions" value={auction.autoExtensionEnabled ? `${extensionCount}/${maxExtensions}` : 'Disabled'} />
+              {/* Bid constraints metadata */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <BidSpec label="Min Next Bid" value={minNextBid > 0 ? formatCurrency(minNextBid) : '-'} color="red" />
+                <BidSpec label="Min Decrement" value={decrement > 0 ? formatCurrency(decrement) : '-'} />
+                <BidSpec label="Reserve Price" value={isBuyerOrAdmin && auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Protected'} />
+                <BidSpec label="Extensions" value={auction.autoExtensionEnabled ? `${extensionCount}/${maxExtensions}` : 'None'} />
               </div>
 
-              {/* Console Forms */}
+              {/* Active forms */}
               {isBuyerOrAdmin ? (
-                <div className="space-y-3 pt-2">
-                  <div className="rounded bg-slate-50 p-3 text-xs font-semibold leading-relaxed text-slate-600 border">
-                    <p className="font-bold text-[#12335f] mb-1">Live Sourcing Monitoring Active</p>
-                    <p>Invited Sellers: {participantRows.length}</p>
-                    <p className="mt-1">Active Sellers: {participantRows.filter((p: any) => p.status === 'ACCEPTED').length}</p>
-                    <p className="mt-1">Auto Extensions Triggered: {extensionCount} / {maxExtensions}</p>
-                  </div>
+                <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-4 text-xs font-semibold leading-relaxed text-zinc-600 space-y-2">
+                  <p className="font-bold text-zinc-800 mb-2">Buyer Monitor Statistics</p>
+                  <p className="flex justify-between"><span>Invited Suppliers:</span> <span className="font-bold text-zinc-800">{participantRows.length}</span></p>
+                  <p className="flex justify-between"><span>Active Sellers:</span> <span className="font-bold text-emerald-600">{participantRows.filter((p: any) => p.status === 'ACCEPTED').length}</span></p>
+                  <p className="flex justify-between"><span>Total Bids Placed:</span> <span className="font-bold text-zinc-800">{bidRows.length}</span></p>
+                  <p className="flex justify-between"><span>Auto Extensions Triggered:</span> <span className="font-bold text-zinc-800">{extensionCount} / {maxExtensions}</span></p>
                 </div>
               ) : (
-                <form onSubmit={submit} className="space-y-3">
+                <form onSubmit={submit} className="space-y-4">
+                  {/* Quick Bid Helper Button */}
+                  {live && minNextBid > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(minNextBid))}
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-center text-[10px] font-black text-emerald-600 hover:bg-zinc-100 hover:border-emerald-300 transition duration-200"
+                    >
+                      Fill Next Minimum Bid: {formatCurrency(minNextBid)}
+                    </button>
+                  )}
+
                   <label className="block">
-                    <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Your bid amount</span>
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">Your Commercial Offer Amount</span>
                     <input
                       value={amount}
                       onChange={event => setAmount(event.target.value)}
@@ -401,41 +536,41 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
                       max={minNextBid > 0 ? minNextBid : undefined}
                       step="0.01"
                       required
-                      placeholder={minNextBid > 0 ? `Up to ${minNextBid}` : 'Enter amount'}
-                      className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm font-black text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
+                      placeholder={minNextBid > 0 ? `Max permitted: ${minNextBid}` : 'Enter amount'}
+                      className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-sm font-bold text-zinc-900 outline-none transition focus:bg-white focus:border-red-500 focus:ring-1 focus:ring-red-500/30"
                       disabled={!live || bid.isPending || participant?.status === 'DISQUALIFIED'}
                     />
                   </label>
 
-                  {/* Terms Checkbox */}
-                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 transition hover:bg-slate-100">
+                  {/* Terms acceptance */}
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 p-3 transition hover:bg-zinc-100/50">
                     <input
                       type="checkbox"
                       checked={acceptedTerms}
                       onChange={e => setAcceptedTerms(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-350 text-[#12335f] focus:ring-[#12335f]"
+                      className="mt-0.5 h-4 w-4 rounded border-zinc-300 bg-white text-red-600 focus:ring-red-500/40"
                       disabled={!live || bid.isPending || participant?.status === 'DISQUALIFIED'}
                     />
-                    <span className="text-[10px] font-bold text-slate-700 leading-normal select-none">
+                    <span className="text-[10px] font-semibold text-zinc-500 leading-normal select-none">
                       I accept the reverse auction terms, bidding rules, and confirm our capacity to supply.
                     </span>
                   </label>
 
                   <Button 
                     disabled={!live || bid.isPending || !acceptedTerms || participant?.status === 'DISQUALIFIED'} 
-                    className="h-11 w-full rounded-md"
+                    className="h-11 w-full rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-extrabold shadow-lg shadow-red-600/10 transition duration-300"
                   >
-                    <Send className="mr-2 h-4 w-4" /> {bid.isPending ? 'Submitting...' : 'Submit bid'}
+                    <Send className="mr-1.5 h-3.5 w-3.5" /> {bid.isPending ? 'Submitting...' : 'SUBMIT LOWER BID'}
                   </Button>
 
-                  {/* Confirmation Modal Panel */}
+                  {/* Confirmation Dialog Panel */}
                   {showConfirmModal && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 mt-3 text-xs font-semibold text-slate-700 space-y-2.5">
-                      <p className="font-bold text-[#12335f]">Confirm Commercial Bid</p>
-                      <p>Are you sure you want to submit a commercial downward bid of <span className="font-black text-slate-950">{formatCurrency(Number(amount))}</span>? This offer is legally binding.</p>
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs font-semibold text-zinc-700 space-y-3 shadow-md">
+                      <p className="font-bold text-zinc-900">Confirm Downward Bid</p>
+                      <p className="leading-relaxed">Are you sure you want to submit a downward commercial bid of <span className="font-black text-red-600">{formatCurrency(Number(amount))}</span>? This is a legally binding contract submission.</p>
                       <div className="flex gap-2">
-                        <Button size="sm" type="button" onClick={confirmSubmit} className="bg-[#12335f] hover:bg-[#0e2a4f] text-white">Confirm & Submit</Button>
-                        <Button size="sm" type="button" variant="outline" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
+                        <Button size="sm" type="button" onClick={confirmSubmit} className="bg-red-600 hover:bg-red-500 text-white font-bold">Confirm & Submit</Button>
+                        <Button size="sm" type="button" variant="outline" onClick={() => setShowConfirmModal(false)} className="border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50">Cancel</Button>
                       </div>
                     </div>
                   )}
@@ -444,181 +579,91 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="p-4">
-              <SectionHeader icon={ShieldCheck} title="Compliance And Audit" subtitle="Every valid bid is recorded with timestamp, device context, and rank recalculation." />
-              <div className="mt-4 space-y-2">
-                <InfoRow label="Server validation" value="Enabled" />
-                <InfoRow label="Auction lock" value="Enabled" />
-                <InfoRow label="Auto extension window" value={auction.autoExtensionEnabled ? `${auction.autoExtensionWindowMinutes || 0} min` : 'Disabled'} />
-                <InfoRow label="Extension duration" value={auction.autoExtensionEnabled ? `${auction.autoExtensionByMinutes || 0} min` : 'Disabled'} />
+          {/* Compliance & Audit information */}
+          <Card className="border-zinc-200 bg-white shadow-md overflow-hidden">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-3 border-b border-zinc-200 pb-4 mb-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+                <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Compliance & Audit</h2>
+              </div>
+
+              <div className="space-y-2 text-xs font-semibold text-zinc-500">
+                <div className="flex justify-between"><span>Server Validation:</span> <span className="text-emerald-600 font-bold">Active</span></div>
+                <div className="flex justify-between"><span>Audit Log ID:</span> <span className="text-zinc-800 font-mono">MD-RA-{id}</span></div>
+                <div className="flex justify-between"><span>Auto Extension Window:</span> <span className="text-zinc-800">{auction.autoExtensionEnabled ? `${auction.autoExtensionWindowMinutes || 0} min` : 'Disabled'}</span></div>
+                <div className="flex justify-between"><span>Extension Period:</span> <span className="text-zinc-800">{auction.autoExtensionEnabled ? `${auction.autoExtensionByMinutes || 0} min` : 'Disabled'}</span></div>
               </div>
             </CardContent>
           </Card>
         </aside>
       </div>
-    </div>
-  );
-}
 
-function SectionHeader({ icon: Icon, title, subtitle }: { icon: typeof Activity; title: string; subtitle: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#12335f] text-white">
-        <Icon className="h-4 w-4" />
-      </span>
-      <div>
-        <h2 className="text-sm font-black text-slate-950">{title}</h2>
-        <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
-
-function LiveInstruction({
-  live,
-  status,
-  isBuyerOrAdmin,
-  startTime,
-  endTime,
-  minimumNextBid
-}: {
-  live: boolean;
-  status: string;
-  isBuyerOrAdmin: boolean;
-  startTime: string;
-  endTime: string;
-  minimumNextBid: number;
-}) {
-  const title = live ? (isBuyerOrAdmin ? 'Monitor live bid movement' : 'Bidding is open') : 'Bidding is locked';
-  const description = live
-    ? isBuyerOrAdmin
-      ? 'Watch current L1, invited sellers, bid log, and close/pause only when sourcing rules permit.'
-      : `Enter a value at or below ${minimumNextBid > 0 ? formatCurrency(minimumNextBid) : 'the permitted next bid'}, accept terms, then confirm submission.`
-    : `Current status is ${status.replace(/_/g, ' ')}. Window: ${formatDateTime(startTime)} to ${formatDateTime(endTime)}.`;
-  return (
-    <div className={cn('rounded-lg border p-3', live ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50')}>
-      <p className={cn('text-xs font-black', live ? 'text-emerald-800' : 'text-amber-800')}>{title}</p>
-      <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-700">{description}</p>
-    </div>
-  );
-}
-
-function MiniStatus({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-black text-slate-900">{value}</p>
-    </div>
-  );
-}
-
-function AuctionRulesCard({ auction, minimumNextBid, live }: { auction: ReverseAuction; minimumNextBid: number; live: boolean }) {
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardContent className="p-4">
-        <SectionHeader icon={Gavel} title="Auction Rules" subtitle="Price-only reverse auction guardrails applied before server accepts a bid." />
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <InfoRow label="Starting price" value={formatCurrency(auction.startPrice)} />
-          <InfoRow label="Reserve price" value={auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not configured'} />
-          <InfoRow label="Minimum next bid" value={minimumNextBid > 0 ? formatCurrency(minimumNextBid) : '-'} />
-          <InfoRow label="Minimum decrement" value={auction.minDecrementAmount || auction.minDecrement ? formatCurrency(auction.minDecrementAmount ?? auction.minDecrement) : '-'} />
-          <InfoRow label="Percent decrement" value={auction.minDecrementPercent ? `${auction.minDecrementPercent}%` : 'Not configured'} />
-          <InfoRow label="Auction type" value={auction.auctionType || 'ENGLISH_REVERSE'} />
-          <InfoRow label="Rank visibility" value={auction.rankVisibility || 'SHOW_RANK_ONLY'} />
-          <InfoRow label="Auto extension" value={auction.autoExtensionEnabled ? `${auction.autoExtensionWindowMinutes || 0}m trigger / ${auction.autoExtensionByMinutes || 0}m extension` : 'Disabled'} />
-          <InfoRow label="Maximum extensions" value={auction.autoExtensionEnabled ? String(auction.maxAutoExtensions || 0) : 'N/A'} />
-          <InfoRow label="Auction start" value={formatDateTime(auction.startTime)} />
-          <InfoRow label="Auction end" value={formatDateTime(auction.endTime)} />
-        </div>
-        <div className={cn('mt-4 rounded-md border p-3 text-xs font-semibold leading-relaxed', live ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600')}>
-          {live ? 'Auction is live. Submit only after checking your margin, logistics cost, and compliance capability.' : 'Auction is not live. You can review rules and history, but bid submission is locked.'}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SellerPositionCard({ participant, myBestBid, latestBid, bidCount }: { participant: ReverseAuctionParticipant | null; myBestBid: number; latestBid?: ReverseAuctionBid; bidCount: number }) {
-  return (
-    <Card className="border-slate-100 shadow-sm transition hover:shadow-md">
-      <CardContent className="p-4">
-        <SectionHeader icon={Trophy} title="My Live Position" subtitle="Rank is recalculated after valid lower bids are submitted." />
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <InfoRow label="Current rank" value={participant?.currentRank ? `L${participant.currentRank}` : 'Not ranked'} />
-          <InfoRow label="Participant status" value={participant?.status || 'Not available'} />
-          <InfoRow label="My best bid" value={myBestBid > 0 ? formatCurrency(myBestBid) : '-'} />
-          <InfoRow label="My bid count" value={formatNumber(bidCount)} />
-          <InfoRow label="Latest submission" value={latestBid?.submittedAt ? formatDateTime(latestBid.submittedAt) : '-'} />
-          <InfoRow label="Latest rank" value={latestBid?.rankAtSubmission ? `L${latestBid.rankAtSubmission}` : '-'} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Metric({ icon: Icon, label, value, hint, tone }: { icon: typeof IndianRupee; label: string; value: string; hint?: string; tone: 'green' | 'amber' | 'blue' | 'slate' }) {
-  const toneClass = {
-    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    blue: 'bg-blue-50 text-[#12335f] border-blue-100',
-    slate: 'bg-slate-100 text-slate-700 border-slate-200',
-  }[tone];
-  return (
-    <Card className="border-slate-100 shadow-sm transition hover:shadow-md hover:border-slate-200/60">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-            <p className="text-sm font-extrabold text-slate-900 leading-tight text-wrap-anywhere">{value}</p>
-            {hint && <p className="text-[9px] font-bold text-slate-400 leading-normal">{hint}</p>}
+      {/* Rules Summary Card */}
+      <Card className="border-zinc-200 bg-white shadow-md overflow-hidden">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 border-b border-zinc-200 pb-4 mb-4">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">
+              <Gavel className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Reverse Auction Rules & Parameters</h2>
+              <p className="text-[11px] text-zinc-500 font-semibold mt-0.5">Verified parameters and commercial conditions applied to bid packets.</p>
+            </div>
           </div>
-          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border', toneClass)}>
-            <Icon className="h-4 w-4" />
-          </span>
+
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            <RuleItem label="Start Price" value={formatCurrency(auction.startPrice)} />
+            <RuleItem label="Reserve Price" value={auction.reservePrice ? formatCurrency(auction.reservePrice) : 'Not configured'} />
+            <RuleItem label="Auto Extension" value={auction.autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
+            <RuleItem label="Extension Limit" value={auction.autoExtensionEnabled ? `${auction.maxAutoExtensions || 0} times` : 'N/A'} />
+            <RuleItem label="Auction Start" value={formatDateTime(auction.startTime)} className="sm:col-span-2" />
+            <RuleItem label="Auction End" value={formatDateTime(auction.endTime)} className="sm:col-span-2" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StatsCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: 'emerald' | 'amber' | 'blue' | 'cyan' }) {
+  const colorMap = {
+    emerald: 'text-emerald-600 bg-emerald-50 border-emerald-200/50',
+    amber: 'text-amber-600 bg-amber-50 border-amber-200/50',
+    blue: 'text-blue-600 bg-blue-50 border-blue-200/50',
+    cyan: 'text-cyan-600 bg-cyan-50 border-cyan-200/50',
+  };
+
+  return (
+    <Card className="border-zinc-200 bg-white shadow-md overflow-hidden transition hover:border-zinc-300 duration-200">
+      <CardContent className="p-5 flex justify-between items-start gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{label}</p>
+          <p className={cn("text-lg font-mono font-extrabold truncate", colorMap[color].split(' ')[0])}>{value}</p>
         </div>
+        <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border", colorMap[color])}>
+          <Icon className="h-4.5 w-4.5" />
+        </span>
       </CardContent>
     </Card>
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function BidSpec({ label, value, color }: { label: string; value: string; color?: 'red' }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:bg-slate-50 transition">
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-bold text-slate-900 text-wrap-anywhere">{value}</p>
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+      <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{label}</p>
+      <p className={cn("mt-1.5 text-xs font-mono font-extrabold", color === 'red' ? 'text-red-650' : 'text-zinc-800')}>{value}</p>
     </div>
   );
 }
 
-function BidGuardrail({ label, value }: { label: string; value: string }) {
+function RuleItem({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 hover:bg-slate-50 transition">
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-xs font-bold text-slate-950">{value}</p>
+    <div className={cn("rounded-xl border border-zinc-200 bg-zinc-50 p-3.5", className)}>
+      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{label}</p>
+      <p className="mt-2 text-xs font-bold text-zinc-800 leading-normal">{value}</p>
     </div>
-  );
-}
-
-function EmptyPanel({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-      <p className="text-sm font-black text-slate-900">{title}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
-    </div>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const live = status === 'LIVE';
-  const closed = ['CLOSED', 'AWARD_RECOMMENDED', 'CANCELLED'].includes(status);
-  return (
-    <span className={cn(
-      'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
-      live ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : closed ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-700'
-    )}>
-      {live && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-600" />}
-      {status.replace(/_/g, ' ')}
-    </span>
   );
 }

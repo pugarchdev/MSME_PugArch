@@ -183,3 +183,32 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     return apiResponse.error(res, 401, 'Invalid authentication token', 'AUTH_TOKEN_INVALID');
   }
 };
+
+export const optionalAuthenticate = async (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) return next();
+
+  try {
+    const decoded = verifyAccessToken(token);
+    const user = await prisma.user.findUnique({
+      where: { id: Number(decoded.id) },
+      select: { id: true, role: true, sessionVersion: true, accountStatus: true, organizationId: true, companyId: true }
+    });
+    if (user && user.accountStatus === 'ACTIVE' && user.role === decoded.role && user.sessionVersion === Number(decoded.sessionVersion)) {
+      (req as any).user = {
+        id: user.id,
+        role: user.role,
+        sessionVersion: user.sessionVersion,
+        permissions: [],
+        organizationId: user.organizationId,
+        companyId: user.companyId,
+        enabledFeatures: []
+      };
+    }
+  } catch {
+    // Public pages should remain public if an optional token is stale.
+  }
+
+  return next();
+};

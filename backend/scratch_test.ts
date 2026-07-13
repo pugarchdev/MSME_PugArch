@@ -1,23 +1,21 @@
 import './src/config/env.js';
-import { connectRedis } from './src/config/redis.js';
-import { setCache, getCache } from './src/services/cache.service.js';
-import { redis } from './src/config/redis.js';
+import prisma from './src/lib/prisma.js';
 
 async function main() {
-  await connectRedis();
-  console.log('Testing setCache with 60 seconds TTL...');
-  await setCache('test_ttl_key', { hello: 'world' }, 60);
-
-  const val = await getCache('test_ttl_key');
-  console.log('getCache value:', val);
-
-  if (redis) {
-    const rawVal = await redis.get('cache:test_ttl_key');
-    console.log('redis.get value:', rawVal);
-
-    const ttl = await redis.ttl('cache:test_ttl_key');
-    console.log('redis.ttl:', ttl);
-  }
+  console.log("Truncating tables and cascading deletes to all dependent records...");
+  
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Requirement" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "PurchaseOrder" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Invoice" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Tender" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "DirectPurchase" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Bid" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Cart" CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE "Dispute" CASCADE;`);
+  
+  console.log("Cleanup complete!");
 }
 
-main().catch(console.error).finally(() => process.exit(0));
+main()
+  .catch(console.error)
+  .finally(() => process.exit(0));

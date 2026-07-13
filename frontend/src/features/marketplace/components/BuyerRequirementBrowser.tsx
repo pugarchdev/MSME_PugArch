@@ -16,6 +16,7 @@ function buyerTypeLabel(type?: string) {
 
 interface BuyerSummary {
     id: number;
+    buyerProfileId: number;
     name: string;
     type?: string;
     location?: string;
@@ -70,8 +71,10 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
 
         buyers.forEach(buyer => {
             const matchingRequirements = requirementCounts.get(buyer.id) || 0;
+            const buyerProfileId = buyer.buyerProfiles?.[0]?.id || buyer.id;
             map.set(buyer.id, {
                 id: buyer.id,
+                buyerProfileId,
                 name: buyer.organizationName,
                 type: buyer.organizationType,
                 location: [buyer.district, buyer.state].filter(Boolean).join(', ') || buyer.city,
@@ -86,8 +89,10 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
             const buyer = requirement.buyerOrganization;
             if (!buyer?.id || map.has(buyer.id)) return;
             const location = [buyer.district, buyer.state].filter(Boolean).join(', ') || buyer.city;
+            const buyerProfileId = (buyer as any).buyerProfiles?.[0]?.id || buyer.id;
             map.set(buyer.id, {
                 id: buyer.id,
+                buyerProfileId,
                 name: buyer.organizationName || 'Verified Buyer',
                 type: buyer.organizationType,
                 location,
@@ -180,7 +185,7 @@ export function BuyerRequirementBrowser({ buyers = [], requirements = [] }: Prop
                                 return (
                                     <Link
                                         key={buyer.id}
-                                        href={`/buyer-requirements/${buyer.id}`}
+                                        href={`/buyer-requirements/${buyer.buyerProfileId}`}
                                         className="group flex flex-col h-[175px] w-[160px] shrink-0 items-center justify-center gap-3.5 rounded-2xl border border-slate-200/60 bg-white/85 p-3.5 text-center backdrop-blur-md shadow-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.03] hover:border-[#0b2447]/35 hover:bg-white hover:shadow-lg hover:shadow-[#0b2447]/5 text-slate-800"
                                         role="listitem"
                                     >

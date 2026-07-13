@@ -50,6 +50,7 @@ export interface MarketplaceOrganizationSummary {
     logoUrl?: string | null;
     logoFile?: MarketplaceLogoFile | null;
     profile?: MarketplaceOrganizationProfile | null;
+    buyerProfiles?: { id: number; logoUrl?: string | null; bannerUrl?: string | null; }[];
 }
 
 export interface MarketplaceProduct {

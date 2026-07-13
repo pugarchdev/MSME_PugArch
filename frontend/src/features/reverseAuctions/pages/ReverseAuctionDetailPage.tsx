@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Gavel, Pause, Play, RefreshCw, Send, Square, UserPlus, Loader2, X, Building2, Tag, Activity, FileText, Users, Award, ShieldAlert, Scale, Clock, Settings, HelpCircle, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Gavel, Pause, Play, RefreshCw, Send, Square, UserPlus, Loader2, X, Building2, Tag, Activity, FileText, Users, Award, ShieldAlert, Scale, Clock, Settings, HelpCircle, ChevronRight, ArrowLeft, Hourglass, Laptop, Eye, TrendingDown, IndianRupee } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
@@ -133,35 +133,82 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
   const endMs = new Date(auction.data.endTime).getTime();
   const durationMin = Math.round((endMs - startMs) / 60000);
 
-  if (isSeller) {
+  if (isSeller || !user) {
+    const RowItem = ({ icon: Icon, label, value, highlight }: { icon: React.ElementType; label: string; value: string; highlight?: boolean }) => (
+      <div className="flex items-center gap-4 py-1">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 border border-slate-100 text-slate-500">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</p>
+          <p className={cn("mt-0.5 text-xs font-black", highlight ? "text-[#12335f]" : "text-slate-800")}>{value}</p>
+        </div>
+      </div>
+    );
+
     return (
-      <div className="mx-auto max-w-5xl space-y-4 pb-12">
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
-            <ArrowLeft className="mr-1 h-4 w-4" /> Back to Auctions
+      <div className="mx-auto max-w-[1600px] px-4 md:px-8 space-y-5 pb-12">
+        {/* Back Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f] transition-all">
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Auctions
           </Link>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#12335f]">{auction.data.auctionCode || `RA-${id}`}</span>
-            <h1 className="mt-1 text-xl font-black text-slate-900">{auction.data.title || 'Reverse Auction Sourcing'}</h1>
-            <p className="mt-2 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500">
-              Review rules here. Use live console for bid entry, rank updates, and server-time validation.
-            </p>
+
+        {/* guest notice banner */}
+        {!user && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-800 text-lg">
+                ℹ️
+              </span>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900">Want to participate in this procurement?</h4>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">This is a public opportunity. To submit queries, request clarifications, or participate in the bidding process, please login.</p>
+              </div>
+            </div>
+            <Link 
+              href={`/login?redirect=${encodeURIComponent(window.location.pathname)}`}
+              className="rounded-xl bg-[#0b2447] px-4 py-2 text-xs font-black uppercase text-white hover:bg-[#12335f] transition-colors shadow-sm whitespace-nowrap text-center"
+            >
+              Login to Participate
+            </Link>
           </div>
-          <Link href={`/reverse-auctions/${id}/live`}>
-            <Button type="button"><Activity className="mr-2 h-4 w-4" />Open Live Bid Console</Button>
-          </Link>
+        )}
+
+        {/* Title & Live bid console row */}
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 font-mono tracking-wider">
+                {auction.data.auctionCode || `RA-${id}`}
+              </span>
+              <h1 className="mt-2 text-xl md:text-2xl font-black text-slate-900 leading-snug">
+                {auction.data.title || 'Reverse Auction Sourcing'}
+              </h1>
+              <p className="text-xs font-semibold text-slate-500">
+                Review rules here. Use live console for bid entry, rank updates, and server-time validation.
+              </p>
+            </div>
+            {user && user.role === 'seller' && (
+              <Link href={`/reverse-auctions/${id}/live`} className="shrink-0">
+                <Button type="button" className="h-10 rounded-xl bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm transition-all flex items-center gap-2">
+                  <Play className="h-4 w-4 fill-white" /> Live Bid Console
+                </Button>
+              </Link>
+            )}
           </div>
+
+          {/* Banner message next step */}
           <SellerNextStep status={status} startTime={auction.data.startTime} endTime={auction.data.endTime} />
         </div>
 
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <div className="flex gap-3">
-            <ShieldAlert className="h-5 w-5 shrink-0 text-amber-700" />
+        {/* Bidding Alert Warning */}
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-2xs">
+          <div className="flex gap-3.5">
+            <ShieldAlert className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
             <div>
-              <p className="text-xs font-bold text-amber-800">Dynamic Commercial Bidding Active</p>
+              <p className="text-xs font-black text-amber-800">Dynamic Commercial Bidding Active</p>
               <p className="mt-1 text-xs font-semibold leading-relaxed text-amber-700">
                 To respect competitive rules and prevent information leakage, the full bidding panel, competitor ranks, and increment tools are located on the live screen. Please click the button above to join.
               </p>
@@ -169,60 +216,103 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
           </div>
         </div>
 
-        {/* Seller Info Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="border-slate-200 shadow-sm md:col-span-3">
-            <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
-              <InfoRow label="Current Lowest" value={currentLowest > 0 ? formatCurrency(currentLowest) : 'No bid yet'} />
-              <InfoRow label="Tracked Savings" value={savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : 'Not established'} />
-              <InfoRow label="Window" value={`${formatDateTime(auction.data.startTime)} to ${formatDateTime(auction.data.endTime)}`} />
-            </CardContent>
-          </Card>
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="p-4 space-y-3">
-              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5"><FileText className="h-4 w-4 text-[#12335f]" /> Overview & Schedule</h3>
-              <div className="grid gap-2 text-xs">
-                <InfoRow label="Start Time" value={formatDateTime(auction.data.startTime)} />
-                <InfoRow label="End Time" value={formatDateTime(auction.data.endTime)} />
-                <InfoRow label="Duration" value={`${durationMin} minutes`} />
-                <InfoRow label="Status" value={status} />
-                <InfoRow label="Auction Type" value={auction.data.auctionType || 'ENGLISH_REVERSE'} />
-                <InfoRow label="Auction Mode" value={auction.data.auctionMode || 'ONLINE'} />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Top Metric Cards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          {/* Card 1: CURRENT LOWEST BID */}
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/30 p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-[#12335f]">
+              <Gavel className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-700/70">Current Lowest Bid</p>
+              <p className="mt-0.5 text-base font-extrabold text-slate-900 tabular-nums">
+                {currentLowest > 0 ? formatCurrency(currentLowest) : 'No bid yet'}
+              </p>
+            </div>
+          </div>
 
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="p-4 space-y-3">
-              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5"><Scale className="h-4 w-4 text-[#12335f]" /> Sourcing Guardrails</h3>
-              <div className="grid gap-2 text-xs">
-                <InfoRow label="Opening Price" value={formatCurrency(auction.data.startPrice)} />
-                <InfoRow label="Min Decrement" value={auction.data.minDecrementAmount ? formatCurrency(auction.data.minDecrementAmount) : `${auction.data.minDecrementPercent}%`} />
-                <InfoRow label="Rank Visibility" value={auction.data.rankVisibility || 'SHOW_RANK_ONLY'} />
-                <InfoRow label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} />
-                <InfoRow label="Auto-Extension" value={autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
-                {auction.data.termsDocumentName && <InfoRow label="Terms Document" value={auction.data.termsDocumentName} />}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="p-4 space-y-3">
-              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5"><HelpCircle className="h-4 w-4 text-[#12335f]" /> What Sellers Should Check</h3>
-              <div className="space-y-2 text-xs font-semibold leading-relaxed text-slate-600">
-                <p>1. Confirm opening price, decrement, reserve visibility, and auction end time.</p>
+          {/* Card 2: SAVINGS */}
+          <div className="rounded-3xl border border-emerald-100 bg-emerald-50/30 p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-750 text-emerald-600">
+              <IndianRupee className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700/70">Savings</p>
+              <p className="mt-0.5 text-base font-extrabold text-slate-900 tabular-nums">
+                {savings > 0 ? `${formatCurrency(savings)} (${savingsPercent.toFixed(1)}%)` : '₹0.00 (0.0%)'}
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: TIME REMAINING */}
+          <div className="rounded-3xl border border-amber-100 bg-amber-50/30 p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-amber-700/70">Time Remaining</p>
+              <p className="mt-0.5 text-base font-extrabold text-slate-900 tabular-nums">
+                {formatDateTime(auction.data.endTime)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Columns: Overview & Rules */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* AUCTION OVERVIEW */}
+          <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 uppercase tracking-wider">
+              Auction Overview
+            </h2>
+            <div className="mt-4 space-y-3.5">
+              <RowItem icon={Clock} label="Start Time" value={formatDateTime(auction.data.startTime)} />
+              <RowItem icon={Hourglass} label="End Time" value={formatDateTime(auction.data.endTime)} />
+              <RowItem icon={Clock} label="Duration" value={`${durationMin} minutes`} />
+              <RowItem icon={Award} label="Status" value={status} highlight />
+              <RowItem icon={Gavel} label="Auction Type" value={auction.data.auctionType || 'ENGLISH_REVERSE'} />
+              <RowItem icon={Laptop} label="Auction Mode" value={auction.data.auctionMode || 'ONLINE'} />
+            </div>
+          </section>
+
+          {/* SOURCING RULES */}
+          <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 uppercase tracking-wider">
+              Sourcing Rules
+            </h2>
+            <div className="mt-4 space-y-3.5">
+              <RowItem icon={IndianRupee} label="Opening Price" value={formatCurrency(auction.data.startPrice)} />
+              <RowItem icon={TrendingDown} label="Min Decrement" value={auction.data.minDecrementAmount ? formatCurrency(auction.data.minDecrementAmount) : `${auction.data.minDecrementPercent}%`} />
+              <RowItem icon={Eye} label="Rank Visibility" value={auction.data.rankVisibility || 'SHOW_RANK_ONLY'} />
+              <RowItem icon={Users} label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} />
+              <RowItem icon={Settings} label="Auto-Extension" value={autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
+            </div>
+          </section>
+        </div>
+
+        {/* Bottom Checklist Card */}
+        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 text-slate-500">
+              <HelpCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase text-slate-900 tracking-wider">What Sellers Should Check</h3>
+              <div className="mt-3 space-y-2 text-xs font-semibold leading-relaxed text-slate-600">
+                <p>1. Confirm opening price, decrement, reverse visibility, and auction end time.</p>
                 <p>2. Open live console before bidding; details page intentionally hides competitive movement.</p>
                 <p>3. Submit only after checking stock, delivery capacity, tax impact, and margin.</p>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
 
   // Buyer View
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-12">
+    <div className="mx-auto max-w-[1600px] px-4 md:px-8 space-y-4 pb-12">
       {/* Detail Header */}
       <div className="flex flex-col gap-3 border-b border-slate-200 bg-white p-4 rounded-lg shadow-xs border md:flex-row md:items-center md:justify-between">
         <div>

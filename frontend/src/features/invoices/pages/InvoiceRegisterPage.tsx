@@ -521,99 +521,98 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   if (loading) return <LoadingState label="Loading invoices..." />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+    <div className="space-y-6">
+      {/* Transparent Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between py-2">
+        <div className="min-w-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#12335f] bg-[#12335f]/10 px-2.5 py-1 rounded-full">
             {role === 'seller' ? 'Seller Finance' : role === 'admin' ? 'Admin Finance' : 'Buyer Finance'}
-          </p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950">Invoices</h1>
-          <p className="mt-1 max-w-2xl text-xs font-semibold text-slate-500">
+          </span>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 mt-2">Invoices</h1>
+          <p className="text-xs font-semibold text-slate-500 mt-1">
             Invoice register with PO linkage, GST/TDS values, due dates, and payment workflows.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {role === 'seller' && (
             <Button
               variant="outline"
               onClick={openCreateInvoiceModal}
               disabled={submitting}
-              className="h-10 rounded-lg text-xs bg-[#12335f] hover:bg-[#0b2445] text-white uppercase"
+              className="h-10 rounded-lg text-xs bg-[#12335f] hover:bg-[#0e2a4f] text-white font-black uppercase shadow-sm"
             >
               Create Invoice
             </Button>
           )}
-          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase">
-            <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />Refresh
+          <Button variant="outline" onClick={reload} className="h-10 rounded-lg text-xs font-black uppercase bg-white hover:bg-slate-50 border-slate-200 shadow-sm">
+            <RefreshCw className={cn("mr-2 h-4 w-4 text-[#12335f]", refreshing && "animate-spin")} /> Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">
-        <Metric label="Invoices" value={total} icon={FileText} />
-        <Metric label="Pending" value={pendingCount} icon={Clock} />
-        <Metric label="Approved/Paid" value={approvedCount} icon={CheckCircle2} />
-        <Metric label="Invoice Value" value={formatCurrency(totalValue)} icon={IndianRupee} />
-        <Metric label="Overdue" value={invoiceHealth.overdue} icon={AlertCircle} />
-        <Metric label="GST/TDS" value={`${formatCurrency(invoiceHealth.tax)} / ${formatCurrency(invoiceHealth.tds)}`} icon={ShieldCheck} />
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-6">
+        <KpiCard label="Invoices" value={total} icon={FileText} active={true} color="blue" />
+        <KpiCard label="Pending" value={pendingCount} icon={Clock} color="amber" />
+        <KpiCard label="Approved/Paid" value={approvedCount} icon={CheckCircle2} color="green" />
+        <KpiCard label="Invoice Value" value={formatCurrency(totalValue)} icon={IndianRupee} color="indigo" />
+        <KpiCard label="Overdue" value={invoiceHealth.overdue} icon={AlertCircle} color="red" />
+        <KpiCard label="GST/TDS" value={`${formatCurrency(invoiceHealth.tax)} / ${formatCurrency(invoiceHealth.tds)}`} icon={ShieldCheck} color="purple" />
       </div>
 
       {error && <InlineError message={error} onRetry={reload} />}
 
-      <Card className="border-slate-200/80 shadow-sm bg-white">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {/* Inline Filters Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="relative min-w-0 flex-1 max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
+            placeholder="Search invoice, PO, buyer, seller..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          />
+        </div>
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end w-full md:w-auto">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+
+          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-[180px_165px_165px] md:items-center w-full md:w-auto">
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value)}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
+            >
+              <option value="">All statuses</option>
+              {statuses.map(status => (
+                <option key={status} value={status}>
+                  {status.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+
+            <label className="flex items-center gap-2 h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 w-full cursor-pointer select-none">
               <input
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search invoice, PO, buyer, seller..."
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+                type="checkbox"
+                checked={acceptedPoOnly}
+                onChange={event => setAcceptedPoOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/50"
               />
-            </div>
+              Accepted PO only
+            </label>
 
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end md:gap-4 w-full md:w-auto">
-              <ViewModeToggle value={viewMode} onChange={setViewMode} />
-
-              <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-[180px_160px_160px] md:items-center w-full md:w-auto">
-                <select
-                  value={statusFilter}
-                  onChange={event => setStatusFilter(event.target.value)}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
-                >
-                  <option value="">All statuses</option>
-                  {statuses.map(status => (
-                    <option key={status} value={status}>
-                      {status.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 w-full">
-                  <input
-                    type="checkbox"
-                    checked={acceptedPoOnly}
-                    onChange={event => setAcceptedPoOnly(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/50"
-                  />
-                  Accepted PO only
-                </label>
-
-                <select
-                  value={invoiceScope}
-                  onChange={event => setInvoiceScope(event.target.value as 'all' | 'interstate' | 'domestic')}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
-                >
-                  <option value="all">All invoices</option>
-                  <option value="interstate">Interstate only</option>
-                  <option value="domestic">Domestic only</option>
-                </select>
-              </div>
-            </div>
+            <select
+              value={invoiceScope}
+              onChange={event => setInvoiceScope(event.target.value as 'all' | 'interstate' | 'domestic')}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20 w-full"
+            >
+              <option value="all">All invoices</option>
+              <option value="interstate">Interstate only</option>
+              <option value="domestic">Domestic only</option>
+            </select>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {total === 0 ? (
         <EmptyState
@@ -628,25 +627,25 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
           }
         />
       ) : viewMode === 'list' ? (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-clip">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1140px] text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="p-3">Sr. No</th>
-                  <th className="p-3"><SortHeader label="Invoice" field="invoiceNumber" /></th>
-                  <th className="p-3"><SortHeader label="PO" field="poNumber" /></th>
+            <table className="w-full min-w-[1140px] border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75 hover:bg-transparent">
+                  <th className="p-3 text-[10px] font-black uppercase tracking-wider text-slate-500 w-16">Sr. No</th>
+                  <th className="p-3 w-40"><SortHeader label="Invoice" field="invoiceNumber" /></th>
+                  <th className="p-3 w-36"><SortHeader label="PO" field="poNumber" /></th>
                   <th className="p-3"><SortHeader label="Party" field="party" /></th>
-                  <th className="p-3"><SortHeader label="Taxable" field="taxableAmount" /></th>
-                  <th className="p-3"><SortHeader label="GST" field="totalTaxAmount" /></th>
-                  <th className="p-3"><SortHeader label="TDS" field="tdsAmount" /></th>
-                  <th className="p-3"><SortHeader label="Total" field="totalAmount" /></th>
-                  <th className="p-3"><SortHeader label="Due" field="dueDate" /></th>
-                  <th className="p-3"><SortHeader label="Status" field="status" /></th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3 w-28"><SortHeader label="Taxable" field="taxableAmount" /></th>
+                  <th className="p-3 w-28"><SortHeader label="GST" field="totalTaxAmount" /></th>
+                  <th className="p-3 w-24"><SortHeader label="TDS" field="tdsAmount" /></th>
+                  <th className="p-3 w-32"><SortHeader label="Total" field="totalAmount" /></th>
+                  <th className="p-3 w-28"><SortHeader label="Due" field="dueDate" /></th>
+                  <th className="p-3 w-32"><SortHeader label="Status" field="status" /></th>
+                  <th className="p-3 text-right w-44">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                 {pagedInvoices.map((invoice, index) => {
                   const state = statusOf(invoice);
                   const isSubmitted = state === 'submitted';
@@ -731,84 +730,80 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
           <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} label="invoices" />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {pagedInvoices.map((invoice, index) => {
             const state = statusOf(invoice);
             const isSubmitted = state === 'submitted';
             const isPayable = state === 'approved' || state === 'payment_initiated';
             const rowIndex = (page - 1) * pageSize + index + 1;
             return (
-              <div key={invoice.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Invoice #{rowIndex}</p>
-                    <div className="mt-2">
-                      <EntityIdLink label={invoice.invoiceNumber || `INV-${invoice.id}`} id={invoice.id} size="sm" onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }} />
+              <div key={invoice.id} className="group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#12335f]/40 hover:shadow-md flex flex-col justify-between">
+                <div className="w-full space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[9px] font-black text-slate-500">
+                          {String(rowIndex).padStart(2, '0')}
+                        </span>
+                        <EntityIdLink label={invoice.invoiceNumber || `INV-${invoice.id}`} id={invoice.id} size="sm" onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }} />
+                      </div>
+                      <p className="mt-1.5 text-[10px] font-semibold text-slate-500">PO: {invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
                     </div>
-                    <p className="mt-1 text-[11px] text-slate-500">{invoice.purchaseOrder?.poNumber || `PO #${invoice.purchaseOrderId || '-'}`}</p>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${state === 'paid'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : state === 'approved'
+                        ? 'bg-blue-100 text-[#12335f]'
+                        : state === 'submitted'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                      {state.replace(/_/g, ' ')}
+                    </span>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${state === 'paid'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : state === 'approved'
-                      ? 'bg-blue-100 text-[#12335f]'
-                      : state === 'submitted'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}>
-                    {state.replace(/_/g, ' ')}
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-3 text-xs text-slate-600">
-                  <div className="rounded-2xl bg-slate-50 p-3">
-                    <p className="font-black text-slate-900">Party</p>
-                    <p>{role === 'seller' ? invoice.buyer?.name || `Buyer #${invoice.buyerId || '-'}` : invoice.seller?.name || `Seller #${invoice.sellerId || '-'}`}</p>
+
+                  <div className="grid grid-cols-2 gap-2.5 text-[10px] font-semibold text-slate-500 border-t border-slate-100 pt-3">
+                    <InfoTile label="Party" value={role === 'seller' ? invoice.buyer?.name || '-' : invoice.seller?.name || '-'} />
+                    <InfoTile label="Total Amount" value={formatCurrency(invoice.amount || invoice.totalAmount)} />
+                    <InfoTile label="Due Date" value={formatDate(invoice.dueDate)} />
+                    <InfoTile label="Created At" value={formatDate(invoice.createdAt)} />
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-slate-50 p-3">
-                      <p className="font-black text-slate-900">Total</p>
-                      <p>{formatCurrency(invoice.amount || invoice.totalAmount)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-slate-50 p-3">
-                      <p className="font-black text-slate-900">Due Date</p>
-                      <p>{formatDate(invoice.dueDate)}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }}
-                    className="h-10 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
-                  >
-                    View
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('track'); }}
-                    className="h-10 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
-                  >
-                    Track Status
-                  </Button>
-                  {role === 'buyer' && isSubmitted && (
+
+                  <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                     <Button
                       size="sm"
-                      disabled={submitting}
-                      onClick={() => handleApproveInvoice(invoice.id)}
-                      className="h-10 rounded-lg bg-[#12335f] text-[10px] font-black uppercase tracking-wider hover:bg-slate-800"
+                      onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('view'); }}
+                      className="h-8 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
                     >
-                      Approve
+                      View
                     </Button>
-                  )}
-                  {role === 'buyer' && isPayable && (
                     <Button
                       size="sm"
-                      onClick={() => handleOpenCheckout(invoice)}
-                      className="h-10 rounded-lg bg-emerald-600 text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700"
+                      variant="outline"
+                      onClick={() => { setSelectedInvoice(invoice); setInvoiceModalMode('track'); }}
+                      className="h-8 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
                     >
-                      Pay Now
+                      Track Status
                     </Button>
-                  )}
+                    {role === 'buyer' && isSubmitted && (
+                      <Button
+                        size="sm"
+                        disabled={submitting}
+                        onClick={() => handleApproveInvoice(invoice.id)}
+                        className="h-8 rounded-lg bg-[#12335f] text-[10px] font-black uppercase tracking-wider hover:bg-slate-800"
+                      >
+                        Approve
+                      </Button>
+                    )}
+                    {role === 'buyer' && isPayable && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenCheckout(invoice)}
+                        className="h-8 rounded-lg bg-emerald-600 text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700"
+                      >
+                        Pay Now
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -1780,19 +1775,72 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
   );
 }
 
-function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  icon: any;
+  onClick?: () => void;
+  active?: boolean;
+  color?: 'blue' | 'green' | 'red' | 'purple' | 'amber' | 'indigo' | 'slate';
+}
+
+function KpiCard({ label, value, icon: Icon, onClick, active, color = 'slate' }: KpiCardProps) {
+  const colorMap = {
+    blue: 'border-blue-100 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:border-blue-300 ring-blue-600/10',
+    green: 'border-green-100 bg-green-50/50 hover:bg-green-50 text-green-700 hover:border-green-300 ring-green-600/10',
+    red: 'border-red-100 bg-red-50/50 hover:bg-red-50 text-red-700 hover:border-red-300 ring-red-600/10',
+    purple: 'border-purple-100 bg-purple-50/50 hover:bg-purple-50 text-purple-700 hover:border-purple-300 ring-purple-600/10',
+    amber: 'border-amber-100 bg-amber-50/50 hover:bg-amber-50 text-amber-700 hover:border-amber-300 ring-amber-600/10',
+    indigo: 'border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 hover:border-indigo-300 ring-indigo-600/10',
+    slate: 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 text-slate-700 hover:border-slate-300 ring-slate-600/10',
+  };
+
+  const activeColorMap = {
+    blue: 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20',
+    green: 'border-green-500 bg-green-50 text-green-800 ring-2 ring-green-500/20',
+    red: 'border-red-500 bg-red-50 text-red-800 ring-2 ring-red-500/20',
+    purple: 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-500/20',
+    amber: 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20',
+    indigo: 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500/20',
+    slate: 'border-slate-500 bg-slate-50 text-slate-800 ring-2 ring-slate-500/20',
+  };
+
+  const iconBgMap = {
+    blue: 'bg-blue-500 text-white',
+    green: 'bg-green-500 text-white',
+    red: 'bg-red-500 text-white',
+    purple: 'bg-purple-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    indigo: 'bg-indigo-500 text-white',
+    slate: 'bg-slate-500 text-white',
+  };
+
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-          <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-[#12335f]">
-          <Icon className="h-5 w-5" />
-        </div>
-      </CardContent>
-    </Card>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left rounded-2xl border p-4 shadow-sm transition-all duration-300 flex items-center justify-between',
+        active ? activeColorMap[color] : colorMap[color]
+      )}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</p>
+        <p className="mt-1 text-xl font-black tracking-tight leading-none">{value}</p>
+      </div>
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-110', iconBgMap[color])}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+    </button>
+  );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-slate-800">{value || '-'}</p>
+    </div>
   );
 }
 

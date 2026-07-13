@@ -181,15 +181,91 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
     const data = await service.resolveTenderBidActivity(token);
     return apiResponse.success(res, data, 200, 'Tender opportunity details fetched successfully');
   }
-  const bid = await service.resolveBid(token);
-  const isRestrictedBid = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(String(bid.procurementType || bid.bidType).toUpperCase());
-  if (isRestrictedBid) {
-    const isBuyer = actor?.role === 'buyer' && bid.buyerId === actor.id;
-    const isSeller = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
-    const isAdminUser = actor?.role === 'admin' || actor?.role === 'master_admin';
-    if (!isBuyer && !isSeller && !isAdminUser) {
-      throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
+
+  let bid: any;
+  try {
+    bid = await service.resolveBid(token);
+  } catch (err: any) {
+    // Fallback: if no ProcurementBid found, check if this is a Requirement ID
+    if (err?.code === 'BID_NOT_FOUND' && /^\d+$/.test(token)) {
+      const requirement = await prisma.requirement.findUnique({
+        where: { id: Number(token) },
+        include: {
+          items: true,
+          organization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
+          category: true,
+          buyer: { select: { id: true, name: true, email: true, role: true, buyerProfile: { select: { departmentName: true } } } },
+        }
+      });
+      if (requirement) {
+        const payload = requirement.payload && typeof requirement.payload === 'object' ? requirement.payload as any : {};
+        const basics = payload.basics || {};
+        const schedule = payload.schedule || {};
+        const terms = payload.terms || {};
+        const internal = payload.internal || {};
+        const synthesized = {
+          id: requirement.id,
+          bidNumber: requirement.requirementNumber || `REQ-${requirement.id}`,
+          title: requirement.title || basics.title || 'Procurement Requirement',
+          description: requirement.description || basics.description || '',
+          buyerId: requirement.buyerId,
+          buyerOrganizationName: requirement.organization?.organizationName || internal.orgName || basics.buyerOrganizationName || '',
+          buyerType: basics.buyerType || requirement.organization?.organizationType || 'Private Enterprise',
+          departmentName: requirement.buyer?.buyerProfile?.departmentName || internal.departmentName || '',
+          category: basics.category || requirement.category?.name || '',
+          subCategory: basics.subCategory || '',
+          bidType: basics.whatAreYouBuying || 'Product',
+          procurementType: requirement.procurementMethod || payload.recommendation?.id || 'RFQ',
+          quantity: basics.quantity ? Number(basics.quantity) : (requirement.items?.[0]?.quantity || null),
+          unit: basics.unit || requirement.items?.[0]?.unitOfMeasure || '',
+          estimatedValue: requirement.estimatedValue || basics.estimatedValue || 0,
+          deliveryLocation: basics.deliveryLocation || internal.deliveryAddress || [requirement.organization?.district, requirement.organization?.state].filter(Boolean).join(', ') || '',
+          state: requirement.organization?.state || '',
+          district: requirement.organization?.district || '',
+          startDate: requirement.createdAt,
+          endDate: requirement.requiredBy || schedule.submissionDate || requirement.createdAt,
+          technicalOpeningDate: schedule.technicalOpeningDate || null,
+          financialOpeningDate: schedule.financialOpeningDate || null,
+          status: requirement.status === 'APPROVED' ? 'OPEN' : requirement.status || 'OPEN',
+          approvalStatus: requirement.status || 'APPROVED',
+          lifecycleStage: 'SELLER_PARTICIPATION',
+          evaluationMethod: payload.evaluation?.evaluationMethod || 'L1',
+          isEmdRequired: false,
+          emdAmount: null,
+          documentFee: null,
+          allowClarification: true,
+          allowReverseAuction: false,
+          packetType: 'SINGLE_PACKET',
+          technicalPacket: payload,
+          termsAndConditions: terms.termsAndConditions || [],
+          eligibilityCriteria: terms.eligibilityCriteria || basics.eligibilityCriteria || [],
+          requiredDocuments: payload.requiredDocs || [],
+          createdAt: requirement.createdAt,
+          updatedAt: requirement.updatedAt,
+          buyerOrganization: requirement.organization,
+          buyer: requirement.buyer,
+          documents: [],
+          participations: [],
+          clarifications: [],
+          evaluations: [],
+          awards: [],
+          participantsCount: 0,
+          sourceModel: 'REQUIREMENT',
+          sourceId: requirement.id,
+          consigneeDetails: payload.consigneeDetails || null,
+          items: requirement.items || [],
+        };
+        return apiResponse.success(res, synthesized, 200, 'Requirement-based bid details fetched successfully');
+      }
     }
+    throw err;
+  }
+
+  // Access gate: public bids are viewable by anyone; private (invite-only) bids only by
+  // the owner, an invited seller, a participant, or an admin. 404 (not 403) to avoid
+  // leaking the existence of a private procurement.
+  if (!service.canActorViewBid(actor as any, bid)) {
+    throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
   }
   const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
   
@@ -238,9 +314,9 @@ router.get('/seller/bids', authenticate, requireAccountType('seller'), asyncRout
 router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, { participations: { where: { sellerId: req.user!.id }, include: { documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true } } });
   const participation = bid.participations?.[0];
-  const isRestrictedBid = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(String(bid.procurementType || bid.bidType).toUpperCase());
+  const isRestrictedBid = service.isRestrictedBidMethod(bid);
   if (isRestrictedBid) {
-    if (!participation) {
+    if (!participation && !service.isActorInvitedToBid(req.user as any, bid)) {
       throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
     }
   }
@@ -250,6 +326,11 @@ router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('selle
 router.post('/bids/:bidId/clarifications/:clarificationId/respond', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: clarificationParamSchema, body: z.object({ response: z.string().trim().min(2).max(5000) }) }), asyncRoute(async (req, res) => {
   const data = await service.respondClarification(req, req.params.bidId, Number(req.params.clarificationId), req.body.response);
   return apiResponse.success(res, data, 200, 'Clarification response submitted');
+}));
+
+router.post('/bids/:bidId/clarifications/ask', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema, body: z.object({ question: z.string().trim().min(5).max(3000) }) }), asyncRoute(async (req, res) => {
+  const data = await service.sellerAskClarification(req, req.params.bidId, req.body.question);
+  return apiResponse.created(res, data, 'Clarification question submitted successfully');
 }));
 
 router.post('/buyer/bids', authenticate, requireAccountType('buyer'), requirePermission('tender.create'), validate({ body: bidBodySchema }), asyncRoute(async (req, res) => {
@@ -273,8 +354,38 @@ router.post('/buyer/bids/:bidId/submit-for-approval', authenticate, requireAccou
 }));
 
 router.get('/buyer/bids', authenticate, requireAccountType('buyer'), asyncRoute(async (req, res) => {
-  const bids = await (prisma as any).procurementBid.findMany({ where: { buyerId: req.user!.id }, include: { documents: true, participations: true, awards: true }, orderBy: { createdAt: 'desc' } });
-  return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user })), 200, 'Buyer bids fetched');
+  const bids = await (prisma as any).procurementBid.findMany({
+    where: { buyerId: req.user!.id },
+    include: {
+      documents: true,
+      participations: {
+        where: { submissionStatus: 'SUBMITTED', isWithdrawn: false },
+        include: {
+          seller: { select: { id: true, name: true, email: true, role: true, onboardingStatus: true } },
+          documents: true,
+          clarifications: { include: { files: true } },
+          evaluations: true,
+          awards: true
+        }
+      },
+      awards: true,
+      buyer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          buyerProfile: {
+            select: {
+              departmentName: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+  return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeFinancial: true })), 200, 'Buyer bids fetched');
 }));
 
 router.get('/buyer/bids/:bidId/participants', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.view'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
@@ -310,7 +421,27 @@ router.post('/buyer/bids/:bidId/recommend-award', authenticate, requireAccountTy
 }));
 
 router.get('/admin/bids', authenticate, requireAccountType('admin'), requirePermission('tender.view'), checkFeatureEnabled('admin-bid-approval'), asyncRoute(async (req, res) => {
-  const bids = await (prisma as any).procurementBid.findMany({ include: { documents: true, participations: true, awards: true }, orderBy: { createdAt: 'desc' } });
+  const bids = await (prisma as any).procurementBid.findMany({
+    include: {
+      documents: true,
+      participations: true,
+      awards: true,
+      buyer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          buyerProfile: {
+            select: {
+              departmentName: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeParticipants: true, includeFinancial: true })), 200, 'Admin bids fetched');
 }));
 

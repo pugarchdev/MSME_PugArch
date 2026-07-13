@@ -1,6 +1,7 @@
 import { EMPTY_PROCUREMENT_DRAFT, type ProcurementWizardDraft } from './types';
 import { BASE_URL } from '../../lib/api';
 import { authHeaders, deleteApi, getApi, postApi } from '../shared/apiClient';
+import { getCookieValue } from '../../lib/auth';
 
 const DRAFT_KEY = 'msme:guided-procurement-create:v1';
 
@@ -43,8 +44,14 @@ export const uploadProcurementDocument = (
   formData.append('file', file);
 
   xhr.open('POST', `${BASE_URL}/api/procurement/${encodeURIComponent(String(procurementId))}/documents`, true);
+  xhr.withCredentials = true;
   for (const [key, value] of Object.entries(authHeaders())) {
     xhr.setRequestHeader(key, value);
+  }
+
+  const csrfToken = getCookieValue('csrfToken');
+  if (csrfToken) {
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
   }
 
   xhr.upload.addEventListener('progress', event => {
@@ -90,8 +97,10 @@ export const procurementWizardApi = {
   loadLocalDraft(): any {
     if (typeof window === 'undefined') return null;
     try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      return raw ? JSON.parse(raw) : null;
+      const rawV2 = localStorage.getItem('msme:guided-procurement-create:v2');
+      if (rawV2) return JSON.parse(rawV2);
+      const rawV1 = localStorage.getItem('msme:guided-procurement-create:v1');
+      return rawV1 ? JSON.parse(rawV1) : null;
     } catch {
       return null;
     }
@@ -99,11 +108,12 @@ export const procurementWizardApi = {
 
   saveLocalDraft(draft: any) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
+    localStorage.setItem('msme:guided-procurement-create:v2', JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
   },
 
   clearLocalDraft() {
     if (typeof window === 'undefined') return;
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem('msme:guided-procurement-create:v1');
+    localStorage.removeItem('msme:guided-procurement-create:v2');
   },
 };

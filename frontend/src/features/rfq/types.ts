@@ -1,5 +1,5 @@
 export type QuoteRequestStatus = 'pending' | 'responded' | 'accepted' | 'rejected' | 'closed' | 'cancelled' | string;
-export type QuoteResponseStatus = 'DRAFT' | 'SUBMITTED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
+export type QuoteResponseStatus = 'DRAFT' | 'SUBMITTED' | 'SHORTLISTED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
 
 export interface QuoteResponseDto {
     id: number;
@@ -15,6 +15,28 @@ export interface QuoteResponseDto {
     documentUrl?: string | null;
     createdAt?: string;
     updatedAt?: string;
+
+    // L1 evaluation fields
+    technicalStatus?: string | null;
+    financialStatus?: string | null;
+    evaluatedPrice?: number | string | null;
+    rank?: number | null;
+    rankLabel?: string | null;
+    warrantyPeriod?: string | null;
+    paymentTerms?: string | null;
+    gstRate?: number | string | null;
+    taxAmount?: number | string | null;
+    discountPercent?: number | string | null;
+    discountAmount?: number | string | null;
+    deliveryLocation?: string | null;
+    technicalRemarks?: string | null;
+    commercialRemarks?: string | null;
+    buyerRemarks?: string | null;
+    complianceStatus?: string | null;
+    priceForEval?: number;
+    isDisqualified?: boolean;
+    isShortlisted?: boolean;
+
     seller?: {
         id: number;
         name?: string;
@@ -23,6 +45,9 @@ export interface QuoteResponseDto {
         sellerProfile?: {
             businessName?: string | null;
             organizationType?: string | null;
+            msmeCategory?: string | null;
+            city?: string | null;
+            state?: string | null;
         } | null;
     };
 }
@@ -58,6 +83,7 @@ export interface QuoteRequestDto {
     deadlineDate?: string | null;
     status: QuoteRequestStatus;
     statusEnum?: string | null;
+    allowSellerRevision?: boolean;
     createdAt?: string;
     updatedAt?: string;
     buyer?: QuoteRequestPartyDto;
@@ -80,6 +106,15 @@ export interface NewQuoteResponsePayload {
     validityDate?: string;
     notes?: string;
     documentUrl?: string;
+    currency?: string;
+    warrantyPeriod?: string;
+    paymentTerms?: string;
+    gstRate?: number;
+    deliveryLocation?: string;
+    complianceStatus?: string;
+    unitPrice?: number;
+    quantity?: number;
+    discountPercent?: number;
 }
 
 export interface QuoteRequestsListResponse {

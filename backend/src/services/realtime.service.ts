@@ -32,11 +32,16 @@ export const publishNotificationEvent = async (userId: number, notification: Rea
 export const subscribeRealtimeChannel = async (channel: string, handler: (payload: unknown) => void) => {
   if (!redis || !isRedisReady()) return false;
 
-  subscriber ||= redis.duplicate({
-    keyPrefix: env.REDIS_PREFIX,
-    lazyConnect: true,
-    maxRetriesPerRequest: 1
-  });
+  if (!subscriber) {
+    subscriber = redis.duplicate({
+      keyPrefix: env.REDIS_PREFIX,
+      lazyConnect: true,
+      maxRetriesPerRequest: 1
+    });
+    subscriber.on('error', error => {
+      logger.warn({ err: error }, 'Redis subscription client error');
+    });
+  }
 
   if (subscriber.status !== 'ready') {
     await subscriber.connect().catch(error => {

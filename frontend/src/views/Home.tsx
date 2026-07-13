@@ -1,14 +1,64 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
-import { Building2, Store, ArrowRight, ShieldCheck, CheckCircle2, LayoutDashboard, MapPin } from 'lucide-react';
+import { Building2, Store, ArrowRight, ShieldCheck, CheckCircle2, LayoutDashboard, MapPin, FileText, Gavel, Clock, IndianRupee, Eye } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
+import { cn } from '../lib/utils';
+import { formatCurrency, formatDate } from '../features/shared/format';
+import { Card, CardContent } from '../components/ui/card';
+
+const METHOD_COLORS: Record<string, string> = {
+  RFQ: 'border-orange-200 bg-orange-50 text-orange-700',
+  RFP: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  OPEN_TENDER: 'border-amber-200 bg-amber-50 text-amber-800',
+  LIMITED_TENDER: 'border-sky-200 bg-sky-50 text-sky-700',
+  REVERSE_AUCTION: 'border-rose-200 bg-rose-50 text-rose-700',
+  RATE_CONTRACT: 'border-teal-200 bg-teal-50 text-teal-700',
+  REPEAT_ORDER: 'border-lime-200 bg-lime-50 text-lime-700',
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  RFQ: 'RFQ',
+  RFP: 'RFP',
+  OPEN_TENDER: 'Open Tender',
+  LIMITED_TENDER: 'Limited Tender',
+  REVERSE_AUCTION: 'Reverse Auction',
+  RATE_CONTRACT: 'Rate Contract',
+  REPEAT_ORDER: 'Repeat Order',
+};
+
+type ProcurementOpportunity = {
+  id: number;
+  source: 'bid' | 'rfq';
+  title: string;
+  method: string;
+  buyerName: string;
+  buyerOrganization: string | null;
+  estimatedValue: number | null;
+  currency: string;
+  deadlineDate: string | null;
+  category: string | null;
+  location: string | null;
+  createdAt: string;
+};
+
+const opportunityHref = (opp: ProcurementOpportunity) => {
+  if (opp.source === 'rfq') return `/seller/rfq?requestId=${opp.id}`;
+  const method = (opp.method || '').toUpperCase();
+  if (method === 'REVERSE_AUCTION') return `/reverse-auctions/${opp.id}`;
+  if (method === 'RFP') return `/seller/rfp?requestId=${opp.id}`;
+  if (method === 'RFQ') return `/seller/rfq?requestId=${opp.id}`;
+  return `/bids/${opp.id}`;
+};
 
 export default function Home() {
   const { user } = useAuth();
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [opportunities, setOpportunities] = useState<ProcurementOpportunity[]>([]);
+  const [oppLoading, setOppLoading] = useState(true);
+  const [oppError, setOppError] = useState(false);
 
   useEffect(() => {
     const fetchOrgs = async () => {
@@ -25,6 +75,25 @@ export default function Home() {
       }
     };
     fetchOrgs();
+  }, []);
+
+  useEffect(() => {
+    const fetchOpportunities = async () => {
+      setOppLoading(true);
+      setOppError(false);
+      try {
+        const res = await api.fetch('/api/public/procurement-opportunities');
+        if (res.ok) {
+          const body = await res.json();
+          setOpportunities(body.data?.opportunities || body.opportunities || []);
+        }
+      } catch {
+        setOppError(true);
+      } finally {
+        setOppLoading(false);
+      }
+    };
+    fetchOpportunities();
   }, []);
 
   return (
@@ -142,6 +211,84 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Active Procurement Opportunities */}
+      {!oppLoading && !oppError && opportunities.length > 0 && (
+        <div className="relative w-full max-w-[1600px] mx-auto px-4 sm:px-6 md:px-10 lg:px-16 xl:px-20 py-12 z-10 border-t border-slate-200/50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+              <p className="text-[10px] sm:text-xs font-black text-[#c8a45c] uppercase tracking-[0.2em]">Active Opportunities</p>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#0b2447] tracking-tight uppercase mt-1">
+                Procurement Opportunities
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold mt-1">
+                Browse active public procurement opportunities from verified buyers.
+              </p>
+            </div>
+            <a href={user ? '/seller/opportunities' : '/register'}>
+              <Button variant="outline" size="sm" className="h-10 rounded-full border-slate-300 text-[10px] font-black uppercase tracking-wider">
+                View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {opportunities.slice(0, 9).map(opp => {
+              const methodKey = (opp.method || '').toUpperCase();
+              const colorClass = METHOD_COLORS[methodKey] || 'border-slate-200 bg-slate-50 text-slate-700';
+              const label = METHOD_LABELS[methodKey] || methodKey;
+              const href = opportunityHref(opp);
+              return (
+                <a key={`${opp.source}-${opp.id}`} href={href} className="block">
+                  <Card className="group rounded-2xl border-0 bg-white shadow-sm ring-1 ring-slate-200/70 transition-all hover:shadow-md hover:-translate-y-0.5">
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className={cn('px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider', colorClass)}>
+                            {label}
+                          </span>
+                        </div>
+                        {opp.estimatedValue && (
+                          <span className="shrink-0 text-xs font-black text-slate-900 tabular-nums">
+                            {formatCurrency(opp.estimatedValue)}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug mb-2">
+                        {opp.title}
+                      </h3>
+                      <div className="space-y-1 text-[10px] font-semibold text-slate-500">
+                        <p className="flex items-center gap-1.5">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          {opp.buyerOrganization || opp.buyerName}
+                        </p>
+                        {opp.deadlineDate && (
+                          <p className="flex items-center gap-1.5">
+                            <Clock className="h-3 w-3 shrink-0" />
+                            Closes {formatDate(opp.deadlineDate)}
+                          </p>
+                        )}
+                        {opp.location && (
+                          <p className="flex items-center gap-1.5">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {opp.location}
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-[#12335f] transition-colors">
+                          View Details
+                        </span>
+                        <Eye className="h-3.5 w-3.5 text-slate-400 group-hover:text-[#12335f] transition-colors" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Verified Buyer Requirements Showcase Strip */}
       {organizations.length > 0 && (

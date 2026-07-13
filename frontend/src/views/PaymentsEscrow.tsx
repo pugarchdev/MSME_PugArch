@@ -211,16 +211,20 @@ export default function PaymentsEscrow() {
   const confirmedPayments = payments.filter(payment => ['success', 'escrow_released'].includes(payment.status)).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Secure Finance</p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950">Payments & Escrow</h1>
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12">
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Secure Finance</p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">Payments & Escrow</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Payment gateway transactions, escrow holds, and milestone-based releases.</p>
+          </div>
+          <Button onClick={load} disabled={loading} variant="outline" className="h-10 rounded-lg text-xs font-black uppercase shadow-sm">
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4 text-[#12335f]" />}
+            Refresh
+          </Button>
         </div>
-        <Button onClick={load} disabled={loading} className="w-fit bg-[#12335f] text-white hover:bg-[#0b2445]">
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Refresh
-        </Button>
       </div>
 
       {loading && !payments.length && !escrowAccounts.length ? (
@@ -232,38 +236,38 @@ export default function PaymentsEscrow() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-3">
+          {/* ── KPI Cards ── */}
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { label: 'Payments', value: payments.length, icon: CreditCard },
-              { label: 'Confirmed', value: confirmedPayments, icon: CheckCircle2 },
-              { label: 'Escrow Held', value: money(totalHeld), icon: LockKeyhole }
+              { label: 'Payments', value: payments.length, icon: CreditCard, color: 'bg-blue-50 text-blue-700 ring-blue-200/60' },
+              { label: 'Confirmed', value: confirmedPayments, icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-700 ring-emerald-200/60' },
+              { label: 'Escrow Held', value: money(totalHeld), icon: LockKeyhole, color: 'bg-purple-50 text-purple-700 ring-purple-200/60' }
             ].map(item => (
-              <Card key={item.label} className="rounded-lg border-slate-200 shadow-none">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{item.label}</p>
-                    <p className="mt-1 text-xl font-black text-slate-950">{item.value}</p>
-                  </div>
-                  <item.icon className="h-5 w-5 text-[#12335f]" />
-                </CardContent>
-              </Card>
+              <div key={item.label} className={`rounded-2xl p-4 ring-1 ${item.color} transition hover:scale-[1.02]`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <item.icon className="h-4 w-4 opacity-70" />
+                  <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{item.label}</span>
+                </div>
+                <p className="text-2xl font-black">{item.value}</p>
+              </div>
             ))}
           </div>
 
-          <div className="flex gap-2">
+          {/* ── Tab Bar (border-y) ── */}
+          <div className="flex items-center gap-3 border-y border-slate-200 bg-slate-50/50 px-4 py-3">
             {[
-              { key: 'payments', label: 'Payment Initiation & History', icon: CreditCard },
+              { key: 'payments', label: 'Payment History', icon: CreditCard },
               { key: 'escrow', label: 'Escrow & Milestones', icon: Landmark }
             ].map(tab => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
                 className={cn(
-                  'inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-black uppercase tracking-wide',
-                  activeTab === tab.key ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-600'
+                  'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-wide transition',
+                  activeTab === tab.key ? 'border-[#12335f] bg-[#12335f] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-[#12335f] hover:text-[#12335f]'
                 )}
               >
-                <tab.icon className="h-4 w-4" />
+                <tab.icon className="h-3.5 w-3.5" />
                 {tab.label}
               </button>
             ))}
@@ -293,31 +297,37 @@ export default function PaymentsEscrow() {
                 </CardContent>
               </Card>
 
-              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3"><SortHeader label="Reference" field="referenceId" /></th>
-                      <th className="px-4 py-3"><SortHeader label="Invoice" field="invoiceId" /></th>
-                      <th className="px-4 py-3"><SortHeader label="Gateway" field="gateway" /></th>
-                      <th className="px-4 py-3"><SortHeader label="Amount" field="amount" /></th>
-                      <th className="px-4 py-3"><SortHeader label="Status" field="status" /></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedPayments.map(payment => (
-                      <tr key={payment.id} className="border-t border-slate-100">
-                        <td className="px-4 py-3 font-bold text-slate-900">{payment.referenceId}</td>
-                        <td className="px-4 py-3 text-slate-600">{payment.invoiceId || '-'}</td>
-                        <td className="px-4 py-3 text-slate-600">{payment.gateway || 'pending'}</td>
-                        <td className="px-4 py-3 font-bold">{money(payment.amount, payment.currency)}</td>
-                        <td className="px-4 py-3"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(payment.status))}>{payment.status}</span></td>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                        <th className="px-4 py-3">Sr.</th>
+                        <th className="px-4 py-3"><SortHeader label="Reference" field="referenceId" /></th>
+                        <th className="px-4 py-3"><SortHeader label="Invoice" field="invoiceId" /></th>
+                        <th className="px-4 py-3"><SortHeader label="Gateway" field="gateway" /></th>
+                        <th className="px-4 py-3"><SortHeader label="Amount" field="amount" /></th>
+                        <th className="px-4 py-3"><SortHeader label="Status" field="status" /></th>
                       </tr>
-                    ))}
-                    {sortedPayments.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
-                  </tbody>
-                </table>
-                <Pagination page={paymentsPage} pageSize={paymentsPageSize} total={paymentsTotal} onPageChange={setPaymentsPage} onPageSizeChange={setPaymentsPageSize} label="payments" />
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pagedPayments.map((payment, idx) => (
+                        <tr key={payment.id} className="transition hover:bg-slate-50/60">
+                          <td className="px-4 py-3.5 text-xs font-black text-slate-400">{String((paymentsPage - 1) * paymentsPageSize + idx + 1).padStart(2, '0')}</td>
+                          <td className="px-4 py-3.5 text-xs font-bold text-slate-900">{payment.referenceId}</td>
+                          <td className="px-4 py-3.5 text-xs font-semibold text-slate-600">{payment.invoiceId || '-'}</td>
+                          <td className="px-4 py-3.5 text-xs font-semibold text-slate-600">{payment.gateway || 'pending'}</td>
+                          <td className="px-4 py-3.5 text-xs font-bold">{money(payment.amount, payment.currency)}</td>
+                          <td className="px-4 py-3.5"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-black uppercase', statusClass(payment.status))}>{payment.status}</span></td>
+                        </tr>
+                      ))}
+                      {sortedPayments.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">No payment records yet.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="border-t border-slate-100 bg-slate-50/50 p-3">
+                  <Pagination page={paymentsPage} pageSize={paymentsPageSize} total={paymentsTotal} onPageChange={setPaymentsPage} onPageSizeChange={setPaymentsPageSize} label="payments" />
+                </div>
               </div>
             </div>
           )}

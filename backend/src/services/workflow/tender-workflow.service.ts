@@ -100,31 +100,50 @@ export const tenderWorkflow = {
     if (!tender) throw new ApiError(404, 'Tender not found', 'TENDER_NOT_FOUND');
     assertBeforeDeadline(tender);
     const pricing = calculateBidPricing(input);
-    const bid = await db.bid.upsert({
-      where: { bidCompoundId: { tenderId, sellerId: actor.id } },
-      update: {
-        ...input,
-        ...pricing,
-        status: 'modified',
-        statusEnum: bidStatusEnumFor('modified'),
-        modifiedAt: new Date()
-      },
-      create: {
-        ...input,
-        ...pricing,
-        tenderId,
-        sellerId: actor.id,
-        bidNumber: numberSeries('BID'),
-        status: 'submitted',
-        statusEnum: bidStatusEnumFor('submitted')
-      }
+    const isDraft = input.status === 'draft';
+    const bidStatus = isDraft ? 'draft' : 'submitted';
+    const bid = await db.$transaction(async (tx: any) => {
+      const existing = await tx.bid.findUnique({ where: { bidCompoundId: { tenderId, sellerId: actor.id } } });
+      const bidNumber = existing?.bidNumber || numberSeries('BID');
+      const ack = isDraft ? null : {
+        acknowledgementId: `ACK-BID-${bidNumber}-${Date.now()}`,
+        responseId: bidNumber,
+        timestamp: new Date().toISOString(),
+        message: 'Bid submitted successfully.'
+      };
+      
+      const updatedOrCreated = await tx.bid.upsert({
+        where: { bidCompoundId: { tenderId, sellerId: actor.id } },
+        update: {
+          ...input,
+          ...pricing,
+          status: isDraft ? 'draft' : 'modified',
+          statusEnum: bidStatusEnumFor(isDraft ? 'draft' : 'modified'),
+          modifiedAt: new Date(),
+          acknowledgement: ack || undefined
+        },
+        create: {
+          ...input,
+          ...pricing,
+          tenderId,
+          sellerId: actor.id,
+          bidNumber,
+          status: bidStatus,
+          statusEnum: bidStatusEnumFor(bidStatus),
+          acknowledgement: ack || undefined
+        }
+      });
+      return updatedOrCreated;
     });
-    await db.tenderParticipant.upsert({
-      where: { tenderId_sellerId: { tenderId, sellerId: actor.id } },
-      update: { status: 'BID_SUBMITTED', respondedAt: new Date() },
-      create: { tenderId, sellerId: actor.id, status: 'BID_SUBMITTED', respondedAt: new Date() }
-    }).catch(() => undefined);
-    const activeBidCount = await db.bid.count({ where: { tenderId, status: { not: 'withdrawn' } } });
+
+    if (!isDraft) {
+      await db.tenderParticipant.upsert({
+        where: { tenderId_sellerId: { tenderId, sellerId: actor.id } },
+        update: { status: 'BID_SUBMITTED', respondedAt: new Date() },
+        create: { tenderId, sellerId: actor.id, status: 'BID_SUBMITTED', respondedAt: new Date() }
+      }).catch(() => undefined);
+    }
+    const activeBidCount = await db.bid.count({ where: { tenderId, status: { notIn: ['withdrawn', 'draft'] } } });
     await db.tender.update({ where: { id: tenderId }, data: { bidsCount: activeBidCount } }).catch(() => undefined);
     if (input.fileAssetId) {
       await db.fileAsset.updateMany({
@@ -132,7 +151,7 @@ export const tenderWorkflow = {
         data: { entityType: 'bid', entityId: bid.id }
       }).catch(() => undefined);
     }
-    await auditWorkflow(actor, 'workflow.bid.submitted', 'bid', bid.id, { tenderId });
+    await auditWorkflow(actor, isDraft ? 'workflow.bid.draft_saved' : 'workflow.bid.submitted', 'bid', bid.id, { tenderId });
     return bid;
   },
 
@@ -158,6 +177,9 @@ export const tenderWorkflow = {
   async withdrawBid(actor: WorkflowActor, bidId: number) {
     const bid = await assertBidSeller(actor, bidId);
     assertBeforeDeadline(bid.tender);
+    if (bid.tender.allowWithdrawal === false) {
+      throw new ApiError(400, 'Withdrawal is not permitted for this tender.', 'WITHDRAWAL_NOT_PERMITTED');
+    }
     statusTransitions.bid(bid.status, 'withdrawn');
     const updated = await db.bid.update({
       where: { id: bidId },
@@ -253,6 +275,10 @@ export const tenderWorkflow = {
     });
     if (!result.reused) {
       notifyWorkflowSoon(result.purchaseOrder.sellerId, 'Tender awarded', `You were awarded ${result.purchaseOrder.title}.`, 'tender_awarded');
+      const losingBids = await db.bid.findMany({ where: { tenderId: result.tender.id, id: { not: bidId }, status: { not: 'withdrawn' } } });
+      for (const lb of losingBids) {
+        notifyWorkflowSoon(lb.sellerId, 'Tender not awarded', `Your bid for "${result.purchaseOrder.title}" was not selected.`, 'tender_not_awarded');
+      }
     }
     await auditWorkflow(actor, 'workflow.tender.awarded_po_generated', 'purchaseOrder', result.purchaseOrder.id, { bidId });
     return result;
@@ -327,9 +353,23 @@ export const tenderWorkflow = {
             deviceHash: input.deviceHash
           }
         });
+        const msToEnd = new Date(auction.endTime).getTime() - now.getTime();
+        const shouldExtend = auction.autoExtensionEnabled &&
+          auction.extensionCount < auction.maxAutoExtensions &&
+          msToEnd <= auction.autoExtensionWindowMinutes * 60_000;
+        const endTime = shouldExtend
+          ? new Date(new Date(auction.endTime).getTime() + auction.autoExtensionByMinutes * 60_000)
+          : auction.endTime;
+
         const updatedAuction = await tx.auction.update({
           where: { id: auctionId },
-          data: { currentBid: input.bidAmount, currentLowestBid: input.bidAmount, currentWinnerId: actor.id }
+          data: {
+            currentBid: input.bidAmount,
+            currentLowestBid: input.bidAmount,
+            currentWinnerId: actor.id,
+            endTime,
+            extensionCount: shouldExtend ? { increment: 1 } : undefined
+          }
         });
         return { auction: updatedAuction, auctionBid: bid };
       });

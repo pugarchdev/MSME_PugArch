@@ -126,8 +126,9 @@ export default function BuyerProfile() {
       const token = localStorage.getItem('token');
       if (!token) return;
       const res = await api.fetch('/api/buyer-showcase/items', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        headers: { Authorization: `Bearer ${token}` },
+        skipCache: true
+      } as any);
       if (res.ok) {
         const body = await res.json();
         setItems(body.data || []);
@@ -331,7 +332,7 @@ export default function BuyerProfile() {
   };
 
   const handleItemExcelUpload = async (e: any, force = false) => {
-    const file = e.target?.files?.[0] || pendingUploadFile;
+    const file = e?.target?.files?.[0] || pendingUploadFile;
     if (!file) return;
     setPendingUploadFile(file);
     // Clear previous upload results

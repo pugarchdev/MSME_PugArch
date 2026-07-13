@@ -22,6 +22,7 @@ export interface UploadOptions {
 }
 
 import { BASE_URL } from '../../lib/api';
+import { getCookieValue } from '../../lib/auth';
 
 const resolveUploadUrl = () => {
   return `${BASE_URL}/api/upload`;
@@ -35,10 +36,16 @@ export const uploadDeliveryFile = (file: File, opts: UploadOptions = {}): Promis
     formData.append('entityType', opts.entityType || 'delivery');
 
     xhr.open('POST', resolveUploadUrl(), true);
+    xhr.withCredentials = true;
 
     const headers = authHeaders();
     for (const [key, value] of Object.entries(headers)) {
       xhr.setRequestHeader(key, value);
+    }
+
+    const csrfToken = getCookieValue('csrfToken');
+    if (csrfToken) {
+      xhr.setRequestHeader('X-CSRF-Token', csrfToken);
     }
 
     xhr.upload.addEventListener('progress', event => {

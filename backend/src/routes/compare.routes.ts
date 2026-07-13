@@ -169,7 +169,7 @@ router.get('/requirements/:id/responses/compare', authenticate, authorize('buyer
     const ownsRequirement = requirement.createdById === req.user?.id || requirement.buyerOrganizationId === req.user?.organizationId;
     if (!isPrivileged(req) && !ownsRequirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
     const responses = await db.requirementResponse.findMany({
-      where: { id: { in: responseIds }, requirementId },
+      where: { id: { in: responseIds }, requirementId, status: { not: 'DRAFT' } },
       include: {
         sellerOrganization: { select: { id: true, organizationName: true, verificationStatus: true, city: true, district: true, state: true } },
         sellerUser: { select: { id: true, name: true, email: true, mobile: true } }
@@ -239,6 +239,79 @@ router.get('/procurement-bids/:id/submissions/compare', authenticate, authorize(
     return apiResponse.success(res, { bid: maskSensitive(bid), submissions: maskSensitive(ranked) });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to compare procurement submissions', error.code || 'PROCUREMENT_SUBMISSION_COMPARE_ERROR');
+  }
+});
+
+router.get('/quote-requests/:id/responses/compare', authenticate, authorize('buyer', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const quoteRequestId = Number(req.params.id);
+    const quote = await db.quoteRequest.findUnique({
+      where: { id: quoteRequestId },
+      include: {
+        buyer: {
+          select: { id: true, name: true, email: true }
+        },
+        quoteResponses: {
+          where: { status: { not: 'DRAFT' } },
+          include: {
+            seller: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                mobile: true,
+                sellerProfile: {
+                  select: {
+                    businessName: true,
+                    organizationType: true,
+                    msmeCategory: true,
+                    city: true,
+                    state: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: [{ rank: { sort: 'asc', nulls: 'last' } }, { evaluatedPrice: 'asc' }, { totalAmount: 'asc' }, { createdAt: 'asc' }]
+        }
+      }
+    });
+    if (!quote) return apiResponse.error(res, 404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
+    const ownsQuote = quote.buyerId === req.user?.id || quote.buyer?.id === req.user?.id;
+    if (!isPrivileged(req) && !ownsQuote) return apiResponse.error(res, 404, 'Quote request not found', 'QUOTE_REQUEST_NOT_FOUND');
+
+    const responses = quote.quoteResponses || [];
+
+    // Label each response with L1/L2/L3 rank
+    const ranked = responses.map((r: any) => {
+      const priceForEval = r.evaluatedPrice ? Number(r.evaluatedPrice) : Number(r.totalAmount || 0);
+      const rankLabel = r.rank ? `L${r.rank}` : null;
+      const isDisqualified = r.technicalStatus === 'NOT_QUALIFIED';
+      return {
+        ...r,
+        priceForEval,
+        rankLabel,
+        isDisqualified
+      };
+    });
+
+    // Compute highlights using evaluatedPrice where available
+    const prices = ranked.map((r: any) => r.priceForEval).filter((v: number) => v > 0);
+    const lowestPrice = prices.length ? Math.min(...prices) : 0;
+    const highestPrice = prices.length ? Math.max(...prices) : 0;
+    const averagePrice = prices.length ? prices.reduce((a: number, b: number) => a + b, 0) / prices.length : 0;
+    const priceDiff = highestPrice - lowestPrice;
+
+    const deliveryDaysList = ranked.map((r: any) => ({ id: r.id, days: r.deliveryDays || Infinity }));
+    const minDeliveryDays = deliveryDaysList.length ? Math.min(...deliveryDaysList.map((d: any) => d.days)) : Infinity;
+
+    return apiResponse.success(res, {
+      quoteRequest: maskSensitive(quote),
+      responses: maskSensitive(ranked),
+      highlights: { lowestPrice, highestPrice, averagePrice, priceDiff, minDeliveryDays }
+    });
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to compare quotations', error.code || 'QUOTE_RESPONSE_COMPARE_ERROR');
   }
 });
 

@@ -21,13 +21,14 @@ const MarketplaceHome = lazy(() => import('./features/marketplace/pages/Marketpl
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const MarketplaceProductDetail = lazy(() => import('./features/marketplace/pages/MarketplaceProductDetail'));
 const MarketplaceServiceDetail = lazy(() => import('./features/marketplace/pages/MarketplaceServiceDetail'));
+const BuyerRequirementDetailsPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementDetailsPage'));
 const PurchaseOrders = lazy(() => import('./views/PurchaseOrders'));
+const RepeatOrders = lazy(() => import('./views/RepeatOrders'));
+const RateContractsPage = lazy(() => import('./features/rateContract/pages/RateContractsPage'));
 const CataloguePage = lazy(() => import('./features/catalogue/pages/CataloguePage'));
 const InvoiceRegisterPage = lazy(() => import('./features/invoices/pages/InvoiceRegisterPage'));
 const PaymentHistoryPage = lazy(() => import('./features/payments/pages/PaymentHistoryPage'));
 
-const BuyerRequirementListPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementListPage'));
-const BuyerRequirementDetailPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementDetailPage'));
 const GuestCartPage = lazy(() => import('./features/marketplace/pages/GuestCartPage'));
 const SellerOnboarding = lazy(() => import('./views/SellerOnboarding'));
 const BuyerOnboarding = lazy(() => import('./views/BuyerOnboarding'));
@@ -39,17 +40,12 @@ const ShgOnboarding = lazy(() => import('./views/ShgOnboarding'));
 const ShgRegistrationFlow = lazy(() => import('./views/ShgRegistrationFlow'));
 const RegisterSelection = lazy(() => import('./views/RegisterSelection'));
 const BuyerProfile = lazy(() => import('./views/BuyerProfile'));
-const PublicBuyerRequirements = lazy(() => import('./views/PublicBuyerRequirements'));
-const Tenders = lazy(() => import('./views/Tenders'));
 const Vendors = lazy(() => import('./views/Vendors'));
-const Quotations = lazy(() => import('./views/Quotations'));
 const ParcelTracking = lazy(() => import('./views/ParcelTracking'));
 const DeliveryListPage = lazy(() => import('./features/delivery/pages/DeliveryListPage'));
 const DeliveryDetailPage = lazy(() =>
   import('./features/delivery/pages/DeliveryDetailPage').then(m => ({ default: m.DeliveryDetailPage }))
 );
-const SellerTenders = lazy(() => import('./views/SellerTenders'));
-const CreateQuotation = lazy(() => import('./views/CreateQuotation'));
 const SellerSettings = lazy(() => import('./views/SellerSettings'));
 const Profile = lazy(() => import('./views/Profile'));
 const CatalogueFormPage = lazy(() => import('./features/catalogue/pages/CatalogueFormPage'));
@@ -59,8 +55,6 @@ const AdminRecordsPage = lazy(() => import('./features/admin/pages/AdminRecordsP
 const RatingsPage = lazy(() => import('./features/ratings/pages/RatingsPage'));
 const ComplianceRulesPage = lazy(() => import('./features/compliance/pages/ComplianceRulesPage'));
 const FraudAlertsPage = lazy(() => import('./features/fraudAlerts/pages/FraudAlertsPage'));
-const RequirementsPage = lazy(() => import('./features/requirements/pages/RequirementsPage'));
-const RfqPage = lazy(() => import('./features/rfq/pages/RfqPage'));
 const DirectPurchasePage = lazy(() => import('./features/directPurchase/pages/DirectPurchasePage'));
 const AddressBookPage = lazy(() => import('./features/directPurchase/pages/AddressBookPage'));
 const RbacPanel = lazy(() => import('./views/RbacPanel'));
@@ -71,9 +65,6 @@ const TeamManagementPage = lazy(() => import('./features/orgTeam/pages/TeamManag
 const AcceptInvitePage = lazy(() => import('./features/orgTeam/pages/AcceptInvitePage'));
 const InviteSignupPage = lazy(() => import('./features/orgTeam/pages/InviteSignupPage'));
 const CartPage = lazy(() => import('./features/cart/pages/CartPage'));
-const CartApprovalPage = lazy(() => import('./features/cart/pages/CartApprovalPage'));
-const TechnicalReviewPage = lazy(() => import('./features/cart/pages/TechnicalReviewPage'));
-const ApprovalQueuePage = lazy(() => import('./features/approvals/pages/ApprovalQueuePage'));
 const GrnListPage = lazy(() => import('./features/grn/pages/GrnListPage'));
 const GrnDetailPage = lazy(() => import('./features/grn/pages/GrnDetailPage'));
 const TenderEvaluationPage = lazy(() => import('./features/tenderEval/pages/TenderEvaluationPage'));
@@ -89,6 +80,7 @@ const PaymentsReportPage = lazy(() => import('./features/reports/pages/PaymentsR
 const SuppliersReportPage = lazy(() => import('./features/reports/pages/SuppliersReportPage'));
 const VendorStorefrontPage = lazy(() => import('./features/vendors/pages/VendorStorefrontPage'));
 const MarketplaceSellerStore = lazy(() => import('./features/marketplace/pages/MarketplaceSellerStore'));
+const PublicBuyerRequirements = lazy(() => import('./views/PublicBuyerRequirements'));
 const MarketplaceSellersPage = lazy(() => import('./features/marketplace/pages/MarketplaceSellersPage'));
 const MarketplaceBuyersPage = lazy(() => import('./features/marketplace/pages/MarketplaceBuyersPage'));
 const AuctionLivePage = lazy(() => import('./features/auctions/pages/AuctionLivePage'));
@@ -101,7 +93,6 @@ const BidDetailsPage = lazy(() => import('./features/procurementBid/pages/BidDet
 const BidParticipationPage = lazy(() => import('./features/procurementBid/pages/BidParticipationPage'));
 const BidResultsPage = lazy(() => import('./features/procurementBid/pages/BidResultsPage'));
 const BidComparisonPage = lazy(() => import('./features/procurementBid/pages/BidComparisonPage'));
-const BuyerPublishBidPage = lazy(() => import('./features/procurementBid/pages/BuyerPublishBidPage'));
 const AdminBidManagementPage = lazy(() => import('./features/procurementBid/pages/AdminBidManagementPage'));
 const ProcurementOrdersPage = lazy(() => import('./features/procurementBid/pages/ProcurementOrdersPage'));
 const ReverseAuctionListPage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionListPage'));
@@ -122,12 +113,17 @@ const ProcurementDraftsPage = lazy(() => import('./features/procurementWizard/pa
 // The old bidCreationWizardV2 files are preserved but no longer routed.
 const BuyerProcurementHub = lazy(() => import('./features/procurement/pages/BuyerProcurementHub'));
 const MyProcurementsPage = lazy(() => import('./features/procurement/pages/MyProcurementsPage'));
+const SupplierResponsesPage = lazy(() => import('./features/procurement/pages/SupplierResponsesPage'));
 const ProcurementCheckoutPage = lazy(() => import('./features/procurementCheckoutV2/pages/ProcurementCheckoutPage'));
 const SellerOpportunitiesPage = lazy(() => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'));
-const SellerProcurementHub = lazy(() => import('./features/sellerOpportunities/pages/SellerProcurementHub'));
+const SellerBidsPage = lazy(() => import('./features/procurementBid/pages/SellerBidsPage'));
 const SellerEventListPage = lazy(() => import('./features/sellerOpportunities/pages/SellerEventListPage'));
 const SellerEventDetailPage = lazy(() => import('./features/sellerOpportunities/pages/SellerEventDetailPage'));
-const FactoringDashboard = lazy(() => import('./views/FactoringDashboard'));
+const TenderDetailPage = lazy(() => import('./features/tenders/pages/TenderDetailPage'));
+const RfqDetailPage = lazy(() => import('./features/rfq/pages/RfqDetailPage'));
+const RfpDetailPage = lazy(() => import('./features/rfq/pages/RfpDetailPage'));
+const SubmitQuotationPage = lazy(() => import('./features/rfq/pages/SubmitQuotationPage'));
+const RfqComparisonPage = lazy(() => import('./features/rfq/pages/RfqComparisonPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -203,7 +199,6 @@ const rolePreloaders = {
   ],
   seller: [
     () => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'),
-    () => import('./features/sellerOpportunities/pages/SellerProcurementHub'),
     () => import('./features/sellerOpportunities/pages/SellerEventListPage'),
   ],
   admin: [
@@ -256,25 +251,27 @@ const isPublicRoute = (route: string) => {
     '/invite/accept',
     '/invite/signup',
     '/cart',
-    '/tenders',
     '/help',
     '/user-guide',
     '/marketplace/products',
     '/marketplace/services',
     '/marketplace/sellers',
     '/marketplace/cart',
-    '/marketplace/requirements',
     '/marketplace/compare',
     '/bids',
+    '/tenders',
+    '/seller/rfq',
+    '/seller/rfp',
   ];
 
   if (publicPaths.includes(route)) return true;
   if (publicInfoRoutes.includes(route)) return true;
   if (route.startsWith('/marketplace')) return true;
   if (route.startsWith('/bids')) return true;
+  if (route.startsWith('/tenders')) return true;
   if (route.startsWith('/admin/bids')) return true;
-  if (/^\/vendors\/\d+$/.test(route)) return true;
-  if (/^\/buyer-requirements\/\d+$/.test(route)) return true;
+  if (/^\/vendors\/-?\d+$/.test(route)) return true;
+  if (/^\/buyer-requirements\/-?\d+$/.test(route)) return true;
   return false;
 };
 
@@ -377,7 +374,7 @@ export default function App() {
           return;
         }
       }
-      if (!['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/tenders', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
+      if (!['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
         router.replace('/');
       }
     }
@@ -454,20 +451,28 @@ export default function App() {
     if (pathname === '/marketplace/sellers') return <MarketplaceSellersPage />;
     if (pathname === '/marketplace/buyers') return <MarketplaceBuyersPage />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
-    if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
+    
     if (pathname === '/marketplace/compare') return <MarketplaceComparePage />;
-    if (/^\/marketplace\/requirements\/-?\d+$/.test(pathname)) return <BuyerRequirementDetailPage />;
-    if (pathname === '/bids') return <BidsListingPage />;
-    if (pathname === '/tenders') return <SellerTenders />;
-    if (/^\/bids\/[^/]+\/participate$/.test(pathname)) return <BidParticipationPage />;
+    
+    if (pathname === '/bids') return <Redirect to="/marketplace" />;
+    if (pathname === '/tenders') return <TenderDetailPage />;
+    
+    if (/^\/bids\/[^/]+\/participate$/.test(pathname)) {
+      if (user && user.role !== 'seller') {
+        const bidId = pathname.split('/')[2];
+        return <Redirect to={`/bids/${bidId}`} />;
+      }
+      return <BidParticipationPage />;
+    }
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
     if (/^\/bids\/[^/]+\/compare$/.test(pathname)) return <BidComparisonPage />;
-    if (/^\/bids\/[^/]+$/.test(pathname)) return <BidDetailsPage />;
-    if (pathname === '/buyer/publish-bid') {
-      if (!user) return <Redirect to="/login?returnUrl=/buyer/publish-bid" />;
-      if (user.role !== 'buyer') return <Redirect to={authenticatedHome} />;
-      return <BuyerPublishBidPage />;
+    if (/^\/bids\/[^/]+$/.test(pathname)) {
+      if (user && user.role === 'buyer') {
+        return <Redirect to="/buyer/my-procurements" />;
+      }
+      return <BidDetailsPage />;
     }
+
     if (pathname === '/admin/bids') {
       const isFeatureEnabled = user?.enabledFeatures?.includes('admin-bid-approval');
       if (!isFeatureEnabled) {
@@ -475,17 +480,30 @@ export default function App() {
       }
       return <AdminBidManagementPage />;
     }
-    if (/^\/marketplace\/products\/\d+$/.test(pathname)) return <MarketplaceProductDetail />;
-    if (/^\/marketplace\/services\/\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
+    if (/^\/marketplace\/products\/-?\d+$/.test(pathname)) return <MarketplaceProductDetail />;
+    if (/^\/marketplace\/services\/-?\d+$/.test(pathname)) return <MarketplaceServiceDetail />;
+    if (/^\/marketplace\/requirements\/-?\d+$/.test(pathname)) return <BuyerRequirementDetailsPage />;
+
     // Public vendor store — accessible to everyone
-    if (/^\/vendors\/\d+$/.test(pathname)) return <MarketplaceSellerStore />;
+    if (/^\/vendors\/-?\d+$/.test(pathname)) return <MarketplaceSellerStore />;
     {
-      const buyerRequirementsMatch = pathname.match(/^\/buyer-requirements\/(\d+)$/);
+      const buyerRequirementsMatch = pathname.match(/^\/buyer-requirements\/(-?\d+)$/);
       if (buyerRequirementsMatch) {
         const buyerId = Number(buyerRequirementsMatch[1]);
-        if (Number.isFinite(buyerId) && buyerId > 0) return <PublicBuyerRequirements buyerId={buyerId} />;
+        if (Number.isFinite(buyerId)) return <PublicBuyerRequirements buyerId={buyerId} />;
       }
     }
+
+    if (pathname === '/seller/rfq') return <RfqDetailPage />;
+    if (pathname === '/seller/rfp') return <RfpDetailPage />;
+    {
+      const reverseAuctionDetailMatch = pathname.match(/^\/reverse-auctions\/(\d+)$/);
+      if (reverseAuctionDetailMatch) {
+        const id = Number(reverseAuctionDetailMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <ReverseAuctionDetailPage id={id} />;
+      }
+    }
+
     if (pathname === '/cart' && !user) return <GuestCartPage />;
     if (!user) return null;
     const shgRouteOk = isCurrentShg || roleOk(user.role, ['shg']);
@@ -510,8 +528,15 @@ export default function App() {
     if (pathname === '/cart' && roleOk(user.role, ['buyer', 'seller'])) return <CartPage />;
     if (pathname === '/admin' && roleOk(user.role, ['admin'])) return <Dashboard />;
     if (pathname === '/seller/onboarding' && roleOk(user.role, ['seller'])) return <SellerOnboarding />;
-    if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage />;
-    if (pathname === '/seller/procurement' && roleOk(user.role, ['seller'])) return <SellerProcurementHub />;
+    
+    // Seller Opportunities (explicit route-to-prop mapping)
+    if (pathname === '/seller/opportunities' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="" />;
+    if (pathname === '/seller/opportunities/rfqs' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="RFQ" />;
+    if (pathname === '/seller/opportunities/rfps' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="RFP" />;
+    if (pathname === '/seller/opportunities/open-tenders' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="Open Tender" />;
+    if (pathname === '/seller/opportunities/invitations' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="Limited Tender" />;
+    if (pathname === '/seller/opportunities/auctions' && roleOk(user.role, ['seller'])) return <SellerOpportunitiesPage key={pathname} subRouteType="Reverse Auction" />;
+    
     if (pathname === '/seller/procurement/events' && roleOk(user.role, ['seller'])) return <SellerEventListPage />;
     {
       const sellerEventDetailMatch = pathname.match(/^\/seller\/procurement\/events\/([^/]+)$/);
@@ -519,6 +544,7 @@ export default function App() {
         return <SellerEventDetailPage id={sellerEventDetailMatch[1]} />;
       }
     }
+    if (pathname === '/seller/rfq/submit-quotation' && roleOk(user.role, ['seller'])) return <SubmitQuotationPage />;
     if (pathname === '/seller/marketplace' && roleOk(user.role, ['seller'])) return <MarketplaceProductList />;
     if (pathname === '/seller/catalogue' && roleOk(user.role, ['seller'])) return <CataloguePage mode="seller" />;
     if (pathname === '/seller/products/new' && roleOk(user.role, ['seller'])) return <CatalogueFormPage />;
@@ -532,9 +558,17 @@ export default function App() {
     if (pathname === '/seller/disputes' && roleOk(user.role, ['seller'])) return <DisputesPage />;
     if (pathname === '/seller/messages' && roleOk(user.role, ['seller'])) return <MessagesPage />;
     if (pathname === '/seller/ratings' && roleOk(user.role, ['seller'])) return <RatingsPage endpoint={`/api/ratings/supplier/${user.id}`} mode="supplier" />;
-    if (pathname === '/seller/tenders' && roleOk(user.role, ['seller'])) return <SellerTenders />;
+    
     if (pathname === '/seller/settings' && roleOk(user.role, ['seller'])) return <SellerSettings />;
-    if (/^\/seller\/tenders\/[^/]+\/bid$/.test(pathname) && roleOk(user.role, ['seller'])) return <CreateQuotation />;
+    
+    // Seller Bids (explicit route-to-prop mapping)
+    if (pathname === '/seller/bids/submitted' && roleOk(user.role, ['seller'])) return <SellerBidsPage key={pathname} subRouteType="submitted" />;
+    if (pathname === '/seller/bids/draft' && roleOk(user.role, ['seller'])) return <SellerBidsPage key={pathname} subRouteType="draft" />;
+    if (pathname === '/seller/bids/awarded' && roleOk(user.role, ['seller'])) return <SellerBidsPage key={pathname} subRouteType="awarded" />;
+    
+    // Seller & Buyer repeat orders
+    if (pathname === '/orders/repeat' && roleOk(user.role, ['buyer', 'seller'])) return <RepeatOrders />;
+    
     if (pathname === '/buyer/onboarding' && roleOk(user.role, ['buyer'])) return <BuyerOnboarding />;
     if (pathname === '/buyer/profile' && roleOk(user.role, ['buyer'])) return <BuyerProfile />;
     if (pathname === '/buyer/create-bid' && roleOk(user.role, ['buyer'])) {
@@ -542,34 +576,34 @@ export default function App() {
     }
     if (pathname === '/buyer/procurement/create' && roleOk(user.role, ['buyer'])) return <CreateProcurementPage />;
     if (pathname === '/buyer/procurement/drafts' && roleOk(user.role, ['buyer'])) return <ProcurementDraftsPage />;
-    if (pathname === '/buyer/procurements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
-    if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <Quotations />;
-    if (pathname === '/buyer/procurement/approvals' && roleOk(user.role, ['buyer'])) return <ApprovalQueuePage />;
+    if (pathname === '/buyer/procurement/responses' && roleOk(user.role, ['buyer'])) return <SupplierResponsesPage />;
+    {
+      const rfqCompareMatch = pathname.match(/^\/buyer\/quote-requests\/(\d+)\/compare$/);
+      if (rfqCompareMatch && roleOk(user.role, ['buyer'])) {
+        const id = Number(rfqCompareMatch[1]);
+        if (Number.isFinite(id) && id > 0) return <RfqComparisonPage id={id} />;
+      }
+    }
+    
+    
     if (pathname === '/buyer/marketplace' && roleOk(user.role, ['buyer'])) return <MarketplaceProductList />;
-    if (pathname === '/buyer/requirements' && roleOk(user.role, ['buyer'])) return <RequirementsPage />;
+    
     if (pathname === '/buyer/requirements/new' && roleOk(user.role, ['buyer'])) {
       return <LegacyNoticePage title="New Buyer Requirement" />;
     }
     if (pathname === '/buyer/procurement' && roleOk(user.role, ['buyer'])) return <BuyerProcurementHub />;
     if (pathname === '/buyer/my-procurements' && roleOk(user.role, ['buyer'])) return <MyProcurementsPage />;
+    if (pathname === '/buyer/rate-contracts' && roleOk(user.role, ['buyer'])) return <RateContractsPage />;
     if (pathname === '/buyer/procurement/checkout' && roleOk(user.role, ['buyer'])) return <ProcurementCheckoutPage />;
-    if (pathname === '/buyer/direct-purchase' && roleOk(user.role, ['buyer'])) {
-      return <Redirect to="/buyer/procurement/create?method=DIRECT_PURCHASE" />;
-    }
-    if (pathname === '/buyer/direct-purchase/orders' && roleOk(user.role, ['buyer'])) {
-      return <Redirect to="/buyer/my-procurements?type=DIRECT_PURCHASE" />;
-    }
     if (pathname === '/buyer/address-book' && roleOk(user.role, ['buyer'])) return <AddressBookPage />;
-    if (pathname === '/buyer/rfq' && roleOk(user.role, ['buyer'])) return <RfqPage />;
-    if (pathname === '/seller/rfq' && roleOk(user.role, ['seller'])) return <RfqPage />;
-    if (pathname === '/seller/direct-purchase' && roleOk(user.role, ['seller'])) return <DirectPurchasePage />;
-    if (/^\/buyer\/tenders\/[^/]+$/.test(pathname) && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Tender Detail" eyebrow="Tendering" description="Tender detail and linked procurement records." endpoint="/api/tenders" />;
-    if (pathname === '/buyer/tenders' && roleOk(user.role, ['buyer'])) return <Tenders />;
+    
+    
     if (pathname === '/buyer/vendors' && roleOk(user.role, ['buyer'])) return <Vendors />;
     if (pathname === '/buyer/saved-suppliers' && roleOk(user.role, ['buyer'])) return <SavedSuppliersPage />;
-    if (pathname === '/quotations' && roleOk(user.role, ['seller'])) return <Redirect to="/seller/procurement/events?filter=submitted" />;
-    if (pathname === '/quotations' && roleOk(user.role, ['buyer'])) return <Quotations />;
+    
+    
     if (pathname === '/buyer/orders' && roleOk(user.role, ['buyer'])) return <PurchaseOrders />;
+    if (pathname === '/buyer/repeat-orders' && roleOk(user.role, ['buyer'])) return <RepeatOrders />;
     if (pathname === '/buyer/inspection' && roleOk(user.role, ['buyer'])) return <GenericFeaturePage title="Inspection" eyebrow="Quality Control" description="Inspection reports connected to purchase orders." endpoint="/api/purchase-orders" />;
     if (pathname === '/buyer/invoices' && roleOk(user.role, ['buyer'])) return <InvoiceRegisterPage role="buyer" />;
     if (pathname === '/buyer/payments' && roleOk(user.role, ['buyer'])) return <PaymentHistoryPage />;
@@ -583,7 +617,7 @@ export default function App() {
     if (pathname === '/payments/invoices' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <InvoiceRegisterPage role={user.role === 'admin' ? 'admin' : user.role === 'seller' ? 'seller' : 'buyer'} />;
     if (pathname === '/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
     if (pathname === '/payments/escrow' && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <EscrowPage />;
-    if (pathname === '/factoring' && roleOk(user.role, ['seller', 'financier', 'admin'])) return <FactoringDashboard />;
+    
     if (pathname === '/orders' && roleOk(user.role, ['buyer', 'seller'])) return <PurchaseOrders />;
     if (pathname === '/orders' && roleOk(user.role, ['admin'])) return <ProcurementOrdersPage />;
     if (pathname === '/orders/delivery-confirmation' && roleOk(user.role, ['buyer'])) return <GrnListPage />;
@@ -627,9 +661,9 @@ export default function App() {
     if (pathname === '/notifications') return <NotificationCenter />;
     if (pathname === '/org/team') return <TeamManagementPage />;
     if (pathname === '/cart') return <CartPage />;
-    if (pathname === '/cart/approvals') return <CartApprovalPage />;
-    if (pathname === '/cart/technical-review') return <TechnicalReviewPage />;
-    if (pathname === '/approvals') return <ApprovalQueuePage />;
+    
+    
+    
     if (pathname === '/grn') return <GrnListPage />;
     {
       const grnDetailMatch = pathname.match(/^\/grn\/(\d+)$/);
@@ -647,10 +681,17 @@ export default function App() {
         const id = Number(auctionLiveMatch[1]);
         if (Number.isFinite(id) && id > 0) return <AuctionLivePage id={id} />;
       }
-      if (pathname === '/reverse-auctions') return <ReverseAuctionListPage />;
+
+      if (pathname === '/reverse-auctions') {
+        if (user.role === 'seller') {
+          return <Redirect to="/seller/opportunities/auctions" />;
+        }
+        return <ReverseAuctionListPage />;
+      }
       if (pathname === '/reverse-auctions/create') {
         return <Redirect to="/buyer/procurement/create?method=REVERSE_AUCTION" />;
       }
+
       const reverseAuctionLiveMatch = pathname.match(/^\/reverse-auctions\/(\d+)\/live$/);
       if (reverseAuctionLiveMatch) {
         const id = Number(reverseAuctionLiveMatch[1]);
@@ -660,11 +701,6 @@ export default function App() {
       if (reverseAuctionResultMatch) {
         const id = Number(reverseAuctionResultMatch[1]);
         if (Number.isFinite(id) && id > 0) return <AuctionResultPage id={id} />;
-      }
-      const reverseAuctionDetailMatch = pathname.match(/^\/reverse-auctions\/(\d+)$/);
-      if (reverseAuctionDetailMatch) {
-        const id = Number(reverseAuctionDetailMatch[1]);
-        if (Number.isFinite(id) && id > 0) return <ReverseAuctionDetailPage id={id} />;
       }
     }
     if (['/seller/awards', '/buyer/procurement-orders', '/admin/procurement-orders'].includes(pathname) && roleOk(user.role, ['buyer', 'seller', 'admin'])) return <ProcurementOrdersPage />;
@@ -683,9 +719,10 @@ export default function App() {
     pathname === '/marketplace/compare' ||
     pathname === '/marketplace/products' ||
     pathname === '/marketplace/services' ||
-    /^\/marketplace\/products\/\d+$/.test(pathname) ||
-    /^\/marketplace\/services\/\d+$/.test(pathname);
-  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/\d+$/.test(pathname) || /^\/buyer-requirements\/\d+$/.test(pathname);
+    /^\/marketplace\/products\/-?\d+$/.test(pathname) ||
+    /^\/marketplace\/services\/-?\d+$/.test(pathname) ||
+    /^\/marketplace\/requirements\/-?\d+$/.test(pathname);
+  const isMarketplaceRoute = (pathname.startsWith('/marketplace') && !useDashboardShellForMarketplace) || pathname === '/buyer/publish-bid' || /^\/vendors\/-?\d+$/.test(pathname) || /^\/buyer-requirements\/-?\d+$/.test(pathname);
   const showDashboardLayout = user && !fixedAuthRoutes.includes(pathname) && !isMarketplaceRoute && !publicInfoRoutes.includes(pathname);
   const showOrgApprovalBanner = showDashboardLayout && !['master_admin', 'super_admin'].includes(user?.role || '');
 

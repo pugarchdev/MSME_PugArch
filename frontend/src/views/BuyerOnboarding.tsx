@@ -153,6 +153,39 @@ const SUBMITTED_REVIEW_STATUSES = new Set([
 const hasSubmittedApplication = (userRecord: any) => userRecord?.sectionStatus?.submitted === true;
 const isPrimaryUserType = (businessType: unknown) => PRIMARY_USER_TYPES.includes(String(businessType || ''));
 
+const findMatchedState = (stateName: string): string => {
+  if (!stateName) return '';
+  const clean = (str: string) => str
+    .toUpperCase()
+    .replace(/\bAND\b/g, '&')
+    .replace(/\bISLANDS\b/g, '')
+    .replace(/[^A-Z0-9&]/g, '')
+    .trim();
+  const normalizedSearch = clean(stateName);
+  const matched = indiaStates.find(s => {
+    const normalizedState = clean(s);
+    return normalizedState === normalizedSearch || 
+           normalizedState.includes(normalizedSearch) || 
+           normalizedSearch.includes(normalizedState);
+  });
+  return matched || '';
+};
+
+const findMatchedDistrict = (matchedState: string, districtName: string): string => {
+  if (!matchedState || !districtName) return '';
+  const districts = indiaStatesDistricts[matchedState] || [];
+  const clean = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const normalizedSearch = clean(districtName);
+  const matched = districts.find(d => {
+    const normalizedDistrict = clean(d);
+    return normalizedDistrict === normalizedSearch ||
+           normalizedDistrict.includes(normalizedSearch) ||
+           normalizedSearch.includes(normalizedDistrict);
+  });
+  return matched || '';
+};
+
+
 const getProfileStatus = (userRecord: any, profileRecord: any) => {
   if (userRecord?.isDualRole) {
     return String(profileRecord?.verificationStatusEnum || profileRecord?.verificationStatus || 'PENDING');
@@ -455,8 +488,9 @@ export default function BuyerOnboarding() {
     });
   }, [formData.businessType, registrationDetails.state, registrationDetails.district]);
 
-  const fetchGstDetails = async () => {
-    const gstin = String(formData.gst || '').trim().toUpperCase();
+  const fetchGstDetails = async (forcedGstin?: string | React.MouseEvent) => {
+    const isForcedString = typeof forcedGstin === 'string';
+    const gstin = String(isForcedString ? forcedGstin : formData.gst || '').trim().toUpperCase();
     const gstError = validateField('gst', gstin);
     if (gstError) {
       setTouched(prev => ({ ...prev, gst: true }));
@@ -468,19 +502,22 @@ export default function BuyerOnboarding() {
     setIsFetchingGst(true);
     activeGstinLookupRef.current = gstin;
     setErrors(prev => ({ ...prev, gst: '', registeredAddress: '' }));
-    setFormData((prev: any) => {
-      const cleared = { ...prev, gst: gstin };
-      cleared.country = 'India';
-      cleared.registeredAddress = '';
-      // Preserve state and district for primary user types (auto-loaded from registration)
-      if (!isPrimaryUserType(prev.businessType)) {
-        cleared.state = '';
-        cleared.district = '';
-      }
-      cleared.city = '';
-      cleared.pincode = '';
-      return cleared;
-    });
+    
+    if (!isForcedString) {
+      setFormData((prev: any) => {
+        const cleared = { ...prev, gst: gstin };
+        cleared.country = 'India';
+        cleared.registeredAddress = '';
+        // Preserve state and district for primary user types (auto-loaded from registration)
+        if (!isPrimaryUserType(prev.businessType)) {
+          cleared.state = '';
+          cleared.district = '';
+        }
+        cleared.city = '';
+        cleared.pincode = '';
+        return cleared;
+      });
+    }
 
     try {
       const res = await api.fetch(`/api/utils/gst-verify/${gstin}`, {
@@ -496,19 +533,27 @@ export default function BuyerOnboarding() {
         const apiPan = String(data.pan || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         const gstinPan = gstin.slice(2, 12);
         const resolvedPan = PAN_RE.test(apiPan) ? apiPan : (PAN_RE.test(gstinPan) ? gstinPan : '');
+
+        const matchedState = findMatchedState(data.state);
+        const matchedDistrict = findMatchedDistrict(matchedState, data.district || data.city);
+
         setFormData((prev: any) => ({
           ...prev,
           organizationName: data.legalName?.trim() || prev.organizationName,
           registeredAddress: data.address?.trim() || prev.registeredAddress,
-          state: data.state?.trim() || prev.state,
+          state: matchedState || prev.state,
+          district: matchedDistrict || prev.district,
           city: data.city?.trim() || prev.city,
           pincode: String(data.pincode || '').replace(/\D/g, '').slice(0, 6) || prev.pincode,
           pan: resolvedPan || prev.pan,
         }));
+        
+        lastFetchedGstinRef.current = gstin;
+
         if (data.partial) {
           toast.message(data.message || 'Partial GST details applied. Please verify manually.');
         } else {
-          toast.success(`GST verified: ${data.status || 'Status available'}`);
+          toast.success(`GST verified and address auto-filled: ${data.status || 'Status available'}`);
         }
       } else {
         const err = await res.json().catch(() => ({}));
@@ -523,6 +568,36 @@ export default function BuyerOnboarding() {
       setIsFetchingGst(false);
     }
   };
+
+  // Auto-fetch GST details on mount if GST is verified but address details are not fully filled
+  useEffect(() => {
+    if (isFetching || isProfileLocked) return;
+
+    const gstin = String(formData.gst || profileVerifiedGstin || registrationVerifiedGstin || '').trim().toUpperCase();
+    if (!gstin || !hasVerifiedGst) return;
+
+    // Check if the address fields are empty or incomplete/placeholders
+    const stateVal = String(formData.state || '').trim();
+    const districtVal = String(formData.district || '').trim();
+    const addressVal = String(formData.registeredAddress || '').trim();
+    const pincodeVal = String(formData.pincode || '').trim();
+    const cityVal = String(formData.city || '').trim();
+
+    const isAddressIncomplete = 
+      !addressVal || 
+      addressVal.toLowerCase() === 'maharashtra' ||
+      addressVal.toLowerCase() === stateVal.toLowerCase() ||
+      isPlaceholderValue(addressVal) ||
+      !stateVal ||
+      !districtVal ||
+      !pincodeVal ||
+      !cityVal;
+
+    if (isAddressIncomplete && lastFetchedGstinRef.current !== gstin && activeGstinLookupRef.current !== gstin) {
+      fetchGstDetails(gstin);
+    }
+  }, [isFetching, isProfileLocked, hasVerifiedGst, formData.gst, registrationVerifiedGstin, profileVerifiedGstin]);
+
 
   useEffect(() => {
     if (isFetching || isProfileLocked) return;
@@ -1441,6 +1516,7 @@ export default function BuyerOnboarding() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <Input label="Organization / Company Name" name="organizationName" value={formData.organizationName} onChange={handleChange} onBlur={handleBlur} error={getFieldError('organizationName')} required className="h-10" />
                     <Select label="Business Type" name="businessType" value={formData.businessType} onChange={handleChange} onBlur={handleBlur} error={getFieldError('businessType')} required className="h-10" disabled={isPrimaryUserType(formData.businessType)}>
+                      <option value="GOVERNMENT">Government / Department</option>
                       <option value="Private Limited Company">Private Limited Company</option>
                       <option value="Public Limited Company">Public Limited Company</option>
                       <option value="Partnership Firm">Partnership Firm</option>

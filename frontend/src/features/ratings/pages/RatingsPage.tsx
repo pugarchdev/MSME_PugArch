@@ -70,26 +70,29 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
   const responseCoverage = summary?.count ? Math.round((writtenReviewCount / summary.count) * 100) : 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
-            {mode === 'supplier' ? 'Supplier Performance' : 'Buyer Performance'}
-          </p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950">Ratings</h1>
-          <p className="mt-1 max-w-2xl text-xs font-semibold text-slate-500">
-            Performance feedback across quality, delivery, communication, and completed procurement records.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {summary && summary.count > 0 && <RatingPill average={summary.average} count={summary.count} />}
-          <Button
-            variant="outline"
-            onClick={() => query.refetch()}
-            className="h-10 rounded-lg text-xs font-black uppercase"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12">
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">
+          {mode === 'supplier' ? 'Supplier Performance' : 'Buyer Performance'}
+        </p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">Ratings</h1>
+            <p className="mt-1 max-w-2xl text-sm font-semibold text-slate-500">
+              Performance feedback across quality, delivery, communication, and completed procurement records.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {summary && summary.count > 0 && <RatingPill average={summary.average} count={summary.count} />}
+            <Button
+              variant="outline"
+              onClick={() => query.refetch()}
+              className="h-10 rounded-lg text-xs font-black uppercase shadow-sm"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -134,29 +137,28 @@ export default function RatingsPage({ endpoint, mode = 'supplier' }: Props) {
         </Card>
       )}
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_190px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchTerm}
-              onChange={event => setSearchTerm(event.target.value)}
-              placeholder="Search supplier, buyer, PO, review..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-            />
-          </div>
-          <select
-            value={scoreFilter}
-            onChange={event => setScoreFilter(event.target.value)}
-            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
-          >
-            <option value="">All scores</option>
-            <option value="5">5 star</option>
-            <option value="4">4 star and above</option>
-            <option value="3">3 star and above</option>
-          </select>
-        </CardContent>
-      </Card>
+      {/* ── Filter Bar (border-y) ── */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="relative min-w-0 flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
+            placeholder="Search supplier, buyer, PO, review..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          />
+        </div>
+        <select
+          value={scoreFilter}
+          onChange={event => setScoreFilter(event.target.value)}
+          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+        >
+          <option value="">All scores</option>
+          <option value="5">5 star</option>
+          <option value="4">4 star and above</option>
+          <option value="3">3 star and above</option>
+        </select>
+      </div>
 
       {query.isLoading && !query.data ? (
         <ListSkeleton rows={3} />

@@ -235,6 +235,10 @@ const invalidatePrefixFor = (endpoint: string) => {
   const cleanPrefix = prefix.startsWith('/') ? prefix : '/' + prefix;
   prefixesToInvalidate.add(cleanPrefix);
 
+  if (cleanPrefix.startsWith('/api/buyer-showcase/items')) {
+    prefixesToInvalidate.add('/api/buyer-showcase/items');
+  }
+
   if (cleanPrefix.startsWith('/api/seller/products') || cleanPrefix.startsWith('/api/seller/services')) {
     prefixesToInvalidate.add('/api/seller/products');
     prefixesToInvalidate.add('/api/seller/services');
@@ -371,6 +375,9 @@ export const api = {
       }
       if (shouldCache && response.ok) {
         await writeGetCache(key, response);
+      }
+      if (response.ok && isUnsafeMethod(method)) {
+        invalidatePrefixFor(endpoint);
       }
       return response;
     }).catch(networkErrorResponse);

@@ -67,6 +67,19 @@ export default function BidsListingPage() {
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useResponsiveViewMode('phase7:bids-listing:view-mode');
 
+  // Route-based initial filter preset for seller bids sidebar links
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/seller/bids/submitted') {
+      setParticipation('Participated');
+      setStatus('All');
+    } else if (path === '/seller/bids/draft') {
+      setStatus('DRAFT');
+    } else if (path === '/seller/bids/awarded') {
+      setStatus('AWARDED');
+    }
+  }, []);
+
   // Modal states
   const [selectedBidId, setSelectedBidId] = useState<string | null>(null);
   const [detailedBid, setDetailedBid] = useState<ProcurementBid | null>(null);

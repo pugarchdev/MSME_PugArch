@@ -22,10 +22,16 @@ const assertBuyer = (actor: WorkflowActor) => {
 export const procurementWorkflow = {
   async createRequirement(actor: WorkflowActor, input: RequirementInput) {
     assertBuyer(actor);
+    let orgId = (actor as any).organizationId;
+    if (!orgId && actor.id) {
+      const u = await db.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } });
+      orgId = u?.organizationId || null;
+    }
     const requirement = await db.requirement.create({
       data: {
         requirementNumber: numberSeries('REQ'),
         buyerId: actor.id,
+        organizationId: orgId,
         title: input.title,
         description: input.description,
         categoryId: input.categoryId,
@@ -125,11 +131,28 @@ export const procurementWorkflow = {
     if (quoteRequest.quoteResponses.length > 0 || String(quoteRequest.status) !== 'pending') {
       throw new ApiError(409, 'RFQ response has already been submitted', 'QUOTE_RESPONSE_ALREADY_SUBMITTED');
     }
+    const isDraft = input.status === 'DRAFT';
     const response = await db.$transaction(async (tx: any) => {
+      const responseNumber = numberSeries('QR');
+      const ack = isDraft ? null : {
+        acknowledgementId: `ACK-QR-${responseNumber}-${Date.now()}`,
+        responseId: responseNumber,
+        timestamp: new Date().toISOString(),
+        message: 'Quotation submitted successfully.'
+      };
       const created = await tx.quoteResponse.create({
-        data: { ...input, quoteRequestId, sellerId: quoteRequest.sellerId, responseNumber: numberSeries('QR'), status: 'SUBMITTED' }
+        data: {
+          ...input,
+          quoteRequestId,
+          sellerId: quoteRequest.sellerId,
+          responseNumber,
+          status: isDraft ? 'DRAFT' : 'SUBMITTED',
+          acknowledgement: ack || undefined
+        }
       });
-      await tx.quoteRequest.update({ where: { id: quoteRequestId }, data: { status: 'responded', statusEnum: 'RESPONDED' } });
+      if (!isDraft) {
+        await tx.quoteRequest.update({ where: { id: quoteRequestId }, data: { status: 'responded', statusEnum: 'RESPONDED' } });
+      }
       return created;
     });
 
@@ -150,8 +173,12 @@ export const procurementWorkflow = {
       }
     }
 
-    notifyWorkflowSoon(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
-    auditWorkflowSoon(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
+    if (!isDraft) {
+      notifyWorkflowSoon(quoteRequest.buyerId, 'RFQ response received', quoteRequest.subject, 'quote_response_created', '/quotations');
+      auditWorkflowSoon(actor, 'workflow.rfq.response_created', 'quoteResponse', response.id);
+    } else {
+      auditWorkflowSoon(actor, 'workflow.rfq.response_draft_created', 'quoteResponse', response.id);
+    }
     return response;
   },
 
@@ -207,6 +234,13 @@ export const procurementWorkflow = {
       result.reused ? 'RFQ purchase order reopened' : 'RFQ response accepted',
       `Your response for "${result.purchaseOrder.title}" was accepted${result.reused ? ' and the existing purchase order is available.' : ' and a purchase order was generated.'}`,
       'quote_response_accepted',
+      '/quotations'
+    );
+    notifyWorkflowSoon(
+      result.quoteResponse.quoteRequest.buyerId,
+      'RFQ Closed',
+      `RFQ "${result.purchaseOrder.title}" has been awarded and closed.`,
+      'quote_request_closed',
       '/quotations'
     );
     await auditWorkflow(actor, 'workflow.rfq.accepted_po_generated', 'purchaseOrder', result.purchaseOrder.id, { quoteResponseId });

@@ -674,55 +674,59 @@ export default function Dashboard() {
   }
 
   return (
-      <div className="w-full space-y-5 animate-in fade-in duration-500 pb-6">
-      <div className="flex flex-col gap-3 rounded-[24px] bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-[9px] font-black text-[#12335f] uppercase tracking-[0.15em] mb-0.5">MSME Procurement Portal</p>
-          <h1 className="text-xl font-extrabold text-[#12335f] uppercase tracking-tight">Dashboard</h1>
-        </div>
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-full bg-white p-1.5 text-left shadow-sm ring-1 ring-slate-200/70 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-[#12335f]/30 active:scale-[0.98] active:translate-y-px focus:outline-none focus:ring-2 focus:ring-[#12335f]"
-        >
-          <div className="h-8 w-8 rounded-full bg-[#12335f] flex items-center justify-center text-white font-black text-sm">
-            {user?.name?.charAt(0)}
+    <div className="mx-auto max-w-[1560px] space-y-5 pb-12 animate-in fade-in duration-500">
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">MSME Procurement Portal</p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 mt-1">Dashboard</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Welcome back, {user?.name}. Manage your activities, marketplace orders, and verification status.</p>
           </div>
-          <div className="pr-2">
-            <p className="text-[11px] font-bold text-slate-900 uppercase">{user?.name}</p>
-            <div className="flex flex-col gap-0.5">
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">{user?.role} Tier Account</p>
-              <p className="text-[8px] font-bold text-[#12335f] uppercase tracking-wide">
-                ID: {user?.registrationDetails?.userId || `MSME-${user?.role?.charAt(0).toUpperCase()}-${String(user?.id).padStart(5, '0')}`}
-              </p>
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full bg-white p-1.5 text-left shadow-sm ring-1 ring-slate-200/70 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-[#12335f]/30 focus:outline-none focus:ring-2 focus:ring-[#12335f]"
+          >
+            <div className="h-8 w-8 rounded-full bg-[#12335f] flex items-center justify-center text-white font-black text-sm">
+              {user?.name?.charAt(0)}
             </div>
-          </div>
-        </button>
+            <div className="pr-2">
+              <p className="text-[11px] font-bold text-slate-900 uppercase">{user?.name}</p>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">{user?.role} Tier Account</p>
+                <p className="text-[8px] font-bold text-[#12335f] uppercase tracking-wide">
+                  ID: {user?.registrationDetails?.userId || `MSME-${user?.role?.charAt(0).toUpperCase()}-${String(user?.id).padStart(5, '0')}`}
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
       </div>
 
       {user?.role === 'buyer' && (
-        <section className="rounded-[24px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-[#12335f]/15">
+        <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#12335f]/15">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Primary Buyer Action</p>
-              <h2 className="text-base font-black text-slate-950">Create Procurement</h2>
+              <h2 className="text-base font-black text-slate-950 mt-1">Create Procurement</h2>
               <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
                 Start once, choose the business intent, and continue to marketplace, request quotations, large procurement, auction, or open requirement.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
               <Link href="/buyer/procurement">
-                <Button className="h-10 rounded-md bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445]">
+                <Button className="h-10 rounded-lg bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-[#0b2445] transition">
                   Create Procurement
                   <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </Link>
               <Link href="/bids">
-                <Button variant="outline" className="h-10 rounded-md border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50">
+                <Button variant="outline" className="h-10 rounded-lg border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50 transition">
                   Manage Bids
                 </Button>
               </Link>
               <Link href="/orders">
-                <Button variant="outline" className="h-10 rounded-md border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50">
+                <Button variant="outline" className="h-10 rounded-lg border-slate-200 px-4 text-xs font-black uppercase tracking-wide text-[#12335f] hover:bg-slate-50 transition">
                   View Orders
                 </Button>
               </Link>
@@ -732,29 +736,29 @@ export default function Dashboard() {
       )}
 
       {user?.role === 'seller' && (
-        <section className="relative overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_20%_15%,#1f6f63_0,#12335f_46%,#07172e_100%)] p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] animate-in fade-in duration-300">
+        <section className="relative overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_20%_15%,#1f6f63_0,#12335f_46%,#07172e_100%)] p-6 text-white shadow-md animate-in fade-in duration-300">
           <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">Primary Seller Actions</p>
-              <h2 className="text-lg font-black text-white">Manage Products, Catalogue & Bids</h2>
+              <h2 className="text-lg font-black text-white mt-1">Manage Products, Catalogue & Bids</h2>
               <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-blue-100/90">
                 Grow business from one seller desk: publish catalogue items, monitor public market visibility, and respond to procurement opportunities.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
               <Link href="/seller/products/new">
-                <Button className="h-10 rounded-2xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-400">
-                  <PlusCircle className="h-4 w-4" /> Add Product
+                <Button className="h-10 rounded-xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-400 transition">
+                  <PlusCircle className="h-4 w-4 mr-1.5" /> Add Product
                 </Button>
               </Link>
               <Link href="/seller/catalogue">
-                <Button variant="outline" className="h-10 rounded-2xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15">
+                <Button variant="outline" className="h-10 rounded-xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15 transition">
                   My Catalogue
                 </Button>
               </Link>
               <Link href="/seller/marketplace">
-                <Button variant="outline" className="h-10 rounded-2xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15">
+                <Button variant="outline" className="h-10 rounded-xl border-white/20 bg-white/10 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/15 transition">
                   Public Market
                 </Button>
               </Link>

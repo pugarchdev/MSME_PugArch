@@ -102,53 +102,39 @@ export default function ReverseAuctionListPage() {
   if (loading) return <LoadingState label="Loading reverse auctions..." />;
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={isSeller ? "/dashboard" : "/buyer/dashboard"} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
-          <ArrowLeft className="mr-1 h-4 w-4" /> Back to Dashboard
+        <Link href={isSeller ? "/dashboard" : "/buyer/dashboard"} className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f] shadow-sm transition">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back
         </Link>
       </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
-            {isSeller ? 'Sourcing Portal' : 'Procurement Sourcing'}
-          </p>
-          <h1 className="text-2xl font-black text-slate-950">
-            {isSeller ? 'Unified Sourcing Auctions' : 'Reverse Auctions'}
-          </h1>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500">
-            {isSeller
-              ? 'Review upcoming auction windows, join live bidding consoles, and track your latest commercial position from one screen.'
-              : 'Create, monitor, close, and recommend L1 awards with clear visibility into schedule, rules, participation, and savings.'}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
-          <Button type="button" variant="outline" onClick={() => query.refetch()} disabled={query.isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          {!isSeller && (
-            <Link href="/buyer/procurement/create">
-              <Button type="button"><Plus className="mr-2 h-4 w-4" />Create Procurement</Button>
-            </Link>
-          )}
-        </div>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
-          <GuideTile
-            title={stats.live > 0 ? 'Live auction needs attention' : 'No live auction right now'}
-            description={stats.live > 0 ? 'Use the Live button to open the server-time bidding screen.' : 'Use timeline filters to prepare for upcoming sessions.'}
-          />
-          <GuideTile
-            title={nextAuction ? `Next window: ${formatRelative(nextAuction.startTime)}` : 'No upcoming window'}
-            description={nextAuction ? `${nextAuction.auctionCode || `RA-${nextAuction.id}`} starts ${formatDateTime(nextAuction.startTime)}.` : 'Create or schedule a reverse auction from procurement wizard.'}
-          />
-          <GuideTile
-            title={`${formatNumber(filteredAuctions.length)} visible after filters`}
-            description="Search and filters apply locally after first load, so switching views stays fast."
-          />
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">
+          {isSeller ? 'Sourcing Portal' : 'Procurement Sourcing'}
+        </p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">
+              {isSeller ? 'Unified Sourcing Auctions' : 'Reverse Auctions'}
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm font-semibold text-slate-500">
+              {isSeller
+                ? 'Review upcoming auction windows, join live bidding consoles, and track your latest commercial position.'
+                : 'Create, monitor, close, and recommend L1 awards with clear visibility into schedule, rules, participation, and savings.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewModeToggle value={viewMode} onChange={setViewMode} size="sm" />
+            <Button type="button" variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="h-10 rounded-lg text-xs font-black uppercase shadow-sm">
+              <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+            {!isSeller && (
+              <Link href="/buyer/procurement/create">
+                <Button type="button" className="h-10 rounded-lg text-xs font-black uppercase shadow-sm"><Plus className="mr-2 h-4 w-4" />Create</Button>
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -158,40 +144,36 @@ export default function ReverseAuctionListPage() {
         <KpiTile label={isSeller ? 'Action windows' : 'Scheduled'} value={formatNumber(isSeller ? stats.actionRequired : stats.scheduled)} icon={Clock3} tone="amber" />
         <KpiTile label="Tracked savings" value={formatCurrency(stats.savings)} icon={Trophy} tone="blue" />
       </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Search auction code, title, description..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
-            />
-          </div>
-          <Select value={status} onChange={setStatus} options={statusOptions.map(value => ({ label: value === 'All' ? 'All statuses' : prettifyStatus(value), value }))} />
-          <Select value={timeFilter} onChange={setTimeFilter} options={[
-            { label: 'All timelines', value: 'all' },
-            { label: 'Live now', value: 'liveNow' },
-            { label: 'Upcoming', value: 'upcoming' },
-            { label: 'Closed', value: 'closed' }
-          ]} />
-          <Select value={priceBand} onChange={setPriceBand} options={priceBands} />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setSearch('');
-              setStatus('All');
-              setTimeFilter('all');
-              setPriceBand('all');
-            }}
-            className="h-10"
-          >
-            <Filter className="mr-2 h-4 w-4" />Reset
-          </Button>
+      {/* ── Filter Bar (border-y) ── */}
+      <div className="flex flex-wrap items-center gap-3 border-y border-slate-200 bg-slate-50/50 px-4 py-3">
+        <div className="relative min-w-[200px] flex-1 max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Search auction code, title..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          />
         </div>
+        <Select value={status} onChange={setStatus} options={statusOptions.map(value => ({ label: value === 'All' ? 'All statuses' : prettifyStatus(value), value }))} />
+        <Select value={timeFilter} onChange={setTimeFilter} options={[
+          { label: 'All timelines', value: 'all' },
+          { label: 'Live now', value: 'liveNow' },
+          { label: 'Upcoming', value: 'upcoming' },
+          { label: 'Closed', value: 'closed' }
+        ]} />
+        <Select value={priceBand} onChange={setPriceBand} options={priceBands} />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => { setSearch(''); setStatus('All'); setTimeFilter('all'); setPriceBand('all'); }}
+          className="h-10 rounded-lg text-xs font-black uppercase text-rose-600 hover:bg-rose-50 border-rose-200"
+        >
+          Reset
+        </Button>
+        <span className="ml-auto text-[10px] font-black uppercase tracking-wider text-slate-400">
+          {filteredAuctions.length} of {auctions.length}
+        </span>
       </div>
 
       {query.error && <InlineError message={(query.error as Error).message} onRetry={() => query.refetch()} />}

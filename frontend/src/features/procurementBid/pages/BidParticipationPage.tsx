@@ -35,6 +35,8 @@ import {
   ProcurementHero,
   ProcurementLoadingState,
   StatusBadge,
+  getThemeForMethod,
+  type ProcurementTheme,
 } from '../components';
 import { formatDate, money } from '../data';
 import type { ProcurementBid } from '../data';
@@ -60,6 +62,7 @@ type ParticipationState = {
   documents?: ParticipationDocument[];
   quotedAmount?: number | null;
   totalAmount?: number | null;
+  rejectionReason?: string;
 };
 
 type PendingFile = {
@@ -104,8 +107,8 @@ const formatBytes = (size?: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const inputClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10';
-const textAreaClass = 'min-h-24 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0b2447] focus:ring-2 focus:ring-[#0b2447]/10';
+const inputClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition-colors';
+const textAreaClass = 'min-h-24 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors';
 
 export default function BidParticipationPage() {
   const { user } = useAuth();
@@ -206,11 +209,44 @@ export default function BidParticipationPage() {
                       notes: parsedDesc.rfqNotes || '',
                     });
                   }
+                  setTechnicalOffer({
+                    makeBrand: status.participation.makeBrand || parsedDesc?.makeBrand || '',
+                    model: status.participation.model || parsedDesc?.model || '',
+                    offeredItemDescription: parsedDesc?.offeredItemDescription || (typeof parsedDesc === 'string' ? parsedDesc : ''),
+                    complianceRemarks: parsedDesc?.complianceRemarks || '',
+                    deliveryTimeline: parsedDesc?.deliveryTimeline || '',
+                    warrantyDetails: parsedDesc?.warrantyDetails || '',
+                    serviceSupport: parsedDesc?.serviceSupport || '',
+                    deviation: parsedDesc?.deviation || '',
+                  });
                 } catch (e) {
                   // Fallback for non-JSON offeredItemDescription
+                  setTechnicalOffer({
+                    makeBrand: status.participation.makeBrand || '',
+                    model: status.participation.model || '',
+                    offeredItemDescription: status.participation.offeredItemDescription || '',
+                    complianceRemarks: '',
+                    deliveryTimeline: '',
+                    warrantyDetails: '',
+                    serviceSupport: '',
+                    deviation: '',
+                  });
                 }
+              } else {
+                setTechnicalOffer({
+                  makeBrand: status.participation.makeBrand || '',
+                  model: status.participation.model || '',
+                  offeredItemDescription: '',
+                  complianceRemarks: '',
+                  deliveryTimeline: '',
+                  warrantyDetails: '',
+                  serviceSupport: '',
+                  deviation: '',
+                });
               }
-              setStep(7);
+              if (status.participation.submissionStatus === 'SUBMITTED') {
+                setStep(7);
+              }
             }
           } catch {
             // A missing seller participation is normal before the seller starts.
@@ -245,6 +281,7 @@ export default function BidParticipationPage() {
     setQuote(prev => prev.totalAmount === String(total) ? prev : { ...prev, totalAmount: String(total) });
   }, [quote.quotedAmount, quote.gstPercentage]);
 
+  const theme = useMemo(() => getThemeForMethod(bid?.procurementType), [bid?.procurementType]);
   const verifiedSeller = isSellerVerified(user);
   const closed = bid ? isBidClosed(bid) : false;
   const uploadedDocs = participation?.documents || [];
@@ -402,17 +439,26 @@ export default function BidParticipationPage() {
     setSavingFinancial(true);
     if (financialFile) setFinancialFile(prev => prev ? { ...prev, status: 'uploading', progress: 0 } : prev);
     try {
-      let description = technicalOffer.offeredItemDescription;
+      let description = '';
       if (bid.procurementType === 'RATE_CONTRACT') {
         description = JSON.stringify({
           rateContractValidityDate: rateContractData.validityDate,
           rateContractNotes: rateContractData.notes,
         });
-      } else if (bid.procurementType === 'RFQ') {
+      } else if (bid.procurementType === 'RFQ' || bid.procurementType === 'RFP' || bid.procurementType === 'TENDER' || bid.procurementType === 'OPEN_TENDER' || bid.procurementType === 'LIMITED_TENDER') {
         description = JSON.stringify({
-          rfqNotes: rfqData.notes,
+          makeBrand: technicalOffer.makeBrand,
+          model: technicalOffer.model,
+          offeredItemDescription: technicalOffer.offeredItemDescription,
+          complianceRemarks: technicalOffer.complianceRemarks,
           deliveryTimeline: technicalOffer.deliveryTimeline,
+          warrantyDetails: technicalOffer.warrantyDetails,
+          serviceSupport: technicalOffer.serviceSupport,
+          deviation: technicalOffer.deviation,
+          rfqNotes: rfqData.notes,
         });
+      } else {
+        description = technicalOffer.offeredItemDescription;
       }
 
       const data = await procurementBidApi.uploadFinancialQuote(
@@ -464,7 +510,7 @@ export default function BidParticipationPage() {
     return (
       <PageShell>
         <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle="Loading live bid participation context." />
+          <ProcurementHero title="Seller Bid Participation" subtitle="Loading live bid participation context." theme={theme} />
           <div className="mt-5"><ProcurementLoadingState message="Loading bid participation..." /></div>
         </main>
       </PageShell>
@@ -475,7 +521,7 @@ export default function BidParticipationPage() {
     return (
       <PageShell>
         <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
+          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} theme={theme} />
           <div className="mt-5"><ProcurementErrorState message={error} onRetry={loadBid} /></div>
         </main>
       </PageShell>
@@ -486,7 +532,7 @@ export default function BidParticipationPage() {
     return (
       <PageShell>
         <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} />
+          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} theme={theme} />
           <div className="mt-5"><ProcurementEmptyState title="No bid available currently." message="This bid was not returned by the live backend." /></div>
         </main>
       </PageShell>
@@ -495,8 +541,15 @@ export default function BidParticipationPage() {
 
   return (
     <PageShell>
+      <div style={{ '--bid-primary': theme.primary, '--bid-light': theme.lightBg === 'bg-blue-50' ? '#eff6ff' : theme.lightBg === 'bg-emerald-50' ? '#ecfdf5' : theme.lightBg === 'bg-amber-50' ? '#fffbeb' : theme.lightBg === 'bg-rose-50' ? '#fff1f2' : theme.lightBg === 'bg-violet-50' ? '#f5f3ff' : theme.lightBg === 'bg-teal-50' ? '#f0fdfa' : theme.lightBg === 'bg-indigo-50' ? '#eef2ff' : theme.lightBg === 'bg-sky-50' ? '#f0f9ff' : theme.lightBg === 'bg-orange-50' ? '#fff7ed' : theme.lightBg === 'bg-lime-50' ? '#f7fee7' : '#f1f5f9' } as React.CSSProperties}>
+        <style dangerouslySetInnerHTML={{ __html: `
+          input:focus, textarea:focus {
+            border-color: var(--bid-primary) !important;
+            box-shadow: 0 0 0 2px var(--bid-light) !important;
+          }
+        ` }} />
       <main className="mx-auto w-full max-w-7xl">
-        <ProcurementHero title="Seller Bid Participation" subtitle={`${bid.id} - ${bid.title}`} action={<Link href={`/bids/${bid.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">View bid</Link>} />
+        <ProcurementHero title="Seller Bid Participation" subtitle={`${bid.id} - ${bid.title}`} action={<Link href={`/bids/${bid.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">View bid</Link>} theme={theme} />
 
         <section className="mt-5 border border-slate-200 bg-white">
           <div className="grid gap-4 p-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -529,7 +582,7 @@ export default function BidParticipationPage() {
           {guard && (
             <div className={`mx-4 mb-4 flex flex-col gap-3 border p-3 sm:flex-row sm:items-center sm:justify-between ${guard.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
               <span className="flex items-center gap-2 text-xs font-black"><AlertTriangle className="h-4 w-4" /> {guard.message}</span>
-              {guard.action && <button onClick={() => router.push('/login')} className="h-9 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white">{guard.action}</button>}
+              {guard.action && <button onClick={() => router.push('/login')} className="h-9 rounded-md px-4 text-xs font-black text-white" style={{ backgroundColor: theme.primary }}>{guard.action}</button>}
             </div>
           )}
         </section>
@@ -538,7 +591,7 @@ export default function BidParticipationPage() {
           <aside className="lg:sticky lg:top-28 lg:self-start">
             <div className="overflow-hidden border border-slate-200 bg-white">
               <div className="border-b border-slate-100 p-4">
-                <p className="text-sm font-black text-[#0b2447]">Submission Steps</p>
+                <p className="text-sm font-black" style={{ color: theme.primary }}>Submission Steps</p>
               </div>
               <div className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-4 lg:block lg:space-y-1">
                 {activeSteps.map((s) => {
@@ -551,7 +604,8 @@ export default function BidParticipationPage() {
                       type="button"
                       disabled={locked}
                       onClick={() => setStep(s.id)}
-                      className={`flex min-h-12 items-center gap-2 rounded-md border p-2 text-left text-[11px] font-black transition ${active ? 'border-[#0b2447] bg-blue-50 text-[#0b2447]' : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      className={`flex min-h-12 items-center gap-2 rounded-md border p-2 text-left text-[11px] font-black transition ${active ? `border-current ${theme.lightBg}` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      style={active ? { color: theme.primary, borderColor: theme.primary } : undefined}
                     >
                       {locked ? <Lock className="h-3.5 w-3.5" /> : done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
                       <span>{s.label}</span>
@@ -563,6 +617,17 @@ export default function BidParticipationPage() {
           </aside>
 
           <section className="min-w-0 border border-slate-200 bg-white p-4">
+            {participation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION') && step !== 7 && (
+              <div className="mb-6 rounded-[20px] border border-amber-200 bg-amber-50/60 p-4 text-xs font-semibold text-amber-900 shadow-sm animate-pulse flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-black uppercase tracking-wider text-amber-950">Revision/Resubmission Required</h4>
+                  <p className="mt-1 leading-relaxed text-amber-800">
+                    This procurement has been amended by the buyer (V{bid?.version || 2}). Your previously submitted offer is now in draft. Please review the updated terms/specifications, update your quote if necessary, and click **Submit Bid** again.
+                  </p>
+                </div>
+              </div>
+            )}
             {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => setStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
             {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} />}
             {step === 2 && (
@@ -635,6 +700,7 @@ export default function BidParticipationPage() {
         </div>
       </main>
       <DocumentPreviewModal previewDocument={previewDocument} onClose={() => setPreviewDocument(null)} />
+      </div>
     </PageShell>
   );
 }
@@ -663,18 +729,18 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
         <Panel title="Required documents" items={bid.requiredDocuments.length ? bid.requiredDocuments : ['No required document list published currently.']} />
         <Panel title="Terms and conditions" items={bid.terms.length ? bid.terms : ['No terms published currently.']} />
         <div className="border border-slate-200 p-4">
-          <h3 className="text-sm font-black text-[#0b2447]">Bid documents</h3>
+          <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>Bid documents</h3>
           <div className="mt-3 space-y-2">
             {bid.bidDocuments?.length ? bid.bidDocuments.map(doc => (
               <div key={doc.id} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-600">
-                <FileText className="h-4 w-4 text-[#0b2447]" /> {doc.name}
+                <FileText className="h-4 w-4" style={{ color: 'var(--bid-primary)' }} /> {doc.name}
               </div>
             )) : <p className="text-xs font-bold text-slate-500">No bid documents uploaded currently.</p>}
           </div>
         </div>
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <button onClick={onStart} disabled={blocked || starting} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button onClick={onStart} disabled={blocked || starting} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
           {hasParticipation ? 'Continue Participation' : 'Start Participation'}
         </button>
@@ -702,13 +768,13 @@ function EligibilityStep({ eligibility, setEligibility, onNext }: { eligibility:
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {rows.map(([key, label]) => (
           <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-            <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4 accent-[#0b2447]" />
+            <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
             {label}
           </label>
         ))}
       </div>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!complete} className="h-10 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">Continue</button>
+        <button onClick={onNext} disabled={!complete} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
     </div>
   );
@@ -730,7 +796,7 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
         <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
       </div>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={disabled} className="h-10 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">Continue</button>
+        <button onClick={onNext} disabled={disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
     </div>
   );
@@ -780,7 +846,8 @@ function RfiQuestionnaireForm({
                         value="Yes"
                         checked={answers[qId] === 'Yes'}
                         onChange={() => onChange(qId, 'Yes')}
-                        className="h-4 w-4 accent-[#0b2447]"
+                        className="h-4 w-4"
+                        style={{ accentColor: 'var(--bid-primary)' }}
                       />
                       Yes
                     </label>
@@ -792,7 +859,8 @@ function RfiQuestionnaireForm({
                         value="No"
                         checked={answers[qId] === 'No'}
                         onChange={() => onChange(qId, 'No')}
-                        className="h-4 w-4 accent-[#0b2447]"
+                        className="h-4 w-4"
+                        style={{ accentColor: 'var(--bid-primary)' }}
                       />
                       No
                     </label>
@@ -827,7 +895,8 @@ function RfiQuestionnaireForm({
         <button
           onClick={onSave}
           disabled={disabled || saving}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save Answers
         </button>
@@ -855,7 +924,7 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, onA
       <FileList files={files} onRemove={onRemove} onPreview={onPreview} />
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">
+        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Upload documents
         </button>
         <button onClick={onNext} disabled={!uploadedDocs.length} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50">Continue</button>
@@ -925,7 +994,8 @@ function FinancialQuoteStep({
                 href={doc.fileUrl || `/api/files/${doc.fileAssetId}/view`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-9 items-center gap-2 rounded bg-[#0b2447] px-4 text-xs font-black text-white hover:bg-[#0b2447]/90"
+                className="inline-flex h-9 items-center gap-2 rounded px-4 text-xs font-black text-white hover:opacity-90"
+                style={{ backgroundColor: 'var(--bid-primary)' }}
               >
                 Download {doc.fileName || 'BOQ Template'}
               </a>
@@ -1005,7 +1075,8 @@ function FinancialQuoteStep({
         <button
           onClick={onSave}
           disabled={!canUpload || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save quote
         </button>
@@ -1039,11 +1110,11 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         <Info label="Current status" value={participation?.submissionStatus || 'Draft'} />
       </div>
       <label className={`mt-5 flex items-start gap-3 border p-4 text-xs font-bold ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-        <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#0b2447]" />
+        <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} className="mt-0.5 h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!declaration} className="h-10 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">Continue to submit</button>
+        <button onClick={onNext} disabled={!declaration} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
       </div>
     </div>
   );
@@ -1053,14 +1124,14 @@ function SubmitStep({ canSubmit, submitted, submitting, onSubmit, onTrack }: { c
   return (
     <div>
       <StepTitle icon={<Send className="h-5 w-5" />} title="Submit Bid" subtitle="Final submission locks this participation for buyer evaluation." />
-      <div className="mt-4 border border-slate-200 bg-slate-50 p-5 text-center">
-        {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10 text-[#0b2447]" />}
+      <div className="mt-4 grid gap-3 border border-slate-200 bg-slate-50 p-5 text-center">
+        {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10" style={{ color: 'var(--bid-primary)' }} />}
         <p className="mt-3 text-sm font-black text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
         <p className="mt-1 text-xs text-slate-500">{submitted ? 'You can track evaluation progress now.' : 'Please ensure all files and quote values are correct before submitting.'}</p>
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button onClick={onTrack} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Track status</button>
-        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0b2447] px-4 text-xs font-black text-white disabled:opacity-50">
+        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Final submit
         </button>
       </div>
@@ -1096,9 +1167,9 @@ function TrackStep({ bid, participation }: { bid: ProcurementBid; participation:
 function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
   return (
     <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#0b2447] text-white">{icon}</div>
+      <div className="flex h-10 w-10 items-center justify-center rounded-md text-white" style={{ backgroundColor: 'var(--bid-primary)' }}>{icon}</div>
       <div>
-        <h2 className="text-lg font-black text-[#0b2447]">{title}</h2>
+        <h2 className="text-lg font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h2>
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       </div>
     </div>
@@ -1108,7 +1179,7 @@ function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: st
 function Panel({ title, items }: { title: string; items: string[] }) {
   return (
     <section className="border border-slate-200 p-4">
-      <h3 className="text-sm font-black text-[#0b2447]">{title}</h3>
+      <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h3>
       <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
         {items.map(item => <li key={item} className="bg-slate-50 px-3 py-2">{item}</li>)}
       </ul>
@@ -1145,7 +1216,8 @@ function UploadDropZone({ disabled, multiple, onFiles }: { disabled: boolean; mu
         setDragging(false);
         if (!disabled && event.dataTransfer.files.length) onFiles(event.dataTransfer.files);
       }}
-      className={`mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center border border-dashed p-5 text-center transition ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : dragging ? 'border-[#0b2447] bg-blue-50 text-[#0b2447]' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+      className={`mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center border border-dashed p-5 text-center transition ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+      style={dragging ? { borderColor: 'var(--bid-primary)', backgroundColor: 'var(--bid-light)', color: 'var(--bid-primary)' } : undefined}
     >
       <FileUp className="h-8 w-8" />
       <span className="mt-3 text-sm font-black">Drag and drop files here</span>
@@ -1162,11 +1234,11 @@ function FileList({ files, onRemove, onPreview }: { files: PendingFile[]; onRemo
       {files.map(item => (
         <div key={item.id} className="border border-slate-200 bg-slate-50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <FileText className="h-5 w-5 text-[#0b2447]" />
+            <FileText className="h-5 w-5" style={{ color: 'var(--bid-primary)' }} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-black text-slate-800">{item.file.name}</p>
               <p className="text-[10px] font-bold text-slate-500">{formatBytes(item.file.size)} - {item.status}</p>
-              {item.status === 'uploading' && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#0b2447]" style={{ width: `${item.progress}%` }} /></div>}
+              {item.status === 'uploading' && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full" style={{ width: `${item.progress}%`, backgroundColor: 'var(--bid-primary)' }} /></div>}
               {item.error && <p className="mt-1 text-[10px] font-bold text-red-600">{item.error}</p>}
             </div>
             <div className="flex gap-2">

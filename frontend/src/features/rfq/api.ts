@@ -49,3 +49,18 @@ export const fetchVendors = () =>
 
 export const fetchVendorCatalogue = (vendorId: number) =>
     getApi<{ products: any[]; services: any[] }>(`/api/vendors/${vendorId}/catalogue`);
+
+export const fetchQuoteRequestComparison = (id: number) =>
+    getApi<any>(`/api/quote-requests/${id}/responses/compare`);
+
+export const setQuoteResponseTechnicalStatus = (responseId: number, status: string, remarks?: string) =>
+    postApi<any>(`/api/quote-responses/${responseId}/technical-status`, { status, remarks });
+
+export const setQuoteResponseFinancialStatus = (responseId: number, status: string, remarks?: string) =>
+    postApi<any>(`/api/quote-responses/${responseId}/financial-status`, { status, remarks });
+
+export const setQuoteResponseBuyerRemarks = (responseId: number, buyerRemarks: string) =>
+    postApi<any>(`/api/quote-responses/${responseId}/remarks`, { buyerRemarks });
+
+export const generateL1Ranking = (quoteRequestId: number, techQualifiedOnly = true) =>
+    postApi<any>(`/api/quote-requests/${quoteRequestId}/generate-l1`, { techQualifiedOnly });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, MapPin, Star, Building2, ChevronDown, CheckCircle2, X, Phone, Mail, Globe, Briefcase, FileText, Send, Info, ShieldCheck, Clock, Upload, Paperclip, LayoutGrid, List, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Loader2 } from '@/components/ui/loader';
 import { api } from '../lib/api';
@@ -13,7 +13,7 @@ import { ViewModeToggle } from '../features/shared/ViewModeToggle';
 import { usePagination, useResponsiveViewMode } from '../features/shared/hooks';
 import { useSupplierSummary } from '../features/ratings/hooks';
 import { Star as StarIcon } from 'lucide-react';
-import { RfqCreator } from '../features/rfq/pages/RfqPage';
+
 import { cn } from '../lib/utils';
 
 interface Vendor {
@@ -282,122 +282,167 @@ const Vendors = () => {
   });
   const { page, pageSize, pageItems: pagedVendors, total, setPage, setPageSize } = usePagination(filteredVendors, 18);
 
+  const kpiData = useMemo(() => {
+    let total = vendors.length;
+    let verified = vendors.filter(v => v.sellerProfile?.gst || v.sellerProfile?.pan).length;
+    let micro = vendors.filter(v => v.sellerProfile?.msmeCategory === 'Micro' || v.sellerProfile?.msmeType === 'MICRO').length;
+    let small = vendors.filter(v => v.sellerProfile?.msmeCategory === 'Small' || v.sellerProfile?.msmeType === 'SMALL').length;
+    let medium = vendors.filter(v => v.sellerProfile?.msmeCategory === 'Medium' || v.sellerProfile?.msmeType === 'MEDIUM').length;
+    const states = new Set(vendors.map(v => v.sellerProfile?.state).filter(Boolean));
+    return {
+      total,
+      verified,
+      msme: micro + small + medium,
+      states: states.size,
+    };
+  }, [vendors]);
+
   return (
-    <div className="min-h-screen text-[#1a1c21]">
-      {/* Main Header Container */}
-      <div className="mx-3 mt-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-4 shadow-sm md:mx-4 md:px-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-[#1a1c21] uppercase">Supplier Registry</h1>
-            <p className="text-xs text-slate-500 font-medium">Locate and engage verified MSME vendors across nationwide sectors.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          </div>
+    <div className="space-y-6">
+      {/* Transparent Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between py-2">
+        <div className="min-w-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#12335f] bg-[#12335f]/10 px-2.5 py-1 rounded-full">Partners</span>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 mt-2">Supplier Registry</h1>
+          <p className="text-xs font-semibold text-slate-500 mt-1">
+            Locate and engage verified MSME vendors across nationwide sectors.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
         </div>
       </div>
 
-      <div className="p-3 md:p-4 flex flex-col lg:flex-row gap-4 items-start">
-        {/* Sidebar Filters (Government Style: Boxy, Rigid, Informative) */}
-        <div className="w-full lg:w-72 bg-white/92 border border-slate-200/80 rounded-2xl overflow-hidden flex-shrink-0 lg:sticky lg:top-3 shadow-sm">
-          <div className="bg-slate-50/80 border-b border-slate-200 px-3 py-2.5 flex items-center gap-2">
-            <Filter className="h-4 w-4 text-[#12335f]" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#12335f]">Search Parameters</h3>
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <KpiCard
+          label="Total Registered"
+          value={kpiData.total}
+          icon={Building2}
+          color="blue"
+          active={true}
+        />
+        <KpiCard
+          label="Verified MSMEs"
+          value={kpiData.verified}
+          icon={ShieldCheck}
+          color="green"
+        />
+        <KpiCard
+          label="States Covered"
+          value={kpiData.states}
+          icon={MapPin}
+          color="purple"
+        />
+        <KpiCard
+          label="Average Rating"
+          value="4.6 ★"
+          icon={Star}
+          color="amber"
+        />
+      </div>
+
+      {/* Inline Filters Bar */}
+      <div className="border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between">
+          <div className="relative min-w-0 flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by vendor name, city, keyword..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+            />
           </div>
 
-          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:block lg:space-y-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Keyword Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  placeholder="Name, city, or ID..."
-                  className="pl-9 h-8 bg-white border-[#dadce0] rounded text-xs placeholder:text-slate-400 focus:ring-1 focus:ring-[#12335f]"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-3 justify-end">
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+            >
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Product Category</label>
-              <select
-                className="w-full h-8 px-2 bg-white border border-[#dadce0] rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] cursor-pointer"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedStateFilter}
+              onChange={e => {
+                setSelectedStateFilter(e.target.value);
+                setSelectedDistrictFilter('All districts');
+              }}
+              className="h-10 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+            >
+              {statesList.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">State</label>
+            {selectedStateFilter !== 'All states' && (
               <select
-                className="w-full h-8 px-2 bg-white border border-[#dadce0] rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] cursor-pointer"
-                value={selectedStateFilter}
-                onChange={(e) => {
-                  setSelectedStateFilter(e.target.value);
-                  setSelectedDistrictFilter('All districts');
-                }}
-              >
-                {statesList.map(st => (
-                  <option key={st} value={st}>{st}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">District</label>
-              <select
-                className="w-full h-8 px-2 bg-white border border-[#dadce0] rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] cursor-pointer disabled:bg-slate-50 disabled:text-slate-400"
                 value={selectedDistrictFilter}
-                onChange={(e) => setSelectedDistrictFilter(e.target.value)}
-                disabled={selectedStateFilter === 'All states'}
+                onChange={e => setSelectedDistrictFilter(e.target.value)}
+                className="h-10 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
               >
-                <option value="All districts">{selectedStateFilter === 'All states' ? 'Select state first' : 'All districts'}</option>
+                <option value="All districts">All Districts</option>
                 {districtOptions.map(district => (
                   <option key={district} value={district}>{district}</option>
                 ))}
               </select>
-            </div>
+            )}
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">MSME Category</label>
-              <select
-                className="w-full h-8 px-2 bg-white border border-[#dadce0] rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#12335f] cursor-pointer"
-                value={selectedSize}
-                onChange={(e) => setSelectedSize(e.target.value)}
-              >
-                {msmeCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedSize}
+              onChange={e => setSelectedSize(e.target.value)}
+              className="h-10 min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+            >
+              {msmeCategories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
 
-            <div className="pt-2 border-t border-[#f1f3f4] sm:col-span-2 lg:col-span-1">
-              <button
-                onClick={() => setVerifiedOnly(!verifiedOnly)}
-                className="flex items-center gap-2 w-full text-left"
+            <button
+              onClick={() => setVerifiedOnly(!verifiedOnly)}
+              className="flex items-center gap-2 h-10 px-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm"
+            >
+              <div className={cn("h-4 w-4 rounded border flex items-center justify-center transition-all", verifiedOnly ? "bg-[#12335f] border-[#12335f]" : "border-slate-300")}>
+                {verifiedOnly && <CheckCircle2 className="h-3 w-3 text-white" />}
+              </div>
+              <span className="text-xs font-bold text-slate-700 uppercase">Verified Only</span>
+            </button>
+
+            {(searchTerm || selectedCategory !== 'All categories' || selectedSize !== 'All MSME categories' || selectedStateFilter !== 'All states' || !verifiedOnly) && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedCategory('All categories');
+                  setSelectedSize('All MSME categories');
+                  setSelectedStateFilter('All states');
+                  setSelectedDistrictFilter('All districts');
+                  setVerifiedOnly(false);
+                }}
+                className="h-10 border-red-200 text-xs font-black uppercase text-red-600 hover:bg-red-50"
               >
-                <div className={`h-4 w-4 rounded border flex items-center justify-center transition-all ${verifiedOnly ? 'bg-[#12335f] border-[#12335f]' : 'border-[#dadce0]'}`}>
-                  {verifiedOnly && <CheckCircle2 className="h-3 w-3 text-white" />}
-                </div>
-                <span className="text-[11px] font-bold text-slate-700 uppercase">Show Verified Only</span>
-              </button>
-            </div>
+                Clear
+              </Button>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Results Space */}
-        <div className="flex-1 w-full">
-          <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>Found {filteredVendors.length} registered vendors matching criteria</span>}
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verified procurement suppliers</span>
+      {/* Results Space */}
+      <div className="w-full">
+        <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/30 px-4 py-3 shadow-3xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>Found {filteredVendors.length} registered vendors matching criteria</span>}
           </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verified procurement suppliers</span>
+        </div>
 
           {loading ? (
             <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" : "space-y-3"}>
@@ -582,8 +627,6 @@ const Vendors = () => {
             </div>
           )}
         </div>
-      </div>
-
 
       {/* Vendor Profile Modal */}
       {isProfileModalOpen && selectedVendor && (
@@ -738,12 +781,14 @@ const Vendors = () => {
         </div>
       )}
 
-      {/* Request Quote Modal */}
       {isQuoteModalOpen && selectedVendor && (
-        <RfqCreator
-          onClose={() => setIsQuoteModalOpen(false)}
-          initialVendor={selectedVendor}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-md text-center space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Request Quote</h3>
+            <p className="text-slate-500">The RFQ feature is currently disabled.</p>
+            <Button onClick={() => setIsQuoteModalOpen(false)}>Close</Button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -765,6 +810,75 @@ function VendorRatingTile({ sellerId }: { sellerId: number }) {
       </div>
       <div className="text-xs font-black text-slate-900 uppercase">{value}</div>
       <div className="text-[9px] font-bold text-slate-500 uppercase">{sublabel}</div>
+    </div>
+  );
+}
+
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  icon: any;
+  onClick?: () => void;
+  active?: boolean;
+  color?: 'blue' | 'green' | 'red' | 'purple' | 'amber' | 'indigo' | 'slate';
+}
+
+function KpiCard({ label, value, icon: Icon, onClick, active, color = 'slate' }: KpiCardProps) {
+  const colorMap = {
+    blue: 'border-blue-100 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:border-blue-300 ring-blue-600/10',
+    green: 'border-green-100 bg-green-50/50 hover:bg-green-50 text-green-700 hover:border-green-300 ring-green-600/10',
+    red: 'border-red-100 bg-red-50/50 hover:bg-red-50 text-red-700 hover:border-red-300 ring-red-600/10',
+    purple: 'border-purple-100 bg-purple-50/50 hover:bg-purple-50 text-purple-700 hover:border-purple-300 ring-purple-600/10',
+    amber: 'border-amber-100 bg-amber-50/50 hover:bg-amber-50 text-amber-700 hover:border-amber-300 ring-amber-600/10',
+    indigo: 'border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 hover:border-indigo-300 ring-indigo-600/10',
+    slate: 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 text-slate-700 hover:border-slate-300 ring-slate-600/10',
+  };
+
+  const activeColorMap = {
+    blue: 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20',
+    green: 'border-green-500 bg-green-50 text-green-800 ring-2 ring-green-500/20',
+    red: 'border-red-500 bg-red-50 text-red-800 ring-2 ring-red-500/20',
+    purple: 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-500/20',
+    amber: 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20',
+    indigo: 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500/20',
+    slate: 'border-slate-500 bg-slate-50 text-slate-800 ring-2 ring-slate-500/20',
+  };
+
+  const iconBgMap = {
+    blue: 'bg-blue-500 text-white',
+    green: 'bg-green-500 text-white',
+    red: 'bg-red-500 text-white',
+    purple: 'bg-purple-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    indigo: 'bg-indigo-500 text-white',
+    slate: 'bg-slate-500 text-white',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left rounded-2xl border p-4 shadow-sm transition-all duration-300 flex items-center justify-between',
+        active ? activeColorMap[color] : colorMap[color]
+      )}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</p>
+        <p className="mt-1 text-2xl font-black tracking-tight leading-none">{value}</p>
+      </div>
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-110', iconBgMap[color])}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+    </button>
+  );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-slate-800">{value || '-'}</p>
     </div>
   );
 }

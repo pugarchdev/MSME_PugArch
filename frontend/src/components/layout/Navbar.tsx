@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
-import { api, unwrapApiData, BASE_URL } from '../../lib/api';
+import { api, unwrapApiData, readJsonResponse, BASE_URL } from '../../lib/api';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -48,7 +48,9 @@ import {
   Mail,
   MapPin,
   UserCheck,
-  Globe
+  Globe,
+  RotateCcw,
+  Layers
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { routeForNotification, type PortalNotification } from '../../lib/notifications';
@@ -79,9 +81,9 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/buyer/create-bid': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/create': () => import('../../features/procurementWizard/pages/CreateProcurementPage'),
   '/buyer/procurement/drafts': () => import('../../features/procurementWizard/pages/ProcurementDraftsPage'),
-  '/buyer/procurements': () => import('../../features/requirements/pages/RequirementsPage'),
+  
   '/seller/opportunities': () => import('../../features/sellerOpportunities/pages/SellerOpportunitiesPage'),
-  '/seller/procurement': () => import('../../features/sellerOpportunities/pages/SellerProcurementHub'),
+  
   '/seller/procurement/events': () => import('../../features/sellerOpportunities/pages/SellerEventListPage'),
   '/orders': () => import('../../features/procurementBid/pages/ProcurementOrdersPage'),
   '/orders/delivery-confirmation': () => import('../../features/grn/pages/GrnListPage'),
@@ -95,9 +97,9 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/seller/marketplace': () => Promise.resolve(),
   '/seller/catalogue': () => Promise.resolve(),
   '/buyer/marketplace': () => Promise.resolve(),
-  '/buyer/tenders': () => import('../../views/Tenders'),
-  '/seller/tenders': () => import('../../views/SellerTenders'),
-  '/quotations': () => import('../../views/Quotations'),
+  
+  
+  
   '/seller/orders': () => Promise.resolve(),
   '/buyer/orders': () => Promise.resolve(),
   '/seller/invoices': () => Promise.resolve(),
@@ -109,15 +111,15 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/buyer/saved-suppliers': () => import('../../features/marketplace/pages/SavedSuppliersPage'),
   '/buyer/messages': () => import('../../features/messages/pages/MessagesPage'),
   '/seller/messages': () => import('../../features/messages/pages/MessagesPage'),
-  '/buyer/requirements': () => import('../../features/requirements/pages/RequirementsPage'),
+  
   '/buyer/procurement': () => import('../../features/procurement/pages/BuyerProcurementHub'),
   '/buyer/my-procurements': () => import('../../features/procurement/pages/MyProcurementsPage'),
   '/buyer/procurement/checkout': () => import('../../features/procurementCheckoutV2/pages/ProcurementCheckoutPage'),
   '/buyer/direct-purchase/orders': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/address-book': () => import('../../features/directPurchase/pages/AddressBookPage'),
-  '/buyer/rfq': () => import('../../features/rfq/pages/RfqPage'),
+  
   '/reports': () => import('../../features/reports/pages/RoleReportsPage'),
-  '/seller/rfq': () => import('../../features/rfq/pages/RfqPage'),
+  
   '/reverse-auctions': () => import('../../features/reverseAuctions/pages/ReverseAuctionListPage'),
   '/reverse-auctions/create': () => import('../../features/reverseAuctions/pages/ReverseAuctionCreatePage'),
   '/seller/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
@@ -128,9 +130,9 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   '/admin/monthly-rankings': () => import('../../features/banners/pages/MonthlyRankingsAdminPage'),
   '/my-org/banner-eligibility': () => import('../../features/banners/pages/OrganizationBannerEligibilityPage'),
   '/cart': () => import('../../features/cart/pages/CartPage'),
-  '/cart/approvals': () => import('../../features/cart/pages/CartApprovalPage'),
-  '/cart/technical-review': () => import('../../features/cart/pages/TechnicalReviewPage'),
-  '/approvals': () => import('../../features/approvals/pages/ApprovalQueuePage'),
+  
+  
+  
   '/grn': () => import('../../features/grn/pages/GrnListPage'),
   '/payments': () => Promise.resolve(),
   '/escrow': () => import('../../features/escrow/pages/EscrowPage'),
@@ -208,6 +210,14 @@ const ALL_MENU_PATHS = [
   '/orders/delivery-confirmation',
   '/orders/tracking',
   '/admin/marketplace/home-sections',
+  '/seller/opportunities/rfqs',
+  '/seller/opportunities/rfps',
+  '/seller/opportunities/open-tenders',
+  '/seller/opportunities/invitations',
+  '/seller/opportunities/auctions',
+  '/seller/bids/submitted',
+  '/seller/bids/draft',
+  '/seller/bids/awarded',
 ];
 
 const isSidebarRouteActive = (targetPath: string | undefined, pathname?: string | null, currentPathWithQuery?: string) => {
@@ -231,12 +241,14 @@ const SidebarNavLink = memo(function SidebarNavLink({
   item,
   isActive,
   isCollapsed,
-  onClose
+  onClose,
+  count
 }: {
   item: SidebarItem;
   isActive: boolean;
   isCollapsed: boolean;
   onClose: () => void;
+  count?: number;
 }) {
   const path = item.path;
   const handlePreload = useCallback(() => {
@@ -270,7 +282,15 @@ const SidebarNavLink = memo(function SidebarNavLink({
       )}
       <Icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", isActive ? "text-[#c8a45c]" : "text-white/60 group-hover:text-white")} />
       <span className={cn("text-sm font-medium truncate", isCollapsed && "lg:hidden")}>{item.label}</span>
-      {isActive && <ChevronRight className={cn("ml-auto h-3 w-3 text-[#c8a45c]", isCollapsed && "lg:hidden")} />}
+      {count !== undefined && count > 0 && !isCollapsed && (
+        <span className={cn(
+          "ml-auto text-[10px] font-black px-1.5 py-0.5 rounded-full flex items-center justify-center min-w-[20px] h-[20px] transition-colors duration-200",
+          isActive ? "bg-white text-[#0b2447] shadow-sm" : "bg-white/10 text-white/70 group-hover:bg-white/20 group-hover:text-white"
+        )}>
+          {count}
+        </span>
+      )}
+      {isActive && (count === undefined || count <= 0) && <ChevronRight className={cn("ml-auto h-3 w-3 text-[#c8a45c]", isCollapsed && "lg:hidden")} />}
     </Link>
   );
 });
@@ -282,7 +302,8 @@ const SidebarNavGroup = memo(function SidebarNavGroup({
   isCollapsed,
   isOpen,
   onToggle,
-  onClose
+  onClose,
+  counts
 }: {
   item: SidebarItem;
   pathname?: string | null;
@@ -291,6 +312,7 @@ const SidebarNavGroup = memo(function SidebarNavGroup({
   isOpen: boolean;
   onToggle: () => void;
   onClose: () => void;
+  counts?: Record<string, number>;
 }) {
   const Icon = item.icon;
   const children = item.children || [];
@@ -299,7 +321,7 @@ const SidebarNavGroup = memo(function SidebarNavGroup({
 
   if (!children.length) {
     return item.path ? (
-      <SidebarNavLink item={item} isActive={isSidebarRouteActive(item.path, pathname, currentPathWithQuery)} isCollapsed={isCollapsed} onClose={onClose} />
+      <SidebarNavLink item={item} isActive={isSidebarRouteActive(item.path, pathname, currentPathWithQuery)} isCollapsed={isCollapsed} onClose={onClose} count={counts?.[item.path]} />
     ) : null;
   }
 
@@ -330,6 +352,7 @@ const SidebarNavGroup = memo(function SidebarNavGroup({
               isActive={isSidebarRouteActive(child.path, pathname, currentPathWithQuery)}
               isCollapsed={isCollapsed}
               onClose={onClose}
+              count={child.path ? counts?.[child.path] : undefined}
             />
           ))}
         </div>
@@ -351,6 +374,90 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
   const [openGroups, setOpenGroups] = useState<SidebarGroupState>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
+
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (user?.role !== 'seller') return;
+
+    let alive = true;
+    const fetchCounts = async () => {
+      try {
+        const [bidsRes, reqsRes, quoteRes, auctionsRes] = await Promise.allSettled([
+          api.get('/api/bids?pageSize=200', { skipCache: true }).then(async (res) => {
+            const body = await readJsonResponse(res);
+            return unwrapApiData(body);
+          }),
+          api.get('/api/marketplace/requirements?pageSize=200', { skipCache: true }).then(async (res) => {
+            const body = await readJsonResponse(res);
+            return unwrapApiData(body);
+          }),
+          api.get('/api/quote-requests?pageSize=200', { skipCache: true }).then(async (res) => {
+            const body = await readJsonResponse(res);
+            return unwrapApiData(body);
+          }),
+          api.get('/api/reverse-auctions?pageSize=200', { skipCache: true }).then(async (res) => {
+            const body = await readJsonResponse(res);
+            return unwrapApiData(body);
+          }),
+        ]);
+
+        if (!alive) return;
+
+        const bids = bidsRes.status === 'fulfilled' ? bidsRes.value?.items || [] : [];
+        const requirements = reqsRes.status === 'fulfilled' ? reqsRes.value?.requirements || reqsRes.value?.items || reqsRes.value || [] : [];
+        const quoteRequests = quoteRes.status === 'fulfilled' ? quoteRes.value?.records || [] : [];
+        const auctions = auctionsRes.status === 'fulfilled' ? auctionsRes.value?.auctions || [] : [];
+
+        let rfqsCount = 0;
+        let rfpsCount = 0;
+        let openTendersCount = 0;
+        let invitationsCount = 0;
+        let auctionsCount = 0;
+
+        bids.forEach((bid: any) => {
+          const method = String(bid.procurementType || bid.bidType || '').toUpperCase();
+          if (method === 'RFQ') rfqsCount++;
+          else if (method === 'RFP') rfpsCount++;
+          else if (method === 'OPEN_TENDER' || method === 'TENDER') openTendersCount++;
+          else if (method === 'LIMITED_TENDER') invitationsCount++;
+          else if (method === 'REVERSE_AUCTION') auctionsCount++;
+        });
+
+        (Array.isArray(requirements) ? requirements : []).forEach((req: any) => {
+          const method = String(req.requirementType || '').toUpperCase();
+          if (method === 'RFQ') rfqsCount++;
+          else if (method === 'RFP') rfpsCount++;
+          else if (method === 'OPEN_TENDER' || method === 'TENDER') openTendersCount++;
+          else if (method === 'LIMITED_TENDER') invitationsCount++;
+          else if (method === 'REVERSE_AUCTION') auctionsCount++;
+        });
+
+        rfqsCount += quoteRequests.length;
+        auctionsCount += auctions.length;
+
+        const allCount = rfqsCount + rfpsCount + openTendersCount + invitationsCount + auctionsCount;
+
+        setCounts({
+          '/seller/opportunities': allCount,
+          '/seller/opportunities/rfqs': rfqsCount,
+          '/seller/opportunities/rfps': rfpsCount,
+          '/seller/opportunities/open-tenders': openTendersCount,
+          '/seller/opportunities/invitations': invitationsCount,
+          '/seller/opportunities/auctions': auctionsCount
+        });
+      } catch (err) {
+        console.error('Error fetching sidebar counts:', err);
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 30000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -478,68 +585,97 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     ] },
     { label: 'Reports', path: '/admin/reports', icon: BarChart3, roles: ['admin'], featureCode: 'reports-mis' },
     { label: 'Compliance', path: '/admin/compliance-rules', icon: ShieldCheck, roles: ['admin'] },
-    { label: 'Marketplace', path: '/buyer/marketplace', icon: ShoppingCart, roles: ['buyer'], featureCode: 'product-service-catalog' },
+    // Buyer Marketplace
+    { label: 'Marketplace', icon: ShoppingCart, roles: ['buyer'], children: [
+      { label: 'Products & Services', path: '/buyer/marketplace', icon: Store, roles: ['buyer'] },
+      { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] }
+    ] },
+    // Buyer Procurement
     { label: 'Procurement', icon: ClipboardCheck, roles: ['buyer'], children: [
-      { label: 'Sourcing Hub', path: '/buyer/procurement', icon: LayoutDashboard, roles: ['buyer'] },
       { label: 'Create Procurement', path: '/buyer/procurement/create', icon: PlusCircle, roles: ['buyer'] },
       { label: 'My Procurements', path: '/buyer/my-procurements', icon: ClipboardList, roles: ['buyer'] },
-      
-      { label: 'Drafts', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
-      
-      { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'], featureCode: 'bid-submission' },
-      { label: 'Pending Approvals', path: '/buyer/procurement/approvals', icon: CheckSquare, roles: ['buyer'] },
-      
+      { label: 'Draft Procurements', path: '/buyer/procurement/drafts', icon: FileText, roles: ['buyer'] },
+      { label: 'Supplier Responses', path: '/buyer/procurement/responses', icon: FileText, roles: ['buyer'] }
     ] },
+    // Buyer Orders
     { label: 'Orders', icon: Truck, roles: ['buyer'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['buyer'] },
-      { label: 'Delivery Confirmation', path: '/orders/delivery-confirmation', icon: ClipboardList, roles: ['buyer'] },
+      { label: 'Repeat Orders', path: '/buyer/repeat-orders', icon: RotateCcw, roles: ['buyer'] },
       { label: 'Delivery Tracking', path: '/orders/tracking', icon: Truck, roles: ['buyer'] },
+      { label: 'Delivery Confirmation', path: '/orders/delivery-confirmation', icon: ClipboardList, roles: ['buyer'] }
     ] },
-    { label: 'Payments', icon: CreditCard, roles: ['buyer'], featureCode: 'payment-module', children: [
-      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['buyer'], featureCode: 'payment-module' },
-      { label: 'Transactions', path: '/payments/transactions', icon: CreditCard, roles: ['buyer'], featureCode: 'payment-module' },
-      { label: 'Payment Hold / Escrow', path: '/payments/escrow', icon: Landmark, roles: ['buyer'], featureCode: 'escrow-nodal-bank' },
+    // Buyer Payments
+    { label: 'Payments', icon: CreditCard, roles: ['buyer'], children: [
+      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['buyer'] },
+      { label: 'Transactions', path: '/payments/transactions', icon: CreditCard, roles: ['buyer'] },
+      { label: 'Escrow (Feature Controlled)', path: '/payments/escrow', icon: Landmark, roles: ['buyer'], featureCode: 'escrow-nodal-bank' }
     ] },
+    // Buyer Suppliers
     { label: 'Suppliers', icon: Users, roles: ['buyer'], children: [
       { label: 'Supplier Directory', path: '/buyer/vendors', icon: Users, roles: ['buyer'] },
       { label: 'Saved Suppliers', path: '/buyer/saved-suppliers', icon: CheckCircle2, roles: ['buyer'] },
-      { label: 'Messages', path: '/buyer/messages', icon: MessageSquare, roles: ['buyer'] },
+      { label: 'Messages', path: '/buyer/messages', icon: MessageSquare, roles: ['buyer'] }
     ] },
+    // Buyer Reports
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['buyer'] },
-    { label: 'Bids & Tenders', icon: FileSearch, roles: ['seller'], children: [
-      // { label: 'Bidding Dashboard', path: '/seller/procurement', icon: LayoutDashboard, roles: ['seller'] },
-      { label: 'Bidding Opportunities', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
-      { label: 'All Bids & Tenders', path: '/seller/procurement/events', icon: ClipboardList, roles: ['seller'] },
-      { label: 'Reverse Auctions', path: '/reverse-auctions', icon: Gavel, roles: ['seller'] },
-      { label: 'Public Tenders', path: '/seller/tenders', icon: Globe, roles: ['seller'] },
+    // Buyer Administration
+    { label: 'Administration', icon: Settings, roles: ['buyer'], children: [
+      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer'], permission: 'team.member.view' },
+      { label: 'Delivery Addresses', path: '/buyer/address-book', icon: MapPin, roles: ['buyer'] },
+      { label: 'Settings', path: '/buyer/profile', icon: Settings, roles: ['buyer'] }
     ] },
-    { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
-    { label: 'Orders & Deliveries', icon: Truck, roles: ['seller'], children: [
+    // Buyer Disputes
+    { label: 'Disputes', path: '/buyer/disputes', icon: AlertTriangle, roles: ['buyer'] },
+
+    // Seller Opportunities
+    { label: 'Opportunities', icon: Globe, roles: ['seller'], children: [
+      { label: 'All Opportunities', path: '/seller/opportunities', icon: Globe, roles: ['seller'] },
+      { label: 'RFQs', path: '/seller/opportunities/rfqs', icon: FileText, roles: ['seller'] },
+      { label: 'RFPs', path: '/seller/opportunities/rfps', icon: Layers, roles: ['seller'] },
+      { label: 'Open Tenders', path: '/seller/opportunities/open-tenders', icon: ClipboardList, roles: ['seller'] },
+      { label: 'My Invitations', path: '/seller/opportunities/invitations', icon: Users, roles: ['seller'] },
+      { label: 'Reverse Auctions', path: '/seller/opportunities/auctions', icon: Gavel, roles: ['seller'] }
+    ] },
+    // Seller My Bids
+    { label: 'My Bids', icon: ClipboardList, roles: ['seller'], children: [
+      { label: 'Submitted Bids', path: '/seller/bids/submitted', icon: CheckCircle2, roles: ['seller'] },
+      { label: 'Draft Bids', path: '/seller/bids/draft', icon: FileText, roles: ['seller'] },
+      { label: 'Awarded Contracts', path: '/seller/bids/awarded', icon: Trophy, roles: ['seller'] }
+    ] },
+    // Seller Orders
+    { label: 'Orders', icon: Truck, roles: ['seller'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
+      { label: 'Repeat Orders', path: '/orders/repeat', icon: RotateCcw, roles: ['seller'] },
       { label: 'Delivery Management', path: '/seller/delivery-management', icon: ClipboardList, roles: ['seller'] },
-      { label: 'Delivery Updates', path: '/seller/delivery', icon: Truck, roles: ['seller'] },
+      { label: 'Delivery Tracking', path: '/seller/delivery', icon: Truck, roles: ['seller'] }
     ] },
-    { label: 'Payments', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module', children: [
-      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['seller'], featureCode: 'payment-module' },
-      { label: 'Payment Status', path: '/payments/transactions', icon: CreditCard, roles: ['seller'], featureCode: 'payment-module' },
-    ] },
+    // Seller Marketplace
     { label: 'Marketplace', icon: ShoppingCart, roles: ['seller', 'shg'], children: [
       { label: 'Products & Services', path: '/seller/marketplace', icon: Store, roles: ['seller', 'shg'] },
       { label: 'My Catalogue', path: '/seller/catalogue', icon: Store, roles: ['seller', 'shg'] }
     ] },
-    { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['seller'] },
-    { label: 'Banner Eligibility', path: '/my-org/banner-eligibility', icon: Images, roles: ['seller', 'buyer'] },
-    { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
-    { label: 'Cart', path: '/cart', icon: ShoppingCart, roles: ['buyer'] },
-    { label: 'Administration', icon: Settings, roles: ['buyer', 'seller'], children: [
-      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['buyer', 'seller'], permission: 'team.member.view' },
-      { label: 'Delivery Addresses', path: '/buyer/address-book', icon: MapPin, roles: ['buyer'] },
-      { label: 'Settings', path: user?.role === 'seller' ? '/seller/settings' : '/buyer/profile', icon: Settings, roles: ['buyer', 'seller'] },
-      { label: 'Help', path: '/help', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
+    // Seller Payments
+    { label: 'Payments', icon: CreditCard, roles: ['seller'], children: [
+      { label: 'Invoices', path: '/payments/invoices', icon: FileText, roles: ['seller'] },
+      { label: 'Payment Status', path: '/payments/transactions', icon: CreditCard, roles: ['seller'] }
     ] },
-    { label: 'Disputes', path: '/buyer/disputes', icon: AlertTriangle, roles: ['buyer'] },
+    // Seller Messages
+    { label: 'Messages', path: '/seller/messages', icon: MessageSquare, roles: ['seller'] },
+    // Seller Reports
+    { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['seller'] },
+    // Seller Ratings
+    { label: 'Ratings', path: '/seller/ratings', icon: CheckCircle2, roles: ['seller'] },
+    // Seller Administration
+    { label: 'Administration', icon: Settings, roles: ['seller'], children: [
+      { label: 'Team & Roles', path: '/org/team', icon: UserPlus, roles: ['seller'], permission: 'team.member.view' },
+      { label: 'Settings', path: '/seller/settings', icon: Settings, roles: ['seller'] }
+    ] },
+    // Seller Disputes
     { label: 'Disputes', path: '/seller/disputes', icon: AlertTriangle, roles: ['seller'] },
-    { label: 'Notification Prefs', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
+
+    // Common items
+    { label: 'Notifications', path: '/settings/notifications', icon: Bell, roles: ['buyer', 'seller', 'admin'] },
+    { label: 'Help', path: '/help', icon: BookOpen, roles: ['buyer', 'seller', 'admin'] },
     { label: 'Disputes', path: '/admin/disputes', icon: AlertTriangle, roles: ['admin'] },
     ...(!isShgAccount ? [{ label: 'Seller Hub', path: user ? getSellerPortalPath(user) : '/seller/onboarding', icon: Store, roles: ['seller'] }] : []),
     { label: 'Buyer Hub', path: '/buyer/onboarding', icon: Building2, roles: ['buyer'] },
@@ -671,6 +807,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
                 isOpen={!isActuallyCollapsed && Boolean(openGroups[item.label] ?? isGroupActive)}
                 onToggle={() => handleToggleGroup(item.label, isGroupActive)}
                 onClose={onClose}
+                counts={counts}
               />
             );
           })}

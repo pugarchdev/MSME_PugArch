@@ -54,6 +54,12 @@ export interface RequirementDto {
     category?: { id: number; name: string };
     methodSlug?: string | null;
     workflowStatus?: string | null;
+    buyerOrganization?: any;
+    buyerEmail?: string;
+    buyerMobile?: string;
+    budgetMax?: number;
+    budgetMin?: number;
+    lastDate?: string;
     /** Full Create Procurement wizard Draft object (all sections data) */
     payload?: Record<string, any> | null;
     directPurchases?: Array<{

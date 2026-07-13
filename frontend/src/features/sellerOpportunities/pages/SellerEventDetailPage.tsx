@@ -14,6 +14,7 @@ import { procurementBidApi } from '../../procurementBid/api';
 import type { ProcurementBid } from '../../procurementBid/data';
 import { MethodBadge, ProcurementStatusBadge, BuyerTypeBadge } from '../../procurementWizard/components/SourcingWizardComponents';
 import { toast } from 'sonner';
+import { useAuth } from '../../../hooks/useAuth';
 
 interface PageProps {
   id: string;
@@ -21,6 +22,7 @@ interface PageProps {
 
 export default function SellerEventDetailPage({ id }: PageProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [bid, setBid] = useState<ProcurementBid | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,6 +30,14 @@ export default function SellerEventDetailPage({ id }: PageProps) {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [submittingQuestion, setSubmittingQuestion] = useState(false);
   const [questionText, setQuestionText] = useState('');
+
+  const myParticipation = useMemo(() => {
+    if (!bid || !user) return null;
+    return bid.participations?.find((p: any) => Number(p.sellerId) === Number(user.id));
+  }, [bid, user]);
+
+  const isSubmitted = myParticipation?.submissionStatus === 'SUBMITTED';
+  const isRequiresResubmission = myParticipation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION');
 
   const loadData = React.useCallback(() => {
     setLoading(true);
@@ -67,12 +77,18 @@ export default function SellerEventDetailPage({ id }: PageProps) {
     if (!questionText.trim()) return;
 
     setSubmittingQuestion(true);
-    // Simulate submission of clarification request
-    setTimeout(() => {
-      setSubmittingQuestion(false);
-      toast.success('Your clarification request was submitted successfully.');
-      setQuestionText('');
-    }, 1000);
+    procurementBidApi.askClarification(id, questionText)
+      .then(() => {
+        toast.success('Your clarification request was submitted successfully.');
+        setQuestionText('');
+        loadData();
+      })
+      .catch((err: any) => {
+        toast.error(err.message || 'Failed to submit clarification question');
+      })
+      .finally(() => {
+        setSubmittingQuestion(false);
+      });
   };
 
   if (loading) {
@@ -115,7 +131,15 @@ export default function SellerEventDetailPage({ id }: PageProps) {
         <div className="flex items-center gap-2">
           <Link href={participationUrl}>
             <Button type="button" className="bg-[#12335f] text-white hover:bg-[#12335f]/95 rounded-md font-bold text-xs uppercase tracking-wide">
-              Participate / Submit Quote <ArrowRight className="ml-1.5 h-4 w-4" />
+              {isSubmitted ? (
+                <>View Submitted Quotation <ArrowRight className="ml-1.5 h-4 w-4" /></>
+              ) : isRequiresResubmission ? (
+                <>Revise & Resubmit Quotation <ArrowRight className="ml-1.5 h-4 w-4" /></>
+              ) : myParticipation ? (
+                <>Continue Submission <ArrowRight className="ml-1.5 h-4 w-4" /></>
+              ) : (
+                <>Participate / Submit Quote <ArrowRight className="ml-1.5 h-4 w-4" /></>
+              )}
             </Button>
           </Link>
         </div>
@@ -152,10 +176,14 @@ export default function SellerEventDetailPage({ id }: PageProps) {
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Submission Status</p>
             <p className="font-bold mt-0.5">
-              {bid.participated ? (
+              {isSubmitted ? (
                 <span className="text-emerald-700">SUBMITTED</span>
+              ) : isRequiresResubmission ? (
+                <span className="text-amber-600">REVISION REQUIRED</span>
+              ) : myParticipation ? (
+                <span className="text-blue-600">DRAFT IN PROGRESS</span>
               ) : (
-                <span className="text-amber-600">PENDING PARTICIPATION</span>
+                <span className="text-slate-400">PENDING PARTICIPATION</span>
               )}
             </p>
           </div>
@@ -355,16 +383,22 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                 bid.clarifications.map((c: any, idx: number) => (
                   <div key={idx} className="space-y-2 rounded-[18px] p-3 text-xs ring-1 ring-slate-200/70">
                     <div className="flex justify-between border-b pb-1">
-                      <span className="font-black text-slate-800">Request #{c.requestNumber || idx + 1}</span>
+                      <span className="font-black text-slate-800">
+                        {c.clarificationType === 'SELLER_QUERY' ? `Query by ${c.sellerName || 'Bidder'}` : `Clarification Request #${c.requestNumber}`}
+                      </span>
                       <span className="text-[10px] font-bold text-slate-400">{c.requestedAt ? new Date(c.requestedAt).toLocaleDateString() : 'Recent'}</span>
                     </div>
                     <div>
-                      <p className="font-bold text-slate-500 uppercase text-[9px]">Question</p>
-                      <p className="font-semibold text-slate-700 mt-0.5">{c.description}</p>
+                      <p className="font-bold text-slate-500 uppercase text-[9px]">
+                        {c.clarificationType === 'SELLER_QUERY' ? 'Question' : 'Query from Buyer'}
+                      </p>
+                      <p className="font-semibold text-slate-700 mt-0.5">{c.question || c.description}</p>
                     </div>
                     <div>
-                      <p className="font-bold text-slate-500 uppercase text-[9px]">Buyer Response</p>
-                      <p className="font-bold text-[#12335f] mt-0.5">{c.sellerResponse}</p>
+                      <p className="font-bold text-slate-500 uppercase text-[9px]">
+                        {c.clarificationType === 'SELLER_QUERY' ? 'Buyer Response' : 'Seller Response'}
+                      </p>
+                      <p className="font-bold text-[#12335f] mt-0.5">{c.response || c.sellerResponse || 'Pending Response'}</p>
                     </div>
                   </div>
                 ))
@@ -440,7 +474,15 @@ export default function SellerEventDetailPage({ id }: PageProps) {
                     disabled={!termsAccepted}
                     className="bg-[#12335f] text-white hover:bg-[#12335f]/95 rounded-md h-9 text-xs font-bold uppercase tracking-wide"
                   >
-                    Open Submission Wizard
+                    {isSubmitted ? (
+                      'View Submitted Quotation'
+                    ) : isRequiresResubmission ? (
+                      'Revise & Resubmit Quotation'
+                    ) : myParticipation ? (
+                      'Continue Submission Wizard'
+                    ) : (
+                      'Open Submission Wizard'
+                    )}
                   </Button>
                 </Link>
               </div>

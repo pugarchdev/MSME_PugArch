@@ -122,7 +122,7 @@ type AuctionConfig = {
   auctionNumber: string;
   auctionTitle: string;
   auctionDescription: string;
-  procurementMethod: 'REVERSE_AUCTION' | 'BID_WITH_REVERSE_AUCTION';
+  procurementMethod: 'REVERSE_AUCTION';
   auctionCategory: string;
   auctionSubCategory: string;
   currency: string;
@@ -325,6 +325,8 @@ type Draft = {
   tenderType?: 'OPEN' | 'LIMITED' | 'SEALED' | '';
   limitedTenderJustification?: string;
   sealedSubmissionFlag?: boolean;
+  draftStep?: number;
+  updatedAt?: string;
 };
 
 const DRAFT_KEY = 'msme:guided-procurement-create:v2';
@@ -337,7 +339,7 @@ const nextWeekDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000));
 const nextWeekPlusOneHourDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000 + 60 * 60000));
 
 const makeId = () => Math.random().toString(36).substring(2, 9);
-const isReverseAuctionMethod = (method: ProcurementMethodId) => method === 'REVERSE_AUCTION' || method === 'BID_WITH_REVERSE_AUCTION';
+const isReverseAuctionMethod = (method: ProcurementMethodId) => method === 'REVERSE_AUCTION';
 const isRateContractMethod = (method: ProcurementMethodId) => method === 'RATE_CONTRACT';
 const itemTemplateHeaders = [
   'Item Type',
@@ -437,7 +439,7 @@ const defaultAuctionConfig = (method: ProcurementMethodId): AuctionConfig => ({
   auctionNumber: `RA-${Date.now()}`,
   auctionTitle: '',
   auctionDescription: '',
-  procurementMethod: method === 'BID_WITH_REVERSE_AUCTION' ? 'BID_WITH_REVERSE_AUCTION' : 'REVERSE_AUCTION',
+  procurementMethod: 'REVERSE_AUCTION',
   auctionCategory: '',
   auctionSubCategory: '',
   currency: 'INR',
@@ -470,7 +472,7 @@ const defaultAuctionConfig = (method: ProcurementMethodId): AuctionConfig => ({
   triggerConfiguration: {
     trigger: 'AFTER_TECHNICAL_QUALIFICATION',
     topN: 3,
-    preBidStageRequired: method === 'BID_WITH_REVERSE_AUCTION',
+    preBidStageRequired: false,
   },
 });
 
@@ -486,16 +488,16 @@ const syncAuctionDefaults = (draft: Draft, method: ProcurementMethodId): Draft =
     basics: {
       ...draft.basics,
       isReverseAuctionNeeded: true,
-      isTechnicalEvaluationNeeded: method === 'BID_WITH_REVERSE_AUCTION' ? true : draft.basics.isTechnicalEvaluationNeeded,
+      isTechnicalEvaluationNeeded: draft.basics.isTechnicalEvaluationNeeded,
     },
     schedule: {
       ...draft.schedule,
-      packetType: method === 'BID_WITH_REVERSE_AUCTION' ? 'Two' : draft.schedule.packetType,
+      packetType: draft.schedule.packetType,
       minimumBidders: Math.max(draft.schedule.minimumBidders || 0, base.minimumQualifiedBidders || 2),
     },
     auctionConfig: {
       ...base,
-      procurementMethod: method === 'BID_WITH_REVERSE_AUCTION' ? 'BID_WITH_REVERSE_AUCTION' : 'REVERSE_AUCTION',
+  procurementMethod: 'REVERSE_AUCTION',
       auctionTitle: base.auctionTitle || draft.basics.title,
       auctionDescription: base.auctionDescription || draft.basics.justification,
       auctionCategory: base.auctionCategory || draft.basics.category,
@@ -505,7 +507,7 @@ const syncAuctionDefaults = (draft: Draft, method: ProcurementMethodId): Draft =
       startingBidPrice: base.startingBidPrice || draft.basics.estimatedValue || 0,
       triggerConfiguration: {
         ...base.triggerConfiguration,
-        preBidStageRequired: method === 'BID_WITH_REVERSE_AUCTION',
+    preBidStageRequired: false,
       },
     },
   };
@@ -697,7 +699,7 @@ const defaultRequiredDocs = (buyerType: BuyerType, method: ProcurementMethodId):
     { id: 'gst', name: 'GST Certificate', required: true, fileType: 'pdf', maxSize: 5, instructions: 'Upload verified GST registration document.' },
     { id: 'pan', name: 'PAN Card', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Upload official PAN card.' },
     { id: 'bank', name: 'Bank Details', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Cancelled cheque or passbook.' },
-    { id: 'tech_compliance', name: 'Technical Compliance Sheet', required: method !== 'DIRECT_PURCHASE' && method !== 'CATALOG_PURCHASE', fileType: 'pdf,docx', maxSize: 10, instructions: 'Compliance report against specified standards.' },
+    { id: 'tech_compliance', name: 'Technical Compliance Sheet', required: true, fileType: 'pdf,docx', maxSize: 10, instructions: 'Compliance report against specified standards.' },
     { id: 'financial_quote', name: 'Detailed Price Breakup', required: true, fileType: 'pdf,xlsx', maxSize: 5, instructions: 'Itemized cost schedule.' },
   ];
 
@@ -707,10 +709,6 @@ const defaultRequiredDocs = (buyerType: BuyerType, method: ProcurementMethodId):
       { id: 'turnover', name: 'Turnover Certificate', required: true, fileType: 'pdf', maxSize: 5, instructions: 'Chartered Accountant certified turnover.' },
       { id: 'no_deviation', name: 'No-Deviation Certificate', required: true, fileType: 'pdf', maxSize: 2, instructions: 'Declaration confirming no specs deviation.' }
     );
-  }
-
-  if (method === 'PAC') {
-    docs.push({ id: 'pac_cert', name: 'Proprietary Article Certificate (PAC)', required: true, fileType: 'pdf', maxSize: 5, instructions: 'OEM signed proprietary certificate.' });
   }
 
   return docs;
@@ -852,9 +850,15 @@ const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 
 
 export default function CreateProcurementPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const searchParams = useSearchParams();
   const draftIdParam = searchParams?.get('id') || searchParams?.get('draftId');
+
+  const userRef = React.useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const initialMethod = useMemo<ProcurementMethodId>(
     () => normalizeProcurementMethod(searchParams?.get('method'), 'RFQ'),
     [searchParams]
@@ -872,8 +876,38 @@ export default function CreateProcurementPage() {
     return isGov ? 'GOVERNMENT_BUYER' : 'PRIVATE_BUYER';
   }, [user]);
 
-  const [draft, setDraft] = useState<Draft>(() => defaultDraft(initialMethod, initialBuyerType));
-  const [activeStep, setActiveStep] = useState(0);
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('msme:guided-procurement-create:v2');
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved && typeof saved === 'object') {
+            return saved;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load local draft from localStorage', e);
+      }
+    }
+    return defaultDraft(initialMethod, initialBuyerType);
+  });
+  const [activeStep, setActiveStep] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('msme:guided-procurement-create:v2');
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved && typeof saved.draftStep === 'number') {
+            return saved.draftStep;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load local draft activeStep from localStorage', e);
+      }
+    }
+    return 0;
+  });
   const [savingDraft, setSavingDraft] = useState(false);
   const [submittingDraft, setSubmittingDraft] = useState(false);
   const [triedNext, setTriedNext] = useState(false);
@@ -917,6 +951,18 @@ export default function CreateProcurementPage() {
     }
   }, [initialBuyerType]);
 
+  // Save activeStep and updatedAt when activeStep changes for local draft
+  useEffect(() => {
+    if (!draftIdParam) {
+      setDraft(current => {
+        if (current.draftStep === activeStep) return current;
+        const next = { ...current, draftStep: activeStep, updatedAt: new Date().toISOString() };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [activeStep, draftIdParam]);
+
   // Load draft
   useEffect(() => {
     if (!draftIdParam) return;
@@ -930,6 +976,15 @@ export default function CreateProcurementPage() {
 
         const base = defaultDraft(payload.type || 'RFQ', payload.basics?.buyerType || initialBuyerType);
 
+        const u = userRef.current as any;
+        const orgName = u?.organization?.organizationName || u?.buyerProfile?.organizationName || '';
+        const department = u?.buyerProfile?.department || '';
+        const contactPerson = u?.buyerProfile?.representativeName || u?.name || '';
+        const email = u?.buyerProfile?.email || u?.email || '';
+        const mobile = u?.buyerProfile?.mobile || u?.mobile || '';
+
+        const internalPayload = payload.internal || {};
+
         setDraft({
           ...base,
           ...payload,
@@ -940,7 +995,15 @@ export default function CreateProcurementPage() {
             estimatedValue: Number(payload.basics?.estimatedValue || res.estimatedValue || base.basics.estimatedValue || 0),
             deliveryLocation: payload.basics?.deliveryLocation || payload.tender?.deliveryLocation || base.basics.deliveryLocation || ''
           },
-          internal: { ...base.internal, ...(payload.internal || {}) },
+          internal: {
+            ...base.internal,
+            ...internalPayload,
+            orgName: internalPayload.orgName || orgName,
+            department: internalPayload.department || department,
+            contactPerson: internalPayload.contactPerson || contactPerson,
+            email: internalPayload.email || email,
+            mobile: internalPayload.mobile || mobile,
+          },
           serviceDetails: { ...base.serviceDetails, ...(payload.serviceDetails || {}) },
           vendors: { ...base.vendors, ...(payload.vendors || {}) },
           schedule: { ...base.schedule, ...(payload.schedule || {}) },
@@ -968,7 +1031,7 @@ export default function CreateProcurementPage() {
 
   const updateDraft = (updater: (current: Draft) => Draft) => {
     setDraft(current => {
-      const next = updater(current);
+      const next = { ...updater(current), updatedAt: new Date().toISOString() };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
       return next;
     });
@@ -1025,13 +1088,13 @@ export default function CreateProcurementPage() {
     if (d.basics.isTechnicalEvaluationNeeded || d.schedule.packetType === 'Two') {
       list.push({ label: 'Technical opening date is required', ok: Boolean(d.schedule.technicalOpeningDate), severity: 'error', stepIdx: 4 });
       if (d.schedule.technicalOpeningDate && d.schedule.submissionDate) {
-        list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) >= new Date(d.schedule.submissionDate), severity: 'error', stepIdx: 4 });
+        list.push({ label: 'Technical opening date must be after submission deadline', ok: new Date(d.schedule.technicalOpeningDate) > new Date(d.schedule.submissionDate), severity: 'error', stepIdx: 4 });
       }
     }
     if (d.schedule.packetType === 'Two') {
       list.push({ label: 'Financial opening date is required for two packet flows', ok: Boolean(d.schedule.financialOpeningDate), severity: 'error', stepIdx: 4 });
       if (d.schedule.financialOpeningDate && d.schedule.technicalOpeningDate) {
-        list.push({ label: 'Financial opening date must be on or after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) >= new Date(d.schedule.technicalOpeningDate), severity: 'error', stepIdx: 4 });
+        list.push({ label: 'Financial opening date must be after technical envelope opening', ok: new Date(d.schedule.financialOpeningDate) > new Date(d.schedule.technicalOpeningDate), severity: 'error', stepIdx: 4 });
       }
     }
     if (isReverseAuctionMethod(d.type)) {
@@ -1064,16 +1127,16 @@ export default function CreateProcurementPage() {
 
     // Warnings / Advisories
     if (d.basics.buyerType === 'GOVERNMENT_BUYER' && d.basics.estimatedValue > 250000 && d.vendors.selection !== 'Open') {
-      const isExempt = d.basics.isOnlyOneVendor || d.basics.priority === 'Emergency' || d.type === 'PAC' || d.type === 'SINGLE_SOURCE';
+      const isExempt = d.basics.isOnlyOneVendor || d.basics.priority === 'Emergency';
       list.push({
         label: 'Est. value > 2.5 Lakhs. GFR rules require open advertised tender unless PAC/Single/Emergency is justified.',
         ok: isExempt,
         severity: 'warning'
       });
     }
-    if (d.basics.isOnlyOneVendor || d.type === 'PAC' || d.type === 'SINGLE_SOURCE') {
+    if (d.basics.isOnlyOneVendor) {
       list.push({
-        label: 'PAC / Single Source justification note is short (recommend min 15 chars)',
+        label: 'Only one vendor justification note is short (recommend min 15 chars)',
         ok: d.internal.justification.trim().length >= 15,
         severity: 'warning'
       });
@@ -1174,6 +1237,18 @@ export default function CreateProcurementPage() {
         toast.error('Organization name is required.');
         return false;
       }
+      if (!d.internal.contactPerson.trim()) {
+        toast.error('Contact Person Name is required.');
+        return false;
+      }
+      if (!d.internal.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.internal.email.trim())) {
+        toast.error('A valid Contact Email Address is required.');
+        return false;
+      }
+      if (!d.internal.mobile.trim() || !/^\d{10}$/.test(d.internal.mobile.trim())) {
+        toast.error('A valid 10-digit Contact Mobile Number is required (e.g. 9876543210).');
+        return false;
+      }
       if (d.basics.buyerType === 'GOVERNMENT_BUYER') {
         if (!d.internal.internalFileNumber.trim()) {
           toast.error('Department File/Case Number is required for government buyers.');
@@ -1262,8 +1337,8 @@ export default function CreateProcurementPage() {
           toast.error('Technical opening date is required.');
           return false;
         }
-        if (new Date(d.schedule.technicalOpeningDate) < new Date(d.schedule.submissionDate)) {
-          toast.error('Technical opening date cannot be scheduled before submission deadline.');
+        if (new Date(d.schedule.technicalOpeningDate) <= new Date(d.schedule.submissionDate)) {
+          toast.error('Technical opening date must be after submission deadline.');
           return false;
         }
       }
@@ -1272,8 +1347,8 @@ export default function CreateProcurementPage() {
           toast.error('Financial opening date is required for Two Packet flow.');
           return false;
         }
-        if (new Date(d.schedule.financialOpeningDate) < new Date(d.schedule.technicalOpeningDate)) {
-          toast.error('Financial opening date must be scheduled on or after technical envelope opening.');
+        if (new Date(d.schedule.financialOpeningDate) <= new Date(d.schedule.technicalOpeningDate)) {
+          toast.error('Financial opening date must be after technical envelope opening.');
           return false;
         }
       }
@@ -1323,10 +1398,6 @@ export default function CreateProcurementPage() {
           auction.maximumExtensions <= 0
         )) {
           toast.error('Auto extension trigger, duration, and maximum extensions are required.');
-          return false;
-        }
-        if (d.type === 'BID_WITH_REVERSE_AUCTION' && !auction.triggerConfiguration.trigger) {
-          toast.error('Bid with Reverse Auction requires an auction trigger configuration.');
           return false;
         }
       }
@@ -1427,7 +1498,7 @@ export default function CreateProcurementPage() {
     }
     setTriedNext(false);
     const nextStep = activeStep < ALL_STEPS.length - 1 ? activeStep + 1 : activeStep;
-    await saveDraftLocally(true, nextStep);
+    saveDraftLocally(true, nextStep).catch(err => console.warn('Autosave error:', err));
     if (activeStep < ALL_STEPS.length - 1) {
       setActiveStep(step => step + 1);
     }
@@ -1437,7 +1508,7 @@ export default function CreateProcurementPage() {
     setTriedNext(false);
     if (activeStep > 0) {
       const prevStep = activeStep - 1;
-      await saveDraftLocally(true, prevStep);
+      saveDraftLocally(true, prevStep).catch(err => console.warn('Autosave error:', err));
       setActiveStep(prevStep);
     } else {
       router.push('/buyer/procurement');
@@ -1459,6 +1530,7 @@ export default function CreateProcurementPage() {
       const payload = buildProcurementApiPayload(draft, activeStep);
       console.log('[SubmitProcurement] Sending payload with method:', payload.methodSlug, 'id:', payload.id);
       await submitProcurementDraft(payload);
+      localStorage.removeItem(DRAFT_KEY);
       toast.success('Procurement request submitted successfully');
       router.push(`/buyer/procurement`);
     } catch (err: any) {
@@ -1526,7 +1598,7 @@ export default function CreateProcurementPage() {
                 onStepClick={async (idx) => {
                   if (idx < activeStep || validateStep(activeStep)) {
                     setTriedNext(false);
-                    await saveDraftLocally(true, idx);
+                    saveDraftLocally(true, idx).catch(err => console.warn('Autosave error:', err));
                     setActiveStep(idx);
                   } else {
                     setTriedNext(true);
@@ -1671,7 +1743,8 @@ function BasicsStepForm({
   recommendedMethod: RecommendationResult;
 }) {
   const availableMethods = useMemo(() => {
-    return METHOD_DEFINITIONS.filter(m => m.buyerTypes.includes(draft.basics.buyerType));
+    const allowed = ['RFQ', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'REVERSE_AUCTION', 'RATE_CONTRACT'];
+    return METHOD_DEFINITIONS.filter(m => allowed.includes(m.id) && m.buyerTypes.includes(draft.basics.buyerType));
   }, [draft.basics.buyerType]);
 
   const handleApplyRecommendation = () => {
@@ -1827,11 +1900,11 @@ function BasicsStepForm({
           </p>
         </Field>
 
-        {['RFQ', 'RFI', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'SEALED_TENDER', 'TWO_PACKET_BID', 'BOQ_BASED_BID'].includes(draft.type) && (
-          <Field label={`${draft.type.includes('TENDER') || draft.type === 'TWO_PACKET_BID' || draft.type === 'BOQ_BASED_BID' ? 'Tender' : draft.type} Number`}>
+        {['RFQ', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER'].includes(draft.type) && (
+          <Field label={`${draft.type.includes('TENDER') ? 'Tender' : draft.type} Number`}>
             <input
               type="text"
-              value={draft.id ? `${draft.type === 'TWO_PACKET_BID' || draft.type === 'BOQ_BASED_BID' ? 'TDR' : draft.type}-${draft.id}` : 'Auto-generated after first save'}
+              value={draft.id ? `${draft.type}-${draft.id}` : 'Auto-generated after first save'}
               disabled
               className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none cursor-not-allowed"
             />
@@ -2003,183 +2076,186 @@ function BasicsStepForm({
       </div>
 
       {/* Sourcing parameters checkboxes */}
-      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
-        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Procurement Parameters</h3>
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isCatalogueAvailable}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isCatalogueAvailable: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Catalog item available?</span>
-          </label>
+      <div className="border border-slate-200 rounded-[22px] p-5 bg-slate-50/50 space-y-4">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Procurement Parameters</h3>
+        <div className="grid gap-3.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isCatalogueAvailable: !c.basics.isCatalogueAvailable } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isCatalogueAvailable 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Catalogue Available</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isCatalogueAvailable ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isCatalogueAvailable && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Items can be selected directly from standard contract lists.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isOnlyOneVendor}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isOnlyOneVendor: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Only one vendor allowed?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isOnlyOneVendor: !c.basics.isOnlyOneVendor } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isOnlyOneVendor 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Proprietary / PAC</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isOnlyOneVendor ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isOnlyOneVendor && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Sourcing is restricted to one specific proprietary vendor.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isReverseAuctionNeeded}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isReverseAuctionNeeded: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Reverse auction needed?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isReverseAuctionNeeded: !c.basics.isReverseAuctionNeeded } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isReverseAuctionNeeded 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Reverse Auction</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isReverseAuctionNeeded ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isReverseAuctionNeeded && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Enable dynamic live-bidding for commercial selection.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isTechnicalEvaluationNeeded}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isTechnicalEvaluationNeeded: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Tech opening needed?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isTechnicalEvaluationNeeded: !c.basics.isTechnicalEvaluationNeeded } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isTechnicalEvaluationNeeded 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Technical Opening</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isTechnicalEvaluationNeeded ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isTechnicalEvaluationNeeded && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Two-stage bidding: tech envelopes are opened first.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isSpecClear}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isSpecClear: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Specifications are clear?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isSpecClear: !c.basics.isSpecClear } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isSpecClear 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Specifications Clear</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isSpecClear ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isSpecClear && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Precise size, specs, and design drawings are finalized.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.isRepeatedSupply}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, isRepeatedSupply: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Repeated/recurring supply?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isRepeatedSupply: !c.basics.isRepeatedSupply } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.isRepeatedSupply 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Repeated Supply</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.isRepeatedSupply ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.isRepeatedSupply && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Requirement is for regular supply schedules / Rate Contract.</p>
+          </button>
 
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.basics.marketResearchOnly}
-              onChange={e => updateDraft(c => ({ ...c, basics: { ...c.basics, marketResearchOnly: e.target.checked } }))}
-              className="h-4 w-4 rounded accent-[#12335f]"
-            />
-            <span>Market research/RFI only?</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, marketResearchOnly: !c.basics.marketResearchOnly } }))}
+            className={cn(
+              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
+              draft.basics.marketResearchOnly 
+                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
+                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-[10px] font-black uppercase tracking-wider">Research / RFI Only</span>
+              <span className={cn(
+                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
+                draft.basics.marketResearchOnly ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
+              )}>
+                {draft.basics.marketResearchOnly && "✓"}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Gather vendor capability data without intent to buy.</p>
+          </button>
         </div>
       </div>
 
-      {draft.type === 'RFI' && (
-        <div className="border border-slate-200 bg-white p-5 rounded-xl space-y-4 shadow-sm mb-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">RFI Questionnaire Builder</h3>
-              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Add market research questions for responding vendors (at least 1 question is required).</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                updateDraft(c => ({
-                  ...c,
-                  questionnaire: [
-                    ...(c.questionnaire || []),
-                    { id: makeId(), type: 'TEXT', text: '' }
-                  ]
-                }));
-              }}
-              className="h-8 text-xs font-bold text-[#12335f] border-slate-300 hover:bg-slate-50"
-            >
-              + Add Question
-            </Button>
-          </div>
-
-          {(draft.questionnaire || []).length === 0 ? (
-            <div className="text-center py-6 text-xs text-slate-400 font-semibold">
-              No questions added yet. Click "+ Add Question" to start building your RFI survey.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {(draft.questionnaire || []).map((q, idx) => (
-                <div key={q.id} className="flex gap-3 items-start border border-slate-100 p-3 rounded-lg bg-slate-50/50">
-                  <span className="text-xs font-bold text-slate-400 mt-2.5">Q{idx + 1}.</span>
-                  <div className="flex-1 grid gap-3 sm:grid-cols-[1fr_160px]">
-                    <input
-                      type="text"
-                      value={q.text}
-                      onChange={e => {
-                        const newQ = [...(draft.questionnaire || [])];
-                        newQ[idx].text = e.target.value;
-                        updateDraft(c => ({ ...c, questionnaire: newQ }));
-                      }}
-                      placeholder="Type your market research or capability question..."
-                      className={inputClass}
-                    />
-                    <select
-                      value={q.type}
-                      onChange={e => {
-                        const newQ = [...(draft.questionnaire || [])];
-                        newQ[idx].type = e.target.value as any;
-                        updateDraft(c => ({ ...c, questionnaire: newQ }));
-                      }}
-                      className={inputClass}
-                    >
-                      <option value="TEXT">Text Answer</option>
-                      <option value="YES_NO">Yes / No Option</option>
-                      <option value="ATTACHMENT">Document Attachment</option>
-                    </select>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updateDraft(c => ({
-                        ...c,
-                        questionnaire: (c.questionnaire || []).filter(x => x.id !== q.id)
-                      }));
-                    }}
-                    className="p-2 rounded text-rose-500 hover:bg-rose-50 transition-all mt-1"
-                    title="Delete question"
-                  >
-                    <Trash2 className="h-4.5 w-4.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Suggested method banner */}
-      <div className="border border-amber-250 bg-amber-50/40 p-5 rounded-xl space-y-4 shadow-sm">
+      <div className="border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-blue-50/20 p-5 rounded-[22px] space-y-4 shadow-3xs ring-1 ring-indigo-100/40">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-600/10 text-amber-700">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-700">
               <Info className="h-5 w-5" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-xs font-black uppercase text-amber-900 tracking-wider">Suggested Sourcing Method</h4>
+                <h4 className="text-xs font-black uppercase text-indigo-900 tracking-wider">SMILE AI Method Advisor</h4>
                 <span className={cn(
                   "px-2 py-0.5 rounded text-[8px] font-black uppercase leading-none border",
-                  recommendedMethod.confidence === 'HIGH' ? "bg-emerald-100 border-emerald-250 text-emerald-850" :
-                  recommendedMethod.confidence === 'MEDIUM' ? "bg-amber-100 border-amber-250 text-amber-850" :
-                  "bg-rose-100 border-rose-250 text-rose-850"
+                  recommendedMethod.confidence === 'HIGH' ? "bg-emerald-50 border-emerald-250 text-emerald-850" :
+                  recommendedMethod.confidence === 'MEDIUM' ? "bg-amber-50 border-amber-250 text-amber-850" :
+                  "bg-rose-50 border-rose-250 text-rose-850"
                 )}>
                   {recommendedMethod.confidence} Confidence
                 </span>
               </div>
-              <p className="text-[11px] font-semibold text-amber-800 mt-1.5 leading-relaxed max-w-2xl">
-                <strong>{recommendedMethod.id.replace(/_/g, ' ')}</strong>: {recommendedMethod.reason}
+              <p className="text-[11px] font-semibold text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
+                Suggested strategy: <strong className="text-slate-900">{recommendedMethod.id.replace(/_/g, ' ')}</strong>. {recommendedMethod.reason}
               </p>
             </div>
           </div>
@@ -2188,7 +2264,7 @@ function BasicsStepForm({
             size="sm"
             onClick={handleApplyRecommendation}
             disabled={draft.type === recommendedMethod.id}
-            className="bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] uppercase font-black tracking-wide h-9 shrink-0"
+            className="bg-[#12335f] hover:bg-[#1c477d] text-white rounded-xl text-[10px] uppercase font-black tracking-wide h-9 shrink-0 px-4 transition"
           >
             {draft.type === recommendedMethod.id ? 'Applied' : 'Apply Recommendation'}
           </Button>
@@ -2259,18 +2335,6 @@ function BasicsStepForm({
       )}
 
       {/* Method specific notices */}
-      {['PAC', 'SINGLE_SOURCE', 'EMERGENCY_PURCHASE'].includes(draft.type) && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
-          <span className="text-rose-600 text-sm shrink-0">⚠️</span>
-          <div>
-            <span className="text-rose-950 font-black uppercase text-[9px] tracking-wider block">Exclusivity / Emergency Sourcing Active</span>
-            <p className="mt-0.5 leading-relaxed text-rose-700 font-medium">
-              This method skips open-market competition. You must upload legal justifications (e.g. PAC Certificate) in Step 7 and obtain CFA approval signatures.
-            </p>
-          </div>
-        </div>
-      )}
-
       {draft.type === 'REVERSE_AUCTION' && !draft.basics.isSpecClear && (
         <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
           <span className="text-amber-600 text-sm shrink-0">⚠️</span>
@@ -2278,30 +2342,6 @@ function BasicsStepForm({
             <span className="text-amber-950 font-black uppercase text-[9px] tracking-wider block">Reverse Auction Spec Warning</span>
             <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
               Conducting reverse auctions with unclear specifications increases the risk of delivery disputes. Verify item dimensions and specifications.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {draft.type === 'DIRECT_PURCHASE' && !draft.basics.isCatalogueAvailable && (
-        <div className="p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
-          <span className="text-slate-500 text-sm shrink-0">ℹ️</span>
-          <div>
-            <span className="text-slate-900 font-black uppercase text-[9px] tracking-wider block">Direct Purchase Catalogue Notice</span>
-            <p className="mt-0.5 leading-relaxed text-slate-600 font-medium">
-              Direct Sourcing is best applied when matching pre-approved catalog numbers or identical previous orders to ensure price reasonability.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {draft.type === 'TWO_PACKET_BID' && (
-        <div className="p-4 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
-          <span className="text-indigo-600 text-sm shrink-0">ℹ️</span>
-          <div>
-            <span className="text-indigo-900 font-black uppercase text-[9px] tracking-wider block">Two Packet Envelopes Setup</span>
-            <p className="mt-0.5 leading-relaxed text-indigo-750 font-medium">
-              Two-packet bidding mandates separate Technical Opening and Financial Opening dates. Setup these dates carefully in Step 5 (Timeline & Rules).
             </p>
           </div>
         </div>
@@ -2826,6 +2866,7 @@ function ItemsDetailsForm({
   setSelectedItemForEdit: (item: ItemRow | null) => void;
 }) {
   const whatBuying = draft.basics.whatAreYouBuying;
+  const { token } = useAuth();
   const { data: activeCart, isLoading: isCartLoading } = useActiveCart({ enabled: true });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -3437,7 +3478,7 @@ function ItemsDetailsForm({
                     <td className="px-3 py-3">
                       {attachmentCount > 0 && (item.attachments?.[0] || item.specificationFileName) ? (
                         <a
-                          href={`/api/files/${item.attachments?.[0]?.fileAssetId || item.fileAssetId}/view`}
+                          href={`/api/files/${item.attachments?.[0]?.fileAssetId || item.fileAssetId}/view?token=${encodeURIComponent(token || localStorage.getItem('token') || '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center text-[#12335f] hover:underline gap-1 text-[11px] font-bold"
@@ -3685,7 +3726,7 @@ function ItemsDetailsForm({
                         {(selectedItemForEdit.attachments || []).map(attachment => (
                           <div key={attachment.id} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs font-semibold text-slate-800 animate-fadeIn">
                             <a
-                              href={`/api/files/${attachment.fileAssetId}/view`}
+                              href={`/api/files/${attachment.fileAssetId}/view?token=${encodeURIComponent(token || localStorage.getItem('token') || '')}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex min-w-0 items-center gap-2 text-[#12335f] hover:underline"
@@ -4075,13 +4116,13 @@ function ScheduleStepForm({
     }
   }
   if (draft.basics.isTechnicalEvaluationNeeded && draft.schedule.technicalOpeningDate && draft.schedule.submissionDate) {
-    if (new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)) {
-      warnings.push('Technical opening date cannot be scheduled before submission deadline.');
+    if (new Date(draft.schedule.technicalOpeningDate) <= new Date(draft.schedule.submissionDate)) {
+      warnings.push('Technical opening date must be after submission deadline.');
     }
   }
   if (isTwoPacket && draft.schedule.financialOpeningDate && draft.schedule.technicalOpeningDate) {
-    if (new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)) {
-      warnings.push('Financial opening date must be scheduled on or after technical envelope opening.');
+    if (new Date(draft.schedule.financialOpeningDate) <= new Date(draft.schedule.technicalOpeningDate)) {
+      warnings.push('Financial opening date must be after technical envelope opening.');
     }
   }
 
@@ -4262,23 +4303,6 @@ function ScheduleStepForm({
               </>
             )}
           </div>
-
-          {draft.type === 'BID_WITH_REVERSE_AUCTION' && (
-            <div className="grid gap-4 sm:grid-cols-2 border-t border-indigo-100 pt-4">
-              <Field label="Auction Trigger Configuration" required>
-                <select value={draft.auctionConfig.triggerConfiguration.trigger} onChange={e => updateTrigger('trigger', e.target.value as AuctionConfig['triggerConfiguration']['trigger'])} className={inputClass}>
-                  <option value="AFTER_TECHNICAL_QUALIFICATION">After Technical Qualification</option>
-                  <option value="TOP_N_BIDDERS">Among Top N Bidders</option>
-                  <option value="ALL_TECHNICALLY_QUALIFIED">All Technically Qualified Bidders</option>
-                </select>
-              </Field>
-              {draft.auctionConfig.triggerConfiguration.trigger === 'TOP_N_BIDDERS' && (
-                <Field label="Top N Bidders" required>
-                  <input type="number" min={2} value={draft.auctionConfig.triggerConfiguration.topN || ''} onChange={e => updateTrigger('topN', Number(e.target.value || 0))} className={inputClass} />
-                </Field>
-              )}
-            </div>
-          )}
 
           <div className="grid gap-3 sm:grid-cols-3 border-t border-indigo-100 pt-4">
             <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
@@ -4499,12 +4523,12 @@ function ScheduleStepForm({
         </Field>
 
         {(draft.basics.isTechnicalEvaluationNeeded || isTwoPacket) && (
-          <Field label="Technical Opening Date" required error={fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)), 'Technical opening must be on or after submission deadline.')}>
+          <Field label="Technical Opening Date" required error={fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) <= new Date(draft.schedule.submissionDate)), 'Technical opening must be after submission deadline.')}>
             <input
               type="date"
               value={draft.schedule.technicalOpeningDate}
               onChange={e => updateSchedule('technicalOpeningDate', e.target.value)}
-              className={controlClass(fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) < new Date(draft.schedule.submissionDate)), 'Technical opening must be on or after submission deadline.'))}
+              className={controlClass(fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) <= new Date(draft.schedule.submissionDate)), 'Technical opening must be after submission deadline.'))}
             />
             <p className="text-[10px] text-slate-500 font-semibold mt-1">
               Technical envelope unlocking date. Must be after submission closing.
@@ -4513,12 +4537,12 @@ function ScheduleStepForm({
         )}
 
         {isTwoPacket && (
-          <Field label="Financial Opening Date" required error={fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be on or after technical opening.')}>
+          <Field label="Financial Opening Date" required error={fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) <= new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be after technical opening.')}>
             <input
               type="date"
               value={draft.schedule.financialOpeningDate}
               onChange={e => updateSchedule('financialOpeningDate', e.target.value)}
-              className={controlClass(fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) < new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be on or after technical opening.'))}
+              className={controlClass(fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) <= new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be after technical opening.'))}
             />
             <p className="text-[10px] text-slate-500 font-semibold mt-1">
               Financial envelope unlocking date for technically qualified bidders. Must be after technical opening.
@@ -4809,15 +4833,6 @@ function EvaluationBasisForm({
 
   const isQCBS = draft.evaluation.method === 'QCBS / weighted technical-commercial score';
 
-  useEffect(() => {
-    if (draft.type === 'RFI') {
-      const rfiMethods = ['INFORMATION_ONLY', 'MARKET_CAPABILITY_REVIEW', 'TECHNICAL_FEASIBILITY_REVIEW'];
-      if (!rfiMethods.includes(draft.evaluation.method)) {
-        updateDraft(c => ({ ...c, evaluation: { ...c.evaluation, method: 'INFORMATION_ONLY' } }));
-      }
-    }
-  }, [draft.type, draft.evaluation.method]);
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -4827,28 +4842,18 @@ function EvaluationBasisForm({
             onChange={e => updateEval('method', e.target.value)}
             className={inputClass}
           >
-            {draft.type === 'RFI' ? (
-              <>
-                <option value="INFORMATION_ONLY">Information Only (Market Research)</option>
-                <option value="MARKET_CAPABILITY_REVIEW">Market Capability Review</option>
-                <option value="TECHNICAL_FEASIBILITY_REVIEW">Technical Feasibility Review</option>
-              </>
-            ) : (
-              <>
-                <option value="L1 total value">L1 Total Value basis</option>
-                <option value="Item-wise L1">Item-wise L1 rates basis</option>
-                <option value="Package-wise L1">Package-wise L1 rates basis</option>
-                <option value="Technical qualification then L1">Technical Qualification then L1 Sourcing</option>
-                <option value="QCBS / weighted technical-commercial score">Quality and Cost Based Selection (QCBS)</option>
-                <option value="Reverse auction final rank">Reverse Auction Final Bid Rank</option>
-                <option value="Lowest landed cost">Lowest Landed Cost</option>
-              </>
-            )}
+            <>
+              <option value="L1 total value">L1 Total Value basis</option>
+              <option value="Item-wise L1">Item-wise L1 rates basis</option>
+              <option value="Package-wise L1">Package-wise L1 rates basis</option>
+              <option value="Technical qualification then L1">Technical Qualification then L1 Sourcing</option>
+              <option value="QCBS / weighted technical-commercial score">Quality and Cost Based Selection (QCBS)</option>
+              <option value="Reverse auction final rank">Reverse Auction Final Bid Rank</option>
+              <option value="Lowest landed cost">Lowest Landed Cost</option>
+            </>
           </select>
           <p className="text-[10px] text-slate-500 font-semibold mt-1">
-            {draft.type === 'RFI' 
-              ? 'RFI submissions are only evaluated for capability and feasibility review. Sourcing does not request commercial bids.' 
-              : 'QCBS evaluates both technical capabilities (e.g. 70% weight) and commercial offer rates. L1 total value selects purely the lowest total landed cost.'}
+            QCBS evaluates both technical capabilities (e.g. 70% weight) and commercial offer rates. L1 total value selects purely the lowest total landed cost.
           </p>
         </Field>
 
@@ -4890,18 +4895,6 @@ function EvaluationBasisForm({
           </div>
         )}
       </div>
-
-      {draft.type === 'RFI' && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs mt-4">
-          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
-          <div>
-            <span className="text-amber-900 font-black uppercase text-[9px] tracking-wider block">RFI (Request for Information) Notice</span>
-            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
-              RFIs are strictly for market research and vendor capability assessment. You cannot directly award a Purchase Order (PO) from an RFI. You must convert it to an RFQ, RFP, or Tender later to seek commercial bids.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Render Criteria Builder */}
       <EvaluationCriteriaBuilder
@@ -5114,16 +5107,24 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
   }));
 
   // Map rules and timelines matching backend validator nested structures
-  const tender = {
+  const isTwoPacket = draft.schedule.packetType === 'Two';
+  const isTechnicalNeeded = draft.basics.isTechnicalEvaluationNeeded || isTwoPacket;
+
+  const tender: any = {
     bidStartDate: draft.schedule.submissionStartDate || new Date().toISOString(),
     bidClosingDate: draft.schedule.submissionDate || draft.basics.requiredByDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-    technicalEvaluationDate: draft.schedule.technicalOpeningDate || undefined,
-    financialEvaluationDate: draft.schedule.financialOpeningDate || undefined,
     performanceSecurityAmount: draft.terms.securityDeposit || 0,
     scopeOfWork: draft.serviceDetails.scopeOfWork || draft.basics.justification || '',
     deliveryLocation,
     deliveryAddress: deliveryLocation,
   };
+
+  if (isTechnicalNeeded) {
+    tender.technicalEvaluationDate = draft.schedule.technicalOpeningDate || undefined;
+  }
+  if (isTwoPacket) {
+    tender.financialEvaluationDate = draft.schedule.financialOpeningDate || undefined;
+  }
 
   const basics = {
     title,
@@ -5153,12 +5154,10 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
         : { sellerOrgId }
     ),
     triggerConfiguration: {
-      preBidStageRequired: draft.type === 'BID_WITH_REVERSE_AUCTION',
-      auctionAfterTechnicalQualification: draft.type === 'BID_WITH_REVERSE_AUCTION',
-      auctionAmongAllTechnicallyQualified: draft.type !== 'BID_WITH_REVERSE_AUCTION' || draft.auctionConfig.triggerConfiguration?.trigger !== 'TOP_N_BIDDERS',
-      auctionAmongTopNBidders: (draft.type === 'BID_WITH_REVERSE_AUCTION' && draft.auctionConfig.triggerConfiguration?.trigger === 'TOP_N_BIDDERS')
-        ? Number(draft.auctionConfig.triggerConfiguration?.topN || 3)
-        : null,
+      preBidStageRequired: false,
+      auctionAfterTechnicalQualification: false,
+      auctionAmongAllTechnicallyQualified: true,
+      auctionAmongTopNBidders: null,
     }
   } : null;
 
@@ -5223,7 +5222,7 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     methodSlug: draft.type,
     procurementMethod: dbMethod,
     canonicalMethod: draft.type,
-    sealedSubmission: draft.sealedSubmissionFlag || draft.type === 'SEALED_TENDER',
+    sealedSubmission: draft.sealedSubmissionFlag,
     title,
     description: basics.description,
     estimatedValue,

@@ -82,60 +82,62 @@ export default function MISReports() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Analytics</p>
-          <h1 className="mt-1 flex items-center gap-2 text-2xl font-extrabold uppercase tracking-tight text-[#12335f]">
-            <FileBarChart className="h-6 w-6" /> MIS Reports & Insights
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm font-medium text-slate-500">
-            Executive dashboard for network health, onboarding metrics, and transaction analytics.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-          <select 
-            value={timeframe} 
-            onChange={(e) => setTimeframe(e.target.value)}
-            className="h-9 cursor-pointer rounded-md border-0 bg-slate-50 px-3 text-xs font-bold outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-[#12335f]"
-          >
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="1y">This Year</option>
-            <option value="all">All Time</option>
-          </select>
-          <select 
-            value={roleFilter} 
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="h-9 cursor-pointer rounded-md border-0 bg-slate-50 px-3 text-xs font-bold outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-[#12335f]"
-          >
-            <option value="all">All Roles</option>
-            <option value="buyer">Buyers Only</option>
-            <option value="seller">Sellers Only</option>
-          </select>
-          <button type="button" onClick={exportSummary} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#12335f] px-3 text-xs font-black uppercase tracking-wide text-white">
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </button>
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12 animate-in fade-in duration-500">
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Analytics</p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-black tracking-tight text-slate-950">
+              <FileBarChart className="h-6 w-6 text-[#12335f]" /> MIS Reports & Insights
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm font-semibold text-slate-500">
+              Executive dashboard for network health, onboarding metrics, and transaction analytics.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={exportSummary} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#12335f] px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-[#0b2445] transition">
+              <Download className="h-3.5 w-3.5" /> Export
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* ── Filter Bar (border-y) ── */}
+      <div className="flex flex-wrap items-center gap-3 border-y border-slate-200 bg-slate-50/50 px-4 py-3">
+        <select
+          value={timeframe}
+          onChange={(e) => setTimeframe(e.target.value)}
+          className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+        >
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+          <option value="90d">Last 90 Days</option>
+          <option value="1y">This Year</option>
+          <option value="all">All Time</option>
+        </select>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="h-10 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+        >
+          <option value="all">All Roles</option>
+          <option value="buyer">Buyers Only</option>
+          <option value="seller">Sellers Only</option>
+        </select>
+      </div>
+
+      {/* ── Executive Signal Cards ── */}
       <div className="grid gap-3 lg:grid-cols-3">
         {executiveSignals.map(signal => (
-          <Card key={signal.label} className="shadow-sm">
-            <CardContent className="flex items-start justify-between gap-4 p-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{signal.label}</p>
-                <p className="mt-2 text-2xl font-black text-slate-950">{signal.value}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-500">{signal.helper}</p>
-              </div>
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${signal.tone}`}>
-                <signal.icon className="h-5 w-5" />
-              </div>
-            </CardContent>
-          </Card>
+          <div key={signal.label} className={`rounded-2xl p-4 ring-1 ${signal.tone} ring-current/20 transition hover:scale-[1.02]`}>
+            <div className="flex items-center gap-2 mb-2">
+              <signal.icon className="h-4 w-4 opacity-70" />
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{signal.label}</span>
+            </div>
+            <p className="text-2xl font-black">{signal.value}</p>
+            <p className="mt-1 text-xs font-semibold opacity-60">{signal.helper}</p>
+          </div>
         ))}
       </div>
 

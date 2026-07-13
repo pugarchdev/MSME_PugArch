@@ -99,10 +99,13 @@ const detectMagicMime = (buffer: Buffer, declaredMime?: string): string | null =
   return null;
 };
 
-const containsExecutableSignature = (buffer: Buffer) => {
+const containsExecutableSignature = (buffer: Buffer, isText = false) => {
   if (buffer.subarray(0, 2).toString('ascii') === 'MZ') return true;
-  const sample = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8').toLowerCase();
-  return sample.includes('<svg') || sample.includes('<script') || sample.includes('<?php');
+  if (isText) {
+    const sample = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8').toLowerCase();
+    return sample.includes('<svg') || sample.includes('<script') || sample.includes('<?php');
+  }
+  return false;
 };
 
 export const validateFile = (file: Express.Multer.File) => {
@@ -117,7 +120,9 @@ export const validateFile = (file: Express.Multer.File) => {
   const allowedMimes = allowedByExtension[ext];
   if (!allowedMimes) throw new ApiError(400, 'File extension is not allowed', 'FILE_EXTENSION_NOT_ALLOWED');
   if (!allowedMimes.includes(file.mimetype)) throw new ApiError(400, 'File MIME type does not match extension', 'FILE_MIME_MISMATCH');
-  if (containsExecutableSignature(file.buffer)) throw new ApiError(400, 'Unsafe file content detected', 'FILE_EXECUTABLE_SIGNATURE');
+
+  const isText = ext === '.csv' || String(file.mimetype).startsWith('text/');
+  if (containsExecutableSignature(file.buffer, isText)) throw new ApiError(400, 'Unsafe file content detected', 'FILE_EXECUTABLE_SIGNATURE');
 
   const magicMime = detectMagicMime(file.buffer, file.mimetype);
   if (!magicMime || !allowedMimes.includes(magicMime)) {

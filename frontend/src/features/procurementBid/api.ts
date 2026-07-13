@@ -1,5 +1,6 @@
 import { api, readJsonResponse, unwrapApiData, BASE_URL } from '../../lib/api';
 import type { ProcurementBid, ProcurementBidParticipation } from './data';
+import { getCookieValue } from '../../lib/auth';
 
 export const isProcurementDemoDataEnabled = () => {
   const value = process.env.NEXT_PUBLIC_ENABLE_PROCUREMENT_DEMO_DATA || process.env.VITE_ENABLE_PROCUREMENT_DEMO_DATA;
@@ -28,9 +29,15 @@ const uploadFormData = (
 ) => new Promise<any>((resolve, reject) => {
   const xhr = new XMLHttpRequest();
   xhr.open('POST', `${getApiBaseUrl()}${endpoint}`, true);
+  xhr.withCredentials = true;
 
   for (const [key, value] of Object.entries(authHeaders())) {
     xhr.setRequestHeader(key, value);
+  }
+
+  const csrfToken = getCookieValue('csrfToken');
+  if (csrfToken) {
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
   }
 
   xhr.upload.addEventListener('progress', event => {
@@ -93,38 +100,112 @@ const buildQueryString = (params: Record<string, string | number | undefined> = 
 
 export const normalizeBid = (raw: any): ProcurementBid => {
   const participations = raw.participations || [];
-  const results = participations.length ? participations.map((p: any, index: number) => ({
-    participationId: p.id,
-    sellerName: p.seller?.name || `Seller ${index + 1}`,
-    sellerType: p.seller?.role === 'seller' ? 'Verified Seller' : p.seller?.role || 'Verified Seller',
-    offeredItem: p.offeredItemDescription || raw.title || 'Procurement requirement',
-    makeBrand: p.makeBrand || 'As quoted',
-    model: p.model || 'Standard',
-    technicalStatus: p.technicalStatus === 'DISQUALIFIED' ? 'Disqualified' : p.technicalStatus === 'QUALIFIED' ? 'Qualified' : 'Pending',
-    financialStatus: p.financialStatus === 'OPENED' || p.financialStatus === 'EVALUATED' ? 'Opened' : 'Pending',
-    totalPrice: Number(p.totalAmount || p.quotedAmount || 0),
-    finalRank: toUiRank(p.rank),
-    resultStatus: p.finalStatus === 'AWARDED' ? 'Awarded' : p.finalStatus === 'REJECTED' ? 'Rejected' : p.rank ? 'Responsive' : 'Under Review',
-  })) : [];
+  const results = participations.length ? participations.map((p: any, index: number) => {
+    let details: any = {};
+    let offeredItem = p.offeredItemDescription || raw.title || 'Procurement requirement';
+    try {
+      if (p.offeredItemDescription && (p.offeredItemDescription.startsWith('{') || p.offeredItemDescription.startsWith('['))) {
+        details = JSON.parse(p.offeredItemDescription);
+        if (details.offeredItemDescription) {
+          offeredItem = details.offeredItemDescription;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    return {
+      participationId: p.id,
+      sellerName: p.seller?.name || p.seller?.organization?.organizationName || `Seller ${index + 1}`,
+      sellerType: p.seller?.role === 'seller' ? 'Verified Seller' : p.seller?.role || 'Verified Seller',
+      offeredItem,
+      makeBrand: p.makeBrand || details.makeBrand || 'As quoted',
+      model: p.model || details.model || 'Standard',
+      technicalStatus: p.technicalStatus === 'DISQUALIFIED' ? 'Disqualified' : p.technicalStatus === 'QUALIFIED' ? 'Qualified' : 'Pending',
+      financialStatus: p.financialStatus === 'OPENED' || p.financialStatus === 'EVALUATED' ? 'Opened' : 'Pending',
+      totalPrice: Number(p.totalAmount || p.quotedAmount || 0),
+      quotedAmount: Number(p.quotedAmount || 0),
+      gstPercentage: Number(p.gstPercentage || 0),
+      totalAmount: Number(p.totalAmount || 0),
+      documents: p.documents || [],
+      details,
+      finalRank: toUiRank(p.rank),
+      resultStatus: p.finalStatus === 'AWARDED' ? 'Awarded' : p.finalStatus === 'REJECTED' ? 'Rejected' : p.rank ? 'Responsive' : 'Under Review',
+    };
+  }) : [];
+
+  // Extract rich data from technicalPacket / consigneeDetails / wizardData
+  const pkt = raw.technicalPacket && typeof raw.technicalPacket === 'object' ? raw.technicalPacket : null;
+  const wizardData = raw.consigneeDetails || pkt?.wizardData || pkt || {};
+  const basics = pkt?.basics || wizardData?.basics || {};
+  const schedule = pkt?.schedule || {};
+  const termsPayload = pkt?.terms || {};
+  const internal = pkt?.internal || {};
+
+  // Title: prefer direct title, then payload basics
+  const title = raw.title || basics.title || '';
+
+  // Buyer name: prefer direct, then from organization, then payload
+  const buyerName = raw.buyerOrganizationName
+    || raw.buyerOrganization?.organizationName
+    || internal.orgName
+    || basics.buyerOrganizationName
+    || '';
+
+  // Category: prefer direct category, then from basics
+  const category = raw.category || basics.category || '';
+
+  // Delivery location
+  const deliveryLocation = raw.deliveryLocation
+    || basics.deliveryLocation
+    || internal.deliveryAddress
+    || [raw.district, raw.state].filter(Boolean).join(', ')
+    || '';
+
+  // Quantity
+  const rawQty = raw.quantity || basics.quantity;
+  const rawUnit = raw.unit || basics.unit || '';
+  const quantity = rawQty ? `${rawQty} ${rawUnit}`.trim() : '';
+
+  // Estimated value
+  const estimatedValue = Number(raw.estimatedValue || basics.estimatedValue || 0);
+
+  // Description
+  const description = raw.description || basics.description || '';
+
+  // Items from requirement
+  const items = raw.items || [];
+  const itemName = category || title || (items.length ? items[0]?.itemName || items[0]?.description : '') || '';
+
+  // Terms and eligibility
+  const termsArr = raw.termsAndConditions?.length ? raw.termsAndConditions : (termsPayload.termsAndConditions || []);
+  const eligArr = raw.eligibilityCriteria?.length ? raw.eligibilityCriteria : (termsPayload.eligibilityCriteria || basics.eligibilityCriteria || []);
+  const reqDocs = raw.requiredDocuments?.length ? raw.requiredDocuments : (pkt?.requiredDocs || []);
+
+  // Important dates
+  const startDate = String(raw.startDate || raw.createdAt || new Date().toISOString()).slice(0, 10);
+  const endDate = String(raw.endDate || schedule.submissionDate || raw.startDate || new Date().toISOString()).slice(0, 10);
+  const techDate = String(raw.technicalOpeningDate || schedule.technicalOpeningDate || raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10);
+  const finDate = String(raw.financialOpeningDate || schedule.financialOpeningDate || raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10);
 
   return {
     id: raw.bidNumber || String(raw.id || ''),
     sourceModel: raw.sourceModel || 'PROCUREMENT_BID',
     sourceId: raw.sourceId || raw.id,
-    title: raw.title || 'Untitled procurement bid',
-    itemName: raw.category || raw.title || 'Procurement requirement',
-    buyerName: raw.buyerOrganizationName || raw.buyerOrganization?.organizationName || 'Buyer organization',
-    buyerType: (raw.buyerType || 'Private Enterprise') as ProcurementBid['buyerType'],
-    departmentName: raw.departmentName || 'Procurement',
-    bidType: (raw.bidType || 'Product') as ProcurementBid['bidType'],
+    title: title || 'Untitled procurement bid',
+    itemName: itemName || 'Procurement requirement',
+    buyerName: buyerName || 'Buyer organization',
+    buyerType: (raw.buyerType || basics.buyerType || 'Private Enterprise') as ProcurementBid['buyerType'],
+    departmentName: raw.departmentName || raw.buyer?.buyerProfile?.departmentName || internal.departmentName || 'Procurement',
+    bidType: (raw.bidType || basics.whatAreYouBuying || 'Product') as ProcurementBid['bidType'],
     procurementType: raw.procurementType || raw.bidType || 'Open Bid',
-    category: raw.category || 'General procurement',
-    location: [raw.district, raw.state].filter(Boolean).join(', ') || raw.deliveryLocation || 'Location not specified',
-    deliveryLocation: raw.deliveryLocation || 'Delivery location not specified',
-    quantity: raw.quantity ? `${raw.quantity} ${raw.unit || ''}`.trim() : 'Not specified',
-    estimatedValue: Number(raw.estimatedValue || 0),
-    startDate: String(raw.startDate || raw.createdAt || new Date().toISOString()).slice(0, 10),
-    endDate: String(raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10),
+    category: category || 'General procurement',
+    location: [raw.district, raw.state].filter(Boolean).join(', ') || deliveryLocation || 'Location not specified',
+    deliveryLocation: deliveryLocation || 'Delivery location not specified',
+    quantity: quantity || 'Not specified',
+    estimatedValue,
+    startDate,
+    endDate,
     status: toUiStatus(raw.status),
     approvalStatus: raw.approvalStatus,
     lifecycleStage: raw.lifecycleStage,
@@ -135,16 +216,23 @@ export const normalizeBid = (raw: any): ProcurementBid => {
       ? (raw.clarifications[0].status === 'RESPONDED' ? 'Responded' : raw.clarifications[0].status === 'COMPLETED' ? 'Completed' : 'Pending')
       : 'None',
     participated: Boolean(raw.myParticipation || participations.length),
-    description: raw.description || 'No description provided.',
-    eligibility: raw.eligibilityCriteria || [],
-    requiredDocuments: raw.requiredDocuments || [],
+    description: description || 'No description provided.',
+    eligibility: eligArr,
+    requiredDocuments: reqDocs,
     importantDates: [
-      { label: 'Bid published', date: String(raw.startDate || raw.createdAt || new Date().toISOString()).slice(0, 10) },
-      { label: 'Submission closes', date: String(raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10) },
-      { label: 'Technical opening', date: String(raw.technicalOpeningDate || raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10) },
-      { label: 'Financial opening', date: String(raw.financialOpeningDate || raw.endDate || raw.startDate || new Date().toISOString()).slice(0, 10) },
+      { label: 'Bid published', date: startDate },
+      { label: 'Submission closes', date: endDate },
+      { label: 'Technical opening', date: techDate },
+      { label: 'Financial opening', date: finDate },
     ],
-    terms: raw.termsAndConditions || [],
+    terms: termsArr,
+    emdAmount: raw.emdAmount ? Number(raw.emdAmount) : 0,
+    isEmdRequired: Boolean(raw.isEmdRequired),
+    evaluationMethod: raw.evaluationMethod || 'L1',
+    allowClarification: Boolean(raw.allowClarification),
+    allowReverseAuction: Boolean(raw.allowReverseAuction),
+    packetType: raw.packetType || 'SINGLE_PACKET',
+    consigneeDetails: raw.consigneeDetails || null,
     lifecycle: ['Pending', 'Technical Evaluation', 'Financial Evaluation', 'Qualified', 'Awarded'],
     currentStage: toUiStage(raw.lifecycleStage),
     clarifications: (raw.clarifications || []).map((c: any) => ({
@@ -167,6 +255,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
       fileAssetId: doc.fileAssetId,
       url: doc.fileUrl || doc.url,
     })),
+    technicalPacket: pkt || undefined,
   };
 };
 
@@ -182,6 +271,10 @@ export const procurementBidApi = {
     const res = await api.get(`/api/bids/${encodeURIComponent(id)}`, { headers: authHeaders() });
     const body = await readJsonResponse(res);
     return normalizeBid(unwrapApiData(body));
+  },
+  async askClarification(id: string, question: string) {
+    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/clarifications/ask`, { question }, { headers: authHeaders() });
+    return readApiBody(res);
   },
   async participate(id: string) {
     const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participate`, {}, { headers: authHeaders() });
@@ -368,6 +461,17 @@ export const procurementBidApi = {
   },
   async submitBidParticipation(bidId: string, participationId: number, _declarationData?: Record<string, unknown>) {
     return this.submitParticipation(bidId, participationId);
+  },
+  async getSellerBids() {
+    const res = await api.get('/api/seller/bids', { headers: authHeaders(), skipCache: true });
+    const body = await readJsonResponse(res);
+    return unwrapApiData(body) || [];
+  },
+  async getSellerMarketplaceResponses() {
+    const res = await api.get('/api/seller/requirement-responses', { headers: authHeaders(), skipCache: true });
+    const body = await readJsonResponse(res);
+    const unwrapped = unwrapApiData(body);
+    return unwrapped?.responses || unwrapped || [];
   },
   async getSellerBidStatus(bidId: string) {
     const res = await api.fetch(`/api/seller/bids/${encodeURIComponent(bidId)}/status`, { method: 'GET', headers: authHeaders(), skipCache: true });

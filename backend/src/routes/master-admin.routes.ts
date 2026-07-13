@@ -195,7 +195,23 @@ const withAadhaarKyc = <T extends { kycVerifications?: any[] }>(record: T) => {
 };
 
 const archiveUserDeleteBlocked = async (req: AuthRequest, id: number, reason: string, metadata: Record<string, unknown>) => {
-  const user = await prisma.user.update({ where: { id }, data: { accountStatus: 'DELETED' as any, sessionVersion: { increment: 1 } }, select: userSelect });
+  const originalUser = await prisma.user.findUnique({ where: { id } });
+  if (!originalUser) throw new Error('User not found');
+  const timestamp = Date.now();
+  const data: any = {
+    accountStatus: 'DELETED' as any,
+    sessionVersion: { increment: 1 }
+  };
+  if (originalUser.email && !originalUser.email.startsWith('deleted_')) {
+    data.email = `deleted_${timestamp}_${originalUser.email}`;
+  }
+  if (originalUser.userId && !originalUser.userId.startsWith('deleted_')) {
+    data.userId = `deleted_${timestamp}_${originalUser.userId}`;
+  }
+  if (originalUser.mobile && !originalUser.mobile.startsWith('deleted_')) {
+    data.mobile = `deleted_${timestamp}_${originalUser.mobile}`;
+  }
+  const user = await prisma.user.update({ where: { id }, data, select: userSelect });
   await createAuditLog(req, { action: 'user.archive.deleteBlocked', entityType: 'user', entityId: id, metadata: { reason, ...metadata } });
   return withAadhaarKyc(user as any);
 };
@@ -1885,7 +1901,23 @@ const userStatusAction = (action: 'activate' | 'inactivate' | 'suspend' | 'react
     const reason = ensureReason(res, req.body, action);
     if (!reason) return;
     const accountStatus = action === 'activate' || action === 'reactivate' ? 'ACTIVE' : action === 'archive' ? 'DELETED' : action === 'suspend' ? 'SUSPENDED' : 'BLOCKED';
-    const user = await prisma.user.update({ where: { id }, data: { accountStatus: accountStatus as any, sessionVersion: { increment: 1 } }, select: userSelect });
+    const data: any = { accountStatus: accountStatus as any, sessionVersion: { increment: 1 } };
+    if (accountStatus === 'DELETED') {
+      const originalUser = await prisma.user.findUnique({ where: { id } });
+      if (originalUser) {
+        const timestamp = Date.now();
+        if (originalUser.email && !originalUser.email.startsWith('deleted_')) {
+          data.email = `deleted_${timestamp}_${originalUser.email}`;
+        }
+        if (originalUser.userId && !originalUser.userId.startsWith('deleted_')) {
+          data.userId = `deleted_${timestamp}_${originalUser.userId}`;
+        }
+        if (originalUser.mobile && !originalUser.mobile.startsWith('deleted_')) {
+          data.mobile = `deleted_${timestamp}_${originalUser.mobile}`;
+        }
+      }
+    }
+    const user = await prisma.user.update({ where: { id }, data, select: userSelect });
     await createAuditLog(req, { action: `user.${action}`, entityType: 'user', entityId: id, metadata: { reason, accountStatus } });
     jsonOk(res, user, `User ${action} successful`);
   });

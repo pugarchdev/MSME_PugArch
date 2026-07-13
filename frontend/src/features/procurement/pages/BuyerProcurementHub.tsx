@@ -77,6 +77,7 @@ const resolveProcurementActionUrl = (p: NormalizedProcurement) => {
   if (statusGroup === 'pending_approval') return '/buyer/procurement/approvals';
   if (statusGroup === 'draft' || statusLower.includes('draft')) return '/buyer/procurement/drafts';
   if (/\/buyer\/procurement\/checkout\?/i.test(rawActionUrl)) return '/buyer/my-procurements';
+  if (rawActionUrl.startsWith('/bids/')) return '/buyer/my-procurements';
   return rawActionUrl || '/buyer/my-procurements';
 };
 
@@ -252,7 +253,7 @@ export default function BuyerProcurementHub() {
       cards: [
         {
           title: 'Create Procurement',
-          description: 'Unified guided flow for RFQ, RFP, Tenders, BOQ, PAC or Direct Sourcing.',
+          description: 'Unified guided flow for RFQ, RFP, Open Tender, Limited Tender, Reverse Auction, Rate Contract, or Repeat Order.',
           href: '/buyer/procurement/create',
           cta: 'Create Sourcing Event',
           icon: PlusCircle,
@@ -283,7 +284,7 @@ export default function BuyerProcurementHub() {
       cards: [
         {
           title: 'Pending Approvals',
-          description: 'Review and approve sourcing requests, budget checks and PAC exemptions.',
+          description: 'Review and approve sourcing requests, budget checks and exemption justifications.',
           href: '/buyer/procurement/approvals',
           cta: 'Open Approvals Queue',
           icon: CheckSquare,
@@ -319,6 +320,15 @@ export default function BuyerProcurementHub() {
       color: 'border-emerald-100 bg-emerald-50/10 text-emerald-900',
       dot: 'bg-emerald-500',
       cards: [
+        {
+          title: 'Rate Contracts',
+          description: 'Manage rate agreements, track utilization by supplier, and create call-off orders.',
+          href: '/buyer/rate-contracts',
+          cta: 'Manage Contracts',
+          icon: ShieldCheck,
+          badge: 'Live',
+          badgeColor: 'bg-emerald-500 text-white',
+        },
         {
           title: 'Purchase Orders',
           description: 'Create and dispatch purchase orders linked to successful sourcing events.',
@@ -365,7 +375,7 @@ export default function BuyerProcurementHub() {
             <div className="flex flex-wrap items-center gap-3 mt-3">
               {/* <BuyerTypeBadge buyerType="GOVERNMENT_BUYER" /> */}
               <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                Supports public procurement workflows (Open Tender, PAC single source exemption, Two-Packet bidding, compliance document auditing, and CFA approvals).
+                Supports public procurement workflows (Open Tender, Limited Tender, Reverse Auction, compliance document auditing, and approval workflows).
               </p>
             </div>
           ) : (
@@ -450,12 +460,13 @@ export default function BuyerProcurementHub() {
                 className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-[#12335f]"
               >
                 <option value="">All Sourcing Methods</option>
-                <option value="DIRECT_PURCHASE">Direct Purchase</option>
-                <option value="RFQ">RFQ / eRFQ</option>
-                <option value="RFP">RFP / Solution Proposal</option>
-                <option value="TENDER">Tender / Open Bid</option>
+                <option value="RFQ">RFQ</option>
+                <option value="RFP">RFP</option>
+                <option value="OPEN_TENDER">Open Tender</option>
+                <option value="LIMITED_TENDER">Limited Tender</option>
                 <option value="REVERSE_AUCTION">Reverse Auction</option>
                 <option value="RATE_CONTRACT">Rate Contract</option>
+                <option value="REPEAT_ORDER">Repeat Order</option>
               </select>
             </div>
             <div>

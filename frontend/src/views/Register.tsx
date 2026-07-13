@@ -232,7 +232,7 @@ export default function Register({ type }: { type: 'seller' | 'buyer' | 'admin' 
           targetLabel = 'Buyer Onboarding';
         }
 
-        if (data.user?.onboardingStatus === 'pending') {
+        if (type !== 'admin' && data.user?.onboardingStatus === 'pending') {
           setRedirectPath(targetPath);
           setRedirectLabel(targetLabel);
           setShowPendingModal(true);

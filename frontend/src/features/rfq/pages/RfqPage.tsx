@@ -4,8 +4,9 @@
  * see the requests they received and can submit a quote response inline.
  */
 
-import { useMemo, useState } from 'react';
-import { FileText, Plus, RefreshCw, Send, Trash2, Eye, X, Search, MapPin, Building2, CheckCircle2, ChevronRight, ChevronLeft, Upload, Paperclip, AlertCircle, Filter, FileSpreadsheet } from 'lucide-react';
+import React, { useMemo, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { FileText, Plus, RefreshCw, Send, Trash2, Eye, X, Search, MapPin, Building2, CheckCircle2, ChevronRight, ChevronLeft, Upload, Paperclip, AlertCircle, Filter, FileSpreadsheet, BarChart3 } from 'lucide-react';
 import { Card, CardContent, Badge } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -410,6 +411,7 @@ function InfoMini({ label, value, sub }: { label: string; value?: string | numbe
 /* ---------- Detail with response form (sellers) and comparison (buyers) ---------- */
 
 function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: boolean; isSeller: boolean; onClose: () => void }) {
+    const router = useRouter();
     const detail = useQuoteRequest(id);
     const submitResp = useSubmitQuoteResponse();
     const decideResp = useDecideQuoteResponse();
@@ -428,6 +430,34 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
     const [respDocName, setRespDocName] = useState('');
     const [uploadingRespDoc, setUploadingRespDoc] = useState(false);
     const [expandedResponse, setExpandedResponse] = useState<Record<number, boolean>>({});
+    const [warrantyPeriod, setWarrantyPeriod] = useState('');
+    const [paymentTerms, setPaymentTerms] = useState('');
+    const [deliveryLocation, setDeliveryLocation] = useState('');
+    const [clarificationQuestion, setClarificationQuestion] = useState('');
+    const [clarificationVisibility, setClarificationVisibility] = useState('PUBLIC');
+    const [clarifications, setClarifications] = useState<any[]>([]);
+    const [clarificationReplies, setClarificationReplies] = useState<Record<number, string>>({});
+    const [buyerMessage, setBuyerMessage] = useState('');
+    const [selectedResponseId, setSelectedResponseId] = useState<number | null>(null);
+
+    React.useEffect(() => {
+        if (rfq?.id) {
+            loadClarifications();
+            if (rfq.quoteResponses?.length) {
+                setSelectedResponseId(rfq.quoteResponses[0].id);
+            }
+        }
+    }, [rfq?.id]);
+
+    const loadClarifications = useCallback(async () => {
+        if (!rfq?.id) return;
+        try {
+            const res = await api.fetch(`/api/quote-requests/${rfq.id}/clarifications`);
+            const data = await res.json();
+            setClarifications(Array.isArray(data) ? data : data?.clarifications || []);
+        } catch { /* ignore */ }
+    }, [rfq?.id]);
+
     const subtotal = Number(unitPrice || 0) * Number(quantity || 0);
     const taxBreakdown = calculateGstBreakdown(subtotal, splitTaxRate, igstTaxRate, otherTaxRate);
     const discountPercentValue = Math.min(100, Math.max(0, Number(discountPercent || 0)));
@@ -445,6 +475,13 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
                         deliveryDays: deliveryDays ? Number(deliveryDays) : undefined,
                         validityDate: validityDate || undefined,
                         documentUrl: respDocUrl || undefined,
+                        gstRate: splitTaxRate || igstTaxRate ? Number(splitTaxRate || igstTaxRate) : undefined,
+                        discountPercent: discountPercent ? Number(discountPercent) : undefined,
+                        unitPrice: unitPrice ? Number(unitPrice) : undefined,
+                        quantity: quantity ? Number(quantity) : undefined,
+                        warrantyPeriod: warrantyPeriod || undefined,
+                        paymentTerms: paymentTerms || undefined,
+                        deliveryLocation: deliveryLocation || undefined,
                         notes: [
                             `Price breakup: subtotal Rs. ${subtotal.toLocaleString('en-IN')}; tax ${taxBreakdown.label} = Rs. ${taxBreakdown.totalTaxAmount.toLocaleString('en-IN')}; discount ${discountPercentValue}% = Rs. ${discountValue.toLocaleString('en-IN')}; total Rs. ${totalAmount.toLocaleString('en-IN')}.`,
                             notes || ''
@@ -464,11 +501,14 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
         setNotes('');
         setRespDocUrl('');
         setRespDocName('');
+        setWarrantyPeriod('');
+        setPaymentTerms('');
+        setDeliveryLocation('');
         detail.refetch();
     };
 
     const myResponse = useMemo(() => rfq?.quoteResponses?.find(r => r.status !== 'WITHDRAWN'), [rfq]);
-    const hasDecidableResponse = (responseStatus?: string) => ['SUBMITTED', 'DRAFT'].includes(String(responseStatus || '').toUpperCase());
+    const hasDecidableResponse = (responseStatus?: string) => ['SUBMITTED', 'DRAFT', 'SHORTLISTED'].includes(String(responseStatus || '').toUpperCase());
 
     const decideResponse = async (responseId: number, decision: 'accept' | 'reject') => {
         if (!rfq) return;
@@ -576,6 +616,18 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
 
                     <Field label={`Responses (${rfq.quoteResponses?.length ?? 0})`}>
                         {rfq.quoteResponses?.length ? (
+                            <div>
+                                {isBuyer && (
+                                    <div className="mb-3 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => router.push(`/buyer/quote-requests/${rfq.id}/compare`)}
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-[10px] font-black uppercase text-indigo-700 hover:bg-indigo-50 transition shadow-sm"
+                                        >
+                                            <BarChart3 className="h-3.5 w-3.5" /> Compare Quotations
+                                        </button>
+                                    </div>
+                                )}
                             <div className="overflow-hidden rounded-lg border border-slate-200">
                                 <table className="w-full text-xs">
                                     <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -701,6 +753,31 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
                                                             <div className="flex items-center justify-end gap-1">
                                                                 <button
                                                                     type="button"
+                                                                    onClick={() => {
+                                                                        const newVal = !r.isShortlisted;
+                                                                        runWithToast(
+                                                                            () => api.post(`/api/quote-responses/${r.id}/shortlist`, { shortlisted: newVal }),
+                                                                            { loading: newVal ? 'Shortlisting...' : 'Unshortlisting...', success: newVal ? 'Shortlisted' : 'Unshortlisted', error: 'Failed' }
+                                                                        ).then(() => detail.refetch());
+                                                                    }}
+                                                                    className={`inline-flex h-8 items-center rounded-md border px-2 text-[10px] font-black uppercase transition ${r.isShortlisted ? 'border-amber-300 bg-amber-100 text-amber-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-amber-50'}`}
+                                                                >
+                                                                    ★ Shortlist
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        runWithToast(
+                                                                            () => api.post(`/api/quote-responses/${r.id}/request-revision`, {}),
+                                                                            { loading: 'Requesting revision...', success: 'Revision requested', error: 'Failed' }
+                                                                        ).then(() => detail.refetch());
+                                                                    }}
+                                                                    className="inline-flex h-8 items-center rounded-md border border-blue-200 bg-white px-2 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50"
+                                                                >
+                                                                    <RefreshCw className="mr-1 h-3 w-3" /> Revise
+                                                                </button>
+                                                                <button
+                                                                    type="button"
                                                                     onClick={() => decideResponse(r.id, 'reject')}
                                                                     disabled={decideResp.isPending}
                                                                     className="inline-flex h-8 items-center rounded-md border border-red-200 bg-white px-2 text-[10px] font-black uppercase text-red-600 hover:bg-red-50 disabled:opacity-50"
@@ -718,7 +795,7 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
                                                             </div>
                                                         ) : (
                                                             <span className="inline-flex h-7 items-center rounded border border-slate-200 bg-slate-50 px-2 text-[10px] font-black uppercase text-slate-500">
-                                                                {String(r.status).toUpperCase() === 'ACCEPTED' ? 'PO generated' : String(r.status).toUpperCase() === 'REJECTED' ? 'Rejected' : 'No action'}
+                                                                {String(r.status).toUpperCase() === 'ACCEPTED' ? 'PO generated' : String(r.status).toUpperCase() === 'REJECTED' ? 'Rejected' : String(r.status).toUpperCase() === 'SHORTLISTED' ? 'Shortlisted' : 'No action'}
                                                             </span>
                                                         )}
                                                     </td>
@@ -728,12 +805,136 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
                                     </tbody>
                                 </table>
                             </div>
+                            </div>
                         ) : (
                             <p className="text-xs font-semibold text-slate-500">No responses yet.</p>
                         )}
                     </Field>
 
-                    {isSeller && !myResponse && rfq.status === 'pending' && (
+                    {/* Clarification Section */}
+                    <Field label="Clarifications / Questions">
+                        <div className="space-y-3">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={clarificationQuestion}
+                                    onChange={e => setClarificationQuestion(e.target.value)}
+                                    placeholder="Ask a question about this RFQ..."
+                                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:border-[#12335f] focus:outline-none"
+                                />
+                                <select
+                                    value={clarificationVisibility}
+                                    onChange={e => setClarificationVisibility(e.target.value)}
+                                    className="rounded-lg border border-slate-200 px-2 py-2 text-[10px] font-black uppercase text-slate-600 focus:border-[#12335f] focus:outline-none"
+                                >
+                                    <option value="PUBLIC">Public</option>
+                                    <option value="PRIVATE">Private</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (!clarificationQuestion.trim()) return;
+                                        await runWithToast(
+                                            () => api.post(`/api/quote-requests/${rfq.id}/clarifications`, {
+                                                question: clarificationQuestion.trim(),
+                                                visibility: clarificationVisibility
+                                            }),
+                                            { loading: 'Submitting question...', success: 'Question submitted', error: 'Failed' }
+                                        );
+                                        setClarificationQuestion('');
+                                        loadClarifications();
+                                    }}
+                                    disabled={!clarificationQuestion.trim()}
+                                    className="inline-flex h-9 items-center rounded-lg bg-[#12335f] px-3 text-[10px] font-black uppercase text-white hover:bg-[#1a4a7a] disabled:opacity-50"
+                                >
+                                    <Send className="mr-1 h-3.5 w-3.5" /> Ask
+                                </button>
+                            </div>
+                            {clarifications.length > 0 && (
+                                <div className="space-y-2 max-h-64 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                                    {clarifications.map((c: any) => (
+                                        <div key={c.id} className={`rounded-lg border p-3 text-xs ${c.visibility === 'PRIVATE' ? 'border-purple-200 bg-purple-50' : 'border-slate-200 bg-white'}`}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-black text-[10px] uppercase tracking-wider text-slate-500">{c.visibility === 'PRIVATE' ? 'Private' : 'Public'} Question</span>
+                                                <span className="text-[10px] text-slate-400">{formatRelative(c.askedAt)}</span>
+                                            </div>
+                                            <p className="font-semibold text-slate-800">{c.question}</p>
+                                            {c.response ? (
+                                                <div className="mt-2 rounded bg-emerald-50 border border-emerald-200 p-2">
+                                                    <p className="text-[10px] font-black uppercase text-emerald-700 mb-0.5">Answer:</p>
+                                                    <p className="text-slate-700">{c.response}</p>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-2">
+                                                    {isBuyer ? (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={clarificationReplies[c.id] || ''}
+                                                                onChange={e => setClarificationReplies(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                                                placeholder="Type your answer..."
+                                                                className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={async () => {
+                                                                    const reply = clarificationReplies[c.id]?.trim();
+                                                                    if (!reply) return;
+                                                                    await runWithToast(
+                                                                        () => api.post(`/api/quote-requests/${rfq.id}/clarifications/${c.id}/reply`, { response: reply }),
+                                                                        { loading: 'Sending reply...', success: 'Reply sent', error: 'Failed' }
+                                                                    );
+                                                                    setClarificationReplies(prev => ({ ...prev, [c.id]: '' }));
+                                                                    loadClarifications();
+                                                                }}
+                                                                className="inline-flex h-7 items-center rounded bg-[#12335f] px-2 text-[10px] font-black text-white"
+                                                            >
+                                                                Reply
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-amber-600 italic">Awaiting reply...</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </Field>
+
+                    {/* Send Message / Remarks */}
+                    {isBuyer && (
+                        <Field label="Send Message to Seller">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={buyerMessage}
+                                    onChange={e => setBuyerMessage(e.target.value)}
+                                    placeholder="Leave a message for the seller..."
+                                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:border-[#12335f] focus:outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (!buyerMessage.trim()) return;
+                                        await runWithToast(
+                                            () => api.post(`/api/quote-responses/${selectedResponseId || rfq.quoteResponses?.[0]?.id}/remarks`, { buyerRemarks: buyerMessage.trim() }),
+                                            { loading: 'Sending message...', success: 'Message sent', error: 'Failed' }
+                                        );
+                                        setBuyerMessage('');
+                                    }}
+                                    disabled={!buyerMessage.trim() || !rfq.quoteResponses?.length}
+                                    className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-[10px] font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                    <Send className="mr-1 h-3.5 w-3.5" /> Send
+                                </button>
+                            </div>
+                        </Field>
+                    )}
+
+                    {isSeller && rfq.status === 'pending' && (!myResponse || (myResponse?.status === 'DRAFT' && rfq.allowSellerRevision)) && (
                         <Field label="Submit Your Quote">
                             <div className="rounded-lg border border-[#12335f]/20 bg-[#12335f]/5 p-4 space-y-3">
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -761,6 +962,11 @@ function RfqDetail({ id, isBuyer, isSeller, onClose }: { id: number; isBuyer: bo
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     <Input value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} placeholder="Delivery days" type="number" min="1" />
                                     <Input value={validityDate} onChange={e => setValidityDate(e.target.value)} placeholder="Valid till" type="date" />
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                    <Input value={warrantyPeriod} onChange={e => setWarrantyPeriod(e.target.value)} placeholder="Warranty (e.g., 24 Months)" type="text" />
+                                    <Input value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="Payment Terms (e.g., 50% advance)" type="text" />
+                                    <Input value={deliveryLocation} onChange={e => setDeliveryLocation(e.target.value)} placeholder="Delivery Location" type="text" />
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Proposal Document (Optional)</p>

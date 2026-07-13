@@ -113,40 +113,39 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="space-y-6">
+      {/* Transparent Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between py-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#12335f] bg-[#12335f]/10 px-2.5 py-1 rounded-full">
             {scope === 'admin' ? 'Admin Delivery Console' : 'Procurement Logistics'}
-          </p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950">
+          </span>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 mt-2">
             {title || 'Delivery Tracking'}
           </h1>
-          <p className="mt-1 max-w-2xl text-xs font-semibold text-slate-500">
+          <p className="text-xs font-semibold text-slate-500 mt-1">
             {subtitle || 'PO-linked consignments routed through the procurement workflow.'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <ViewToggle viewMode={viewMode} onChange={setViewMode} />
           <Button
             variant="outline"
             onClick={() => listQuery.refetch()}
-            className="h-10 rounded-lg text-xs font-black uppercase"
+            className="h-10 rounded-lg text-xs font-black uppercase bg-white hover:bg-slate-50 border-slate-200 shadow-sm"
           >
-            <RefreshCw className={cn('mr-2 h-4 w-4', isBackgroundFetching && 'animate-spin')} /> Refresh
+            <RefreshCw className={cn('mr-2 h-4 w-4 text-[#12335f]', isBackgroundFetching && 'animate-spin')} /> Refresh
           </Button>
         </div>
-        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} loading={isInitialLoading} />
-        <MetricCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} loading={isInitialLoading} />
-        <MetricCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} loading={isInitialLoading} />
-        <MetricCard label="Total" value={total} hint="All visible records" icon={Filter} loading={isInitialLoading} />
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard label="In Movement" value={counters.inMovement} hint="Active consignments" icon={Truck} loading={isInitialLoading} color="blue" />
+        <KpiCard label="Completed" value={counters.completed} hint="Delivered / accepted / closed" icon={PackageCheck} loading={isInitialLoading} color="green" />
+        <KpiCard label="Attention" value={counters.risk} hint="Delays, disputes, returns" icon={AlertTriangle} loading={isInitialLoading} color="red" />
+        <KpiCard label="Total" value={total} hint="All visible records" icon={Filter} loading={isInitialLoading} color="indigo" />
       </div>
-
 
       {listQuery.error && (
         <InlineError
@@ -155,41 +154,42 @@ export function DeliveryListPage({ scope = 'all', title, subtitle }: Props) {
         />
       )}
 
-      <Card className="rounded-2xl border-slate-200/80 bg-white/92 shadow-sm">
-        <CardContent className="space-y-3 p-4">
-          <div className="flex items-center gap-2 text-[#12335f]">
-            <Filter className="h-4 w-4" />
-            <p className="text-[10px] font-black uppercase tracking-widest">Filters</p>
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_auto]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute inset-y-0 left-3 h-full w-4 text-slate-400" />
-              <Input
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-                placeholder="Search PO, vendor, tracking number..."
-                className="pl-10"
-              />
-            </div>
-            <Select value={statusFilter} onChange={event => setStatusFilter(event.target.value as DeliveryStatus | '')}>
-              <option value="">All statuses</option>
-              {STATUS_OPTIONS.map(status => (
-                <option key={status} value={status}>{DELIVERY_STATUS_LABELS[status]}</option>
-              ))}
-            </Select>
-            <Button
-              variant="outline"
-              className="h-10 rounded-lg text-xs font-black uppercase"
-              onClick={() => {
-                setSearch('');
-                setStatusFilter('');
-              }}
-            >
-              Reset
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Inline Filters Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between border-y border-slate-200 bg-slate-50/50 py-3 px-1">
+        <div className="relative min-w-0 flex-1 max-w-md">
+          <Search className="pointer-events-none absolute inset-y-0 left-3 h-full w-4 text-slate-400" />
+          <Input
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Search PO, vendor, tracking number..."
+            className="pl-10 bg-white"
+          />
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Select
+            value={statusFilter}
+            onChange={event => setStatusFilter(event.target.value as DeliveryStatus | '')}
+            className="h-10 min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#12335f]/20"
+          >
+            <option value="">All statuses</option>
+            {STATUS_OPTIONS.map(status => (
+              <option key={status} value={status}>{DELIVERY_STATUS_LABELS[status]}</option>
+            ))}
+          </Select>
+
+          <Button
+            variant="outline"
+            className="h-10 rounded-lg text-xs font-black uppercase bg-white hover:bg-slate-50 border-slate-200 shadow-sm"
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('');
+            }}
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
 
       {isInitialLoading ? (
         viewMode === 'list' ? <TableSkeleton rows={6} cols={8} /> : <ListSkeleton rows={4} />
@@ -276,77 +276,75 @@ interface ViewProps {
 
 function ListView({ records, startIndex, page, pageSize, total, onSelect, onPageChange, onPageSizeChange, isFetching }: ViewProps) {
   return (
-    <Card className={cn('overflow-hidden rounded-2xl border-slate-200/80 shadow-sm transition-opacity', isFetching && 'opacity-90')}>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table className="min-w-[960px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Sr. No.</TableHead>
-                <TableHead>Tracking</TableHead>
-                <TableHead>Order</TableHead>
-                <TableHead>Parties</TableHead>
-                <TableHead>Carrier</TableHead>
-                <TableHead>Expected</TableHead>
-                <TableHead className="text-right">Value</TableHead>
-                <TableHead>Status</TableHead>
+    <div className={cn('overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-opacity', isFetching && 'opacity-90')}>
+      <div className="overflow-x-auto">
+        <Table className="min-w-[960px] border-collapse text-left text-xs">
+          <TableHeader>
+            <TableRow className="border-b border-slate-200 bg-slate-50/75 hover:bg-transparent">
+              <TableHead className="w-16 text-[10px] font-black uppercase tracking-wider text-slate-500 p-3">Sr. No.</TableHead>
+              <TableHead className="p-3">Tracking</TableHead>
+              <TableHead className="p-3">Order</TableHead>
+              <TableHead className="p-3">Parties</TableHead>
+              <TableHead className="p-3">Carrier</TableHead>
+              <TableHead className="p-3">Expected</TableHead>
+              <TableHead className="text-right p-3">Value</TableHead>
+              <TableHead className="p-3">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-slate-100 font-semibold text-slate-700">
+            {records.map((record, index) => (
+              <TableRow key={record.id} onClick={() => onSelect(record.id)} className="hover:bg-slate-50/50 transition cursor-pointer">
+                <TableCell className="font-mono text-xs text-slate-500 p-3">
+                  {String(startIndex + index + 1).padStart(2, '0')}
+                </TableCell>
+                <TableCell className="font-black text-[#12335f] p-3">
+                  {record.trackingNumber || `DLV-${record.id}`}
+                </TableCell>
+                <TableCell className="p-3">
+                  <p className="font-bold text-slate-900">
+                    {record.purchaseOrder?.title || record.purchaseOrder?.poNumber || `Delivery ${record.id}`}
+                  </p>
+                  <p className="text-[10px] font-semibold text-slate-500">
+                    {record.purchaseOrder?.poNumber}
+                  </p>
+                </TableCell>
+                <TableCell className="text-xs p-3">
+                  <p className="text-slate-600">
+                    <span className="font-bold">Seller:</span> {record.purchaseOrder?.seller?.name || '—'}
+                  </p>
+                  <p className="text-slate-500">
+                    <span className="font-bold">Buyer:</span> {record.purchaseOrder?.buyer?.name || '—'}
+                  </p>
+                </TableCell>
+                <TableCell className="text-xs p-3">
+                  <p className="font-bold text-slate-800">{record.carrierName || record.logisticsPartnerName || 'Pending'}</p>
+                  {record.currentLocation && (
+                    <p className="text-[10px] text-slate-500">{record.currentLocation}</p>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs p-3 text-slate-500">
+                  {formatDate(record.expectedDelivery)}
+                </TableCell>
+                <TableCell className="text-right text-xs font-bold text-slate-900 p-3">
+                  {formatCurrency(record.purchaseOrder?.amount)}
+                </TableCell>
+                <TableCell className="p-3">
+                  <DeliveryStatusBadge status={record.status} />
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records.map((record, index) => (
-                <TableRow key={record.id} onClick={() => onSelect(record.id)}>
-                  <TableCell className="font-mono text-xs text-slate-500">
-                    {String(startIndex + index + 1).padStart(2, '0')}
-                  </TableCell>
-                  <TableCell className="font-black text-[#12335f]">
-                    {record.trackingNumber || `DLV-${record.id}`}
-                  </TableCell>
-                  <TableCell>
-                    <p className="font-black text-slate-900">
-                      {record.purchaseOrder?.title || record.purchaseOrder?.poNumber || `Delivery ${record.id}`}
-                    </p>
-                    <p className="text-[10px] font-semibold text-slate-500">
-                      {record.purchaseOrder?.poNumber}
-                    </p>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <p className="text-slate-700">
-                      <span className="font-bold">Seller:</span> {record.purchaseOrder?.seller?.name || '—'}
-                    </p>
-                    <p className="text-slate-500">
-                      <span className="font-bold">Buyer:</span> {record.purchaseOrder?.buyer?.name || '—'}
-                    </p>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <p className="font-bold">{record.carrierName || record.logisticsPartnerName || 'Pending'}</p>
-                    {record.currentLocation && (
-                      <p className="text-[10px] text-slate-500">{record.currentLocation}</p>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {formatDate(record.expectedDelivery)}
-                  </TableCell>
-                  <TableCell className="text-right text-xs font-bold">
-                    {formatCurrency(record.purchaseOrder?.amount)}
-                  </TableCell>
-                  <TableCell>
-                    <DeliveryStatusBadge status={record.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-          label="deliveries"
-        />
-      </CardContent>
-    </Card>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        label="deliveries"
+      />
+    </div>
   );
 }
 
@@ -361,47 +359,49 @@ function GridView({ records, startIndex, page, pageSize, total, onSelect, onPage
             key={record.id}
             type="button"
             onClick={() => onSelect(record.id)}
-            className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#12335f]/40 hover:shadow-md"
+            className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#12335f]/40 hover:shadow-md justify-between"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0">
-                <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-[10px] font-black text-slate-500">
-                  {String(startIndex + index + 1).padStart(2, '0')}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
-                    {record.trackingNumber || `DLV-${record.id}`}
-                  </p>
-                  <p className="mt-1 break-words text-sm font-black text-slate-900">
-                    {record.purchaseOrder?.title || record.purchaseOrder?.poNumber || `Delivery ${record.id}`}
-                  </p>
-                  <p className="mt-1 break-words text-[10px] font-semibold text-slate-500">
-                    {record.purchaseOrder?.seller?.name || 'Seller'} → {record.purchaseOrder?.buyer?.name || 'Buyer'}
+            <div className="w-full">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[9px] font-black text-slate-500">
+                    {String(startIndex + index + 1).padStart(2, '0')}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">
+                      {record.trackingNumber || `DLV-${record.id}`}
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-900 group-hover:text-[#12335f] transition-colors">
+                      {record.purchaseOrder?.title || record.purchaseOrder?.poNumber || `Delivery ${record.id}`}
+                    </p>
+                    <p className="mt-1 break-words text-[10px] font-semibold text-slate-500">
+                      {record.purchaseOrder?.seller?.name || 'Seller'} → {record.purchaseOrder?.buyer?.name || 'Buyer'}
+                    </p>
+                  </div>
+                </div>
+                <DeliveryStatusBadge status={record.status} />
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2.5 border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-500">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Carrier</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800">
+                    {record.carrierName || record.logisticsPartnerName || 'Pending'}
                   </p>
                 </div>
-              </div>
-              <DeliveryStatusBadge status={record.status} />
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-500">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Carrier</p>
-                <p className="mt-0.5 text-xs font-bold text-slate-800">
-                  {record.carrierName || record.logisticsPartnerName || 'Pending'}
-                </p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected</p>
-                <p className="mt-0.5 text-xs font-bold text-slate-800">{formatDate(record.expectedDelivery)}</p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Location</p>
-                <p className="mt-0.5 text-xs font-bold text-slate-800">{record.currentLocation || 'Pending'}</p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Value</p>
-                <p className="mt-0.5 text-xs font-bold text-slate-800">
-                  {formatCurrency(record.purchaseOrder?.amount)}
-                </p>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800">{formatDate(record.expectedDelivery)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Location</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800">{record.currentLocation || 'Pending'}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Value</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800">
+                    {formatCurrency(record.purchaseOrder?.amount)}
+                  </p>
+                </div>
               </div>
             </div>
           </button>
@@ -421,20 +421,47 @@ function GridView({ records, startIndex, page, pageSize, total, onSelect, onPage
 
 /* ---------- Small helpers ---------- */
 
-function MetricCard({ label, value, hint, icon: Icon, loading }: { label: string; value: number; hint: string; icon: any; loading?: boolean }) {
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  hint: string;
+  icon: any;
+  loading?: boolean;
+  color?: 'blue' | 'green' | 'red' | 'purple' | 'amber' | 'indigo' | 'slate';
+}
+
+function KpiCard({ label, value, hint, icon: Icon, loading, color = 'slate' }: KpiCardProps) {
+  const colorMap = {
+    blue: 'border-blue-100 bg-blue-50/50 text-blue-700 ring-blue-600/10',
+    green: 'border-green-100 bg-green-50/50 text-green-700 ring-green-600/10',
+    red: 'border-red-100 bg-red-50/50 text-red-700 ring-red-600/10',
+    purple: 'border-purple-100 bg-purple-50/50 text-purple-700 ring-purple-600/10',
+    amber: 'border-amber-100 bg-amber-50/50 text-amber-700 ring-amber-600/10',
+    indigo: 'border-indigo-100 bg-indigo-50/50 text-indigo-700 ring-indigo-600/10',
+    slate: 'border-slate-100 bg-slate-50/50 text-slate-700 ring-slate-600/10',
+  };
+
+  const iconBgMap = {
+    blue: 'bg-blue-500 text-white',
+    green: 'bg-green-500 text-white',
+    red: 'bg-red-500 text-white',
+    purple: 'bg-purple-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    indigo: 'bg-indigo-500 text-white',
+    slate: 'bg-slate-500 text-white',
+  };
+
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-          <p className={cn("mt-1 text-2xl font-black text-slate-950", loading && "text-slate-300")}>{loading ? "0" : value}</p>
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{hint}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#12335f] text-white">
-          <Icon className="h-5 w-5" />
-        </div>
-      </CardContent>
-    </Card>
+    <div className={cn('w-full rounded-2xl border p-4 shadow-sm flex items-center justify-between', colorMap[color])}>
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</p>
+        <p className={cn('mt-1 text-2xl font-black tracking-tight leading-none', loading && 'text-slate-300')}>{loading ? '0' : value}</p>
+        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider opacity-60">{hint}</p>
+      </div>
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm', iconBgMap[color])}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+    </div>
   );
 }
 

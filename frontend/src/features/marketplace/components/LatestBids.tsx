@@ -38,7 +38,47 @@ interface OpportunityData {
     deadlineLabel: string;
     statusCode: ProcurementStatusCode;
     statusLabel: string;
+    rawDescription?: string | null;
 }
+
+const parseDescription = (desc?: string | null) => {
+    if (!desc) return { method: '', value: '', urgency: '', text: '' };
+    const cleanedDesc = desc.replace(/\r/g, '');
+    const methodMatch = cleanedDesc.match(/Sourcing Method:\s*(.*?)(?=(?:Value:|Urgency:|$))/i);
+    const valueMatch = cleanedDesc.match(/Value:\s*(.*?)(?=(?:Urgency:|$))/i);
+    const urgencyMatch = cleanedDesc.match(/Urgency:\s*(.*?)(?=$)/i);
+    let cleanText = cleanedDesc;
+    if (methodMatch) {
+        cleanText = cleanText.replace(/Sourcing Method:\s*(.*?)(?=(?:Value:|Urgency:|$))/i, '');
+    }
+    if (valueMatch) {
+        cleanText = cleanText.replace(/Value:\s*(.*?)(?=(?:Urgency:|$))/i, '');
+    }
+    if (urgencyMatch) {
+        cleanText = cleanText.replace(/Urgency:\s*(.*?)(?=$)/i, '');
+    }
+    cleanText = cleanText.replace(/[\n\r|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return {
+        method: methodMatch ? methodMatch[1].trim() : '',
+        value: valueMatch ? valueMatch[1].trim() : '',
+        urgency: urgencyMatch ? urgencyMatch[1].trim() : '',
+        text: cleanText
+    };
+};
+
+const getFormattedDescription = (desc?: string | null): string => {
+    if (!desc) return 'No description provided.';
+    const parsed = parseDescription(desc);
+    if (!parsed.method && !parsed.value && !parsed.urgency) {
+        return desc;
+    }
+    const parts: string[] = [];
+    if (parsed.method) parts.push(`Sourcing Method: ${parsed.method}`);
+    if (parsed.value) parts.push(`Value: ${parsed.value}`);
+    if (parsed.urgency) parts.push(`Urgency: ${parsed.urgency}`);
+    if (parsed.text) parts.push(parsed.text);
+    return parts.join(' | ');
+};
 
 function mapTender(t: MarketplaceTender): OpportunityData {
     const status = getProcurementStatus({ status: t.status, dueDate: t.closesAt });
@@ -47,7 +87,7 @@ function mapTender(t: MarketplaceTender): OpportunityData {
         id: t.id,
         displayId: t.tenderId,
         title: t.title,
-        description: t.description || 'No description provided.',
+        description: getFormattedDescription(t.description),
         category: t.category,
         budget: t.budget ?? null,
         buyerName: t.buyer?.buyerProfile?.organizationName || t.buyer?.name || 'Government Buyer',
@@ -60,7 +100,8 @@ function mapTender(t: MarketplaceTender): OpportunityData {
         deadlineLabel: status.deadlineLabel,
         statusCode: status.code,
         statusLabel: status.label,
-        participantsCount: t.bidsCount || 0
+        participantsCount: t.bidsCount || 0,
+        rawDescription: t.description
     };
 }
 
@@ -72,7 +113,7 @@ function mapBid(b: MarketplaceBid): OpportunityData {
         id: b.id,
         displayId: b.bidNumber,
         title: b.title,
-        description: b.description || 'No description provided.',
+        description: getFormattedDescription(b.description),
         category: b.category,
         budget: b.estimatedValue ?? null,
         buyerName: b.buyerOrganizationName || 'Verified Buyer',
@@ -85,7 +126,8 @@ function mapBid(b: MarketplaceBid): OpportunityData {
         deadlineLabel: status.deadlineLabel,
         statusCode: status.code,
         statusLabel: isTenderActivity ? 'Tender Bids' : status.label,
-        participantsCount: b.participantsCount || 0
+        participantsCount: b.participantsCount || 0,
+        rawDescription: b.description
     };
 }
 
@@ -161,9 +203,41 @@ function OpportunityCard({ item, index, visible }: { item: OpportunityData; inde
                     </span>
                 </div>
 
-                <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 font-medium">
-                    {item.description}
-                </p>
+                {(() => {
+                    const parsed = parseDescription(item.rawDescription || item.description);
+                    const hasBadges = parsed.method || parsed.value || parsed.urgency;
+                    return (
+                        <>
+                            {hasBadges && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {parsed.method && (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                                            {parsed.method}
+                                        </span>
+                                    )}
+                                    {parsed.value && (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">
+                                            {parsed.value}
+                                        </span>
+                                    )}
+                                    {parsed.urgency && (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border whitespace-nowrap",
+                                            parsed.urgency.toLowerCase().includes('urgent') || parsed.urgency.toLowerCase().includes('high')
+                                                ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                                : 'bg-slate-50 text-slate-600 border-slate-100'
+                                        )}>
+                                            {parsed.urgency} Urgency
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 font-medium">
+                                {parsed.text || item.description}
+                            </p>
+                        </>
+                    );
+                })()}
 
                 <div className="space-y-1.5 pt-2 border-t border-slate-50 text-[11px] font-semibold text-slate-600">
                     <p className="flex items-center gap-1.5 truncate">
@@ -207,7 +281,7 @@ function OpportunityCard({ item, index, visible }: { item: OpportunityData; inde
                         href={item.link} 
                         className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[10px] font-bold text-white hover:bg-[#12335f] transition active:scale-95 shadow-sm"
                     >
-                        {item.isTender ? 'View Tender' : 'View Bid'} 
+                        View Details 
                         <ArrowRight className="h-3 w-3" />
                     </Link>
                 </div>
@@ -228,16 +302,51 @@ function OpportunityListRow({ item, srNo }: { item: OpportunityData; srNo: numbe
             </td>
             <td className="px-5 py-4">
                 <div className="max-w-[280px]">
-                    <p className="truncate font-black text-slate-900 text-xs" title={item.title}>
+                    <p className="truncate font-black text-slate-900 text-xs mb-1.5" title={item.title}>
                         {item.title}
                     </p>
-                    <p className="mt-0.5 truncate text-[10px] text-slate-500 leading-relaxed">
-                        {item.description}
-                    </p>
+                    {(() => {
+                        const parsed = parseDescription(item.rawDescription || item.description);
+                        const hasBadges = parsed.method || parsed.value || parsed.urgency;
+                        return (
+                            <>
+                                {hasBadges && (
+                                    <div className="flex flex-wrap gap-1 mb-1.5">
+                                        {parsed.method && (
+                                            <span className="px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                                                {parsed.method}
+                                            </span>
+                                        )}
+                                        {parsed.value && (
+                                            <span className="px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">
+                                                {parsed.value}
+                                            </span>
+                                        )}
+                                        {parsed.urgency && (
+                                            <span className={cn(
+                                                "px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider border whitespace-nowrap",
+                                                parsed.urgency.toLowerCase().includes('urgent') || parsed.urgency.toLowerCase().includes('high')
+                                                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-100'
+                                            )}>
+                                                {parsed.urgency}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                                <p className="mt-0.5 truncate text-[10px] text-slate-500 leading-relaxed" title={parsed.text || item.description}>
+                                    {parsed.text || item.description}
+                                </p>
+                            </>
+                        );
+                    })()}
                 </div>
             </td>
             <td className="px-5 py-4 truncate text-slate-800 text-xs font-bold max-w-[150px]">{item.buyerName}</td>
             <td className="px-5 py-4 truncate text-slate-600 text-xs">{item.category}</td>
+            <td className="px-5 py-4 text-slate-600 text-xs whitespace-nowrap">
+                {item.startDate ? new Date(item.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+            </td>
             <td className="px-5 py-4 text-[#0b2447] font-black text-xs whitespace-nowrap">
                 {formatSingleBudget(item.budget)}
             </td>
@@ -257,7 +366,7 @@ function OpportunityListRow({ item, srNo }: { item: OpportunityData; srNo: numbe
                     href={item.link} 
                     className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0b2447] px-3 text-[10px] font-bold text-white hover:bg-[#12335f] transition shadow-sm"
                 >
-                    {item.isTender ? 'View Tender' : 'View Bid'} 
+                    View Details 
                     <ArrowRight className="h-3 w-3" />
                 </Link>
             </td>
@@ -266,28 +375,73 @@ function OpportunityListRow({ item, srNo }: { item: OpportunityData; srNo: numbe
 }
 
 interface Props {
-    requirements?: any; // Ignored/legacy
+    requirements?: any[];
     tenders?: MarketplaceTender[];
     bids?: MarketplaceBid[];
     loading?: boolean;
 }
 
-export function LatestBids({ tenders = [], bids = [], loading = false }: Props) {
+export function LatestBids({ requirements = [], tenders = [], bids = [], loading = false }: Props) {
     const { ref, visible } = useFadeIn();
     const [viewMode, setViewMode] = useResponsiveViewMode('phase7:marketplace-opportunities:view-mode');
+    const { user } = useAuth();
 
     const activeOpportunities = useMemo(() => {
         const mappedTenders = tenders.map(mapTender);
         const mappedBids = bids.map(mapBid);
-        const combined = [...mappedTenders, ...mappedBids];
+        const mappedRequirements = (requirements || []).map((r: any) => {
+            const status = getProcurementStatus({ status: r.status, dueDate: r.endDate || r.lastDate || r.requiredBy });
+            const days = Math.max(0, Math.ceil((new Date(r.endDate || r.lastDate || r.requiredBy || '').getTime() - Date.now()) / 86400000));
+            
+            // Link formatting based on authentication & procurement method
+            let link = `/marketplace/requirements/${r.id}`;
+            const isLoggedIn = !!user;
+            const isSeller = user?.role === 'seller';
+            if (isLoggedIn && isSeller) {
+                const method = String(r.canonicalMethod || r.procurementMethod || '').toUpperCase();
+                const sourceId = r.sourceId || Math.abs(r.id);
+                if (['RFQ', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'RATE_CONTRACT'].includes(method)) {
+                    link = `/seller/rfq?requirementId=${sourceId}`;
+                } else if (['RFP', 'SINGLE_SOURCE', 'PAC'].includes(method)) {
+                    link = `/seller/rfp?requirementId=${sourceId}`;
+                } else if (['OPEN_TENDER', 'LIMITED_TENDER', 'TWO_STAGE_TENDER', 'EMERGENCY_PURCHASE'].includes(method)) {
+                    link = `/seller/rfq?requirementId=${sourceId}`;
+                } else if (method === 'REVERSE_AUCTION') {
+                    link = `/seller/rfq?requirementId=${sourceId}`;
+                }
+            }
+
+            return {
+                id: r.id,
+                displayId: r.bidNumber || r.requirementNumber || `REQ-${r.id}`,
+                title: r.title,
+                description: getFormattedDescription(r.description),
+                category: r.category || 'Multi-category',
+                budget: r.estimatedValue || r.budgetMin || null,
+                buyerName: r.buyerOrganizationName || r.buyerName || 'Verified Buyer',
+                location: r.deliveryLocation || r.location || 'Jharsuguda, Odisha',
+                startDate: r.startDate || r.createdAt,
+                endDate: r.endDate || r.lastDate || r.requiredBy,
+                isTender: false,
+                link,
+                daysRemaining: days,
+                deadlineLabel: status.deadlineLabel,
+                statusCode: status.code,
+                statusLabel: 'Requirement',
+                participantsCount: r.participantsCount || r.responsesCount || 0,
+                rawDescription: r.description
+            };
+        });
+
+        const combined = [...mappedTenders, ...mappedBids, ...mappedRequirements];
         return combined.sort((a, b) => {
             const dateA = new Date(a.startDate || a.endDate || 0).getTime();
             const dateB = new Date(b.startDate || b.endDate || 0).getTime();
             return dateB - dateA;
         });
-    }, [tenders, bids]);
+    }, [requirements, tenders, bids, user]);
 
-    const viewAllHref = '/bids';
+    const viewAllHref = '/marketplace';
     const emptyMessage = 'No active procurement opportunities found matching current records.';
 
     return (
@@ -383,6 +537,7 @@ export function LatestBids({ tenders = [], bids = [], loading = false }: Props) 
                                     <th className="px-5 py-4">Title / Description</th>
                                     <th className="px-5 py-4">Buyer Organization</th>
                                     <th className="px-5 py-4">Category</th>
+                                    <th className="px-5 py-4">Published Date</th>
                                     <th className="px-5 py-4">Est. Budget</th>
                                     <th className="px-5 py-4">Closes / Timeline</th>
                                     <th className="px-5 py-4">Status</th>

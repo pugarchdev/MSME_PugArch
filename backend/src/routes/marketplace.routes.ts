@@ -111,7 +111,18 @@ const safeBuyerOrganizationSelect = {
     state: true,
     verificationStatus: true,
     logoFile: { select: organizationLogoSelect },
-    profile: true
+    profile: true,
+    buyerProfiles: {
+        where: {
+            verificationStatus: 'VERIFIED',
+            isActive: true
+        },
+        select: {
+            id: true,
+            logoUrl: true,
+            bannerUrl: true
+        }
+    }
 };
 
 const requirementCategorySelect = { id: true, name: true, slug: true };
@@ -159,6 +170,7 @@ const publicLegacyRequirementSelect = {
         select: {
             id: true,
             name: true,
+            organizationId: true,
             buyerProfile: { select: { organizationName: true, organizationType: true, city: true, district: true, state: true } }
         }
     },
@@ -198,6 +210,14 @@ const publicLegacyRequirementDetailSelect = {
         },
         take: 1,
         orderBy: { createdAt: 'desc' as const }
+    },
+    tenders: {
+        select: {
+            id: true,
+            tenderId: true,
+            title: true,
+            status: true
+        }
     }
 };
 
@@ -310,7 +330,7 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
     if (!requirement) return requirement;
     const profile = requirement.buyer?.buyerProfile || {};
     const organization = requirement.organization || {
-        id: requirement.buyer?.id || requirement.id,
+        id: requirement.buyer?.organizationId || requirement.buyer?.id || requirement.id,
         organizationName: profile.organizationName || requirement.buyer?.name || 'Verified buyer',
         organizationType: profile.organizationType || 'BUYER',
         city: profile.city,
@@ -383,13 +403,13 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
             }
             : null,
         payload: requirement.payload,
-        canonicalMethod: requirement.canonicalMethod
+        canonicalMethod: requirement.canonicalMethod,
+        tenders: requirement.tenders
     });
 };
 
 const getPublicLegacyRequirementWhere = () => ({
     status: { in: ['APPROVED', 'SOURCING'] },
-    procurementMethod: { not: 'DIRECT_PURCHASE' },
     AND: [{ OR: [{ requiredBy: null }, { requiredBy: { gte: new Date() } }] }]
 });
 
@@ -427,7 +447,11 @@ const loadLatestProcurementBids = async (take = 6) => {
         db.procurementBid?.findMany?.({
             where: {
                 approvalStatus: 'APPROVED',
-                status: { in: ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'] }
+                status: { in: ['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'] },
+                NOT: [
+                    { procurementType: { in: ['LIMITED_TENDER', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } },
+                    { bidType: { in: ['LIMITED_TENDER', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'] } }
+                ]
             },
             orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
             take,
@@ -561,14 +585,23 @@ const loadLatestRequirements = async (take = 6) => {
             select: publicLegacyRequirementSelect
         }).catch(() => [])
     ]);
-    return [
-        ...(buyerRequirements || []).map(decorateRequirement),
-        ...(legacyRequirements || []).filter((reqItem: any) => {
+
+    const decoratedBuyer = (buyerRequirements || []).map(decorateRequirement);
+    const buyerTitles = new Set(decoratedBuyer.map((b: any) => (b.title || '').trim().toLowerCase()));
+
+    const decoratedLegacy = (legacyRequirements || [])
+        .filter((reqItem: any) => {
             const method = reqItem.canonicalMethod || reqItem.procurementMethod || '';
             const isRestricted = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(method.toUpperCase());
             const isLimitedRfq = method.toUpperCase() === 'RFQ' && reqItem.payload && typeof reqItem.payload === 'object' && (reqItem.payload as any).rfqType === 'LIMITED';
             return !isRestricted && !isLimitedRfq;
-        }).map(mapLegacyRequirementToPublic)
+        })
+        .map(mapLegacyRequirementToPublic)
+        .filter((l: any) => !buyerTitles.has((l.title || '').trim().toLowerCase()));
+
+    return [
+        ...decoratedBuyer,
+        ...decoratedLegacy
     ]
         .sort((a: any, b: any) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime())
         .slice(0, take);
@@ -593,12 +626,28 @@ const requirementSchema = z.object({
 });
 
 const responseSchema = z.object({
-    offeredPrice: z.coerce.number().nonnegative().optional(),
-    offeredQuantity: z.coerce.number().positive().optional(),
-    deliveryTimeline: z.string().trim().max(120).optional(),
-    message: z.string().trim().min(10).max(3000),
-    attachmentUrl: z.string().trim().max(500).optional(),
-    terms: z.string().trim().max(2000).optional()
+    offeredPrice: z.coerce.number().nonnegative().optional().nullable(),
+    offeredQuantity: z.coerce.number().positive().optional().nullable(),
+    deliveryTimeline: z.string().trim().max(120).optional().nullable(),
+    message: z.string().trim().max(3000).optional().nullable(),
+    attachmentUrl: z.string().trim().max(500).optional().nullable(),
+    terms: z.string().trim().max(2000).optional().nullable(),
+    status: z.enum(['DRAFT', 'SUBMITTED']).default('SUBMITTED')
+}).superRefine((data, ctx) => {
+    if (data.status === 'SUBMITTED') {
+        if (data.offeredPrice === undefined || data.offeredPrice === null) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Offered price is required for submission", path: ["offeredPrice"] });
+        }
+        if (data.offeredQuantity === undefined || data.offeredQuantity === null) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Offered quantity is required for submission", path: ["offeredQuantity"] });
+        }
+        if (!data.deliveryTimeline || !data.deliveryTimeline.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Delivery timeline is required for submission", path: ["deliveryTimeline"] });
+        }
+        if (!data.message || data.message.trim().length < 10) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Quotation message must be at least 10 characters", path: ["message"] });
+        }
+    }
 });
 
 const responseListQuery = z.object({
@@ -1444,6 +1493,17 @@ router.get('/marketplace/home', shortCache(60), async (_req: Request, res: Respo
                         verificationStatus: true,
                         logoFile: { select: organizationLogoSelect },
                         profile: true,
+                        buyerProfiles: {
+                            where: {
+                                verificationStatus: 'VERIFIED',
+                                isActive: true
+                            },
+                            select: {
+                                id: true,
+                                logoUrl: true,
+                                bannerUrl: true
+                            }
+                        },
                         _count: { select: { buyerRequirements: true } }
                     }
                 }).catch(() => []),
@@ -1884,6 +1944,7 @@ router.get('/marketplace/sellers/:id', shortCache(60), async (req: Request, res:
             include: {
                 logoFile: { select: organizationLogoSelect },
                 profile: { select: { logoUrl: true, bannerUrl: true } },
+                buyerProfiles: { select: { logoUrl: true, bannerUrl: true } },
                 sellerProfiles: {
                     include: {
                         offices: true
@@ -1916,8 +1977,8 @@ router.get('/marketplace/sellers/:id', shortCache(60), async (req: Request, res:
             state: org.state,
             email: org.users?.map((u: any) => u.email).filter(Boolean).join(', ') || sellerUser.email || null,
             mobile: org.users?.map((u: any) => u.mobile).filter(Boolean).join(', ') || sellerUser.mobile || null,
-            logoUrl: org.profile?.logoUrl || org.logoFile?.url || null,
-            bannerUrl: org.profile?.bannerUrl || null,
+            logoUrl: org.profile?.logoUrl || org.buyerProfiles?.[0]?.logoUrl || org.logoFile?.url || null,
+            bannerUrl: org.profile?.bannerUrl || org.buyerProfiles?.[0]?.bannerUrl || null,
             sellerProfile: {
                 ...primaryProfile,
                 businessName: org.organizationName,
@@ -1974,6 +2035,17 @@ router.get('/marketplace/buyers', shortCache(60), async (req: Request, res: Resp
                     verificationStatus: true,
                     logoFile: { select: organizationLogoSelect },
                     profile: { select: organizationProfileBrandSelect },
+                    buyerProfiles: {
+                        where: {
+                            verificationStatus: 'VERIFIED',
+                            isActive: true
+                        },
+                        select: {
+                            id: true,
+                            logoUrl: true,
+                            bannerUrl: true
+                        }
+                    },
                     _count: { select: { buyerRequirements: true } }
                 }
             }),
@@ -2077,15 +2149,21 @@ router.get('/marketplace/requirements', optionalAuthenticate, shortCache(30), as
             return true;
         });
 
+        const decoratedBuyer = buyerRequirements.map(decorateRequirement);
+        const buyerTitles = new Set(decoratedBuyer.map((b: any) => (b.title || '').trim().toLowerCase()));
+        const decoratedLegacy = filteredLegacy
+            .map(mapLegacyRequirementToPublic)
+            .filter((l: any) => !buyerTitles.has((l.title || '').trim().toLowerCase()));
+
         const combined = [
-            ...buyerRequirements.map(decorateRequirement),
-            ...filteredLegacy.map(mapLegacyRequirementToPublic)
+            ...decoratedBuyer,
+            ...decoratedLegacy
         ].sort((a: any, b: any) => {
             const urgent = Number(Boolean(b.isUrgent)) - Number(Boolean(a.isUrgent));
             if (urgent) return urgent;
             return new Date(a.lastDate || 0).getTime() - new Date(b.lastDate || 0).getTime();
         });
-        const total = buyerTotal + filteredLegacy.length;
+        const total = buyerTotal + decoratedLegacy.length;
         return ok(res, { requirements: combined.slice(skip, skip + pageSize), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -2175,7 +2253,18 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
                     ? db.requirementResponse.findFirst({
                         where: { requirementId: requirement.id, sellerUserId: Number(req.user.id) },
                         orderBy: { createdAt: 'desc' },
-                        select: { id: true, status: true, createdAt: true, updatedAt: true }
+                        select: {
+                            id: true,
+                            status: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            offeredPrice: true,
+                            offeredQuantity: true,
+                            deliveryTimeline: true,
+                            message: true,
+                            attachmentUrl: true,
+                            terms: true
+                        }
                     })
                     : Promise.resolve(null)
             ]);
@@ -2256,22 +2345,77 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
             return apiResponse.error(res, 403, 'Please complete seller onboarding and verification to respond to this requirement.', 'SELLER_VERIFICATION_REQUIRED');
         }
         const sellerOrganizationId = seller?.organizationId || req.user?.organizationId || null;
-
         const response = await db.$transaction(async (tx: any) => {
-            const requirement = await tx.buyerRequirement.findFirst({
-                where: { id, ...getPublicRequirementWhere() },
-                select: { id: true, buyerOrganizationId: true, createdById: true, lastDate: true, status: true }
-            });
+            let targetId = id;
+            let requirement = null;
+
+            if (id < 0) {
+                const legacyId = Math.abs(id);
+                const legacyReq = await tx.requirement.findFirst({
+                    where: { id: legacyId },
+                    include: { buyer: true, items: true }
+                });
+
+                if (!legacyReq) {
+                    throw new Error('REQUIREMENT_NOT_OPEN');
+                }
+
+                // Check if a modern BuyerRequirement already exists for this legacy requirement
+                let modernReq = await tx.buyerRequirement.findFirst({
+                    where: {
+                        title: legacyReq.title,
+                        description: legacyReq.description || legacyReq.title,
+                        createdById: legacyReq.buyerId,
+                        buyerOrganizationId: legacyReq.organizationId || legacyReq.buyer?.organizationId || null
+                    }
+                });
+
+                if (!modernReq) {
+                    const requiredBy = legacyReq.requiredBy || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    const items = Array.isArray(legacyReq.items) ? legacyReq.items : [];
+                    const totalQty = items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
+                    const primaryUnit = items[0]?.unitOfMeasure || null;
+
+                    modernReq = await tx.buyerRequirement.create({
+                        data: {
+                            title: legacyReq.title,
+                            requirementType: 'PRODUCT',
+                            categoryId: legacyReq.categoryId,
+                            description: legacyReq.description || legacyReq.title,
+                            quantity: totalQty > 0 ? totalQty : null,
+                            unit: primaryUnit,
+                            location: legacyReq.location || null,
+                            budgetMin: legacyReq.estimatedValue || null,
+                            budgetMax: legacyReq.estimatedValue || null,
+                            lastDate: requiredBy,
+                            status: 'PUBLISHED',
+                            createdById: legacyReq.buyerId,
+                            buyerOrganizationId: legacyReq.organizationId || legacyReq.buyer?.organizationId || null,
+                            companyId: legacyReq.buyer?.companyId || null
+                        }
+                    });
+                }
+
+                requirement = modernReq;
+                targetId = modernReq.id;
+            } else {
+                requirement = await tx.buyerRequirement.findFirst({
+                    where: { id, ...getPublicRequirementWhere() },
+                    select: { id: true, buyerOrganizationId: true, createdById: true, lastDate: true, status: true }
+                });
+            }
+
             if (!requirement) {
                 throw new Error('REQUIREMENT_NOT_OPEN');
             }
+
             if (requirement.createdById === Number(req.user?.id) || (sellerOrganizationId && requirement.buyerOrganizationId === sellerOrganizationId)) {
                 throw new Error('SELLER_CANNOT_RESPOND_TO_OWN_REQUIREMENT');
             }
 
             const existing = await tx.requirementResponse.findFirst({
                 where: {
-                    requirementId: id,
+                    requirementId: targetId,
                     sellerUserId: Number(req.user?.id),
                     status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED'] }
                 },
@@ -2281,11 +2425,47 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
                 throw new Error('REQUIREMENT_RESPONSE_EXISTS');
             }
 
-            return tx.requirementResponse.create({
-                data: { ...body, requirementId: id, sellerUserId: Number(req.user?.id), sellerOrganizationId },
-                select: { id: true, requirementId: true, sellerOrganizationId: true, sellerUserId: true, status: true, createdAt: true, updatedAt: true }
+            const existingDraft = await tx.requirementResponse.findFirst({
+                where: {
+                    requirementId: targetId,
+                    sellerUserId: Number(req.user?.id),
+                    status: 'DRAFT'
+                }
             });
+
+            if (existingDraft) {
+                return tx.requirementResponse.update({
+                    where: { id: existingDraft.id },
+                    data: {
+                        offeredPrice: body.offeredPrice !== undefined ? body.offeredPrice : existingDraft.offeredPrice,
+                        offeredQuantity: body.offeredQuantity !== undefined ? body.offeredQuantity : existingDraft.offeredQuantity,
+                        deliveryTimeline: body.deliveryTimeline !== undefined ? body.deliveryTimeline : existingDraft.deliveryTimeline,
+                        message: body.message !== undefined ? body.message : existingDraft.message,
+                        attachmentUrl: body.attachmentUrl !== undefined ? body.attachmentUrl : existingDraft.attachmentUrl,
+                        terms: body.terms !== undefined ? body.terms : existingDraft.terms,
+                        status: body.status || existingDraft.status
+                    },
+                    select: { id: true, requirementId: true, sellerOrganizationId: true, sellerUserId: true, status: true, createdAt: true, updatedAt: true }
+                });
+            } else {
+                return tx.requirementResponse.create({
+                    data: {
+                        offeredPrice: body.offeredPrice,
+                        offeredQuantity: body.offeredQuantity,
+                        deliveryTimeline: body.deliveryTimeline,
+                        message: body.message || '',
+                        attachmentUrl: body.attachmentUrl,
+                        terms: body.terms,
+                        status: body.status || 'SUBMITTED',
+                        requirementId: targetId,
+                        sellerUserId: Number(req.user?.id),
+                        sellerOrganizationId
+                    },
+                    select: { id: true, requirementId: true, sellerOrganizationId: true, sellerUserId: true, status: true, createdAt: true, updatedAt: true }
+                });
+            }
         });
+
         return ok(res, response);
     } catch (error) {
         if (error instanceof Error && error.message === 'REQUIREMENT_NOT_OPEN') {
@@ -2325,13 +2505,13 @@ router.get('/buyer/requirements/:id/responses', authenticate, authorize('buyer',
 
         const [responses, total] = await Promise.all([
             db.requirementResponse.findMany({
-                where: { requirementId: id },
+                where: { requirementId: id, status: { not: 'DRAFT' } },
                 orderBy: { createdAt: 'desc' },
                 skip,
                 take: pageSize,
                 select: buyerResponseSelect
             }),
-            db.requirementResponse.count({ where: { requirementId: id } })
+            db.requirementResponse.count({ where: { requirementId: id, status: { not: 'DRAFT' } } })
         ]);
 
         return ok(res, {
@@ -2553,8 +2733,42 @@ router.get('/marketplace/guest-cart/:cartToken', async (req: Request, res: Respo
 router.get('/marketplace/organizations/featured', shortCache(60), async (_req: Request, res: Response) => {
     try {
         const [largeIndustries, bigMsmes] = await Promise.all([
-            db.organization.findMany({ where: { profile: { isLargeIndustry: true }, isBlacklisted: false, deletedAt: null }, include: { profile: true }, take: 12 }),
-            db.organization.findMany({ where: { profile: { isBigMsme: true }, isBlacklisted: false, deletedAt: null }, include: { profile: true }, take: 12 })
+            db.organization.findMany({
+                where: { profile: { isLargeIndustry: true }, isBlacklisted: false, deletedAt: null },
+                include: {
+                    profile: true,
+                    buyerProfiles: {
+                        where: {
+                            verificationStatus: 'VERIFIED',
+                            isActive: true
+                        },
+                        select: {
+                            id: true,
+                            logoUrl: true,
+                            bannerUrl: true
+                        }
+                    }
+                },
+                take: 12
+            }),
+            db.organization.findMany({
+                where: { profile: { isBigMsme: true }, isBlacklisted: false, deletedAt: null },
+                include: {
+                    profile: true,
+                    buyerProfiles: {
+                        where: {
+                            verificationStatus: 'VERIFIED',
+                            isActive: true
+                        },
+                        select: {
+                            id: true,
+                            logoUrl: true,
+                            bannerUrl: true
+                        }
+                    }
+                },
+                take: 12
+            })
         ]);
         return ok(res, { largeIndustries, bigMsmes });
     } catch {

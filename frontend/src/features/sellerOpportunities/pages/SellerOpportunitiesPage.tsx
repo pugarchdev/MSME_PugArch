@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Building2, CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, MapPin, RefreshCw, Search, ShieldCheck, X, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Building2, CalendarDays, ChevronDown, ChevronUp, ClipboardList, Eye, FileText, Gavel, MapPin, RefreshCw, Search, ShieldCheck, X, IndianRupee, Clock, Users, CheckCircle2, type LucideIcon } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -16,8 +16,9 @@ import { useResponsiveViewMode } from '../../shared/hooks';
 import { Pagination } from '../../shared/Pagination';
 import ProcurementLifecycleTracker from '../../procurementLifecycle/components/ProcurementLifecycleTracker';
 import type { ProcurementLifecycleEvent } from '../../procurementLifecycle/statusMapper';
+import { useAuth } from '../../../hooks/useAuth';
 
-type OpportunityType = 'Quick Quote' | 'Large Procurement' | 'Buyer Requirement' | 'Auction';
+type OpportunityType = 'RFQ' | 'RFP' | 'Open Tender' | 'Limited Tender' | 'Reverse Auction' | 'Direct Purchase' | 'Rate Contract' | 'Repeat Order';
 
 interface SellerOpportunity {
   id: string;
@@ -95,16 +96,28 @@ const nextActionFor = (item: Pick<SellerOpportunity, 'type' | 'status' | 'eligib
   const status = String(item.status || '').toLowerCase();
   if (status.includes('closed') || status.includes('awarded')) return 'This opportunity is no longer open for a new seller response. Review details and track the result.';
   if (item.eligibility.toLowerCase().includes('participated')) return 'Your participation is recorded. Track buyer evaluation, award, PO, delivery, invoice, and settlement from this panel.';
-  if (item.type === 'Auction') return 'Open auction details, verify invitation and timeline, then join the live auction when it is active.';
-  if (item.type === 'Quick Quote') return 'Open RFQ details, verify commercial terms and deadline, then submit the quotation before closure.';
+  if (item.type === 'Reverse Auction') return 'Open auction details, verify invitation and timeline, then join the live auction when it is active.';
+  if (item.type === 'RFQ') return 'Open RFQ details, verify commercial terms and deadline, then submit the quotation before closure.';
   return 'Open details, review documents and eligibility, then submit the bid or response before the closing date.';
 };
 
 const typeFromQuery = (value: string | null): OpportunityType | '' => {
-  if (value === 'quote') return 'Quick Quote';
-  if (value === 'large') return 'Large Procurement';
-  if (value === 'requirement') return 'Buyer Requirement';
-  if (value === 'auction') return 'Auction';
+  if (value === 'rfq' || value === 'quote') return 'RFQ';
+  if (value === 'rfp') return 'RFP';
+  if (value === 'open-tender' || value === 'large') return 'Open Tender';
+  if (value === 'limited-tender' || value === 'invitations') return 'Limited Tender';
+  if (value === 'reverse-auction' || value === 'auction') return 'Reverse Auction';
+  return '';
+};
+
+const getSubRouteType = (): OpportunityType | '' => {
+  if (typeof window === 'undefined') return '';
+  const path = window.location.pathname;
+  if (path.endsWith('/rfqs')) return 'RFQ';
+  if (path.endsWith('/rfps')) return 'RFP';
+  if (path.endsWith('/open-tenders')) return 'Open Tender';
+  if (path.endsWith('/invitations')) return 'Limited Tender';
+  if (path.endsWith('/auctions')) return 'Reverse Auction';
   return '';
 };
 
@@ -126,13 +139,53 @@ const isSameOpportunities = (a: SellerOpportunity[] | null, b: SellerOpportunity
   return true;
 };
 
-export default function SellerOpportunitiesPage() {
+const getDaysLeftText = (closingDate?: string) => {
+  if (!closingDate) return '';
+  const diff = (new Date(closingDate).getTime() - Date.now()) / 86400000;
+  if (diff < 0) return 'Closed';
+  const days = Math.ceil(diff);
+  return `${days} Day${days > 1 ? 's' : ''} Left`;
+};
+
+function CountdownTimer({ endDate }: { endDate?: string }) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    if (!endDate) return;
+    const calculateTime = () => {
+      const diff = new Date(endDate).getTime() - Date.now();
+      if (diff <= 0) {
+        setTimeLeft('Ended');
+        return;
+      }
+      const hrs = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setTimeLeft(`${pad(hrs)}h : ${pad(mins)}m : ${pad(secs)}s`);
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [endDate]);
+
+  return <span className="font-mono text-xs font-black text-red-600 animate-pulse">{timeLeft}</span>;
+}
+
+export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRouteType?: OpportunityType | '' }) {
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const [items, setItems] = useState<SellerOpportunity[]>(() => globalOpportunitiesCache || []);
   const [loading, setLoading] = useState(() => !globalOpportunitiesCache);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [type, setType] = useState<OpportunityType | ''>(() => typeFromQuery(searchParams.get('type')));
+  const [type, setType] = useState<OpportunityType | ''>(() => subRouteType || typeFromQuery(searchParams?.get('type')));
+
+  useEffect(() => {
+    setType(subRouteType);
+  }, [subRouteType]);
   const [status, setStatus] = useState('');
   const [location, setLocation] = useState('');
   const [closingDate, setClosingDate] = useState('');
@@ -140,10 +193,30 @@ export default function SellerOpportunitiesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<SellerOpportunity | null>(null);
   const [viewMode, setViewMode] = useResponsiveViewMode('seller:opportunities:view-mode');
-  const [kpiFilter, setKpiFilter] = useState<'all' | 'open' | 'dueSoon' | 'auctions'>('all');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [kpiFilter, setKpiFilter] = useState<'all' | 'open' | 'dueSoon' | 'auctions' | 'invitations'>('all');
   const [category, setCategory] = useState('');
   const [valueRange, setValueRange] = useState('');
+  const [buyerFilter, setBuyerFilter] = useState('');
+  const [sortField, setSortField] = useState<'type' | 'title' | 'buyer' | 'publishedAt' | 'closingDate' | 'estimatedValue' | ''>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: 'type' | 'title' | 'buyer' | 'publishedAt' | 'closingDate' | 'estimatedValue') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIcon = (field: 'type' | 'title' | 'buyer' | 'publishedAt' | 'closingDate' | 'estimatedValue') => {
+    if (sortField !== field) {
+      return <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 text-slate-300 opacity-40 group-hover:opacity-100 transition-opacity" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ChevronUp className="ml-1 h-3.5 w-3.5 shrink-0 text-blue-600 font-extrabold" />
+      : <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 text-blue-600 font-extrabold" />;
+  };
 
   const load = React.useCallback(() => {
     let alive = true;
@@ -153,20 +226,28 @@ export default function SellerOpportunitiesPage() {
     setError('');
 
     Promise.allSettled([
-      procurementBidApi.list({ pageSize: 200 }),
-      marketplaceApi.getRequirements({ pageSize: 200 }),
-      fetchQuoteRequests({ pageSize: 200 }),
-      reverseAuctionApi.list({ pageSize: 200 }),
+      procurementBidApi.list({ pageSize: 50 }),
+      marketplaceApi.getRequirements({ pageSize: 50 }),
+      fetchQuoteRequests({ pageSize: 50 }),
+      reverseAuctionApi.list({ pageSize: 50 }),
     ]).then(results => {
       if (!alive) return;
       const next: SellerOpportunity[] = [];
 
       const bids = results[0].status === 'fulfilled' ? results[0].value?.items || [] : [];
       bids.forEach((bid: any) => {
+        const method = String(bid.procurementType || bid.bidType || '').toUpperCase();
+        const allowedMethods = ['RFQ', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'REVERSE_AUCTION', 'TENDER', 'REPEAT_ORDER', 'RATE_CONTRACT'];
+        if (!allowedMethods.includes(method)) return;
+
+        // Public/invited visibility is enforced by the backend list endpoint
+        // (GET /api/bids filters by visibility + invitation membership). We intentionally
+        // do NOT re-derive privacy here — a client-side heuristic would diverge from the
+        // server rule and either hide invited opportunities or leak private ones.
+
         const documents = asTextList(bid.requiredDocuments);
         const terms = asTextList(bid.terms);
         
-        const method = String(bid.procurementType || bid.bidType || '').toUpperCase();
         let actionLabel = bid.participated ? 'Track Status' : 'Submit Bid';
         let href = `/bids/${bid.id}/participate`;
         let detailsHref = `/bids/${bid.id}`;
@@ -175,30 +256,27 @@ export default function SellerOpportunitiesPage() {
           href = `/seller/tenders/${bid.sourceId}/bid`;
           detailsHref = `/tenders?tender=${bid.sourceId}`;
           actionLabel = bid.participated ? 'Track Status' : 'Submit Quote';
-        } else {
-          if (method === 'RFI') {
-            actionLabel = bid.participated ? 'Track Info Request' : 'Submit Information';
-          } else if (method === 'REVERSE_AUCTION') {
-            actionLabel = 'Enter Auction Lobby';
-            href = `/reverse-auctions/${bid.id}/live`;
-            detailsHref = `/reverse-auctions/${bid.id}`;
-          } else if (method === 'BID_WITH_REVERSE_AUCTION') {
-            actionLabel = bid.participated ? 'Enter Auction Lobby' : 'Submit Bid & Participate';
-            if (bid.participated) {
-              href = `/reverse-auctions/${bid.id}/live`;
-            }
-          } else if (['DIRECT_PURCHASE', 'PAC', 'SINGLE_SOURCE', 'EMERGENCY_PURCHASE'].includes(method)) {
-            actionLabel = bid.participated ? 'Track Order/Quote' : 'Submit Quotation';
-          } else if (method === 'BOQ_BASED_BID') {
-            actionLabel = bid.participated ? 'Track BOQ Bid' : 'Submit BOQ Rates';
-          } else if (method === 'RATE_CONTRACT') {
-            actionLabel = bid.participated ? 'Track Rate Contract' : 'Submit Rate Schedule';
-          }
+        } else if (method === 'RFQ') {
+          href = `/seller/rfq?requestId=${bid.id}`;
+          detailsHref = `/seller/rfq?requestId=${bid.id}`;
+          actionLabel = 'Submit Quote';
+        } else if (method === 'RFP') {
+          href = `/seller/rfp?requestId=${bid.id}`;
+          detailsHref = `/seller/rfp?requestId=${bid.id}`;
+          actionLabel = 'Submit Proposal';
         }
+
+        let opportunityType: OpportunityType = 'RFQ';
+        if (method === 'RFP') opportunityType = 'RFP';
+        else if (method === 'OPEN_TENDER' || method === 'TENDER') opportunityType = 'Open Tender';
+        else if (method === 'LIMITED_TENDER') opportunityType = 'Limited Tender';
+        else if (method === 'REVERSE_AUCTION') opportunityType = 'Reverse Auction';
+        else if (method === 'REPEAT_ORDER') opportunityType = 'Repeat Order';
+        else if (method === 'RATE_CONTRACT') opportunityType = 'Rate Contract';
 
         const opportunity: SellerOpportunity = {
           id: `bid-${bid.id}`,
-          type: bid.sourceModel === 'TENDER' ? 'Large Procurement' : 'Large Procurement',
+          type: opportunityType,
           title: bid.title || bid.itemName || 'Procurement opportunity',
           buyer: bid.buyerName,
           category: bid.category,
@@ -239,10 +317,38 @@ export default function SellerOpportunitiesPage() {
 
       const requirements = results[1].status === 'fulfilled' ? ((results[1].value as any)?.requirements || (results[1].value as any)?.items || results[1].value || []) : [];
       (Array.isArray(requirements) ? requirements : []).forEach((req: any) => {
+        const reqMethod = String(req.canonicalMethod || req.procurementMethod || 'RFQ').toUpperCase();
+        const allowedMethods = ['RFQ', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'REVERSE_AUCTION', 'TENDER', 'REPEAT_ORDER', 'RATE_CONTRACT'];
+        if (reqMethod && !allowedMethods.includes(reqMethod)) return;
+
+        const reqInvites = Array.isArray(req.payload?.vendors?.invitedSellers) 
+          ? req.payload.vendors.invitedSellers 
+          : (Array.isArray(req.invitedSellers) ? req.invitedSellers : []);
+        
+        const isReqPrivate = req.visibility === 'VERIFIED_SELLERS_ONLY' || req.visibility === 'INVITED_SUPPLIERS' || ['LIMITED_TENDER', 'REPEAT_ORDER', 'RATE_CONTRACT'].includes(reqMethod);
+        
+        if (isReqPrivate) {
+          const isInvited = reqInvites.includes(user?.id) || reqInvites.includes(user?.organizationId) || req.responsesCount > 0;
+          if (!isInvited) return;
+        }
+
+        let opportunityType: OpportunityType = 'RFQ';
+        if (reqMethod === 'RFP') opportunityType = 'RFP';
+        else if (reqMethod === 'OPEN_TENDER' || reqMethod === 'TENDER') opportunityType = 'Open Tender';
+        else if (reqMethod === 'LIMITED_TENDER') opportunityType = 'Limited Tender';
+        else if (reqMethod === 'REVERSE_AUCTION') opportunityType = 'Reverse Auction';
+        else if (reqMethod === 'RATE_CONTRACT') opportunityType = 'Rate Contract';
+        else if (reqMethod === 'REPEAT_ORDER') opportunityType = 'Repeat Order';
+
         const documents = asTextList(req.requiredDocuments);
+        const linkedBidId = req.payload?.linkedProcurementBidId;
+        const responseHref = linkedBidId
+          ? `/bids/${linkedBidId}/participate`
+          : opportunityType === 'RFQ' ? `/seller/rfq?requirementId=${req.id}` : opportunityType === 'RFP' ? `/seller/rfp?requirementId=${req.id}` : `/marketplace/requirements/${req.sourceId || req.id}`;
+        const detailHref = opportunityType === 'RFQ' ? `/seller/rfq?requirementId=${req.id}` : opportunityType === 'RFP' ? `/seller/rfp?requirementId=${req.id}` : `/marketplace/requirements/${req.sourceId || req.id}`;
         const opportunity: SellerOpportunity = {
           id: `req-${req.id}`,
-          type: 'Buyer Requirement',
+          type: opportunityType,
           title: req.title || 'Buyer requirement',
           buyer: req.buyerOrganization?.organizationName,
           category: req.category?.name,
@@ -251,9 +357,9 @@ export default function SellerOpportunitiesPage() {
           estimatedValue: toNumber(req.budgetMax || req.budgetMin),
           eligibility: req.visibility === 'VERIFIED_SELLERS_ONLY' ? 'Verified sellers only' : 'Open',
           status: req.statusLabel || req.status || 'Open',
-          actionLabel: 'Respond',
-          href: `/marketplace/requirements/${req.sourceId || req.id}`,
-          detailsHref: `/marketplace/requirements/${req.sourceId || req.id}`,
+          actionLabel: opportunityType === 'RFP' ? 'Submit Proposal' : opportunityType === 'RFQ' ? 'Submit Quote' : 'Respond',
+          href: responseHref,
+          detailsHref: detailHref,
           sourceRef: req.requirementNumber || `REQ-${req.sourceId || req.id}`,
           publishedAt: req.approvedAt || req.createdAt,
           quantity: formatQuantity(req.quantity, req.unit),
@@ -285,7 +391,7 @@ export default function SellerOpportunitiesPage() {
         const documents = asTextList(rfq.documentUrl ? ['RFQ attachment available'] : rfq.requiredDocuments);
         const opportunity: SellerOpportunity = {
           id: `rfq-${rfq.id}`,
-          type: 'Quick Quote',
+          type: 'RFQ',
           title: rfq.subject || 'Request quotation',
           buyer: rfq.buyer?.buyerProfile?.organizationName || rfq.buyer?.name,
           category: 'Request Quotations',
@@ -324,10 +430,20 @@ export default function SellerOpportunitiesPage() {
 
       const auctions = results[3].status === 'fulfilled' ? results[3].value?.auctions || [] : [];
       auctions.forEach((auction: any) => {
+        const isAuctionPrivate = auction.visibilityMode === 'INVITED_SELLERS_ONLY';
+        const auctionInvites = Array.isArray(auction.invitedSellers) 
+          ? auction.invitedSellers.map((v: any) => v?.sellerOrgId || v) 
+          : [];
+        
+        if (isAuctionPrivate) {
+          const isInvited = auctionInvites.includes(user?.id) || auctionInvites.includes(user?.organizationId) || auction.participated;
+          if (!isInvited) return;
+        }
+
         const documents = asTextList(auction.documents);
         const opportunity: SellerOpportunity = {
           id: `auction-${auction.id}`,
-          type: 'Auction',
+          type: 'Reverse Auction',
           title: auction.title || auction.auctionCode || 'Reverse auction',
           category: 'Negotiate Price',
           closingDate: auction.endTime,
@@ -360,7 +476,18 @@ export default function SellerOpportunitiesPage() {
         next.push(opportunity);
       });
 
-      const sorted = next.sort((a, b) => new Date(a.closingDate || 0).getTime() - new Date(b.closingDate || 0).getTime());
+      // Title-based deduplication to prevent showing the same procurement multiple times
+      const seenTitles = new Set<string>();
+      const deduped: SellerOpportunity[] = [];
+      next.forEach(opportunity => {
+        const normalizedTitle = (opportunity.title || '').trim().toLowerCase();
+        if (!seenTitles.has(normalizedTitle)) {
+          seenTitles.add(normalizedTitle);
+          deduped.push(opportunity);
+        }
+      });
+
+      const sorted = deduped.sort((a, b) => new Date(a.closingDate || 0).getTime() - new Date(b.closingDate || 0).getTime());
       if (!isSameOpportunities(globalOpportunitiesCache, sorted)) {
         globalOpportunitiesCache = sorted;
         setItems(sorted);
@@ -382,13 +509,15 @@ export default function SellerOpportunitiesPage() {
   useEffect(() => load(), [load]);
 
   useEffect(() => {
-    setType(typeFromQuery(searchParams.get('type')));
-  }, [searchParams]);
+    if (subRouteType) return;
+    setType(typeFromQuery(searchParams?.get('type')));
+  }, [searchParams, subRouteType]);
 
   const typeOptions = useMemo(() => Array.from(new Set(items.map(item => item.type))).sort(), [items]);
   const statusOptions = useMemo(() => Array.from(new Set(items.map(item => item.status).filter(Boolean))).sort(), [items]);
   const locationOptions = useMemo(() => Array.from(new Set(items.map(item => item.location).filter((value): value is string => Boolean(value)))).sort(), [items]);
   const categoryOptions = useMemo(() => Array.from(new Set(items.map(item => item.category).filter((value): value is string => Boolean(value)))).sort(), [items]);
+  const buyerOptions = useMemo(() => Array.from(new Set(items.map(item => item.buyer).filter((value): value is string => Boolean(value)))).sort(), [items]);
 
   const baseFiltered = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -399,6 +528,7 @@ export default function SellerOpportunitiesPage() {
       if (status && item.status !== status) return false;
       if (location && item.location !== location) return false;
       if (category && item.category !== category) return false;
+      if (buyerFilter && item.buyer !== buyerFilter) return false;
       if (valueRange) {
         const val = item.estimatedValue || 0;
         if (valueRange === '5l' && val >= 500000) return false;
@@ -412,7 +542,7 @@ export default function SellerOpportunitiesPage() {
       }
       return true;
     });
-  }, [closingDate, items, location, query, status, type, category, valueRange]);
+  }, [closingDate, items, location, query, status, type, category, buyerFilter, valueRange]);
 
   const summary = useMemo(() => {
     const openStatuses = new Set(['open', 'scheduled', 'live', 'pending', 'closing soon']);
@@ -425,33 +555,58 @@ export default function SellerOpportunitiesPage() {
       total: baseFiltered.length,
       open: baseFiltered.filter(item => openStatuses.has(String(item.status).toLowerCase())).length,
       dueSoon,
-      auctions: baseFiltered.filter(item => item.type === 'Auction').length,
+      auctions: baseFiltered.filter(item => item.type === 'Reverse Auction').length,
     };
   }, [baseFiltered]);
 
   const filtered = useMemo(() => {
     const openStatuses = new Set(['open', 'scheduled', 'live', 'pending', 'closing soon']);
-    return baseFiltered.filter(item => {
+    const list = baseFiltered.filter(item => {
       if (kpiFilter === 'open' && !openStatuses.has(String(item.status).toLowerCase())) return false;
       if (kpiFilter === 'dueSoon') {
         if (!item.closingDate) return false;
         const diff = (new Date(item.closingDate).getTime() - Date.now()) / 86400000;
         if (diff < 0 || diff > 7) return false;
       }
-      if (kpiFilter === 'auctions' && item.type !== 'Auction') return false;
+      if (kpiFilter === 'auctions' && item.type !== 'Reverse Auction') return false;
+      if (kpiFilter === 'invitations' && item.type !== 'Limited Tender') return false;
       return true;
     });
-  }, [baseFiltered, kpiFilter]);
+
+    if (sortField) {
+      list.sort((a, b) => {
+        let valA: any = a[sortField];
+        let valB: any = b[sortField];
+
+        if (sortField === 'estimatedValue') {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+        } else if (sortField === 'publishedAt' || sortField === 'closingDate') {
+          valA = valA ? new Date(valA).getTime() : 0;
+          valB = valB ? new Date(valB).getTime() : 0;
+        } else {
+          valA = String(valA || '').toLowerCase();
+          valB = String(valB || '').toLowerCase();
+        }
+
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return list;
+  }, [baseFiltered, kpiFilter, sortField, sortDirection]);
 
   // Reset KPI filter when dropdown filters change
   useEffect(() => {
     setKpiFilter('all');
-  }, [query, type, status, location, closingDate, category, valueRange]);
+  }, [query, type, status, location, closingDate, category, buyerFilter, valueRange]);
 
   useEffect(() => {
     setPage(1);
     setExpandedId(null);
-  }, [closingDate, location, query, status, type, viewMode, kpiFilter, category, valueRange]);
+  }, [closingDate, location, query, status, type, viewMode, kpiFilter, category, buyerFilter, valueRange]);
 
   const pageRows = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page]);
 
@@ -462,294 +617,531 @@ export default function SellerOpportunitiesPage() {
     setLocation('');
     setClosingDate('');
     setCategory('');
+    setBuyerFilter('');
     setValueRange('');
     setKpiFilter('all');
+    setSortField('');
+    setSortDirection('asc');
     setPage(1);
-    setShowAdvanced(false);
   };
 
+  const headerContent = useMemo(() => {
+    switch (subRouteType) {
+      case 'RFQ':
+        return {
+          eyebrow: 'RFQ Sourcing',
+          title: 'Requests for Quotation (RFQs)',
+          desc: 'Submit quick pricing quotes for standard goods and materials requested by buyers.'
+        };
+      case 'RFP':
+        return {
+          eyebrow: 'Strategic RFPs',
+          title: 'Requests for Proposal (RFPs)',
+          desc: 'Review detailed requirements and submit proposals for complex services, projects, and custom solutions.'
+        };
+      case 'Open Tender':
+        return {
+          eyebrow: 'Open Tenders',
+          title: 'Open Competitive Tenders',
+          desc: 'Participate in public procurement tenders and high-value competitive bidding opportunities.'
+        };
+      case 'Limited Tender':
+        return {
+          eyebrow: 'Direct Invitations',
+          title: 'Restricted Sourcing & Invitations',
+          desc: 'View limited bidding invitations and requests sent specifically to your organization.'
+        };
+      case 'Reverse Auction':
+        return {
+          eyebrow: 'Reverse Auctions',
+          title: 'Live Reverse Auctions',
+          desc: 'Compete in real-time dynamic bidding events to secure contracts by offering competitive pricing.'
+        };
+      default:
+        return {
+          eyebrow: 'Bidding Opportunities',
+          title: 'New Bidding Opportunities',
+          desc: 'One place to review requests for quotations (RFQs), public tenders, auctions, and direct buyer requirements.'
+        };
+    }
+  }, [subRouteType]);
+
+  const kpis = useMemo(() => {
+    const total = items.length;
+    const closingSoon = items.filter(item => {
+      if (!item.closingDate) return false;
+      const diff = (new Date(item.closingDate).getTime() - Date.now()) / 86400000;
+      return diff >= 0 && diff <= 7;
+    }).length;
+    const auctionsLive = items.filter(item => item.type === 'Reverse Auction' && String(item.status).toUpperCase() === 'OPEN').length;
+    const invitations = items.filter(item => item.type === 'Limited Tender').length;
+
+    return { total, closingSoon, auctionsLive, invitations };
+  }, [items]);
+
+
   return (
-    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-8">
-      <div className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 pb-12 pt-4">
+      {/* Title Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-slate-950 tracking-tight">{headerContent.title}</h1>
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">{headerContent.desc}</p>
+        </div>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {/* Card 1: Total Opportunities */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'all' ? 'all' : 'all')}
+          className={cn(
+            "flex items-center justify-between rounded-2xl border p-4 transition-all duration-300 text-left hover:-translate-y-0.5",
+            kpiFilter === 'all' 
+              ? "border-blue-500 bg-blue-50/20 ring-1 ring-blue-500/25 shadow-sm"
+              : "border-slate-200/80 bg-white hover:border-blue-300 hover:shadow-sm"
+          )}
+        >
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">Bidding Opportunities</p>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950">New Bidding Opportunities</h1>
-            <p className="mt-1 max-w-3xl text-sm font-semibold leading-relaxed text-slate-500">
-              One place to review requests for quotations (RFQs), public tenders, auctions, and direct buyer requirements.
-            </p>
+            <p className="text-xl font-black text-blue-600">{kpis.total}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-0.5">Total Opportunities</p>
           </div>
-          <Button type="button" variant="outline" onClick={load} className="h-10 rounded-md text-xs">
-            <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
-          </Button>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <ClipboardList className="h-4.5 w-4.5" />
+          </div>
+        </button>
+
+        {/* Card 2: Closing Soon */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'dueSoon' ? 'all' : 'dueSoon')}
+          className={cn(
+            "flex items-center justify-between rounded-2xl border p-4 transition-all duration-300 text-left hover:-translate-y-0.5",
+            kpiFilter === 'dueSoon' 
+              ? "border-amber-500 bg-amber-50/20 ring-1 ring-amber-500/25 shadow-sm"
+              : "border-slate-200/80 bg-white hover:border-amber-300 hover:shadow-sm"
+          )}
+        >
+          <div>
+            <p className="text-xl font-black text-amber-600">{kpis.closingSoon}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-0.5">Closing Soon</p>
+          </div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+            <Clock className="h-4.5 w-4.5" />
+          </div>
+        </button>
+
+        {/* Card 3: Reverse Auctions Live */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'auctions' ? 'all' : 'auctions')}
+          className={cn(
+            "flex items-center justify-between rounded-2xl border p-4 transition-all duration-300 text-left hover:-translate-y-0.5",
+            kpiFilter === 'auctions' 
+              ? "border-emerald-500 bg-emerald-50/20 ring-1 ring-emerald-500/25 shadow-sm"
+              : "border-slate-200/80 bg-white hover:border-emerald-300 hover:shadow-sm"
+          )}
+        >
+          <div>
+            <p className="text-xl font-black text-emerald-600">{kpis.auctionsLive}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-0.5">Reverse Auctions Live</p>
+          </div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+            <CheckCircle2 className="h-4.5 w-4.5" />
+          </div>
+        </button>
+
+        {/* Card 4: Invitations */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'invitations' ? 'all' : 'invitations')}
+          className={cn(
+            "flex items-center justify-between rounded-2xl border p-4 transition-all duration-300 text-left hover:-translate-y-0.5",
+            kpiFilter === 'invitations' 
+              ? "border-purple-500 bg-purple-50/20 ring-1 ring-purple-500/25 shadow-sm"
+              : "border-slate-200/80 bg-white hover:border-purple-300 hover:shadow-sm"
+          )}
+        >
+          <div>
+            <p className="text-xl font-black text-purple-600">{kpis.invitations}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-0.5">Invitations</p>
+          </div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+            <Users className="h-4.5 w-4.5" />
+          </div>
+        </button>
+      </div>
+
+      {/* Dynamic Inline Selector Filters */}
+      <div className="flex flex-wrap items-center gap-3 py-2 border-y border-slate-100">
+        {/* Search bar */}
+        <div className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={event => { setQuery(event.target.value); setPage(1); }}
+            placeholder="Search opportunities..."
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 shadow-sm"
+          />
         </div>
-      </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile
-          icon={ClipboardList}
-          label="Matching opportunities"
-          value={summary.total.toLocaleString('en-IN')}
-          active={kpiFilter === 'all'}
-          onClick={() => setKpiFilter('all')}
-        />
-        <SummaryTile
-          icon={FileText}
-          label="Open items"
-          value={summary.open.toLocaleString('en-IN')}
-          active={kpiFilter === 'open'}
-          onClick={() => setKpiFilter('open')}
-        />
-        <SummaryTile
-          icon={CalendarDays}
-          label="Closing in 7 days"
-          value={summary.dueSoon.toLocaleString('en-IN')}
-          active={kpiFilter === 'dueSoon'}
-          onClick={() => setKpiFilter('dueSoon')}
-        />
-        <SummaryTile
-          icon={Gavel}
-          label="Auctions"
-          value={summary.auctions.toLocaleString('en-IN')}
-          active={kpiFilter === 'auctions'}
-          onClick={() => setKpiFilter('auctions')}
-        />
-      </div>
-
-      {/* Filters & Search Control Panel */}
-      <div className="rounded-[24px] bg-slate-50/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/60">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {/* Search bar */}
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={query}
-              onChange={event => { setQuery(event.target.value); setPage(1); }}
-              placeholder="Search opportunity reference, title, category, buyer..."
-              className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-semibold text-slate-800 placeholder-slate-400 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10 shadow-[inset_0_1px_2px_rgba(15,23,42,0.02)]"
-            />
-          </div>
-
-          {/* Quick Filters Group */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-40">
-              <SelectFilter value={type} onChange={(value) => { setType(value as OpportunityType | ''); setPage(1); }} placeholder="All types" options={typeOptions} />
-            </div>
-            <div className="w-40">
-              <SelectFilter value={status} onChange={(value) => { setStatus(value); setPage(1); }} placeholder="All statuses" options={statusOptions} />
-            </div>
-            
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className={cn(
-                "inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border px-4 text-xs font-black transition-all",
-                showAdvanced 
-                  ? "border-[#12335f] bg-[#12335f]/5 text-[#12335f]" 
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-305"
-              )}
+        {/* Type Dropdown */}
+        {!subRouteType && (
+          <div className="w-40">
+            <select
+              value={type}
+              onChange={e => { setType(e.target.value as OpportunityType | ''); setPage(1); }}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none hover:border-slate-300 focus:border-[#12335f] shadow-sm cursor-pointer"
             >
-              <SlidersHorizontal className="h-4 w-4" />
-              Advanced Filters
-            </button>
-
-            <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
-
-            <ViewModeToggle value={viewMode} onChange={setViewMode} />
-            <Button type="button" variant="outline" onClick={reset} className="h-10 rounded-2xl text-xs font-bold border-slate-200 bg-white hover:border-slate-300">Reset</Button>
-          </div>
-        </div>
-
-        {/* Collapsible Advanced Filters Section */}
-        {showAdvanced && (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4 rounded-2xl bg-white p-4 border border-slate-200/80 shadow-sm animate-in slide-in-from-top-1.5 duration-200">
-            <div className="space-y-1.5">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Category</span>
-              <SelectFilter value={category} onChange={(value) => { setCategory(value); setPage(1); }} placeholder="All Categories" options={categoryOptions} />
-            </div>
-            <div className="space-y-1.5">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Location</span>
-              <SelectFilter value={location} onChange={(value) => { setLocation(value); setPage(1); }} placeholder="All Locations" options={locationOptions} />
-            </div>
-            <div className="space-y-1.5">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Estimated Value</span>
-              <select 
-                value={valueRange} 
-                onChange={event => { setValueRange(event.target.value); setPage(1); }}
-                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
-              >
-                <option value="">Any value</option>
-                <option value="5l">&lt; ₹5 Lakhs</option>
-                <option value="25l">₹5 Lakhs - ₹25 Lakhs</option>
-                <option value="1cr">₹25 Lakhs - ₹1 Crore</option>
-                <option value="above1cr">&gt; ₹1 Crore</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-slate-455 text-slate-400">Closing Date</span>
-              <select 
-                value={closingDate} 
-                onChange={event => { setClosingDate(event.target.value); setPage(1); }}
-                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/10"
-              >
-                <option value="">Any closing date</option>
-                <option value="7">Next 7 days</option>
-              </select>
-            </div>
+              <option value="">All Types</option>
+              {typeOptions.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+            </select>
           </div>
         )}
+
+        {/* Category Dropdown */}
+        <div className="w-44">
+          <select
+            value={category}
+            onChange={e => { setCategory(e.target.value); setPage(1); }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none hover:border-slate-300 focus:border-[#12335f] shadow-sm cursor-pointer"
+          >
+            <option value="">All Categories</option>
+            {categoryOptions.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+          </select>
+        </div>
+
+        {/* Buyer Dropdown */}
+        <div className="w-44">
+          <select
+            value={buyerFilter}
+            onChange={e => { setBuyerFilter(e.target.value); setPage(1); }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none hover:border-slate-300 focus:border-[#12335f] shadow-sm cursor-pointer"
+          >
+            <option value="">All Buyers</option>
+            {buyerOptions.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+          </select>
+        </div>
+
+        {/* Location Dropdown */}
+        <div className="w-40">
+          <select
+            value={location}
+            onChange={e => { setLocation(e.target.value); setPage(1); }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none hover:border-slate-300 focus:border-[#12335f] shadow-sm cursor-pointer"
+          >
+            <option value="">All Locations</option>
+            {locationOptions.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+          </select>
+        </div>
+
+        {/* Closing Date Dropdown */}
+        <div className="w-40">
+          <select
+            value={closingDate}
+            onChange={e => { setClosingDate(e.target.value); setPage(1); }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none hover:border-slate-300 focus:border-[#12335f] shadow-sm cursor-pointer"
+          >
+            <option value="">Closing Date</option>
+            <option value="7">Next 7 days</option>
+          </select>
+        </div>
+
+        {/* Reset Trigger */}
+        <button
+          type="button"
+          onClick={reset}
+          className="text-xs font-black text-blue-600 hover:text-blue-800 transition-colors uppercase tracking-wider pl-2"
+        >
+          Reset
+        </button>
+
+        {/* View Mode & Count */}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs font-semibold text-slate-500">
+            {filtered.length} opportunity{filtered.length !== 1 ? 's' : ''}
+          </span>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        </div>
       </div>
 
+      {/* Main Content Area */}
       {loading ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {[1, 2, 3, 4].map(item => <div key={item} className="h-40 rounded-[22px] bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70"><div className="h-4 w-40 rounded bg-slate-100" /><div className="mt-4 h-20 rounded bg-slate-100" /></div>)}
+        <div className="space-y-4">
+          {[1, 2, 3].map(item => (
+            <div key={item} className="h-32 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm animate-pulse flex items-center justify-between">
+              <div className="space-y-2 flex-1"><div className="h-4 w-48 rounded bg-slate-100" /><div className="h-3 w-32 rounded bg-slate-100" /></div>
+              <div className="h-8 w-24 rounded bg-slate-100" />
+            </div>
+          ))}
         </div>
       ) : error ? (
-        <div className="rounded-[22px] bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-200">{error}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700">{error}</div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[24px] bg-white/95 p-8 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
-          <h2 className="text-base font-black text-slate-950">No matching opportunities right now.</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Check again later or update your marketplace categories.</p>
-        </div>
-      ) : viewMode === 'grid' ? (
-        <div className="space-y-3">
-          <div className="grid gap-4 xl:grid-cols-2">
-            {pageRows.map((item, index) => <OpportunityCard key={item.id} item={item} serial={(page - 1) * pageSize + index + 1} onView={() => setSelectedItem(item)} />)}
-          </div>
-          <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} label="opportunities" />
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm font-black text-slate-950">No opportunities match your filter criteria.</p>
+          <p className="text-xs font-semibold text-slate-500 mt-1">Try resetting the filters or typing a different search term.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
-          <div className="overflow-x-auto bg-slate-50/70 p-2 pb-3">
-            <table className="w-full min-w-[1200px] border-separate border-spacing-y-3 text-sm">
-              <thead className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 text-left w-28 min-w-[110px]">Reference</th>
-                  <th className="px-4 py-3 text-left w-36 min-w-[130px]">Type</th>
-                  <th className="px-4 py-3 text-left">Opportunity</th>
-                  <th className="px-4 py-3 text-left w-52 min-w-[190px]">Buyer / Location</th>
-                  <th className="px-4 py-3 text-left w-32 min-w-[110px]">Timeline</th>
-                  <th className="px-4 py-3 text-left w-40 min-w-[140px]">Tracking</th>
-                  <th className="px-4 py-3 text-right w-36 min-w-[120px]">Commercials</th>
-                  <th className="sticky right-0 z-20 w-44 min-w-[170px] bg-slate-50/95 px-4 py-3 text-right whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((item, index) => {
-                  const expanded = expandedId === item.id;
-                  return (
-                    <React.Fragment key={item.id}>
-                      <tr className={cn('bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-sm', expanded && 'bg-blue-50/50')}>
-                        {/* 1. Reference */}
-                        <td className="rounded-l-2xl px-4 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex h-5 items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[9px] font-black text-slate-400 select-none">
-                              #{(page - 1) * pageSize + index + 1}
+        <div className="space-y-6">
+          {viewMode === 'grid' ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {pageRows.map((item, index) => {
+                const isLiveAuction = item.type === 'Reverse Auction' && String(item.status).toUpperCase() === 'OPEN';
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition-all duration-300 border-slate-200/80 hover:border-slate-350 flex flex-col justify-between min-h-[220px] animate-in fade-in duration-200",
+                      isLiveAuction && "border-blue-400 bg-blue-50/5 ring-1 ring-blue-400/25 shadow-blue-50/20"
+                    )}
+                  >
+                    <div className="space-y-3">
+                      {/* Top row: Badges */}
+                      <div className="flex items-center justify-between">
+                        <span className={cn(
+                          "inline-flex rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border",
+                          item.type === 'Reverse Auction' ? "border-red-200 bg-red-50 text-red-600" :
+                          item.type === 'RFQ' ? "border-orange-200 bg-orange-50 text-orange-600" :
+                          item.type === 'RFP' ? "border-purple-200 bg-purple-50 text-purple-600" :
+                          item.type === 'Open Tender' ? "border-emerald-200 bg-emerald-50 text-emerald-600" :
+                          "border-amber-200 bg-amber-50 text-amber-600" // Limited Tender / Invitation
+                        )}>
+                          {item.type === 'Limited Tender' ? 'INVITATION ONLY' : item.type}
+                        </span>
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-sm font-bold text-slate-900 leading-snug line-clamp-2">
+                        {item.title}
+                      </h3>
+
+                      {/* Source Ref & Buyer */}
+                      <div className="text-[11px] text-slate-500 font-bold space-y-1">
+                        <p className="font-mono text-slate-400">Ref: {item.sourceRef}</p>
+                        <p>Buyer: {item.buyer || 'Buyer details controlled'}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 mt-4 space-y-3">
+                      {/* Timeline & Commercials */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">Closing Date</p>
+                          {isLiveAuction ? (
+                            <div className="mt-1 space-y-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 tracking-wider">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                Live
+                              </span>
+                              <CountdownTimer endDate={item.closingDate} />
+                            </div>
+                          ) : (
+                            <div className="mt-1">
+                              <span className="text-xs font-black text-slate-700 block">{formatDate(item.closingDate)}</span>
+                              <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider">
+                                {getDaysLeftText(item.closingDate)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">Est. Value</p>
+                          <div className="mt-1">
+                            <span className="text-xs font-extrabold text-slate-900 block">
+                              {formatMoney(item.estimatedValue)}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedItem(item)}
-                              className="text-left text-xs font-black text-[#c86413] underline-offset-4 hover:underline"
-                            >
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                              {item.type === 'Reverse Auction' ? 'Negotiate Price' : 
+                               item.type === 'RFP' ? 'Negotiable' : 'Fixed Price'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Button */}
+                      <div className="flex justify-end pt-1">
+                        <Link
+                          href={item.type === 'Limited Tender' ? item.href : item.detailsHref}
+                          className="inline-flex h-8 w-full items-center justify-center rounded-lg bg-blue-600 px-3 text-center text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition-all duration-200"
+                        >
+                          {item.type === 'Limited Tender' ? 'Respond' : 'View Details'}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-50/20 p-2 shadow-sm">
+              <table className="w-full min-w-[950px] border-separate border-spacing-y-2 text-left">
+                <thead>
+                  <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    <th className="px-4 py-3 text-center w-16 select-none">Sr. No.</th>
+                    <th onClick={() => handleSort('type')} className="px-4 py-3 w-28 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Type {renderSortIcon('type')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('title')} className="px-4 py-3 w-80 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Title & Reference {renderSortIcon('title')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('buyer')} className="px-4 py-3 w-64 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Buyer & Location {renderSortIcon('buyer')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('publishedAt')} className="px-4 py-3 w-32 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Published Date {renderSortIcon('publishedAt')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('closingDate')} className="px-4 py-3 w-36 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Closing Date {renderSortIcon('closingDate')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('estimatedValue')} className="px-4 py-3 w-40 cursor-pointer select-none hover:text-[#12335f] transition-colors group">
+                      <div className="flex items-center">
+                        Est. Value {renderSortIcon('estimatedValue')}
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-right w-32 select-none">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((item, index) => {
+                    const isLiveAuction = item.type === 'Reverse Auction' && String(item.status).toUpperCase() === 'OPEN';
+                    
+                    return (
+                      <tr
+                        key={item.id}
+                        className={cn(
+                          "bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:shadow-md align-middle",
+                          isLiveAuction && "bg-blue-50/5 hover:bg-blue-50/10"
+                        )}
+                      >
+                        {/* Serial Number */}
+                        <td className="rounded-l-xl px-4 py-4 text-xs font-black text-slate-400 text-center">
+                          {String((page - 1) * pageSize + index + 1).padStart(2, '0')}
+                        </td>
+
+                        {/* Opportunity Type Badge */}
+                        <td className="px-4 py-4">
+                          <span className={cn(
+                            "inline-flex rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border whitespace-nowrap",
+                            item.type === 'Reverse Auction' ? "border-red-200 bg-red-50 text-red-600" :
+                            item.type === 'RFQ' ? "border-orange-200 bg-orange-50 text-orange-600" :
+                            item.type === 'RFP' ? "border-purple-200 bg-purple-50 text-purple-600" :
+                            item.type === 'Open Tender' ? "border-emerald-200 bg-emerald-50 text-emerald-600" :
+                            "border-amber-200 bg-amber-50 text-amber-600" // Limited Tender / Invitation
+                          )}>
+                            {item.type === 'Limited Tender' ? 'INVITATION' : item.type}
+                          </span>
+                        </td>
+
+                        {/* Title and Reference */}
+                        <td className="px-4 py-4 space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                               {item.sourceRef}
-                            </button>
+                            </span>
+                            {item.category && (
+                              <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                {item.category}
+                              </span>
+                            )}
                           </div>
-                        </td>
-
-                        {/* 2. Type */}
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <TypeBadge type={item.type} />
-                        </td>
-
-                        {/* 3. Opportunity Title & Subtext */}
-                        <td className="px-4 py-3.5">
-                          <div>
-                            <p className="text-xs font-black text-slate-950 leading-snug">{item.title}</p>
-                            <p className="mt-1 text-[10px] font-bold text-slate-500">
-                              {[item.category || 'General procurement', item.quantity].filter(Boolean).join(' / ')}
+                          <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2">
+                            {item.title}
+                          </p>
+                          {item.description && (
+                            <p className="text-[10px] font-semibold text-slate-400 line-clamp-1">
+                              {item.description}
                             </p>
+                          )}
+                        </td>
+
+                        {/* Buyer and Location */}
+                        <td className="px-4 py-4 space-y-1">
+                          <p className="text-xs font-bold text-slate-800 leading-tight">
+                            {item.buyer || 'Buyer details controlled'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            {item.buyerType && (
+                              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">
+                                {item.buyerType}
+                              </span>
+                            )}
+                            {item.location && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-400">
+                                <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
+                                {item.location}
+                              </span>
+                            )}
                           </div>
                         </td>
 
-                        {/* 4. Buyer & Location */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
-                            <span className="flex items-center gap-1.5">
-                              <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                              <span className="truncate max-w-[170px]" title={item.buyer}>{item.buyer || 'Buyer details controlled'}</span>
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                              <span className="truncate max-w-[170px]" title={item.location}>{item.location || 'Not specified'}</span>
-                            </span>
-                          </div>
+                        {/* Published Date */}
+                        <td className="px-4 py-4 text-xs font-bold text-slate-600">
+                          {formatDate(item.publishedAt)}
                         </td>
 
-                        {/* 5. Timeline */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-col gap-1 text-[10px] font-bold">
-                            <div className="flex flex-col">
-                              <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">Published</span>
-                              <span className="text-slate-600">{formatDate(item.publishedAt)}</span>
+                        {/* Closing Date / Countdown */}
+                        <td className="px-4 py-4 text-xs">
+                          {isLiveAuction ? (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 tracking-wider">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                Live
+                              </span>
+                              <div className="block leading-none">
+                                <CountdownTimer endDate={item.closingDate} />
+                              </div>
                             </div>
-                            <div className="flex flex-col mt-0.5">
-                              <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">Closing</span>
-                              <span className="text-slate-800 font-extrabold">{formatDate(item.closingDate)}</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-slate-700 block">{formatDate(item.closingDate)}</span>
+                              <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">
+                                {getDaysLeftText(item.closingDate)}
+                              </span>
                             </div>
-                          </div>
+                          )}
                         </td>
 
-                        {/* 6. Tracking */}
-                        <td className="px-4 py-3.5">
-                          <OpportunityProgress item={item} />
+                        {/* Estimated Value */}
+                        <td className="px-4 py-4 space-y-0.5">
+                          <span className="text-xs font-extrabold text-slate-900 block">
+                            {formatMoney(item.estimatedValue)}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {item.type === 'Reverse Auction' ? 'Negotiate Price' : 
+                             item.type === 'RFP' ? 'Negotiable' : 'Fixed Price'}
+                          </span>
                         </td>
 
-                        {/* 7. Commercials */}
-                        <td className="px-4 py-3.5 text-right">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-xs font-black text-[#12335f]">{formatMoney(item.estimatedValue)}</span>
-                            <span className="text-[10px] font-bold text-slate-500">{item.eligibility}</span>
-                          </div>
-                        </td>
-
-                        {/* 8. Actions */}
-                        <td className="sticky right-0 z-10 w-44 min-w-[170px] rounded-r-2xl bg-white px-4 py-3.5 whitespace-nowrap shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.45)]">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedId(expanded ? null : item.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-555 hover:border-[#12335f] hover:text-[#12335f] transition-all"
-                              title={expanded ? "Collapse details" : "Expand tracking details"}
-                            >
-                              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedItem(item)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-555 hover:border-[#12335f] hover:text-[#12335f] transition-all"
-                              title="View details"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <Link href={item.href} title={item.actionLabel} className="inline-flex h-8 min-w-[80px] max-w-[100px] items-center justify-center rounded-md bg-[#12335f] px-2.5 text-center text-[10px] font-black leading-tight text-white shadow-sm hover:bg-[#0e2a4f] transition-all">
-                              {shortActionLabel(item.actionLabel)}
-                            </Link>
-                          </div>
+                        {/* Action Link */}
+                        <td className="rounded-r-xl px-4 py-4 text-right">
+                          <Link
+                            href={item.type === 'Limited Tender' ? item.href : item.detailsHref}
+                            className="inline-flex h-8 min-w-[90px] items-center justify-center rounded-lg bg-blue-600 px-3 text-center text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition-all duration-200"
+                          >
+                            {item.type === 'Limited Tender' ? 'Respond' : 'View Details'}
+                          </Link>
                         </td>
                       </tr>
-                      {expanded && (
-                        <tr className="bg-blue-50/25">
-                          <td colSpan={8} className="px-4 py-4">
-                            <OpportunityDetailPanel item={item} />
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} label="opportunities" />
         </div>
       )}
@@ -769,72 +1161,6 @@ function shortActionLabel(label: string) {
   if (normalized.includes('rate')) return 'Rates';
   if (normalized.includes('submit')) return 'Submit';
   return label.length > 12 ? `${label.slice(0, 10)}...` : label;
-}
-
-function SummaryTile({
-  icon: Icon,
-  label,
-  value,
-  active,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full rounded-[22px] bg-white/95 p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all focus:outline-none focus:ring-2 focus:ring-[#12335f]/20",
-        active
-          ? "ring-2 ring-[#12335f]/20 shadow-md bg-blue-50/30"
-          : "hover:ring-[#12335f]/30 hover:shadow-md"
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
-        </div>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12335f] text-white shadow-sm">
-          <Icon className="h-5 w-5" />
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function OpportunityProgress({ item }: { item: SellerOpportunity }) {
-  const normalized = `${item.status} ${item.eligibility}`.toLowerCase();
-  const activeIndex = normalized.includes('awarded') || normalized.includes('closed')
-    ? 4
-    : normalized.includes('evaluation')
-      ? 3
-      : normalized.includes('participated') || normalized.includes('submitted')
-        ? 2
-        : 1;
-  const steps = ['Published', 'Response', 'Evaluation', 'Award'];
-  return (
-    <div className="min-w-40">
-      <div className="flex items-center gap-1.5">
-        {steps.map((step, index) => {
-          const done = index + 1 <= activeIndex;
-          return (
-            <span
-              key={step}
-              title={step}
-              className={cn('h-2 flex-1 rounded-full', done ? 'bg-[#12335f]' : 'bg-slate-200')}
-            />
-          );
-        })}
-      </div>
-      <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500">{item.status}</p>
-    </div>
-  );
 }
 
 function OpportunityDetailPanel({ item }: { item: SellerOpportunity }) {
@@ -1032,13 +1358,17 @@ function SelectFilter({
 }
 
 function TypeBadge({ type }: { type: OpportunityType }) {
-  const tone = type === 'Quick Quote'
-    ? 'border-blue-200 bg-blue-50 text-blue-700'
-    : type === 'Auction'
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
-      : type === 'Buyer Requirement'
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        : 'border-indigo-200 bg-indigo-50 text-indigo-700';
+  const tone = type === 'RFQ'
+    ? 'border-orange-200 bg-orange-50 text-orange-700'
+    : type === 'RFP'
+      ? 'border-indigo-200 bg-indigo-50 text-indigo-750'
+      : type === 'Open Tender'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : type === 'Limited Tender'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : type === 'Direct Purchase'
+            ? 'border-teal-200 bg-teal-50 text-teal-700'
+            : 'border-rose-200 bg-rose-50 text-rose-700';
   return <Badge className={cn('rounded-md', tone)}>{type}</Badge>;
 }
 

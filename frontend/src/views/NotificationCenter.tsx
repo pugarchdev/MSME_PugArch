@@ -105,46 +105,50 @@ export default function NotificationCenter() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4 sm:p-6 animate-in fade-in duration-500">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 hover:text-[#12335f]"
-            title="Go Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-extrabold text-[#12335f] uppercase tracking-tight flex items-center gap-2.5">
-              <Bell className="h-6 w-6 text-[#12335f]" />
-              <span>Notification Center</span>
-            </h1>
-            <p className="text-sm text-slate-500 font-medium mt-1">
-              Stay updated with system actions, procurement status, and compliance highlights.
-            </p>
+    <div className="mx-auto max-w-[1560px] space-y-5 px-4 pb-12 animate-in fade-in duration-500">
+      {/* ── Transparent Header ── */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#12335f]">System Alerts</p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition text-slate-500 hover:text-[#12335f]"
+              title="Go Back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 flex items-center gap-2">
+                <Bell className="h-6 w-6 text-[#12335f]" /> Notification Center
+              </h1>
+              <p className="text-sm font-semibold text-slate-500 mt-1">
+                Stay updated with system actions, procurement status, and compliance highlights.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {unreadCount > 0 && (
-          <Button
-            onClick={handleMarkAllAsRead}
-            variant="outline"
-            className="border-slate-200 text-[#12335f] hover:bg-slate-50 font-bold uppercase tracking-wider text-xs h-10 px-4 space-x-2"
-          >
-            <CheckSquare className="h-4 w-4" />
-            <span>Mark All As Read</span>
-          </Button>
-        )}
+          {unreadCount > 0 && (
+            <Button
+              onClick={handleMarkAllAsRead}
+              variant="outline"
+              className="h-10 rounded-lg border-slate-200 text-[#12335f] hover:bg-slate-50 font-black uppercase tracking-wider text-xs px-4 shadow-sm"
+            >
+              <CheckSquare className="mr-2 h-4 w-4" /> Mark All Read
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-slate-50/50 px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <span className="text-xs font-black uppercase tracking-wider text-slate-600">Your Activity Logs</span>
-          <span className="text-xs font-bold px-2.5 py-1 bg-slate-50 text-[#12335f] rounded-full border border-slate-100">
-            {unreadCount} UNREAD / {total || notifications.length} TOTAL
-          </span>
-        </div>
+      {/* ── Stats Bar (border-y) ── */}
+      <div className="flex items-center gap-4 border-y border-slate-200 bg-slate-50/50 px-4 py-3">
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Activity Logs</span>
+        <span className="ml-auto text-xs font-bold px-2.5 py-1 bg-white text-[#12335f] rounded-full border border-slate-200 shadow-sm">
+          {unreadCount} UNREAD / {total || notifications.length} TOTAL
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
         {notifications.length > 0 ? (
           <div className="divide-y divide-slate-100">

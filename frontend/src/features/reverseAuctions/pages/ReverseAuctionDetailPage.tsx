@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Gavel, Pause, Play, RefreshCw, Send, Square, UserPlus, Loader2, X, Building2, Tag, Activity, FileText, Users, Award, ShieldAlert, Scale, Clock, Settings, HelpCircle, ChevronRight, ArrowLeft, Hourglass, Laptop, Eye, TrendingDown, IndianRupee } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -14,10 +15,17 @@ import { cn } from '../../../lib/utils';
 
 export default function ReverseAuctionDetailPage({ id }: { id: number }) {
   const qc = useQueryClient();
+  const router = useRouter();
   const { user } = useAuth();
   const isSeller = user?.role === 'seller';
   const [message, setMessage] = useState('');
   const [selectedSeller, setSelectedSeller] = useState<MarketplaceSeller | null>(null);
+
+  // Return to the page the seller came from; fall back to their opportunities list on a cold open.
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push(isSeller ? '/seller/opportunities' : '/reverse-auctions');
+  };
 
   // Queries
   const auction = useQuery({ 
@@ -102,6 +110,15 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
     onError: err => setMessage((err as Error).message)
   });
 
+  const joinAuction = useMutation({
+    mutationFn: () => reverseAuctionApi.join(id),
+    onSuccess: () => {
+      setMessage('You have joined this auction. The bidding console is now available.');
+      invalidate();
+    },
+    onError: err => setMessage((err as Error).message)
+  });
+
   if (auction.isLoading) return <LoadingState label="Loading reverse auction details..." />;
   if (auction.error) return <InlineError message={(auction.error as Error).message} onRetry={() => auction.refetch()} />;
   if (!auction.data) return <EmptyState title="Auction not found" />;
@@ -118,6 +135,8 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
 
   const status = String(auction.data.statusEnum || auction.data.status || 'DRAFT').toUpperCase();
   const participants = participantsQuery.data?.participants || [];
+  const isPublicAuction = !!auction.data.isPublic;
+  const hasJoined = !!auction.data.hasJoined || participants.length > 0;
   const bids = (bidsQuery.data?.bids || []).slice().sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
   
   const currentLowest = Number(auction.data.currentLowestAmount || auction.data.currentLowestBid || auction.data.currentBid || auction.data.startPrice || 0);
@@ -152,9 +171,9 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
       <div className="mx-auto max-w-[1600px] px-4 md:px-8 space-y-5 pb-12">
         {/* Back Button */}
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f] transition-all">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Auctions
-          </Link>
+          <button type="button" onClick={goBack} className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f] transition-all">
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back
+          </button>
         </div>
 
         {/* guest notice banner */}
@@ -193,11 +212,23 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               </p>
             </div>
             {user && user.role === 'seller' && (
-              <Link href={`/reverse-auctions/${id}/live`} className="shrink-0">
-                <Button type="button" className="h-10 rounded-xl bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm transition-all flex items-center gap-2">
-                  <Play className="h-4 w-4 fill-white" /> Live Bid Console
+              hasJoined ? (
+                <Link href={`/reverse-auctions/${id}/live`} className="shrink-0">
+                  <Button type="button" className="h-10 rounded-xl bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm transition-all flex items-center gap-2">
+                    <Play className="h-4 w-4 fill-white" /> Live Bid Console
+                  </Button>
+                </Link>
+              ) : isPublicAuction ? (
+                <Button
+                  type="button"
+                  onClick={() => joinAuction.mutate()}
+                  disabled={joinAuction.isPending}
+                  className="h-10 shrink-0 rounded-xl bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm transition-all flex items-center gap-2"
+                >
+                  {joinAuction.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                  {joinAuction.isPending ? 'Joining…' : 'Join to Bid'}
                 </Button>
-              </Link>
+              ) : null
             )}
           </div>
 
@@ -315,9 +346,26 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               <Users className="h-4 w-4" /> Your Participation
             </h2>
             {participants.length === 0 ? (
-              <p className="mt-4 text-xs font-semibold text-slate-500">
-                You have not been invited to this reverse auction yet.
-              </p>
+              isPublicAuction ? (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs font-semibold text-slate-600">
+                    This is an open reverse auction. Join to place bids in the live console.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => joinAuction.mutate()}
+                    disabled={joinAuction.isPending}
+                    className="h-10 shrink-0 rounded-xl bg-[#12335f] px-5 text-xs font-black uppercase text-white hover:bg-[#0b2445] shadow-sm flex items-center gap-2"
+                  >
+                    {joinAuction.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                    {joinAuction.isPending ? 'Joining…' : 'Join this auction'}
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-4 text-xs font-semibold text-slate-500">
+                  This is an invite-only reverse auction. You will be able to participate once the buyer invites your organization.
+                </p>
+              )
             ) : (
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <RowItem icon={ShieldAlert} label="Invitation Status" value={String(participants[0]?.status || 'INVITED')} highlight />
@@ -356,9 +404,9 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
       <div className="flex flex-col gap-3 border-b border-slate-200 bg-white p-4 rounded-lg shadow-xs border md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
-              Back to Auctions
-            </Link>
+            <button type="button" onClick={goBack} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
+              Back
+            </button>
             <span className="rounded bg-emerald-50 px-2 py-0.5 text-[9px] uppercase font-bold text-emerald-700 border border-emerald-200">
               {status}
             </span>

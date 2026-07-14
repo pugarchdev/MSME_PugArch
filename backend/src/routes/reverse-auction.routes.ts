@@ -137,6 +137,31 @@ const assertAuctionManager = (req: AuthRequest, auction: any) => {
   if (!canManageAuction(req, auction)) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
 };
 
+/**
+ * A reverse auction is stored as a Requirement; the biddable Auction row has its own
+ * id and links back via linkedRequirementId. Links across the app sometimes carry the
+ * requirement id (or a public-opportunity id) instead of the auction id. Accept either:
+ * try the auction primary key first, then fall back to the linked requirement id so a
+ * stale/aliased link self-heals instead of 404-ing.
+ */
+const resolveAuctionId = async (rawId: number): Promise<number | null> => {
+  if (!Number.isFinite(rawId)) return null;
+  const direct = await db.auction.findUnique({ where: { id: rawId }, select: { id: true } });
+  if (direct) return direct.id;
+  const linked = await db.auction.findFirst({ where: { linkedRequirementId: rawId }, select: { id: true }, orderBy: { createdAt: 'desc' } });
+  return linked?.id ?? null;
+};
+
+/** True when the auction's linked requirement is publicly visible (open to all sellers). */
+const isAuctionPublic = async (auction: any): Promise<boolean> => {
+  if (!auction?.linkedRequirementId) return false;
+  const requirement = await db.requirement.findUnique({
+    where: { id: auction.linkedRequirementId },
+    select: { visibility: true }
+  });
+  return String(requirement?.visibility || '').toUpperCase() === 'PUBLIC';
+};
+
 const auctionIncludeFor = (req: AuthRequest) => ({
   bids: req.user?.role === 'seller'
     ? { where: { OR: [{ sellerId: req.user.id }, { sellerOrgId: req.user.organizationId || -1 }] }, orderBy: { submittedAt: 'desc' } }
@@ -315,19 +340,25 @@ router.get('/reverse-auctions', requirePermission('reverse_auction.view', orgSco
 
 router.get('/reverse-auctions/:id', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const auction = await db.auction.findUnique({ where: { id }, include: auctionIncludeFor(req) });
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    let hasJoined = false;
+    let isPublic = false;
     if (req.user?.role === 'seller') {
       const participant = await db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 } });
-      if (!participant) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+      hasJoined = !!participant;
+      isPublic = await isAuctionPublic(auction);
+      // Invited sellers and any seller on a PUBLIC auction may view; private + uninvited stays hidden.
+      if (!participant && !isPublic) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
       if (!auction.allowCompetitorNames) {
         auction.bids = (auction.bids || []).filter((bid: any) => bid.sellerId === req.user?.id || bid.sellerOrgId === req.user?.organizationId);
       }
     } else {
       assertAuctionManager(req, auction);
     }
-    return apiResponse.success(res, maskSensitive(auction));
+    return apiResponse.success(res, maskSensitive({ ...auction, isPublic, hasJoined }));
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load auction', error.code || 'REVERSE_AUCTION_DETAIL_ERROR');
   }
@@ -478,7 +509,8 @@ ${endsAt ? `<p><strong>Bidding closes:</strong> ${endsAt}</p>` : ''}
 
 router.get('/reverse-auctions/:id/participants', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const auction = await db.auction.findUnique({ where: { id } });
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const where: any = { auctionId: id };
@@ -491,9 +523,46 @@ router.get('/reverse-auctions/:id/participants', requirePermission('reverse_auct
   }
 });
 
+/**
+ * Self-enrolment for PUBLIC/OPEN reverse auctions. A verified seller opts in explicitly
+ * (auditable) which creates their AuctionParticipant row and unlocks the bidding console.
+ * Private/invite-only auctions reject self-join — they require a buyer invite.
+ */
+router.post('/reverse-auctions/:id/join', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'seller') throw new ApiError(403, 'Only sellers can join an auction', 'AUCTION_JOIN_FORBIDDEN');
+    const sellerOrgId = req.user.organizationId;
+    if (!sellerOrgId) throw new ApiError(400, 'Seller organization is required to join', 'AUCTION_JOIN_NO_ORG');
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+
+    const existing = await db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId } });
+    if (existing) return apiResponse.success(res, { participant: maskSensitive(existing), alreadyJoined: true }, 200, 'Already participating');
+
+    if (!(await isAuctionPublic(auction))) {
+      throw new ApiError(403, 'This auction is invite-only. Please wait for the buyer to invite your organization.', 'AUCTION_INVITE_ONLY');
+    }
+    // BID_WITH_REVERSE_AUCTION requires technical qualification first, so self-join is not allowed there.
+    if (String(auction.procurementMethod || '') === 'BID_WITH_REVERSE_AUCTION') {
+      throw new ApiError(403, 'This auction requires technical qualification before bidding.', 'AUCTION_REQUIRES_QUALIFICATION');
+    }
+
+    const participant = await db.auctionParticipant.create({
+      data: { auctionId: id, sellerOrgId, sellerUserId: req.user.id || null, status: 'INVITED' }
+    });
+    await writeAuctionEvent(req, id, 'seller_joined', 'Seller joined public reverse auction', { sellerOrgId });
+    return apiResponse.created(res, { participant: maskSensitive(participant) }, 'Joined auction');
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to join auction', error.code || 'REVERSE_AUCTION_JOIN_ERROR');
+  }
+});
+
 router.post('/reverse-auctions/:id/bids', requirePermission('reverse_auction.bid.submit', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const auctionId = Number(req.params.id);
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const payload = bidSchema.parse(req.body);
     const result = await withDistributedLock(redisKeys.lockAuction(auctionId), async () =>
       db.$transaction(async (tx: any) => {
@@ -569,7 +638,8 @@ router.post('/reverse-auctions/:id/bids', requirePermission('reverse_auction.bid
 
 router.get('/reverse-auctions/:id/bids', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const auction = await db.auction.findUnique({ where: { id } });
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const where: any = { auctionId: id };
@@ -599,17 +669,24 @@ router.get('/reverse-auctions/:id/bids', requirePermission('reverse_auction.view
 
 router.get('/reverse-auctions/:id/live-summary', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const [auction, participant] = await Promise.all([
       db.auction.findUnique({ where: { id } }),
       req.user?.role === 'seller' ? db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 } }) : Promise.resolve(null)
     ]);
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    if (req.user?.role === 'seller' && !participant) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    if (req.user?.role !== 'seller') assertAuctionManager(req, auction);
+    let isPublic = false;
+    if (req.user?.role === 'seller') {
+      isPublic = await isAuctionPublic(auction);
+      // Invited sellers and any seller on a PUBLIC auction may view the live board read-only.
+      if (!participant && !isPublic) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    } else {
+      assertAuctionManager(req, auction);
+    }
     return apiResponse.success(res, {
       serverTime: new Date(),
-      auction: maskSensitive(auction),
+      auction: maskSensitive({ ...auction, isPublic, hasJoined: !!participant }),
       participant: maskSensitive(participant),
       minimumNextBid: toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice) - toNumber(auction.minDecrementAmount ?? auction.minDecrement, 0)
     });
@@ -620,7 +697,8 @@ router.get('/reverse-auctions/:id/live-summary', requirePermission('reverse_auct
 
 router.get('/reverse-auctions/:id/result', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     const auction = await db.auction.findUnique({ where: { id } });
     if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
     assertAuctionManager(req, auction);

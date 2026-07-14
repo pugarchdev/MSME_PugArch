@@ -53,6 +53,9 @@ export type ReverseAuction = {
   auctionConfig?: Record<string, unknown> | null;
   preBidStage?: Record<string, unknown> | null;
   auctionTrigger?: string | null;
+  linkedRequirementId?: number | null;
+  isPublic?: boolean | null;
+  hasJoined?: boolean | null;
 };
 
 export type ReverseAuctionParticipant = {
@@ -92,6 +95,8 @@ export const reverseAuctionApi = {
     api.post('/api/reverse-auctions', data, { headers: headers() }).then(res => json<ReverseAuction>(res)),
   inviteSellers: (id: number, sellers: Array<{ sellerOrgId: number; sellerUserId?: number }>) =>
     api.post(`/api/reverse-auctions/${id}/invite-sellers`, { sellers }, { headers: headers() }).then(res => json<any>(res)),
+  join: (id: number) =>
+    api.post(`/api/reverse-auctions/${id}/join`, {}, { headers: headers() }).then(res => json<any>(res)),
   transition: (id: number, action: 'schedule' | 'start' | 'pause' | 'resume' | 'close' | 'cancel', body: Record<string, unknown> = {}) =>
     api.post(`/api/reverse-auctions/${id}/${action}`, body, { headers: headers() }).then(res => json<ReverseAuction>(res)),
   liveSummary: (id: number) =>

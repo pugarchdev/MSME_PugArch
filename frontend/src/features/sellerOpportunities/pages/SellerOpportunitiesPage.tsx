@@ -83,6 +83,23 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/**
+ * Procurement descriptions are stored as "Sourcing Method: X\nValue: Y\nUrgency: Z" and render
+ * as an unreadable run-on. Strip that machine blob so the cell shows only the human summary text
+ * (the method/value/urgency already have their own columns). Returns '' when nothing is left.
+ */
+const cleanOpportunitySummary = (desc?: string | null): string => {
+  if (!desc) return '';
+  return desc
+    .replace(/\r/g, '')
+    .replace(/Sourcing Method:\s*(.*?)(?=(?:Value:|Urgency:|$))/is, '')
+    .replace(/Value:\s*(.*?)(?=(?:Urgency:|$))/is, '')
+    .replace(/Urgency:\s*(.*?)(?=$)/is, '')
+    .replace(/[\n\r|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const opportunityEvents = (status?: string, createdAt?: string): ProcurementLifecycleEvent[] => [
   {
     stage: 'PROCUREMENT_CREATED',
@@ -342,10 +359,16 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
 
         const documents = asTextList(req.requiredDocuments);
         const linkedBidId = req.payload?.linkedProcurementBidId;
-        const responseHref = linkedBidId
-          ? `/bids/${linkedBidId}/participate`
-          : opportunityType === 'RFQ' ? `/seller/rfq?requirementId=${req.id}` : opportunityType === 'RFP' ? `/seller/rfp?requirementId=${req.id}` : `/marketplace/requirements/${req.sourceId || req.id}`;
-        const detailHref = opportunityType === 'RFQ' ? `/seller/rfq?requirementId=${req.id}` : opportunityType === 'RFP' ? `/seller/rfp?requirementId=${req.id}` : `/marketplace/requirements/${req.sourceId || req.id}`;
+        // Reverse auctions go straight to the auction page. The backend resolves a requirement
+        // id to its linked auction, so we skip the /marketplace bridge + its extra redirect hop.
+        const buildDetailHref = () => {
+          if (opportunityType === 'RFQ') return `/seller/rfq?requirementId=${req.id}`;
+          if (opportunityType === 'RFP') return `/seller/rfp?requirementId=${req.id}`;
+          if (opportunityType === 'Reverse Auction') return `/reverse-auctions/${req.sourceId || req.id}`;
+          return `/marketplace/requirements/${req.sourceId || req.id}`;
+        };
+        const detailHref = buildDetailHref();
+        const responseHref = linkedBidId ? `/bids/${linkedBidId}/participate` : detailHref;
         const opportunity: SellerOpportunity = {
           id: `req-${req.id}`,
           type: opportunityType,
@@ -1060,9 +1083,9 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
                           <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2">
                             {item.title}
                           </p>
-                          {item.description && (
+                          {cleanOpportunitySummary(item.description) && (
                             <p className="text-[10px] font-semibold text-slate-400 line-clamp-1">
-                              {item.description}
+                              {cleanOpportunitySummary(item.description)}
                             </p>
                           )}
                         </td>
@@ -1176,8 +1199,8 @@ function OpportunityDetailPanel({ item }: { item: SellerOpportunity }) {
           <TypeBadge type={item.type} />
         </div>
 
-        {item.description && (
-          <p className="mt-3 line-clamp-3 text-xs font-semibold leading-relaxed text-slate-600 text-wrap-anywhere">{item.description}</p>
+        {cleanOpportunitySummary(item.description) && (
+          <p className="mt-3 line-clamp-3 text-xs font-semibold leading-relaxed text-slate-600 text-wrap-anywhere">{cleanOpportunitySummary(item.description)}</p>
         )}
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -1251,7 +1274,7 @@ function OpportunityDetailsDialog({ item, onClose }: { item: SellerOpportunity; 
               <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200/70">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#12335f]">Procurement Brief</p>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-700 text-wrap-anywhere">
-                  {item.description || 'No detailed description was provided by the buyer for this opportunity.'}
+                  {cleanOpportunitySummary(item.description) || 'No detailed description was provided by the buyer for this opportunity.'}
                 </p>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <Metric label="Published" value={formatDate(item.publishedAt)} />

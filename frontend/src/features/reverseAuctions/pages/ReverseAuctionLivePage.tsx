@@ -250,8 +250,8 @@ export default function ReverseAuctionLivePage({ id }: { id: number }) {
       <section className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 border-b border-zinc-200 pb-6">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <Link href="/reverse-auctions" className="inline-flex h-8 items-center rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 transition">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All Auctions
+            <Link href={`/reverse-auctions/${id}`} className="inline-flex h-8 items-center rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 transition">
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Auction Details
             </Link>
             
             {/* Live Indicator */}

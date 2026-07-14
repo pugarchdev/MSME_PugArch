@@ -1382,11 +1382,6 @@ router.patch('/admin/marketplace/home-sections/:key', authenticate, authorize('a
 
 router.get('/marketplace/home', shortCache(60), async (_req: Request, res: Response) => {
     try {
-        const [latestRequirements, latestTenders, latestBids] = await Promise.all([
-            loadLatestRequirements(24),
-            loadLatestTenders(6),
-            loadLatestProcurementBids(6)
-        ]);
         const data = await getOrSetCache(redisKeys.cacheMarketplaceHome(), async () => {
             const [
                 banners,
@@ -1397,7 +1392,10 @@ router.get('/marketplace/home', shortCache(60), async (_req: Request, res: Respo
                 notices,
                 largeIndustries,
                 bigMsmes,
-                stats
+                stats,
+                latestRequirements,
+                latestTenders,
+                latestBids
             ] = await Promise.all([
                 // Banners
                 db.marketplaceBanner?.findMany?.({
@@ -1563,13 +1561,18 @@ router.get('/marketplace/home', shortCache(60), async (_req: Request, res: Respo
                     productsListed: products,
                     servicesListed: services,
                     categories
-                }))
+                })),
+
+                // Latest requirements, tenders, and bids
+                loadLatestRequirements(24),
+                loadLatestTenders(6),
+                loadLatestProcurementBids(6)
             ]);
 
-            return { banners, categories, featuredProducts, featuredServices, featuredRequirements: [], verifiedSellers, largeIndustries, bigMsmes, notices, stats };
+            return { banners, categories, featuredProducts, featuredServices, verifiedSellers, largeIndustries, bigMsmes, notices, stats, featuredRequirements: latestRequirements, latestTenders, latestBids };
         }, 300); // Cache 5 minutes
 
-        return ok(res, { ...data, featuredRequirements: latestRequirements, latestTenders, latestBids });
+        return ok(res, data);
     } catch (error) {
         console.error('[Marketplace Home]', error);
         return apiResponse.error(res, 500, 'Failed to load marketplace data', 'MARKETPLACE_HOME_ERROR');

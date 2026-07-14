@@ -59,6 +59,7 @@ interface NormalizedProcurement {
   id: number;
   type: string;
   typeLabel: string;
+  linkedAuctionId?: number | null;
   title: string;
   referenceNumber: string;
   status: string;
@@ -454,8 +455,20 @@ export default function MyProcurementsPage() {
     const typeLower = String(p.type || '').toLowerCase();
     const methodLower = String(p.method || '').toLowerCase();
     
+    const isReverseAuction =
+      typeLower === 'reverse_auction' ||
+      methodLower === 'reverse_auction' ||
+      methodLower === 'reverse-auction' ||
+      methodLower === 'bid-with-reverse-auction' ||
+      methodLower === 'bid_with_reverse_auction';
+
     let route: string | null = null;
-    if (typeLower === 'bid_tender') {
+    if (isReverseAuction) {
+      // A reverse auction is stored as a Requirement; the biddable entity is the
+      // linked Auction. Use its id (falling back to the auction row's own id).
+      const auctionId = p.linkedAuctionId || (typeLower === 'reverse_auction' ? p.id : null);
+      route = auctionId ? `/reverse-auctions/${auctionId}` : null;
+    } else if (typeLower === 'bid_tender') {
       if (methodLower === 'rfq') {
         route = `/seller/rfq?requestId=${p.id}`;
       } else if (methodLower === 'rfp') {
@@ -469,8 +482,6 @@ export default function MyProcurementsPage() {
       } else {
         route = `/seller/rfq?requirementId=${p.id}`;
       }
-    } else if (typeLower === 'reverse_auction' || methodLower === 'reverse_auction' || methodLower === 'reverse-auction') {
-      route = `/reverse-auctions/${p.id}`;
     }
 
     if (route) {
@@ -529,7 +540,8 @@ export default function MyProcurementsPage() {
 
   /* ── Rendered Data ── */
   const displayData = useMemo(() => {
-    let data = [...procurements];
+    // Drafts live only on the dedicated Drafts page — never in the My Procurements list.
+    let data = procurements.filter(p => String(p.statusGroup || '').toLowerCase() !== 'draft');
 
     // Client-side Search Query Filter
     if (searchQuery) {
@@ -668,7 +680,7 @@ export default function MyProcurementsPage() {
           label="Drafts"
           value={kpis.drafts}
           isActive={activeKpi === 'draft'}
-          onClick={() => handleKpiClick('draft')}
+          onClick={() => router.push('/buyer/procurement/drafts')}
           activeColorClass="border-slate-500 bg-slate-50/20 ring-1 ring-slate-500/25 text-slate-650"
           inactiveColorClass="text-slate-600 bg-slate-100 hover:bg-slate-200"
           valueColorClass="text-slate-700"

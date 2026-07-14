@@ -9,6 +9,8 @@ import { ApiError } from '../utils/ApiError.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { maskSensitive } from '../utils/maskSensitive.js';
 import { auditLog } from '../modules/audit/audit.service.js';
+import { notificationService } from '../services/notification.service.js';
+import { logger } from '../config/logger.js';
 
 const router = Router();
 const db = prisma as any;
@@ -439,6 +441,35 @@ router.post('/reverse-auctions/:id/invite-sellers', requirePermission('reverse_a
       }));
     }
     await writeAuctionEvent(req, id, 'sellers_invited', 'Sellers invited to reverse auction', { count: rows.length });
+
+    // Notify each invited seller — in-app + email. Fire-and-forget so a mail/SMTP
+    // failure never blocks the invite response.
+    void (async () => {
+      const auctionTitle = auction.title || auction.auctionCode || `Reverse Auction #${id}`;
+      const endsAt = auction.endTime ? new Date(auction.endTime).toLocaleString() : null;
+      const redirectUrl = `/reverse-auctions/${id}`;
+      for (const seller of payload.sellers) {
+        // Prefer the explicitly named user; otherwise notify every user in the seller org.
+        const targets = seller.sellerUserId
+          ? [{ id: seller.sellerUserId }]
+          : await db.user.findMany({ where: { organizationId: seller.sellerOrgId }, select: { id: true } });
+        for (const u of targets) {
+          await notificationService.notifyWithEmail(u.id, {
+            title: 'Reverse Auction Invitation',
+            message: `You have been invited to participate in the reverse auction "${auctionTitle}".${endsAt ? ` Bidding closes ${endsAt}.` : ''} Open the portal to review the terms and place your bids.`,
+            type: 'reverse_auction_invite',
+            priority: 'high',
+            redirectUrl,
+            emailSubject: `Reverse Auction Invitation — ${auctionTitle}`,
+            emailHtml: `<p>Your organization has been invited to a reverse auction on the MSME Procurement Portal.</p>
+<p><strong>Auction:</strong> ${auctionTitle}</p>
+${endsAt ? `<p><strong>Bidding closes:</strong> ${endsAt}</p>` : ''}
+<p>Log in to review the auction terms, accept the invitation, and submit your competitive bids.</p>`
+          });
+        }
+      }
+    })().catch(err => logger.warn({ err, auctionId: id }, 'Failed to notify invited sellers'));
+
     return apiResponse.success(res, { participants: maskSensitive(rows) }, 200, 'Sellers invited');
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 400, error.message || 'Unable to invite sellers', error.code || 'REVERSE_AUCTION_INVITE_ERROR');

@@ -36,12 +36,14 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
     refetchOnWindowFocus: false
   });
 
+  // Sellers get their own participant row + own bids only (scoped server-side),
+  // so these queries are safe to run for everyone.
   const participantsQuery = useQuery({
     queryKey: ['reverse-auction-participants', id],
     queryFn: () => reverseAuctionApi.participants(id),
     staleTime: 10_000,
     refetchInterval: () => String(auction.data?.statusEnum || auction.data?.status || '').toUpperCase() === 'LIVE' ? 5_000 : 20_000,
-    enabled: !isSeller
+    enabled: !!user
   });
 
   const bidsQuery = useQuery({
@@ -49,7 +51,7 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
     queryFn: () => reverseAuctionApi.bids(id),
     staleTime: 5_000,
     refetchInterval: () => String(auction.data?.statusEnum || auction.data?.status || '').toUpperCase() === 'LIVE' ? 5_000 : 20_000,
-    enabled: !isSeller
+    enabled: !!user
   });
 
   const linkedBidId = auction.data?.linkedBidId;
@@ -266,6 +268,8 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               Auction Overview
             </h2>
             <div className="mt-4 space-y-3.5">
+              <RowItem icon={Scale} label="Procurement Method" value={auction.data.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'Bid with Reverse Auction' : 'Reverse Auction'} />
+              <RowItem icon={Tag} label="Category" value={auction.data.category || 'Not specified'} />
               <RowItem icon={Clock} label="Start Time" value={formatDateTime(auction.data.startTime)} />
               <RowItem icon={Hourglass} label="End Time" value={formatDateTime(auction.data.endTime)} />
               <RowItem icon={Clock} label="Duration" value={`${durationMin} minutes`} />
@@ -286,9 +290,44 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               <RowItem icon={Eye} label="Rank Visibility" value={auction.data.rankVisibility || 'SHOW_RANK_ONLY'} />
               <RowItem icon={Users} label="Minimum Qualified Bidders" value={String(auction.data.minimumQualifiedBidders || 2)} />
               <RowItem icon={Settings} label="Auto-Extension" value={autoExtensionEnabled ? 'Enabled' : 'Disabled'} />
+              <RowItem icon={IndianRupee} label="Currency" value={auction.data.currency || 'INR'} />
+              <RowItem icon={FileText} label="Terms Document" value={auction.data.termsDocumentName || 'Not attached'} />
             </div>
           </section>
         </div>
+
+        {/* Description */}
+        {auction.data.description && (
+          <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 uppercase tracking-wider">
+              Description
+            </h2>
+            <p className="mt-4 text-xs font-semibold leading-relaxed text-slate-600 whitespace-pre-line">
+              {auction.data.description}
+            </p>
+          </section>
+        )}
+
+        {/* Your Participation — seller's own status, rank and last bid (competitor data stays hidden) */}
+        {isSeller && (
+          <section className="border border-blue-100 rounded-3xl bg-blue-50/20 p-6 shadow-sm">
+            <h2 className="text-base font-black text-[#12335f] pb-3 border-b border-blue-100 uppercase tracking-wider flex items-center gap-2">
+              <Users className="h-4 w-4" /> Your Participation
+            </h2>
+            {participants.length === 0 ? (
+              <p className="mt-4 text-xs font-semibold text-slate-500">
+                You have not been invited to this reverse auction yet.
+              </p>
+            ) : (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <RowItem icon={ShieldAlert} label="Invitation Status" value={String(participants[0]?.status || 'INVITED')} highlight />
+                <RowItem icon={Award} label="Your Current Rank" value={participants[0]?.currentRank ? `L${participants[0].currentRank}` : 'Not ranked'} />
+                <RowItem icon={IndianRupee} label="Your Last Bid" value={participants[0]?.lastBidAmount ? formatCurrency(participants[0].lastBidAmount) : 'No bid yet'} />
+                <RowItem icon={RefreshCw} label="Your Bids Placed" value={String(bids.length)} />
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Bottom Checklist Card */}
         <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">

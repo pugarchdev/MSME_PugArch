@@ -9190,6 +9190,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     id: number;
     type: string;
     typeLabel: string;
+    linkedAuctionId?: number | null;
     title: string;
     referenceNumber: string;
     status: string;
@@ -9735,6 +9736,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       id: r.id,
       type: 'requirement',
       typeLabel: 'Requirement',
+      linkedAuctionId: auctionsByRequirementId[r.id]?.id || null,
       title: r.title || `Requirement ${r.requirementNumber}`,
       referenceNumber: r.requirementNumber || `REQ-${r.id}`,
       status: String(r.status || 'DRAFT'),

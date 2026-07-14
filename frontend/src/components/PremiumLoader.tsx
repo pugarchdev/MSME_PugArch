@@ -19,7 +19,7 @@ export default function PremiumLoader() {
   useEffect(() => {
     const textInterval = setInterval(() => {
       setStepIndex((prev) => (prev + 1) % LOADING_STEPS.length);
-    }, 150);
+    }, 20);
 
     return () => clearInterval(textInterval);
   }, []);
@@ -34,10 +34,10 @@ export default function PremiumLoader() {
         }
         // Progress faster in the beginning, then slow down
         const remaining = 98 - prev;
-        const increment = Math.max(3, Math.min(25, Math.floor(Math.random() * (remaining * 0.55))));
+        const increment = Math.max(10, Math.min(45, Math.floor(Math.random() * (remaining * 0.85))));
         return prev + increment;
       });
-    }, 50);
+    }, 5);
 
     return () => clearInterval(progressInterval);
   }, []);

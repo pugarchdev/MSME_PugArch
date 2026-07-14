@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /tmp -maxdepth 3 -name \"package.json\" 2>/dev/null | head -20; echo \"===\"; find / -maxdepth 4 -iname \"*PugArch*\" 2>/dev/null | head; echo \"===memory===\"; find / -maxdepth 6 -name \"MEMORY.md\" 2>/dev/null | head)",
+      "Read(//c/tmp/**)",
+      "Read(//c//**)"
+    ]
+  }
+}

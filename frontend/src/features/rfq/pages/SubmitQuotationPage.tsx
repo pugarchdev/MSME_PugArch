@@ -101,7 +101,9 @@ const formatCurrency = (val?: number | string) => {
 };
 
 type UploadState = {
-  file: File;
+  file?: File;
+  fileName?: string;
+  fileSize?: number;
   progress: number;
   status: 'pending' | 'uploading' | 'done' | 'error';
   url?: string;
@@ -166,7 +168,16 @@ export default function SubmitQuotationPage() {
       if (ownResponse.deliveryTimeline) setDeliveryTimeline(ownResponse.deliveryTimeline);
       if (ownResponse.terms) setTerms(ownResponse.terms);
       if (ownResponse.message) setMessage(ownResponse.message);
-      if (ownResponse.attachmentUrl) setUploadState({ name: 'Attachment', url: ownResponse.attachmentUrl, progress: 100 });
+      if (ownResponse.attachmentUrl) {
+        const urlParts = ownResponse.attachmentUrl.split('/');
+        const name = decodeURIComponent(urlParts[urlParts.length - 1] || 'Attachment');
+        setUploadState({
+          fileName: name,
+          progress: 100,
+          status: 'done',
+          url: ownResponse.attachmentUrl
+        });
+      }
       
       const savedTime = new Date(ownResponse.updatedAt || ownResponse.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
       setLastSaved(savedTime);
@@ -276,7 +287,7 @@ export default function SubmitQuotationPage() {
   }, []);
 
   const handleUpload = useCallback(async () => {
-    if (!uploadState || uploadState.status === 'done') return;
+    if (!uploadState || !uploadState.file || uploadState.status === 'done') return;
     setUploadState(prev => prev ? { ...prev, status: 'uploading', progress: 0 } : prev);
     try {
       const result = await uploadFile(uploadState.file, (percent) => {
@@ -619,10 +630,14 @@ export default function SubmitQuotationPage() {
                     <FileText className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{uploadState.file.name}</p>
-                    <p className="text-[10px] font-semibold text-slate-500">
-                      {(uploadState.file.size / 1024).toFixed(1)} KB
+                    <p className="text-xs font-bold text-slate-800 truncate">
+                      {uploadState.file?.name || uploadState.fileName || 'Attachment'}
                     </p>
+                    {(uploadState.file?.size || uploadState.fileSize) && (
+                      <p className="text-[10px] font-semibold text-slate-500">
+                        {(((uploadState.file?.size || uploadState.fileSize || 0) / 1024)).toFixed(1)} KB
+                      </p>
+                    )}
                     {uploadState.status === 'uploading' && (
                       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
                         <div

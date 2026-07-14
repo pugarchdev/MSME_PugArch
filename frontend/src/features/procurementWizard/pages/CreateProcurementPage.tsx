@@ -38,7 +38,7 @@ import {
   saveProcurementDraft,
   submitProcurementDraft
 } from '../api';
-import { api } from '../../../lib/api';
+import { api, BASE_URL } from '../../../lib/api';
 import { authHeaders, unwrap } from '../../shared/apiClient';
 import { downloadCsv } from '../../shared/exportUtils';
 import { fetchDeliveryAddresses, createDeliveryAddress, type DeliveryAddressDto } from '../../directPurchase/api';
@@ -52,8 +52,7 @@ import {
   mapToDatabaseMethod,
   METHOD_DEFINITIONS,
   type ProcurementMethodId,
-  type BuyerType,
-  type RecommendationResult
+  type BuyerType
 } from '../procurementMethodsConfig';
 import { normalizeProcurementMethod } from '../procurementMethodHelpers';
 
@@ -116,6 +115,8 @@ type DocumentRow = {
   fileType: string;
   maxSize: number;
   instructions: string;
+  fileAssetId?: number | null;
+  fileName?: string;
 };
 
 type AuctionConfig = {
@@ -575,6 +576,13 @@ const rateScheduleFromDraftItems = (draft: Draft): RateContractItem[] => {
       slabPricingEnabled: false,
       slabPricing: [],
     }));
+};
+
+// Single source of truth for "total procurement quantity" — the value that drives the
+// auto-generated consignee and must be > 0 for the backend submit validator to pass.
+const getTotalProcurementQty = (draft: Draft): number => {
+  const rows = draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable : draft.items;
+  return rows.reduce((acc: number, row: any) => acc + Number(row.quantity || 0), 0);
 };
 
 const cartItemToProcurementItem = (item: CartItemDto): ItemRow => {
@@ -1059,20 +1067,27 @@ export default function CreateProcurementPage() {
     }
 
     // Step 3 Sourcing specification items - Errors
+    // Total procurement quantity drives the auto-generated consignee. If it is 0, the backend
+    // rejects submit with "Total consignee quantity must equal total procurement quantity", so
+    // gate it here on the Items step where the user can actually fix it.
+    const totalProcurementQty = getTotalProcurementQty(d);
     if (d.basics.whatAreYouBuying === 'BOQ') {
       list.push({ label: 'At least one BOQ item is required', ok: d.boqTable.length > 0 && d.boqTable.some(r => r.description.trim()), severity: 'error', stepIdx: 2 });
       if (d.boqTable.length > 0) {
         list.push({ label: 'All BOQ rows must have positive quantities & rates', ok: d.boqTable.every(r => r.quantity > 0 && r.estimatedRate >= 0), severity: 'error', stepIdx: 2 });
       }
+      list.push({ label: 'Total BOQ quantity must be greater than 0', ok: totalProcurementQty > 0, severity: 'error', stepIdx: 2 });
     } else if (d.basics.whatAreYouBuying === 'Service') {
       list.push({ label: 'Service Contract SOW is required (min 10 chars)', ok: d.serviceDetails.scopeOfWork.trim().length >= 10, severity: 'error', stepIdx: 2 });
       list.push({ label: 'Service Deliverables list is required (min 5 chars)', ok: d.serviceDetails.deliverables.trim().length >= 5, severity: 'error', stepIdx: 2 });
       list.push({ label: 'Service Duration is required', ok: d.serviceDetails.duration.trim().length > 0, severity: 'error', stepIdx: 2 });
+      list.push({ label: 'Add at least one service line with quantity > 0', ok: totalProcurementQty > 0, severity: 'error', stepIdx: 2 });
     } else {
       list.push({ label: 'At least one product item is required', ok: d.items.length > 0, severity: 'error', stepIdx: 2 });
       if (d.items.length > 0) {
         list.push({ label: 'All product items must have valid name & quantity > 0', ok: d.items.every(i => i.name.trim().length > 0 && i.quantity > 0), severity: 'error', stepIdx: 2 });
       }
+      list.push({ label: 'Total item quantity must be greater than 0', ok: totalProcurementQty > 0, severity: 'error', stepIdx: 2 });
     }
 
     // Step 4 Sourcing reach - Errors
@@ -1172,24 +1187,6 @@ export default function CreateProcurementPage() {
     const valid = readiness.filter(r => r.ok).length;
     return Math.round((valid / readiness.length) * 100);
   }, [readiness]);
-
-  // Suggested Sourcing Method Engine
-  const recommendedMethod = useMemo(() => {
-    return suggestProcurementMethod({
-      buyerType: draft.basics.buyerType,
-      estimatedValue: draft.basics.estimatedValue,
-      whatAreYouBuying: draft.basics.whatAreYouBuying,
-      isCatalogueAvailable: draft.basics.isCatalogueAvailable,
-      isOnlyOneVendor: draft.basics.isOnlyOneVendor,
-      isReverseAuctionNeeded: draft.basics.isReverseAuctionNeeded,
-      isTechnicalEvaluationNeeded: draft.basics.isTechnicalEvaluationNeeded,
-      urgency: draft.basics.priority,
-      lineItemsCount: draft.basics.whatAreYouBuying === 'BOQ' ? draft.boqTable.length : draft.items.length,
-      isSpecClear: draft.basics.isSpecClear,
-      isRepeatedSupply: draft.basics.isRepeatedSupply,
-      marketResearchOnly: draft.basics.marketResearchOnly,
-    });
-  }, [draft]);
 
   // Save Draft to Backend
   const saveDraftLocally = async (silent = false, stepOverride?) => {
@@ -1618,7 +1615,6 @@ export default function CreateProcurementPage() {
                 <BasicsStepForm
                   draft={draft}
                   updateDraft={updateDraft}
-                  recommendedMethod={recommendedMethod}
                 />
               </SectionCard>
             )}
@@ -1735,26 +1731,15 @@ export default function CreateProcurementPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 function BasicsStepForm({
   draft,
-  updateDraft,
-  recommendedMethod
+  updateDraft
 }: {
   draft: Draft;
   updateDraft: (updater: (current: Draft) => Draft) => void;
-  recommendedMethod: RecommendationResult;
 }) {
   const availableMethods = useMemo(() => {
     const allowed = ['RFQ', 'RFP', 'OPEN_TENDER', 'LIMITED_TENDER', 'REVERSE_AUCTION', 'RATE_CONTRACT'];
     return METHOD_DEFINITIONS.filter(m => allowed.includes(m.id) && m.buyerTypes.includes(draft.basics.buyerType));
   }, [draft.basics.buyerType]);
-
-  const handleApplyRecommendation = () => {
-    updateDraft(current => ({
-      ...current,
-      type: recommendedMethod.id,
-      requiredDocs: defaultRequiredDocs(current.basics.buyerType, recommendedMethod.id)
-    }));
-    toast.success(`Applied recommended method: ${recommendedMethod.id}`);
-  };
 
   // Delivery address dropdown and modal states
   const [deliveryAddressesList, setDeliveryAddressesList] = useState<DeliveryAddressDto[]>([]);
@@ -2074,278 +2059,6 @@ function BasicsStepForm({
           </Field>
         </div>
       </div>
-
-      {/* Sourcing parameters checkboxes */}
-      <div className="border border-slate-200 rounded-[22px] p-5 bg-slate-50/50 space-y-4">
-        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Procurement Parameters</h3>
-        <div className="grid gap-3.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isCatalogueAvailable: !c.basics.isCatalogueAvailable } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isCatalogueAvailable 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Catalogue Available</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isCatalogueAvailable ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isCatalogueAvailable && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Items can be selected directly from standard contract lists.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isOnlyOneVendor: !c.basics.isOnlyOneVendor } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isOnlyOneVendor 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Proprietary / PAC</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isOnlyOneVendor ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isOnlyOneVendor && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Sourcing is restricted to one specific proprietary vendor.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isReverseAuctionNeeded: !c.basics.isReverseAuctionNeeded } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isReverseAuctionNeeded 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Reverse Auction</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isReverseAuctionNeeded ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isReverseAuctionNeeded && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Enable dynamic live-bidding for commercial selection.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isTechnicalEvaluationNeeded: !c.basics.isTechnicalEvaluationNeeded } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isTechnicalEvaluationNeeded 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Technical Opening</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isTechnicalEvaluationNeeded ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isTechnicalEvaluationNeeded && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Two-stage bidding: tech envelopes are opened first.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isSpecClear: !c.basics.isSpecClear } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isSpecClear 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Specifications Clear</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isSpecClear ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isSpecClear && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Precise size, specs, and design drawings are finalized.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, isRepeatedSupply: !c.basics.isRepeatedSupply } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.isRepeatedSupply 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Repeated Supply</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.isRepeatedSupply ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.isRepeatedSupply && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Requirement is for regular supply schedules / Rate Contract.</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => updateDraft(c => ({ ...c, basics: { ...c.basics, marketResearchOnly: !c.basics.marketResearchOnly } }))}
-            className={cn(
-              "flex flex-col justify-between p-3.5 rounded-2xl text-left border transition-all duration-200 min-h-[96px]",
-              draft.basics.marketResearchOnly 
-                ? "bg-indigo-50/40 border-indigo-200 text-indigo-950 ring-1 ring-indigo-200/50" 
-                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700 hover:scale-[1.02]"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-black uppercase tracking-wider">Research / RFI Only</span>
-              <span className={cn(
-                "h-4 w-4 rounded-full border flex items-center justify-center text-[9px] font-bold transition-all",
-                draft.basics.marketResearchOnly ? "bg-[#12335f] border-[#12335f] text-white" : "border-slate-300"
-              )}>
-                {draft.basics.marketResearchOnly && "✓"}
-              </span>
-            </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold mt-1.5 leading-tight">Gather vendor capability data without intent to buy.</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Suggested method banner */}
-      <div className="border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-blue-50/20 p-5 rounded-[22px] space-y-4 shadow-3xs ring-1 ring-indigo-100/40">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-          <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-700">
-              <Info className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-xs font-black uppercase text-indigo-900 tracking-wider">SMILE AI Method Advisor</h4>
-                <span className={cn(
-                  "px-2 py-0.5 rounded text-[8px] font-black uppercase leading-none border",
-                  recommendedMethod.confidence === 'HIGH' ? "bg-emerald-50 border-emerald-250 text-emerald-850" :
-                  recommendedMethod.confidence === 'MEDIUM' ? "bg-amber-50 border-amber-250 text-amber-850" :
-                  "bg-rose-50 border-rose-250 text-rose-850"
-                )}>
-                  {recommendedMethod.confidence} Confidence
-                </span>
-              </div>
-              <p className="text-[11px] font-semibold text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
-                Suggested strategy: <strong className="text-slate-900">{recommendedMethod.id.replace(/_/g, ' ')}</strong>. {recommendedMethod.reason}
-              </p>
-            </div>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleApplyRecommendation}
-            disabled={draft.type === recommendedMethod.id}
-            className="bg-[#12335f] hover:bg-[#1c477d] text-white rounded-xl text-[10px] uppercase font-black tracking-wide h-9 shrink-0 px-4 transition"
-          >
-            {draft.type === recommendedMethod.id ? 'Applied' : 'Apply Recommendation'}
-          </Button>
-        </div>
-
-        {/* Alternative recommendation options */}
-        {recommendedMethod.alternativeMethods && recommendedMethod.alternativeMethods.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-850">
-            <span>Alternative methods:</span>
-            {recommendedMethod.alternativeMethods.map(alt => (
-              <button
-                key={alt}
-                type="button"
-                onClick={() => {
-                  updateDraft(current => ({
-                    ...current,
-                    type: alt,
-                    requiredDocs: defaultRequiredDocs(current.basics.buyerType, alt)
-                  }));
-                  toast.success(`Selected alternative: ${alt}`);
-                }}
-                className="bg-white border border-amber-250 hover:border-amber-400 px-2 py-0.5 rounded text-[9px] uppercase font-bold text-amber-900 transition shadow-2xs"
-              >
-                {alt.replace(/_/g, ' ')}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Suggested Warnings */}
-        {recommendedMethod.warnings && recommendedMethod.warnings.length > 0 && (
-          <div className="border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-800 space-y-1">
-            <span className="text-amber-900 font-extrabold uppercase text-[8px] tracking-wider block">Compliance Alerts:</span>
-            {recommendedMethod.warnings.map((warning, idx) => (
-              <p key={idx} className="flex items-center gap-1.5 pl-1 text-[10.5px]">
-                <span className="text-amber-600 text-xs shrink-0">⚠️</span>
-                <span>{warning}</span>
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Sourcing Justifications */}
-        {recommendedMethod.requiredJustifications && recommendedMethod.requiredJustifications.length > 0 && (
-          <div className="border-t border-amber-200/50 pt-3 text-[10px] font-semibold text-amber-800 space-y-1">
-            <span className="text-amber-900 font-extrabold uppercase text-[8px] tracking-wider block">Required Justifications:</span>
-            {recommendedMethod.requiredJustifications.map((just, idx) => (
-              <p key={idx} className="flex items-center gap-1.5 pl-1 text-[10.5px]">
-                <span className="text-slate-400 shrink-0">&middot;</span>
-                <span>{just}</span>
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Override Alert Banner */}
-      {draft.type !== recommendedMethod.id && (
-        <div className="p-4 bg-amber-50/50 border border-amber-200 text-amber-850 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
-          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
-          <div>
-            <span className="text-amber-900 font-black uppercase text-[9px] tracking-wider block">Manual Method Override Active</span>
-            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
-              You have manually selected <strong>{draft.type.replace(/_/g, ' ')}</strong> instead of the suggested <strong>{recommendedMethod.id.replace(/_/g, ' ')}</strong>. Ensure corporate policy or GFR rules approve this override.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Method specific notices */}
-      {draft.type === 'REVERSE_AUCTION' && !draft.basics.isSpecClear && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
-          <span className="text-amber-600 text-sm shrink-0">⚠️</span>
-          <div>
-            <span className="text-amber-950 font-black uppercase text-[9px] tracking-wider block">Reverse Auction Spec Warning</span>
-            <p className="mt-0.5 leading-relaxed text-amber-700 font-medium">
-              Conducting reverse auctions with unclear specifications increases the risk of delivery disputes. Verify item dimensions and specifications.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Sourcing Method Selection Cards */}
       <div className="space-y-3.5">
@@ -3223,6 +2936,7 @@ function ItemsDetailsForm({
               size="sm"
               onClick={() => {
                 toast.info('Downloading BOQ Excel Template...');
+                window.open(`${BASE_URL}/api/buyer-showcase/boq/template`, '_blank');
               }}
               className="h-8 text-xs font-bold text-slate-700"
             >
@@ -3273,6 +2987,33 @@ function ItemsDetailsForm({
           onDeleteRow={handleRemoveBOQRow}
           estimatedTotal={draft.basics.estimatedValue}
         />
+
+        {(() => {
+          const totalQty = getTotalProcurementQty(draft);
+          const qtyOk = totalQty > 0;
+          return (
+            <div className={cn(
+              "flex flex-col gap-1 rounded-lg border p-3",
+              qtyOk ? "bg-slate-50 border-slate-200" : "bg-rose-50 border-rose-300"
+            )}>
+              <div className={cn(
+                "flex items-center justify-between text-sm font-extrabold",
+                qtyOk ? "text-[#12335f]" : "text-rose-700"
+              )}>
+                <span className="text-[11px] font-black uppercase tracking-wider">
+                  Total BOQ Qty &rarr; Consignee
+                </span>
+                <span>{totalQty.toLocaleString('en-IN')}</span>
+              </div>
+              {!qtyOk && (
+                <p className="text-[11px] font-bold text-rose-600">
+                  Every BOQ row needs a quantity greater than 0. The delivery consignee is set to
+                  this total automatically, and submission is blocked until it is above 0.
+                </p>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -3521,9 +3262,34 @@ function ItemsDetailsForm({
         </table>
       </div>
 
-      <div className="text-right font-extrabold text-[#12335f] text-sm bg-slate-50 border border-slate-200 rounded-lg p-3">
-        Total Estimated Value: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(draft.basics.estimatedValue)}
-      </div>
+      {(() => {
+        const totalQty = getTotalProcurementQty(draft);
+        const qtyOk = totalQty > 0;
+        return (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className={cn(
+              "flex items-center justify-between rounded-lg border p-3 text-sm font-extrabold",
+              qtyOk
+                ? "bg-slate-50 border-slate-200 text-[#12335f]"
+                : "bg-rose-50 border-rose-300 text-rose-700"
+            )}>
+              <span className="text-[11px] font-black uppercase tracking-wider">
+                Total Procurement Qty &rarr; Consignee
+              </span>
+              <span>{totalQty.toLocaleString('en-IN')}</span>
+            </div>
+            <div className="text-right font-extrabold text-[#12335f] text-sm bg-slate-50 border border-slate-200 rounded-lg p-3">
+              Total Estimated Value: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(draft.basics.estimatedValue)}
+            </div>
+            {!qtyOk && (
+              <p className="sm:col-span-2 text-[11px] font-bold text-rose-600">
+                Add at least one line with a quantity greater than 0. The delivery consignee is set
+                to this total automatically, and submission is blocked until it is above 0.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Edit Drawer Overlay */}
       {showItemDrawer && selectedItemForEdit && (
@@ -4774,12 +4540,46 @@ function DocumentsStepForm({
     toast.success('Custom document added to checklist');
   };
 
+  const handleUploadFile = async (id: string, file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entityType', 'procurement_draft');
+      const response = await api.fetch('/api/files/upload', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+      });
+      const resData = await unwrap<any>(response);
+      const asset = resData.file || resData;
+      const fileId = Number(resData.fileId || asset.id || 0);
+
+      updateDraft(c => ({
+        ...c,
+        requiredDocs: c.requiredDocs.map(d => d.id === id ? { ...d, fileAssetId: fileId, fileName: asset.originalName || file.name } : d)
+      }));
+      toast.success('File uploaded successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload document');
+    }
+  };
+
+  const handleRemoveFile = (id: string) => {
+    updateDraft(c => ({
+      ...c,
+      requiredDocs: c.requiredDocs.map(d => d.id === id ? { ...d, fileAssetId: null, fileName: undefined } : d)
+    }));
+    toast.success('File removed successfully');
+  };
+
   return (
     <DocumentRequirementBuilder
       documents={draft.requiredDocs}
       onToggleRequired={handleToggleDocRequired}
       onRemove={handleRemoveDoc}
       onAddCustomDoc={handleAddCustomDoc}
+      onUploadFile={handleUploadFile}
+      onRemoveFile={handleRemoveFile}
     />
   );
 }
@@ -5080,10 +4880,13 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
         }
       }));
 
-  // Build default consignee matching total quantity
-  const totalQty = draft.basics.whatAreYouBuying === 'BOQ'
-    ? draft.boqTable.reduce((acc, item) => acc + Number(item.quantity || 0), 0)
-    : draft.items.reduce((acc, item) => acc + Number(item.quantity || 0), 0);
+  // Build default consignee matching total quantity.
+  // IMPORTANT: derive the total from `mappedItems` (the exact lines sent to the backend as
+  // `payload.items`) so the consignee total always equals the validator's item total across
+  // Product / BOQ / Service modes. Previously this summed the raw `draft.items`, which is
+  // empty in BOQ/Service modes → consignee total 0 ≠ item total → "Total consignee quantity
+  // must equal total procurement quantity" on every BOQ submit.
+  const totalQty = mappedItems.reduce((acc, item) => acc + Number(item.quantity || 0), 0);
 
   const deliveryLocation = draft.basics.deliveryLocation || draft.internal.orgName || 'Primary Delivery Location';
   const consigneeDetails = [
@@ -5097,12 +4900,12 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
   // Map compliance required documents checklist to document formats expected by backend file validators
   const mappedDocuments = draft.requiredDocs.map(doc => ({
     name: doc.name,
-    fileName: doc.name.toLowerCase().includes('boq') && draft.boqFileName 
+    fileName: doc.fileName || (doc.name.toLowerCase().includes('boq') && draft.boqFileName 
       ? draft.boqFileName 
       : (doc.name.toLowerCase().includes('specification') && draft.items?.[0]?.specificationFileName 
         ? draft.items[0].specificationFileName 
-        : 'attached_doc.pdf'),
-    fileAssetId: doc.name.toLowerCase().includes('boq') ? draft.boqFileAssetId : null,
+        : 'attached_doc.pdf')),
+    fileAssetId: doc.fileAssetId || (doc.name.toLowerCase().includes('boq') ? draft.boqFileAssetId : null),
     required: doc.required
   }));
 
@@ -5203,6 +5006,13 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
 
   const payloadJson = {
     ...draft,
+    // The backend validator sums `payload.items` for the consignee-quantity check. In BOQ mode
+    // `draft.items` (spread above) is empty, so the total came out 0 ≠ consignee total and submit
+    // failed with "Total consignee quantity must equal total procurement quantity". Feed the
+    // mapped BOQ lines for BOQ mode; keep the editable ItemRow-shaped `draft.items` for Product
+    // mode so autosaved drafts still rehydrate correctly on reload (reload reads payload.items for
+    // Product, payload.boqTable for BOQ).
+    items: draft.basics.whatAreYouBuying === 'BOQ' ? mappedItems : draft.items,
     fullProcurementMethod: draft.type, // canonical method name inside payload JSON
     buyerType: draft.basics.buyerType,
     buyingType: draft.basics.whatAreYouBuying,

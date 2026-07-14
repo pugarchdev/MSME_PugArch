@@ -339,6 +339,11 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
           </section>
         )}
 
+        {/* Procurement Requirement — everything the buyer filled at creation time */}
+        {auction.data.linkedRequirement && (
+          <LinkedRequirementPanel requirement={auction.data.linkedRequirement} />
+        )}
+
         {/* Your Participation — seller's own status, rank and last bid (competitor data stays hidden) */}
         {isSeller && (
           <section className="border border-blue-100 rounded-3xl bg-blue-50/20 p-6 shadow-sm">
@@ -743,6 +748,99 @@ function EmptyPanel({ title, description }: { title: string; description: string
       <p className="text-xs font-black text-slate-800">{title}</p>
       <p className="mt-1 text-[11px] font-semibold text-slate-400">{description}</p>
     </div>
+  );
+}
+
+/** Buyer-filled procurement facts (items, documents, delivery, consignees) behind the auction. */
+function LinkedRequirementPanel({ requirement }: { requirement: NonNullable<import('../api').ReverseAuction['linkedRequirement']> }) {
+  const items = requirement.items || [];
+  const documents = requirement.documents || [];
+  const consignees = requirement.consigneeDetails || [];
+  return (
+    <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+        <h2 className="text-base font-black text-slate-900 uppercase tracking-wider">
+          Procurement Requirement
+        </h2>
+        {requirement.requirementNumber && (
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 font-mono tracking-wider">
+            {requirement.requirementNumber}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <InfoRow label="Title" value={requirement.title || '—'} />
+        <InfoRow label="Category" value={requirement.category || 'Not specified'} />
+        <InfoRow label="Estimated Value" value={requirement.estimatedValue ? formatCurrency(Number(requirement.estimatedValue)) : 'Not disclosed'} />
+        <InfoRow label="Delivery Location" value={requirement.deliveryLocation || 'Not specified'} />
+        {requirement.requiredBy && <InfoRow label="Required By" value={formatDate(requirement.requiredBy)} />}
+        {requirement.paymentTerms && <InfoRow label="Payment Terms" value={requirement.paymentTerms} />}
+        {requirement.bidStartDate && <InfoRow label="Bid Start" value={formatDateTime(requirement.bidStartDate)} />}
+        {requirement.bidClosingDate && <InfoRow label="Bid Closing" value={formatDateTime(requirement.bidClosingDate)} />}
+      </div>
+
+      {items.length > 0 && (
+        <div className="mt-5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Items ({items.length})</p>
+          <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[560px] text-left text-xs">
+              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <tr>
+                  <th className="p-2.5">#</th>
+                  <th className="p-2.5">Item</th>
+                  <th className="p-2.5">Description</th>
+                  <th className="p-2.5 text-right">Qty</th>
+                  <th className="p-2.5">Unit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                {items.map((item, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-2.5 text-slate-400 font-black">{i + 1}</td>
+                    <td className="p-2.5 font-bold text-slate-900">{item.itemName || '—'}</td>
+                    <td className="p-2.5 text-slate-500 max-w-[260px] truncate">{item.description || '—'}</td>
+                    <td className="p-2.5 text-right tabular-nums">{item.quantity ?? '—'}</td>
+                    <td className="p-2.5">{item.unitOfMeasure || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {documents.length > 0 && (
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Required Documents ({documents.length})</p>
+            <ul className="mt-2 space-y-1.5">
+              {documents.map((doc, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  {doc.name || doc.fileName || `Document ${i + 1}`}
+                  {doc.required && <span className="text-red-500 font-black">*</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {consignees.length > 0 && (
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Consignees / Delivery Points ({consignees.length})</p>
+            <ul className="mt-2 space-y-1.5">
+              {consignees.map((consignee, i) => (
+                <li key={i} className="text-xs font-semibold text-slate-700">
+                  <span className="font-black text-slate-900">{consignee.name || `Consignee ${i + 1}`}</span>
+                  {consignee.location ? ` · ${consignee.location}` : ''}
+                  {consignee.quantity != null ? ` · Qty: ${consignee.quantity}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

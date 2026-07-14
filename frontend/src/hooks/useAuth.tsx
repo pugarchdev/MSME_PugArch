@@ -94,15 +94,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   });
 
-  const logout = useCallback(() => {
-    void api.post('/api/auth/logout', {}).catch(() => undefined);
-    clearStoredToken();
-    localStorage.removeItem('msme_user_cache');
-    clearAuthCookie();
-    setToken(null);
-    setUser(null);
-    setLoading(false);
-    api.invalidate();
+  const logout = useCallback(async () => {
+    setLoading(true);
+    try {
+      await api.post('/api/auth/logout', {}).catch(() => undefined);
+    } finally {
+      clearStoredToken();
+      localStorage.removeItem('msme_user_cache');
+      clearAuthCookie();
+      setToken(null);
+      setUser(null);
+      setLoading(false);
+      api.invalidate();
+    }
   }, []);
 
   const refreshUser = useCallback(async (options?: { skipCache?: boolean }) => {

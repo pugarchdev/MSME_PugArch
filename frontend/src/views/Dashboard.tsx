@@ -16,6 +16,7 @@ import { marketplaceApi } from '../features/marketplace/api';
 import { resolveMarketplaceImage } from '../features/marketplace/utils/marketplaceImages';
 import { AIInsightBox } from '../features/dashboard/components/AIInsightBox';
 import { formatGstVerificationError } from '../features/shared/gstVerification';
+import PremiumLoader from '../components/PremiumLoader';
 
 const ADMIN_REVIEW_CHECKLIST = [
   'Clear pending stakeholder approvals',
@@ -364,7 +365,7 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
-  const { data: summaryData } = useQuery({
+  const { data: summaryData, isLoading: isSummaryLoading } = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: async () => {
       const res = await api.fetch('/api/dashboard/summary', { headers: authHeaders });
@@ -387,6 +388,11 @@ export default function Dashboard() {
       metrics: user?.role === 'admin' ? (adminStats || {}) : (summaryData || {})
     };
   }, [user, adminStats, summaryData]);
+
+  const isDashboardLoading = isProfileLoading || (user?.role === 'admin' ? isAdminStatsLoading : isSummaryLoading);
+  if (isDashboardLoading) {
+    return <PremiumLoader />;
+  }
 
   const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();

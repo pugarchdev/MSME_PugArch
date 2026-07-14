@@ -192,7 +192,6 @@ const TYPE_FILTERS = [
   { key: 'Reverse Auction', label: 'Reverse Auction' },
   { key: 'Cart Checkout', label: 'Cart Checkout' },
   { key: 'OpenTender', label: 'OpenTender' },
-  { key: 'Draft', label: 'Draft' },
   { key: 'Rate Contract', label: 'Rate Contract' },
   { key: 'Limited Tender', label: 'Limited Tender' },
   { key: 'Repeat order', label: 'Repeat order' },
@@ -200,7 +199,6 @@ const TYPE_FILTERS = [
 
 const STATUS_FILTERS = [
   { key: '', label: 'All Statuses' },
-  { key: 'draft', label: 'Draft' },
   { key: 'pending_approval', label: 'Pending Approval' },
   { key: 'active', label: 'Active' },
   { key: 'completed', label: 'Completed' },
@@ -664,7 +662,7 @@ export default function MyProcurementsPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 px-4 sm:px-0">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 px-4 sm:px-0">
         <KpiCard
           icon={BarChart3}
           label="Total"
@@ -674,16 +672,6 @@ export default function MyProcurementsPage() {
           activeColorClass="border-blue-500 bg-blue-50/20 ring-1 ring-blue-500/25 text-blue-600"
           inactiveColorClass="text-blue-600 bg-blue-50 hover:bg-blue-100"
           valueColorClass="text-blue-600"
-        />
-        <KpiCard
-          icon={FileText}
-          label="Drafts"
-          value={kpis.drafts}
-          isActive={activeKpi === 'draft'}
-          onClick={() => router.push('/buyer/procurement/drafts')}
-          activeColorClass="border-slate-500 bg-slate-50/20 ring-1 ring-slate-500/25 text-slate-650"
-          inactiveColorClass="text-slate-600 bg-slate-100 hover:bg-slate-200"
-          valueColorClass="text-slate-700"
         />
         <KpiCard
           icon={Clock}

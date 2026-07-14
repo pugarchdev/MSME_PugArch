@@ -9026,8 +9026,8 @@ router.put('/seller/settings/branding', authenticate, authorize('seller', 'shg')
 const STATUS_GROUP = {
   draft: new Set(['DRAFT']),
   pending_approval: new Set(['PENDING_ADMIN_APPROVAL', 'PENDING_APPROVAL', 'SUBMITTED', 'SUBMITTED_FOR_APPROVAL']),
-  active: new Set(['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'REQUESTED', 'SOURCING', 'PROCUREMENT_METHOD_SELECTED']),
-  completed: new Set(['AWARDED', 'ORDERED', 'FULFILLED', 'CONVERTED_TO_ORDER', 'CONVERTED_TO_BID', 'PUBLISHED', 'CLOSED']),
+  active: new Set(['OPEN', 'APPROVED', 'TECHNICAL_EVALUATION', 'FINANCIAL_EVALUATION', 'REQUESTED', 'SOURCING', 'PROCUREMENT_METHOD_SELECTED', 'LIVE', 'PAUSED', 'SCHEDULED']),
+  completed: new Set(['AWARDED', 'ORDERED', 'FULFILLED', 'CONVERTED_TO_ORDER', 'CONVERTED_TO_BID', 'PUBLISHED', 'CLOSED', 'FINALIZED', 'AWARD_RECOMMENDED']),
   cancelled: new Set(['CANCELLED', 'REJECTED', 'EXPIRED', 'SENT_BACK_FOR_CORRECTION']),
 };
 
@@ -9671,6 +9671,11 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   for (const r of requirements) {
     const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
     const payload = (r as any).payload || {};
+    const linkedAuction = auctionsByRequirementId[r.id];
+    
+    // Map status based on linked auction if applicable
+    const rStatus = linkedAuction ? (linkedAuction.statusEnum || linkedAuction.status || r.status) : r.status;
+    const rStatusUpper = String(rStatus || 'DRAFT').toUpperCase();
     
     const items = (r.items || []).map((item: any) => ({
       itemName: item.itemName || item.name || '',
@@ -9739,9 +9744,9 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       linkedAuctionId: auctionsByRequirementId[r.id]?.id || null,
       title: r.title || `Requirement ${r.requirementNumber}`,
       referenceNumber: r.requirementNumber || `REQ-${r.id}`,
-      status: String(r.status || 'DRAFT'),
-      statusLabel: statusLabel(String(r.status || 'DRAFT')),
-      statusGroup: statusGroupFor(String(r.status || 'DRAFT')),
+      status: rStatusUpper,
+      statusLabel: statusLabel(rStatusUpper),
+      statusGroup: statusGroupFor(rStatusUpper),
       method: methodSlug,
       methodLabel: METHOD_LABEL_MAP[methodSlug] || methodSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       estimatedValue: Number(r.estimatedValue || payload.basics?.estimatedValue || 0),
@@ -9762,7 +9767,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
           if (['PUBLISHED', 'OPEN', 'ACTIVE', 'SOURCING', 'LIVE'].includes(s)) {
             return `/reverse-auctions/${linkedAuction.id}/live`;
           }
-          if (['CLOSED', 'COMPLETED', 'AWARDED', 'FULFILLED'].includes(s)) {
+          if (['CLOSED', 'COMPLETED', 'AWARDED', 'FULFILLED', 'FINALIZED'].includes(s)) {
             return `/reverse-auctions/${linkedAuction.id}/results`;
           }
           return `/reverse-auctions/${linkedAuction.id}`;
@@ -9835,6 +9840,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
 
   // 6) Reverse Auctions
   for (const a of auctions) {
+    if (a.linkedRequirementId) continue;
     const s = String(a.statusEnum || a.status || 'scheduled').toUpperCase();
     const statusGroup = statusGroupFor(s);
 
@@ -9930,13 +9936,13 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
 
   // ── KPIs (computed from unfiltered data) ──
   const kpis = {
-    totalProcurements: all.length,
-    drafts: all.filter(p => p.statusGroup === 'draft').length,
+    totalProcurements: all.filter(p => p.statusGroup !== 'draft').length,
+    drafts: 0,
     pendingApproval: all.filter(p => p.statusGroup === 'pending_approval').length,
     active: all.filter(p => p.statusGroup === 'active').length,
     completed: all.filter(p => p.statusGroup === 'completed').length,
     cancelled: all.filter(p => p.statusGroup === 'cancelled').length,
-    totalValue: all.reduce((sum, p) => sum + (p.estimatedValue || 0), 0),
+    totalValue: all.filter(p => p.statusGroup !== 'draft').reduce((sum, p) => sum + (p.estimatedValue || 0), 0),
     activeRateContracts: all.filter(p => p.type === 'rate_contract' && p.statusGroup === 'active').length,
     expiredRateContracts: all.filter(p => p.type === 'rate_contract' && p.status === 'EXPIRED').length,
   };

@@ -686,6 +686,8 @@ export interface SourcingDoc {
   name: string;
   required: boolean;
   instructions?: string;
+  fileAssetId?: number | null;
+  fileName?: string;
 }
 
 interface DocumentRequirementBuilderProps {
@@ -693,16 +695,21 @@ interface DocumentRequirementBuilderProps {
   onToggleRequired: (id: string) => void;
   onRemove: (id: string) => void;
   onAddCustomDoc: (name: string, required: boolean) => void;
+  onUploadFile?: (id: string, file: File) => Promise<void>;
+  onRemoveFile?: (id: string) => void;
 }
 
 export function DocumentRequirementBuilder({
   documents,
   onToggleRequired,
   onRemove,
-  onAddCustomDoc
+  onAddCustomDoc,
+  onUploadFile,
+  onRemoveFile
 }: DocumentRequirementBuilderProps) {
   const [docName, setDocName] = React.useState('');
   const [docReq, setDocReq] = React.useState(true);
+  const [uploadingIds, setUploadingIds] = React.useState<Record<string, boolean>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -748,9 +755,10 @@ export function DocumentRequirementBuilder({
           <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-3 py-2">Document Name</th>
-              <th className="px-3 py-2 w-32">Requirement</th>
-              <th className="px-3 py-2 w-48">Instructions</th>
-              <th className="px-3 py-2 w-20 text-right">Action</th>
+              <th className="px-3 py-2 w-28">Requirement</th>
+              <th className="px-3 py-2 w-40">Instructions</th>
+              <th className="px-3 py-2 w-48">Buyer Reference / Template</th>
+              <th className="px-3 py-2 w-16 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
@@ -771,6 +779,57 @@ export function DocumentRequirementBuilder({
                 </td>
                 <td className="px-3 py-3 text-slate-450 truncate max-w-[220px] font-medium">
                   {doc.instructions || 'Standard verification file.'}
+                </td>
+                <td className="px-3 py-3">
+                  {doc.fileAssetId ? (
+                    <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-[11px] max-w-[180px]">
+                      <span className="truncate font-bold" title={doc.fileName || 'Attached document'}>
+                        {doc.fileName || 'Attached document'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFile && onRemoveFile(doc.id)}
+                        className="text-rose-500 hover:text-rose-700 font-bold ml-auto flex-shrink-0"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      {uploadingIds[doc.id] ? (
+                        <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Uploading...</span>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <input
+                            type="file"
+                            id={`file-upload-${doc.id}`}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file && onUploadFile) {
+                                setUploadingIds(prev => ({ ...prev, [doc.id]: true }));
+                                try {
+                                  await onUploadFile(doc.id, file);
+                                } finally {
+                                  setUploadingIds(prev => ({ ...prev, [doc.id]: false }));
+                                }
+                              }
+                            }}
+                            className="hidden"
+                          />
+                          <label
+                            htmlFor={`file-upload-${doc.id}`}
+                            className="cursor-pointer inline-flex items-center gap-1 bg-[#12335f]/10 hover:bg-[#12335f]/20 text-[#12335f] text-[10px] font-black uppercase px-2 py-1 rounded transition-all"
+                          >
+                            <Upload className="h-3 w-3" />
+                            <span>Upload</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-3 text-right">
                   <button

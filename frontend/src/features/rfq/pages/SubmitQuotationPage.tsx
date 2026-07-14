@@ -110,6 +110,29 @@ type UploadState = {
   error?: string;
 };
 
+// One upload slot per document the buyer asked for at procurement creation.
+type RequestedDocUpload = {
+  name: string;
+  required: boolean;
+  fileAssetId?: number | null;
+  fileName?: string;
+  fileUrl?: string;
+  status: 'empty' | 'uploading' | 'done' | 'error';
+  progress: number;
+  error?: string;
+};
+
+// Seller's quote against each buyer line item.
+type LineQuote = {
+  itemName: string;
+  quantity: number;
+  unitOfMeasure: string;
+  unitPrice: string;
+  gstPercent: string;
+  makeBrand: string;
+  remarks: string;
+};
+
 export default function SubmitQuotationPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -125,6 +148,8 @@ export default function SubmitQuotationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState | null>(null);
+  const [docUploads, setDocUploads] = useState<RequestedDocUpload[]>([]);
+  const [lineQuotes, setLineQuotes] = useState<LineQuote[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [draftSaved, setDraftSaved] = useState(false);
@@ -148,6 +173,8 @@ export default function SubmitQuotationPage() {
         deadlineDate: queryData.requirement.lastDate,
         items: queryData.requirement.items,
         documents: queryData.requirement.documents,
+        payload: queryData.requirement.payload,
+        requiredDocuments: queryData.requirement.requiredDocuments,
         estimatedValue: queryData.requirement.estimatedValue || queryData.requirement.budgetMax,
         quantity: queryData.requirement.quantity,
         unit: queryData.requirement.unit,
@@ -204,7 +231,9 @@ export default function SubmitQuotationPage() {
       if (uploadState?.url) {
         payload.attachmentUrl = uploadState.url;
       }
-      
+      const responseData = buildResponseData();
+      if (responseData) payload.responseData = responseData;
+
       await postApi(`/api/marketplace/requirements/${requirementId}/responses`, payload);
       
       const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -215,22 +244,24 @@ export default function SubmitQuotationPage() {
       console.warn('Failed to save draft to server', err);
       toast.error('Failed to save draft to server');
     }
-  }, [requirementId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requirementId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
 
   // Auto-save on field changes (debounced at 5 seconds)
   React.useEffect(() => {
     if (!requirementId) return;
-    if (!offeredPrice && !offeredQuantity && !deliveryTimeline && !terms && !message && !uploadState) {
+    const hasDynamicInput = docUploads.some(doc => doc.status === 'done') || lineQuotes.some(line => line.unitPrice !== '');
+    if (!offeredPrice && !offeredQuantity && !deliveryTimeline && !terms && !message && !uploadState && !hasDynamicInput) {
       return;
     }
     // Don't auto-save if we are already submitted
     if (ownResponse && ownResponse.status !== 'DRAFT') return;
-    
+
     const timer = setTimeout(() => {
       saveDraft();
     }, 5000);
     return () => clearTimeout(timer);
-  }, [offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, requirementId, saveDraft, ownResponse]);
+  }, [offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes, requirementId, saveDraft, ownResponse]);
 
   const orgName = rfqData?.buyerOrganization?.organizationName || 'Buyer';
   const subject = rfqData?.title || 'Sourcing Requirement';
@@ -257,6 +288,134 @@ export default function SubmitQuotationPage() {
 
   const documents = Array.isArray(rfqData?.documents) ? rfqData?.documents : [];
 
+  // Buyer-requested documents come from three shapes depending on how the procurement was
+  // created: wizard payload.documents ({name, required}), marketplace requiredDocuments
+  // (string[]), or attached requirement documents. Merge + dedupe by name.
+  const requestedDocs = React.useMemo(() => {
+    const out: Array<{ name: string; required: boolean }> = [];
+    const seen = new Set<string>();
+    const push = (name: unknown, required: boolean) => {
+      const label = String(name || '').trim();
+      const key = label.toLowerCase();
+      if (!label || seen.has(key)) return;
+      seen.add(key);
+      out.push({ name: label, required });
+    };
+    const payloadDocs = rfqData?.payload?.documents;
+    if (Array.isArray(payloadDocs)) payloadDocs.forEach((d: any) => push(d?.name, d?.required !== false));
+    if (Array.isArray(rfqData?.requiredDocuments)) rfqData.requiredDocuments.forEach((d: any) => push(d, true));
+    documents.forEach((d: any) => push(d?.documentType || d?.name, d?.required === true));
+    return out;
+  }, [rfqData, documents]);
+
+  // Initialise one upload slot per requested document and one quote row per buyer line item
+  // (both only once per load; draft restore below may overwrite).
+  const dynInitRef = useRef(false);
+  React.useEffect(() => {
+    if (dynInitRef.current || !rfqData) return;
+    dynInitRef.current = true;
+    const saved = ownResponse?.responseData || {};
+    const savedDocs: any[] = Array.isArray(saved.documents) ? saved.documents : [];
+    const savedLines: any[] = Array.isArray(saved.lineItems) ? saved.lineItems : [];
+    const restoreDrafts = ownResponse?.status === 'DRAFT';
+
+    setDocUploads(requestedDocs.map(doc => {
+      const match = restoreDrafts ? savedDocs.find(d => String(d?.name || '').toLowerCase() === doc.name.toLowerCase()) : null;
+      return match?.fileAssetId || match?.fileUrl
+        ? { ...doc, fileAssetId: match.fileAssetId, fileName: match.fileName || '', fileUrl: match.fileUrl || '', status: 'done', progress: 100 }
+        : { ...doc, status: 'empty', progress: 0 };
+    }));
+
+    setLineQuotes(itemsList.map(item => {
+      const match = restoreDrafts ? savedLines.find(l => String(l?.itemName || '').toLowerCase() === String(item.itemName).toLowerCase()) : null;
+      return {
+        itemName: item.itemName,
+        quantity: Number(item.quantity) || 0,
+        unitOfMeasure: item.unitOfMeasure || 'Nos',
+        unitPrice: match?.unitPrice != null ? String(match.unitPrice) : '',
+        gstPercent: match?.gstPercent != null ? String(match.gstPercent) : '',
+        makeBrand: match?.makeBrand || '',
+        remarks: match?.remarks || ''
+      };
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfqData, ownResponse]);
+
+  // Line-quote totals: when the seller prices per line, keep the headline offered price/qty in sync.
+  const lineTotals = React.useMemo(() => {
+    let total = 0;
+    let qty = 0;
+    let priced = 0;
+    lineQuotes.forEach(line => {
+      const price = Number(line.unitPrice);
+      const lineQty = Number(line.quantity) || 0;
+      if (line.unitPrice !== '' && Number.isFinite(price) && price >= 0) {
+        priced += 1;
+        const gst = Number(line.gstPercent) || 0;
+        total += price * lineQty * (1 + gst / 100);
+        qty += lineQty;
+      }
+    });
+    return { total: Math.round(total * 100) / 100, qty, priced };
+  }, [lineQuotes]);
+
+  React.useEffect(() => {
+    if (lineTotals.priced === 0 || lineTotals.priced < lineQuotes.length) return;
+    setOfferedPrice(String(lineTotals.total));
+    setOfferedQuantity(String(lineTotals.qty));
+  }, [lineTotals, lineQuotes.length]);
+
+  // Assemble the structured submission payload persisted as RequirementResponse.responseData.
+  // Function declaration (hoisted) so saveDraft, defined earlier in the component, can call it.
+  function buildResponseData() {
+    const docs = docUploads
+      .filter(doc => doc.status === 'done' && (doc.fileAssetId || doc.fileUrl))
+      .map(doc => ({ name: doc.name, fileAssetId: doc.fileAssetId || null, fileName: doc.fileName || null, fileUrl: doc.fileUrl || null }));
+    const lines = lineQuotes
+      .filter(line => line.unitPrice !== '' && Number.isFinite(Number(line.unitPrice)))
+      .map(line => ({
+        itemName: line.itemName,
+        quantity: Number(line.quantity) || null,
+        unitPrice: Number(line.unitPrice),
+        gstPercent: line.gstPercent !== '' ? Number(line.gstPercent) : null,
+        makeBrand: line.makeBrand.trim() || null,
+        remarks: line.remarks.trim() || null
+      }));
+    if (!docs.length && !lines.length) return undefined;
+    return { documents: docs, lineItems: lines };
+  }
+
+  const uploadRequestedDoc = useCallback(async (index: number, file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be under 10 MB');
+      return;
+    }
+    setDocUploads(prev => prev.map((doc, i) => i === index ? { ...doc, status: 'uploading', progress: 0, error: undefined } : doc));
+    try {
+      const result = await uploadFile(file, percent => {
+        setDocUploads(prev => prev.map((doc, i) => i === index ? { ...doc, progress: percent } : doc));
+      });
+      setDocUploads(prev => prev.map((doc, i) => i === index
+        ? { ...doc, status: 'done', progress: 100, fileAssetId: result.id || null, fileName: file.name, fileUrl: result.url }
+        : doc));
+      setErrors(prev => { const n = { ...prev }; delete n.requestedDocs; return n; });
+      toast.success(`${file.name} uploaded`);
+    } catch (err: any) {
+      setDocUploads(prev => prev.map((doc, i) => i === index ? { ...doc, status: 'error', error: err?.message || 'Upload failed' } : doc));
+      toast.error(err?.message || 'Upload failed');
+    }
+  }, []);
+
+  const clearRequestedDoc = (index: number) => {
+    setDocUploads(prev => prev.map((doc, i) => i === index
+      ? { name: doc.name, required: doc.required, status: 'empty', progress: 0 }
+      : doc));
+  };
+
+  const updateLineQuote = (index: number, patch: Partial<LineQuote>) => {
+    setLineQuotes(prev => prev.map((line, i) => i === index ? { ...line, ...patch } : line));
+  };
+
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     const price = Number(offeredPrice);
@@ -266,6 +425,10 @@ export default function SubmitQuotationPage() {
     if (!deliveryTimeline.trim()) errs.deliveryTimeline = 'Delivery timeline required';
     if (!message.trim() || message.trim().length < 10) errs.message = 'Message must be at least 10 characters';
     if (message.length > 3000) errs.message = 'Message cannot exceed 3000 characters';
+    const missingDocs = docUploads.filter(doc => doc.required && doc.status !== 'done');
+    if (missingDocs.length > 0) {
+      errs.requestedDocs = `Upload the required document${missingDocs.length > 1 ? 's' : ''}: ${missingDocs.map(d => d.name).join(', ')}`;
+    }
     if (!declared) errs.declared = 'You must declare the information is accurate';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -331,6 +494,8 @@ export default function SubmitQuotationPage() {
       if (uploadState?.url) {
         payload.attachmentUrl = uploadState.url;
       }
+      const responseData = buildResponseData();
+      if (responseData) payload.responseData = responseData;
 
       await postApi(`/api/marketplace/requirements/${requirementId}/responses`, payload);
       localStorage.removeItem(`rfq_draft_${requirementId}`);
@@ -719,33 +884,180 @@ export default function SubmitQuotationPage() {
         </section>
       </div>
 
-      {/* Items Table — Read Only */}
-      {itemsList.length > 0 && (
+      {/* Per-line-item quote — seller prices each buyer line; totals feed the headline offer */}
+      {lineQuotes.length > 0 && (
         <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm overflow-hidden">
-          <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-            Requirement Items Reference
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <h2 className="text-base font-black text-slate-900">Item-Wise Quotation</h2>
+            <p className="text-[11px] font-semibold text-slate-500">
+              Price every line — the totals auto-fill your offered price and quantity above.
+            </p>
+          </div>
           <div className="mt-4 overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm">
-            <table className="min-w-[600px] w-full text-left border-collapse">
+            <table className="min-w-[860px] w-full text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500">Item</th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 text-right">Qty / Unit</th>
-                  <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500">Description</th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 text-right w-36">Unit Price (₹)</th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 text-right w-24">GST %</th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-36">Make / Brand</th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 text-right w-32">Line Total (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {itemsList.map((item: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
-                    <td className="px-4 py-3 text-xs font-bold text-slate-900">{item.itemName}</td>
-                    <td className="px-4 py-3 text-xs font-bold text-slate-800 text-right tabular-nums">
-                      {item.quantity} <span className="text-[10px] font-semibold text-slate-500 uppercase">{item.unitOfMeasure || 'Nos'}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{item.description || '—'}</td>
-                  </tr>
-                ))}
+                {lineQuotes.map((line, idx) => {
+                  const price = Number(line.unitPrice);
+                  const hasPrice = line.unitPrice !== '' && Number.isFinite(price) && price >= 0;
+                  const lineTotal = hasPrice ? price * (Number(line.quantity) || 0) * (1 + (Number(line.gstPercent) || 0) / 100) : 0;
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
+                      <td className="px-4 py-3 text-xs font-bold text-slate-900">
+                        {line.itemName}
+                        {itemsList[idx]?.description && (
+                          <p className="mt-0.5 text-[10px] font-semibold text-slate-500 line-clamp-1">{itemsList[idx].description}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-800 text-right tabular-nums whitespace-nowrap">
+                        {line.quantity} <span className="text-[10px] font-semibold text-slate-500 uppercase">{line.unitOfMeasure}</span>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.unitPrice}
+                          onChange={e => updateLineQuote(idx, { unitPrice: e.target.value })}
+                          placeholder="0.00"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={line.gstPercent}
+                          onChange={e => updateLineQuote(idx, { gstPercent: e.target.value })}
+                          placeholder="18"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={line.makeBrand}
+                          onChange={e => updateLineQuote(idx, { makeBrand: e.target.value })}
+                          placeholder="Optional"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-xs font-black text-slate-900 text-right tabular-nums">
+                        {hasPrice ? `₹${lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              {lineTotals.priced > 0 && (
+                <tfoot className="bg-slate-50 border-t border-slate-200">
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-600 text-right">
+                      Total ({lineTotals.priced}/{lineQuotes.length} items priced, incl. GST)
+                    </td>
+                    <td className="px-4 py-3 text-sm font-black text-[#12335f] text-right tabular-nums">
+                      ₹{lineTotals.total.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* Buyer-requested documents — one upload slot per document the buyer asked for */}
+      {docUploads.length > 0 && (
+        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <h2 className="text-base font-black text-slate-900">Documents Requested By Buyer</h2>
+            <p className="text-[11px] font-semibold text-slate-500">
+              {docUploads.filter(d => d.status === 'done').length}/{docUploads.length} uploaded
+              {docUploads.some(d => d.required) ? ' · required documents are marked *' : ''}
+            </p>
+          </div>
+          {errors.requestedDocs && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700">
+              {errors.requestedDocs}
+            </div>
+          )}
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {docUploads.map((doc, idx) => (
+              <div
+                key={doc.name}
+                className={cn(
+                  'rounded-2xl border p-4 transition',
+                  doc.status === 'done' ? 'border-emerald-200 bg-emerald-50/40'
+                    : doc.status === 'error' ? 'border-red-200 bg-red-50/40'
+                    : doc.required && errors.requestedDocs ? 'border-red-300 bg-white'
+                    : 'border-slate-200 bg-white'
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-slate-900 text-wrap-anywhere">
+                      {doc.name} {doc.required && <span className="text-red-500">*</span>}
+                    </p>
+                    {doc.status === 'done' && doc.fileName ? (
+                      <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> {doc.fileName}
+                      </p>
+                    ) : doc.status === 'uploading' ? (
+                      <p className="mt-1 text-[11px] font-bold text-slate-500">Uploading… {doc.progress}%</p>
+                    ) : doc.status === 'error' ? (
+                      <p className="mt-1 text-[11px] font-bold text-red-600">{doc.error || 'Upload failed'}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] font-semibold text-slate-400">PDF, image or doc, max 10 MB</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {doc.status === 'done' ? (
+                      <button
+                        type="button"
+                        onClick={() => clearRequestedDoc(idx)}
+                        className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-black text-slate-600 hover:border-red-300 hover:text-red-600 transition"
+                      >
+                        Replace
+                      </button>
+                    ) : (
+                      <label className={cn(
+                        'inline-flex h-8 cursor-pointer items-center rounded-lg px-3 text-[11px] font-black text-white transition',
+                        doc.status === 'uploading' ? 'bg-slate-300 cursor-wait' : 'bg-[#12335f] hover:bg-[#0b2445]'
+                      )}>
+                        {doc.status === 'uploading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Upload'}
+                        <input
+                          type="file"
+                          className="hidden"
+                          disabled={doc.status === 'uploading'}
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadRequestedDoc(idx, file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+                {doc.status === 'uploading' && (
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-[#12335f] transition-all" style={{ width: `${doc.progress}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}

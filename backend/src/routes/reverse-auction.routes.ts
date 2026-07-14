@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
+import { authenticate, optionalAuthenticate, type AuthRequest } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/auth.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { withDistributedLock } from '../utils/redisLock.js';
@@ -152,14 +152,93 @@ const resolveAuctionId = async (rawId: number): Promise<number | null> => {
   return linked?.id ?? null;
 };
 
-/** True when the auction's linked requirement is publicly visible (open to all sellers). */
+/**
+ * True when the auction's linked requirement is publicly visible (open to all sellers).
+ * The Requirement model has NO visibility column — selecting it throws, which used to
+ * 500 every reverse-auction detail request. Openness lives in the wizard payload:
+ * payload.vendors.selection === 'Open' (with payload.visibility as an explicit override).
+ */
 const isAuctionPublic = async (auction: any): Promise<boolean> => {
   if (!auction?.linkedRequirementId) return false;
   const requirement = await db.requirement.findUnique({
     where: { id: auction.linkedRequirementId },
-    select: { visibility: true }
+    select: { payload: true }
   });
-  return String(requirement?.visibility || '').toUpperCase() === 'PUBLIC';
+  const payload = (requirement?.payload || {}) as any;
+  const explicit = String(payload.visibility || payload.basics?.visibility || '').toUpperCase();
+  if (explicit) return explicit === 'PUBLIC';
+  return String(payload.vendors?.selection || '').toLowerCase() === 'open';
+};
+
+/**
+ * Auction status only changes on explicit buyer actions, so a row whose end time
+ * passed (or whose scheduled window opened) keeps a stale DRAFT/SCHEDULED/LIVE
+ * label forever. Derive the effective status from the clock at read time and
+ * lazily persist it so every consumer (detail, list, live console) agrees.
+ */
+const TERMINAL_AUCTION_STATUSES = ['CLOSED', 'CANCELLED', 'AWARD_RECOMMENDED', 'AWARDED'];
+const withEffectiveStatus = async (auction: any) => {
+  if (!auction) return auction;
+  const current = String(auction.statusEnum || auction.status || 'DRAFT').toUpperCase();
+  if (TERMINAL_AUCTION_STATUSES.includes(current)) return auction;
+  const now = Date.now();
+  const start = auction.startTime ? new Date(auction.startTime).getTime() : NaN;
+  const end = auction.endTime ? new Date(auction.endTime).getTime() : NaN;
+  let effective = current;
+  if (Number.isFinite(end) && end <= now) {
+    effective = 'CLOSED';
+  } else if (['SCHEDULED', 'LIVE', 'ACTIVE'].includes(current) && Number.isFinite(start) && start <= now) {
+    effective = 'LIVE';
+  }
+  if (effective === current) return auction;
+  const data: any = { status: effective, statusEnum: effective };
+  if (effective === 'CLOSED' && !auction.actualClosedAt) data.actualClosedAt = new Date();
+  await db.auction.update({ where: { id: auction.id }, data }).catch(() => undefined);
+  return { ...auction, ...data };
+};
+
+/**
+ * Wizard-created auctions carry only commercial fields; the procurement facts the
+ * buyer filled (items, documents, delivery, consignees, timelines) live on the linked
+ * Requirement payload. Attach a read-only summary so the seller detail page can show
+ * everything without a second round trip.
+ */
+const linkedRequirementSummary = async (auction: any) => {
+  if (!auction?.linkedRequirementId) return null;
+  const requirement = await db.requirement.findUnique({
+    where: { id: auction.linkedRequirementId },
+    include: { items: true, category: true }
+  });
+  if (!requirement) return null;
+  const payload = (requirement.payload || {}) as any;
+  const basics = payload.basics || {};
+  const tender = payload.tender || {};
+  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+  return {
+    id: requirement.id,
+    requirementNumber: requirement.requirementNumber,
+    title: requirement.title,
+    description: requirement.description,
+    canonicalMethod: requirement.canonicalMethod || requirement.procurementMethod,
+    status: requirement.status,
+    estimatedValue: requirement.estimatedValue,
+    currency: requirement.currency,
+    requiredBy: requirement.requiredBy,
+    category: requirement.category?.name || basics.category || null,
+    deliveryLocation: basics.deliveryLocation || tender.deliveryLocation || null,
+    items: (requirement.items || []).map((item: any) => ({
+      itemName: item.itemName,
+      description: item.description,
+      quantity: item.quantity,
+      unitOfMeasure: item.unitOfMeasure,
+      estimatedUnitPrice: item.estimatedUnitPrice
+    })),
+    documents: documents.map((doc: any) => ({ name: doc.name, fileName: doc.fileName || null, required: doc.required !== false })),
+    consigneeDetails: Array.isArray(payload.consigneeDetails) ? payload.consigneeDetails : [],
+    paymentTerms: payload.terms?.paymentTerms || basics.paymentTerms || null,
+    bidStartDate: tender.bidStartDate || null,
+    bidClosingDate: tender.bidClosingDate || null
+  };
 };
 
 const auctionIncludeFor = (req: AuthRequest) => ({
@@ -229,6 +308,97 @@ const recalculateRanks = async (tx: any, auctionId: number) => {
     await Promise.all(bidUpdates);
   }
 };
+
+router.get('/reverse-auctions/:id', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    let auction = await db.auction.findUnique({ where: { id }, include: auctionIncludeFor(req) });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    auction = await withEffectiveStatus(auction);
+
+    const isPublic = await isAuctionPublic(auction);
+    let hasJoined = false;
+    let authorized = false;
+
+    if (isPublic) {
+      authorized = true;
+    }
+
+    if (req.user) {
+      if (isAdmin(req) || auction.createdByUserId === req.user.id || (auction.buyerOrgId && auction.buyerOrgId === req.user.organizationId)) {
+        authorized = true;
+      }
+      const participant = await db.auctionParticipant.findFirst({
+        where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 }
+      });
+      if (participant) {
+        hasJoined = true;
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      return apiResponse.error(res, 404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    }
+
+    // Filter competitor bids if needed
+    if (req.user?.role === 'seller' && !auction.allowCompetitorNames) {
+      auction.bids = (auction.bids || []).filter((bid: any) => bid.sellerId === req.user?.id || bid.sellerOrgId === req.user?.organizationId);
+    } else if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'master_admin' && auction.createdByUserId !== req.user.id && auction.buyerOrgId !== req.user.organizationId)) {
+      if (!auction.allowCompetitorNames) {
+        auction.bids = [];
+      }
+    }
+
+    const linkedRequirement = await linkedRequirementSummary(auction);
+    return apiResponse.success(res, maskSensitive({ ...auction, isPublic, hasJoined, linkedRequirement }));
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load auction', error.code || 'REVERSE_AUCTION_DETAIL_ERROR');
+  }
+});
+
+router.get('/reverse-auctions/:id/live-summary', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    let [auction, participant] = await Promise.all([
+      db.auction.findUnique({ where: { id } }),
+      req.user?.role === 'seller' ? db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 } }) : Promise.resolve(null)
+    ]);
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    auction = await withEffectiveStatus(auction);
+
+    const isPublic = await isAuctionPublic(auction);
+    let authorized = false;
+
+    if (isPublic) {
+      authorized = true;
+    }
+
+    if (req.user) {
+      if (isAdmin(req) || auction.createdByUserId === req.user.id || (auction.buyerOrgId && auction.buyerOrgId === req.user.organizationId)) {
+        authorized = true;
+      }
+      if (participant) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      return apiResponse.error(res, 404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    }
+
+    return apiResponse.success(res, {
+      serverTime: new Date(),
+      auction: maskSensitive({ ...auction, isPublic, hasJoined: !!participant }),
+      participant: maskSensitive(participant),
+      minimumNextBid: toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice) - toNumber(auction.minDecrementAmount ?? auction.minDecrement, 0)
+    });
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load live summary', error.code || 'REVERSE_AUCTION_SUMMARY_ERROR');
+  }
+});
 
 router.use('/reverse-auctions', authenticate);
 
@@ -332,37 +502,14 @@ router.get('/reverse-auctions', requirePermission('reverse_auction.view', orgSco
       db.auction.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
       db.auction.count({ where })
     ]);
-    return apiResponse.success(res, { auctions: maskSensitive(auctions), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+    const withStatuses = await Promise.all(auctions.map((auction: any) => withEffectiveStatus(auction)));
+    return apiResponse.success(res, { auctions: maskSensitive(withStatuses), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
   } catch (error: any) {
     return apiResponse.error(res, 500, 'Unable to load reverse auctions', 'REVERSE_AUCTION_LIST_ERROR');
   }
 });
 
-router.get('/reverse-auctions/:id', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
-  try {
-    const id = await resolveAuctionId(Number(req.params.id));
-    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    const auction = await db.auction.findUnique({ where: { id }, include: auctionIncludeFor(req) });
-    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    let hasJoined = false;
-    let isPublic = false;
-    if (req.user?.role === 'seller') {
-      const participant = await db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 } });
-      hasJoined = !!participant;
-      isPublic = await isAuctionPublic(auction);
-      // Invited sellers and any seller on a PUBLIC auction may view; private + uninvited stays hidden.
-      if (!participant && !isPublic) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-      if (!auction.allowCompetitorNames) {
-        auction.bids = (auction.bids || []).filter((bid: any) => bid.sellerId === req.user?.id || bid.sellerOrgId === req.user?.organizationId);
-      }
-    } else {
-      assertAuctionManager(req, auction);
-    }
-    return apiResponse.success(res, maskSensitive({ ...auction, isPublic, hasJoined }));
-  } catch (error: any) {
-    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load auction', error.code || 'REVERSE_AUCTION_DETAIL_ERROR');
-  }
-});
+
 
 router.patch('/reverse-auctions/:id', requirePermission('reverse_auction.update', orgScope), async (req: AuthRequest, res: Response) => {
   try {
@@ -667,33 +814,7 @@ router.get('/reverse-auctions/:id/bids', requirePermission('reverse_auction.view
   }
 });
 
-router.get('/reverse-auctions/:id/live-summary', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
-  try {
-    const id = await resolveAuctionId(Number(req.params.id));
-    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    const [auction, participant] = await Promise.all([
-      db.auction.findUnique({ where: { id } }),
-      req.user?.role === 'seller' ? db.auctionParticipant.findFirst({ where: { auctionId: id, sellerOrgId: req.user.organizationId || -1 } }) : Promise.resolve(null)
-    ]);
-    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    let isPublic = false;
-    if (req.user?.role === 'seller') {
-      isPublic = await isAuctionPublic(auction);
-      // Invited sellers and any seller on a PUBLIC auction may view the live board read-only.
-      if (!participant && !isPublic) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-    } else {
-      assertAuctionManager(req, auction);
-    }
-    return apiResponse.success(res, {
-      serverTime: new Date(),
-      auction: maskSensitive({ ...auction, isPublic, hasJoined: !!participant }),
-      participant: maskSensitive(participant),
-      minimumNextBid: toNumber(auction.currentLowestAmount ?? auction.currentLowestBid ?? auction.currentBid ?? auction.startPrice) - toNumber(auction.minDecrementAmount ?? auction.minDecrement, 0)
-    });
-  } catch (error: any) {
-    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load live summary', error.code || 'REVERSE_AUCTION_SUMMARY_ERROR');
-  }
-});
+
 
 router.get('/reverse-auctions/:id/result', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {

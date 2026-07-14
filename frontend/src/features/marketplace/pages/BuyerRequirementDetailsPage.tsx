@@ -102,6 +102,24 @@ const BuyerRequirementDetailsPage = () => {
   const user = (() => { try { return JSON.parse(localStorage.getItem('msme_user_cache') || '{}'); } catch { return {}; } })();
   const isLoggedIn = !!user?.id;
   const isSeller = user?.role === 'seller';
+  const isBuyer = user?.role === 'buyer' || user?.role === 'admin' || user?.role === 'master_admin';
+
+  // Seller responses — buyer/admin only; endpoint enforces ownership server-side.
+  const [sellerResponses, setSellerResponses] = useState<any[]>([]);
+  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responsesView, setResponsesView] = useState<'cards' | 'compare'>('cards');
+  useEffect(() => {
+    const numericId = Number(id);
+    if (!isBuyer || !numericId || numericId < 1) return;
+    let alive = true;
+    setResponsesLoading(true);
+    getApi<any>(`/api/buyer/requirements/${numericId}/responses?pageSize=50`)
+      .then(data => { if (alive) setSellerResponses(Array.isArray(data?.responses) ? data.responses : []); })
+      .catch(() => { /* not the owner or none yet — section simply stays hidden */ })
+      .finally(() => { if (alive) setResponsesLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isBuyer]);
 
   const loadData = useCallback(async () => {
     if (!id) { setError('Invalid requirement ID'); setLoading(false); return; }
@@ -122,15 +140,19 @@ const BuyerRequirementDetailsPage = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Redirect to type-specific page always
+  // Redirect to type-specific page when appropriate
   useEffect(() => {
     if (!requirement || redirecting) return;
     const route = getDetailRoute(requirement);
     if (route) {
+      // Only redirect to seller-only routes if the user is logged in as a seller
+      if (route.startsWith('/seller/') && !isSeller) {
+        return;
+      }
       setRedirecting(true);
       window.location.href = route;
     }
-  }, [requirement, redirecting]);
+  }, [requirement, redirecting, isSeller]);
 
   if (loading || redirecting) {
     return (
@@ -347,6 +369,50 @@ const BuyerRequirementDetailsPage = () => {
               </div>
             )}
 
+            {/* Buyer-filled procurement facts from the creation wizard */}
+            {Array.isArray(payload.documents) && payload.documents.length > 0 && (
+              <div className="mt-6">
+                <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Required Documents ({payload.documents.length})</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {payload.documents.map((doc: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-xs font-semibold text-slate-700">
+                      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0 truncate">{doc.name || doc.fileName || `Document ${i + 1}`}</span>
+                      {doc.required !== false && <span className="ml-auto shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[9px] font-black uppercase text-red-600 border border-red-100">Required</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(payload.consigneeDetails) && payload.consigneeDetails.length > 0 && (
+              <div className="mt-6">
+                <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Consignees / Delivery Points</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {payload.consigneeDetails.map((consignee: any, i: number) => (
+                    <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-xs font-semibold text-slate-700">
+                      <span className="font-black text-slate-900">{consignee.name || `Consignee ${i + 1}`}</span>
+                      {consignee.location ? <span className="block mt-0.5 text-slate-500">{consignee.location}</span> : null}
+                      {consignee.quantity != null ? <span className="block mt-0.5 text-slate-500">Quantity: {consignee.quantity}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(payload.tender?.bidStartDate || payload.tender?.bidClosingDate || payload.rules?.emdRequired) && (
+              <div className="mt-6">
+                <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Bid Timeline & Commercial Rules</h3>
+                <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {payload.tender?.bidStartDate && <DetailRow icon={Calendar} label="Bid Start" value={formatDate(payload.tender.bidStartDate)} />}
+                  {payload.tender?.bidClosingDate && <DetailRow icon={Calendar} label="Bid Closing" value={formatDate(payload.tender.bidClosingDate)} />}
+                  {payload.tender?.technicalEvaluationDate && <DetailRow icon={Calendar} label="Technical Opening" value={formatDate(payload.tender.technicalEvaluationDate)} />}
+                  {payload.rules?.emdRequired ? <DetailRow icon={IndianRupee} label="EMD" value={formatMoney(payload.rules.emdAmount)} /> : null}
+                  {payload.tender?.performanceSecurityAmount ? <DetailRow icon={Shield} label="Performance Security" value={formatMoney(payload.tender.performanceSecurityAmount)} /> : null}
+                </div>
+              </div>
+            )}
+
             {/* Payload extra data (terms, conditions, etc.) */}
             {payload.termsAndConditions && (
               <div className="mt-6">
@@ -396,13 +462,278 @@ const BuyerRequirementDetailsPage = () => {
               ) : null}
             </div>
           </div>
+
+          {/* ─── Seller Responses (owner buyer / admin only) ─── */}
+          {isBuyer && (responsesLoading || sellerResponses.length > 0) && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-base font-black text-[#0b2447]">
+                  <Users className="h-4 w-4" /> Seller Responses
+                </h2>
+                <div className="flex items-center gap-3">
+                  {sellerResponses.length >= 2 && (
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                      {(['cards', 'compare'] as const).map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setResponsesView(mode)}
+                          className={`rounded-md px-3 py-1 text-[11px] font-black uppercase tracking-wider transition ${
+                            responsesView === mode ? 'bg-white text-[#0b2447] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {mode === 'cards' ? 'Cards' : 'Compare'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <span className="text-xs font-bold text-slate-500">
+                    {responsesLoading ? 'Loading…' : `${sellerResponses.length} response${sellerResponses.length === 1 ? '' : 's'}`}
+                  </span>
+                </div>
+              </div>
+              {responsesView === 'compare' && sellerResponses.length >= 2 ? (
+                <ResponseComparisonTable responses={sellerResponses} />
+              ) : (
+                <div className="mt-4 space-y-4">
+                  {sellerResponses.map((response: any) => (
+                    <SellerResponseCard key={response.id} response={response} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        
+
       </div>
     </div>
   );
 };
+
+/** One seller's submission: headline commercials + dynamic responseData (line quotes, documents). */
+function SellerResponseCard({ response }: { response: any }) {
+  const responseData = response.responseData || {};
+  const lineItems: any[] = Array.isArray(responseData.lineItems) ? responseData.lineItems : [];
+  const docs: any[] = Array.isArray(responseData.documents) ? responseData.documents : [];
+  const orgName = response.sellerOrganization?.organizationName
+    || response.sellerUser?.name
+    || `Seller #${response.sellerUserId || response.id}`;
+
+  const openDoc = async (doc: any) => {
+    if (doc.fileAssetId) {
+      try {
+        const { openFileAsset } = await import('../../../lib/files');
+        await openFileAsset({ id: doc.fileAssetId, fileAssetId: doc.fileAssetId, originalName: doc.fileName || doc.name }, doc.fileName || doc.name);
+        return;
+      } catch { /* fall through to URL */ }
+    }
+    if (doc.fileUrl) window.open(doc.fileUrl, '_blank', 'noopener');
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-slate-900">{orgName}</p>
+          <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+            Submitted {formatDate(response.createdAt)}
+            {response.sellerUser?.email ? ` · ${response.sellerUser.email}` : ''}
+            {response.sellerUser?.mobile ? ` · ${response.sellerUser.mobile}` : ''}
+          </p>
+        </div>
+        <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${
+          response.status === 'ACCEPTED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : response.status === 'REJECTED' ? 'border-red-200 bg-red-50 text-red-700'
+            : 'border-blue-200 bg-blue-50 text-blue-700'
+        }`}>
+          {response.status}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryTile label="Offered Price" value={formatMoney(response.offeredPrice)} />
+        <SummaryTile label="Offered Quantity" value={response.offeredQuantity != null ? String(response.offeredQuantity) : '—'} />
+        <SummaryTile label="Delivery Timeline" value={response.deliveryTimeline || '—'} />
+        <SummaryTile label="Attachment" value={response.attachmentUrl ? 'Attached' : '—'} href={response.attachmentUrl || undefined} />
+      </div>
+
+      {response.message && (
+        <p className="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap">
+          {response.message}
+        </p>
+      )}
+      {response.terms && (
+        <p className="mt-2 text-[11px] font-semibold text-slate-500">
+          <span className="font-black uppercase tracking-wider text-slate-400">Terms: </span>{response.terms}
+        </p>
+      )}
+
+      {/* Item-wise quote submitted by the seller */}
+      {lineItems.length > 0 && (
+        <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Item</th>
+                <th className="px-3 py-2 text-right">Qty</th>
+                <th className="px-3 py-2 text-right">Unit Price</th>
+                <th className="px-3 py-2 text-right">GST %</th>
+                <th className="px-3 py-2">Make / Brand</th>
+                <th className="px-3 py-2">Remarks</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+              {lineItems.map((line: any, i: number) => (
+                <tr key={i}>
+                  <td className="px-3 py-2 font-bold text-slate-900">{line.itemName || '—'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{line.quantity ?? '—'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatMoney(line.unitPrice)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{line.gstPercent ?? '—'}</td>
+                  <td className="px-3 py-2">{line.makeBrand || '—'}</td>
+                  <td className="px-3 py-2 text-slate-500">{line.remarks || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Documents the seller uploaded against the buyer's checklist */}
+      {docs.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {docs.map((doc: any, i: number) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => openDoc(doc)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition"
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0" />
+              {doc.name || doc.fileName || `Document ${i + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Side-by-side comparison: sellers as columns, commercial facts as rows.
+ * Lowest offered price and each item's lowest unit price highlighted (L1).
+ */
+function ResponseComparisonTable({ responses }: { responses: any[] }) {
+  const sorted = [...responses].sort((a, b) => (Number(a.offeredPrice) || Infinity) - (Number(b.offeredPrice) || Infinity));
+  const validPrices = sorted.map(r => Number(r.offeredPrice)).filter(p => Number.isFinite(p) && p > 0);
+  const lowestPrice = validPrices.length ? Math.min(...validPrices) : null;
+
+  // Union of item names quoted by any seller, preserving first-seen order
+  const itemNames: string[] = [];
+  sorted.forEach(r => {
+    (r.responseData?.lineItems || []).forEach((line: any) => {
+      const name = String(line.itemName || '').trim();
+      if (name && !itemNames.includes(name)) itemNames.push(name);
+    });
+  });
+  const unitPriceFor = (response: any, itemName: string) => {
+    const line = (response.responseData?.lineItems || []).find((l: any) => String(l.itemName || '').trim() === itemName);
+    return line?.unitPrice != null ? Number(line.unitPrice) : null;
+  };
+  const lowestUnitFor = (itemName: string) => {
+    const prices = sorted.map(r => unitPriceFor(r, itemName)).filter((p): p is number => p != null && Number.isFinite(p));
+    return prices.length ? Math.min(...prices) : null;
+  };
+
+  const sellerName = (r: any) => r.sellerOrganization?.organizationName || r.sellerUser?.name || `Seller #${r.sellerUserId || r.id}`;
+
+  return (
+    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[720px] text-left text-xs">
+        <thead className="border-b border-slate-200 bg-slate-50">
+          <tr>
+            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 w-44">Criteria</th>
+            {sorted.map((r, i) => (
+              <th key={r.id} className="px-3 py-2.5">
+                <span className="block text-xs font-black text-slate-900">{sellerName(r)}</span>
+                <span className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                  i === 0 && lowestPrice != null ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {i === 0 && lowestPrice != null ? 'L1 · Lowest' : `L${i + 1}`}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+          <tr>
+            <td className="px-3 py-2.5 font-black text-slate-500">Offered Price</td>
+            {sorted.map(r => {
+              const price = Number(r.offeredPrice);
+              const isLowest = lowestPrice != null && price === lowestPrice;
+              return (
+                <td key={r.id} className={`px-3 py-2.5 tabular-nums font-black ${isLowest ? 'text-emerald-700' : 'text-slate-900'}`}>
+                  {formatMoney(r.offeredPrice)}
+                </td>
+              );
+            })}
+          </tr>
+          <tr>
+            <td className="px-3 py-2.5 font-black text-slate-500">Offered Quantity</td>
+            {sorted.map(r => <td key={r.id} className="px-3 py-2.5 tabular-nums">{r.offeredQuantity ?? '—'}</td>)}
+          </tr>
+          <tr>
+            <td className="px-3 py-2.5 font-black text-slate-500">Delivery Timeline</td>
+            {sorted.map(r => <td key={r.id} className="px-3 py-2.5">{r.deliveryTimeline || '—'}</td>)}
+          </tr>
+          <tr>
+            <td className="px-3 py-2.5 font-black text-slate-500">Documents Uploaded</td>
+            {sorted.map(r => <td key={r.id} className="px-3 py-2.5 tabular-nums">{(r.responseData?.documents || []).length}</td>)}
+          </tr>
+          <tr>
+            <td className="px-3 py-2.5 font-black text-slate-500">Submitted</td>
+            {sorted.map(r => <td key={r.id} className="px-3 py-2.5">{formatDate(r.createdAt)}</td>)}
+          </tr>
+          {itemNames.map(itemName => {
+            const lowest = lowestUnitFor(itemName);
+            return (
+              <tr key={itemName}>
+                <td className="px-3 py-2.5 font-black text-slate-500">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-400">Unit Price</span>
+                  {itemName}
+                </td>
+                {sorted.map(r => {
+                  const price = unitPriceFor(r, itemName);
+                  const isLowest = lowest != null && price === lowest;
+                  return (
+                    <td key={r.id} className={`px-3 py-2.5 tabular-nums ${isLowest ? 'font-black text-emerald-700' : ''}`}>
+                      {price != null ? formatMoney(price) : '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value, href }: { label: string; value: string; href?: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+      <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-xs font-black text-blue-700 hover:underline">
+          View attachment
+        </a>
+      ) : (
+        <p className="mt-0.5 text-xs font-black text-slate-800 break-words">{value}</p>
+      )}
+    </div>
+  );
+}
 
 /* ── sub-components ──────────────────────────────────────────────── */
 

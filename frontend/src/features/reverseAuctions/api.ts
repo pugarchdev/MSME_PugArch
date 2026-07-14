@@ -56,6 +56,26 @@ export type ReverseAuction = {
   linkedRequirementId?: number | null;
   isPublic?: boolean | null;
   hasJoined?: boolean | null;
+  /** Read-only summary of the procurement the buyer created this auction from. */
+  linkedRequirement?: {
+    id: number;
+    requirementNumber?: string | null;
+    title?: string | null;
+    description?: string | null;
+    canonicalMethod?: string | null;
+    status?: string | null;
+    estimatedValue?: number | string | null;
+    currency?: string | null;
+    requiredBy?: string | null;
+    category?: string | null;
+    deliveryLocation?: string | null;
+    items?: Array<{ itemName?: string; description?: string | null; quantity?: number | string | null; unitOfMeasure?: string | null; estimatedUnitPrice?: number | string | null }>;
+    documents?: Array<{ name?: string; fileName?: string | null; required?: boolean }>;
+    consigneeDetails?: Array<{ name?: string; location?: string; quantity?: number | string }>;
+    paymentTerms?: string | null;
+    bidStartDate?: string | null;
+    bidClosingDate?: string | null;
+  } | null;
 };
 
 export type ReverseAuctionParticipant = {

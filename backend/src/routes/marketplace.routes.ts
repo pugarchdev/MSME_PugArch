@@ -249,6 +249,7 @@ const buyerResponseSelect = {
     message: true,
     attachmentUrl: true,
     terms: true,
+    responseData: true,
     status: true,
     createdAt: true,
     updatedAt: true,
@@ -267,6 +268,7 @@ const sellerResponseSelect = {
     message: true,
     attachmentUrl: true,
     terms: true,
+    responseData: true,
     status: true,
     createdAt: true,
     updatedAt: true,
@@ -599,12 +601,50 @@ const loadLatestRequirements = async (take = 6) => {
         .map(mapLegacyRequirementToPublic)
         .filter((l: any) => !buyerTitles.has((l.title || '').trim().toLowerCase()));
 
-    return [
+    const combined = [
         ...decoratedBuyer,
         ...decoratedLegacy
     ]
         .sort((a: any, b: any) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime())
         .slice(0, take);
+
+    // Attach linked auction IDs for reverse-auction requirements so the frontend can link directly.
+    const legacySourceIds = combined
+        .filter((r: any) => r.sourceModel === 'REQUIREMENT' && r.sourceId)
+        .map((r: any) => r.sourceId);
+    const modernIds = combined
+        .filter((r: any) => !r.sourceModel)
+        .map((r: any) => r.id);
+
+    const auctionLinks = await db.auction.findMany({
+        where: {
+            OR: [
+                ...(legacySourceIds.length ? [{ linkedRequirementId: { in: legacySourceIds } }] : []),
+                ...(modernIds.length ? [{ linkedRequirementId: { in: modernIds } }] : []),
+            ]
+        },
+        select: { id: true, linkedRequirementId: true, category: true },
+        orderBy: { createdAt: 'desc' }
+    }).catch(() => []);
+
+    const auctionMap = new Map<number, { auctionId: number; category?: string | null }>();
+    for (const a of auctionLinks) {
+        if (a.linkedRequirementId && !auctionMap.has(a.linkedRequirementId)) {
+            auctionMap.set(a.linkedRequirementId, { auctionId: a.id, category: a.category });
+        }
+    }
+
+    return combined.map((r: any) => {
+        const lookupId = r.sourceModel === 'REQUIREMENT' ? r.sourceId : r.id;
+        const linked = lookupId ? auctionMap.get(lookupId) : undefined;
+        if (!linked) return r;
+        const extra: any = { linkedAuctionId: linked.auctionId };
+        // Use auction's category as fallback when the requirement has no category
+        if (!r.category && linked.category) {
+            extra.category = { name: linked.category };
+        }
+        return { ...r, ...extra };
+    });
 };
 
 const requirementSchema = z.object({
@@ -625,6 +665,28 @@ const requirementSchema = z.object({
     terms: z.string().trim().max(3000).optional()
 });
 
+const responseDocumentSchema = z.object({
+    name: z.string().trim().max(160),
+    fileAssetId: z.coerce.number().int().positive().optional().nullable(),
+    fileName: z.string().trim().max(300).optional().nullable(),
+    fileUrl: z.string().trim().max(1000).optional().nullable()
+});
+
+const responseLineItemSchema = z.object({
+    itemName: z.string().trim().max(200),
+    quantity: z.coerce.number().nonnegative().optional().nullable(),
+    unitPrice: z.coerce.number().nonnegative().optional().nullable(),
+    gstPercent: z.coerce.number().nonnegative().max(100).optional().nullable(),
+    makeBrand: z.string().trim().max(160).optional().nullable(),
+    remarks: z.string().trim().max(500).optional().nullable()
+});
+
+const responseDataSchema = z.object({
+    documents: z.array(responseDocumentSchema).max(50).optional(),
+    lineItems: z.array(responseLineItemSchema).max(200).optional(),
+    customFields: z.record(z.string(), z.any()).optional()
+}).optional().nullable();
+
 const responseSchema = z.object({
     offeredPrice: z.coerce.number().nonnegative().optional().nullable(),
     offeredQuantity: z.coerce.number().positive().optional().nullable(),
@@ -632,6 +694,7 @@ const responseSchema = z.object({
     message: z.string().trim().max(3000).optional().nullable(),
     attachmentUrl: z.string().trim().max(500).optional().nullable(),
     terms: z.string().trim().max(2000).optional().nullable(),
+    responseData: responseDataSchema,
     status: z.enum(['DRAFT', 'SUBMITTED']).default('SUBMITTED')
 }).superRefine((data, ctx) => {
     if (data.status === 'SUBMITTED') {
@@ -2266,7 +2329,8 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
                             deliveryTimeline: true,
                             message: true,
                             attachmentUrl: true,
-                            terms: true
+                            terms: true,
+                            responseData: true
                         }
                     })
                     : Promise.resolve(null)
@@ -2446,6 +2510,7 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
                         message: body.message !== undefined ? body.message : existingDraft.message,
                         attachmentUrl: body.attachmentUrl !== undefined ? body.attachmentUrl : existingDraft.attachmentUrl,
                         terms: body.terms !== undefined ? body.terms : existingDraft.terms,
+                        responseData: body.responseData !== undefined ? body.responseData : existingDraft.responseData,
                         status: body.status || existingDraft.status
                     },
                     select: { id: true, requirementId: true, sellerOrganizationId: true, sellerUserId: true, status: true, createdAt: true, updatedAt: true }
@@ -2459,6 +2524,7 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
                         message: body.message || '',
                         attachmentUrl: body.attachmentUrl,
                         terms: body.terms,
+                        responseData: body.responseData ?? undefined,
                         status: body.status || 'SUBMITTED',
                         requirementId: targetId,
                         sellerUserId: Number(req.user?.id),

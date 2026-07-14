@@ -542,6 +542,11 @@ model RequirementResponse {
   message              String
   attachmentUrl        String?
   terms                String?
+  // Structured dynamic submission: buyer-requested document uploads, per-line-item quotes,
+  // and any custom fields. Shape: { documents: [{ name, fileAssetId, fileName, fileUrl }],
+  // lineItems: [{ itemName, quantity, unitPrice, gstPercent, makeBrand, remarks }], customFields: {} }.
+  // Nullable + additive so existing responses (single attachmentUrl) keep working.
+  responseData         Json?
   status               RequirementResponseStatus @default(SUBMITTED)
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt

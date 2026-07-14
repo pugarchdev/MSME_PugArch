@@ -124,6 +124,7 @@ const RfqDetailPage = lazy(() => import('./features/rfq/pages/RfqDetailPage'));
 const RfpDetailPage = lazy(() => import('./features/rfq/pages/RfpDetailPage'));
 const SubmitQuotationPage = lazy(() => import('./features/rfq/pages/SubmitQuotationPage'));
 const RfqComparisonPage = lazy(() => import('./features/rfq/pages/RfqComparisonPage'));
+const InviteLoginPopup = lazy(() => import('./features/notifications/InviteLoginPopup'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -441,10 +442,13 @@ export default function App() {
     const isCurrentShg = isShgUser(user);
     const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : isCurrentShg ? '/shg/onboarding' : '/dashboard';
 
-    // Public marketplace and info pages must render immediately even while
-    // auth is still being checked, otherwise users see the splash loader on
-    // routes such as /marketplace/sellers.
-    if (loading && !user && !isPublicRoute(pathname)) return <PremiumLoader />;
+    // Show PremiumLoader for all non-marketplace/public-info routes while loading is true (e.g., initial auth check, dashboard loading, logout process)
+    if (loading) {
+      const skipLoader = pathname.startsWith('/marketplace') || pathname.startsWith('/bids') || pathname.startsWith('/tenders') || pathname === '/help' || pathname === '/user-guide' || publicInfoRoutes.includes(pathname);
+      if (!skipLoader) {
+        return <PremiumLoader />;
+      }
+    }
     if (pathname === '/') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <MarketplaceHome />;
     if (pathname === '/login') return user && hasCookie ? <Redirect to={authenticatedHome} /> : <Login />;
     if (pathname === '/shg/login') return <Redirect to="/login" />;
@@ -779,6 +783,11 @@ export default function App() {
       {showDashboardLayout && (
         <Suspense fallback={null}>
           <GlobalSearch />
+        </Suspense>
+      )}
+      {showDashboardLayout && (
+        <Suspense fallback={null}>
+          <InviteLoginPopup />
         </Suspense>
       )}
     </div>

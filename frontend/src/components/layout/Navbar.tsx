@@ -871,8 +871,8 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   const isShgAccount = isShgUser(user);
   const displayRole = isShgAccount ? 'SHG' : user?.role || 'user';
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push('/');
   };
 

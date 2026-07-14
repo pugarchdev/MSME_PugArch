@@ -41,6 +41,13 @@ interface OpportunityData {
     rawDescription?: string | null;
 }
 
+const formatMethodLabel = (method: string) => {
+    const m = method.replace(/^[|\s]+|[|\s]+$/g, '').trim().toUpperCase().replace(/_/g, ' ');
+    if (m === 'RFQ') return 'RFQ';
+    if (m === 'RFP') return 'RFP';
+    return m.replace(/\b\w/g, c => c.toUpperCase());
+};
+
 const parseDescription = (desc?: string | null) => {
     if (!desc) return { method: '', value: '', urgency: '', text: '' };
     const cleanedDesc = desc.replace(/\r/g, '');
@@ -58,10 +65,24 @@ const parseDescription = (desc?: string | null) => {
         cleanText = cleanText.replace(/Urgency:\s*(.*?)(?=$)/i, '');
     }
     cleanText = cleanText.replace(/[\n\r|]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    let method = methodMatch ? methodMatch[1].trim() : '';
+    let value = valueMatch ? valueMatch[1].trim() : '';
+    let urgency = urgencyMatch ? urgencyMatch[1].trim() : '';
+
+    // Clean up trailing and leading pipe characters and spaces
+    method = method.replace(/^[|\s]+|[|\s]+$/g, '').trim();
+    value = value.replace(/^[|\s]+|[|\s]+$/g, '').trim();
+    urgency = urgency.replace(/^[|\s]+|[|\s]+$/g, '').trim();
+
+    if (method) {
+        method = formatMethodLabel(method);
+    }
+
     return {
-        method: methodMatch ? methodMatch[1].trim() : '',
-        value: valueMatch ? valueMatch[1].trim() : '',
-        urgency: urgencyMatch ? urgencyMatch[1].trim() : '',
+        method,
+        value,
+        urgency,
         text: cleanText
     };
 };
@@ -203,38 +224,40 @@ function OpportunityCard({ item, index, visible }: { item: OpportunityData; inde
                     </span>
                 </div>
 
-                {(() => {
+                 {(() => {
                     const parsed = parseDescription(item.rawDescription || item.description);
-                    const hasBadges = parsed.method || parsed.value || parsed.urgency;
+                    const showUrgency = parsed.urgency && !parsed.urgency.toLowerCase().includes('normal');
+                    const hasBadges = parsed.method || showUrgency;
                     return (
                         <>
                             {hasBadges && (
                                 <div className="flex flex-wrap gap-1.5">
                                     {parsed.method && (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
                                             {parsed.method}
                                         </span>
                                     )}
-                                    {parsed.value && (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">
-                                            {parsed.value}
-                                        </span>
-                                    )}
-                                    {parsed.urgency && (
+                                    {showUrgency && (
                                         <span className={cn(
-                                            "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border whitespace-nowrap",
+                                            "px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider border whitespace-nowrap",
                                             parsed.urgency.toLowerCase().includes('urgent') || parsed.urgency.toLowerCase().includes('high')
                                                 ? 'bg-rose-50 text-rose-700 border-rose-100'
-                                                : 'bg-slate-50 text-slate-600 border-slate-100'
+                                                : 'bg-amber-50 text-amber-700 border-amber-100'
                                         )}>
                                             {parsed.urgency} Urgency
                                         </span>
                                     )}
                                 </div>
                             )}
-                            <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 font-medium">
-                                {parsed.text || item.description}
-                            </p>
+                            {parsed.text ? (
+                                <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 font-medium">
+                                    {parsed.text}
+                                </p>
+                            ) : !hasBadges ? (
+                                <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 font-medium">
+                                    {item.description}
+                                </p>
+                            ) : null}
                         </>
                     );
                 })()}
@@ -305,44 +328,46 @@ function OpportunityListRow({ item, srNo }: { item: OpportunityData; srNo: numbe
                     <p className="truncate font-black text-slate-900 text-xs mb-1.5" title={item.title}>
                         {item.title}
                     </p>
-                    {(() => {
+                     {(() => {
                         const parsed = parseDescription(item.rawDescription || item.description);
-                        const hasBadges = parsed.method || parsed.value || parsed.urgency;
+                        const showUrgency = parsed.urgency && !parsed.urgency.toLowerCase().includes('normal');
+                        const hasBadges = parsed.method || showUrgency;
                         return (
                             <>
                                 {hasBadges && (
-                                    <div className="flex flex-wrap gap-1 mb-1.5">
+                                    <div className="flex flex-wrap gap-1.5 mb-1.5">
                                         {parsed.method && (
-                                            <span className="px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
                                                 {parsed.method}
                                             </span>
                                         )}
-                                        {parsed.value && (
-                                            <span className="px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">
-                                                {parsed.value}
-                                            </span>
-                                        )}
-                                        {parsed.urgency && (
+                                        {showUrgency && (
                                             <span className={cn(
-                                                "px-1.5 py-0.2 rounded text-[7px] font-bold uppercase tracking-wider border whitespace-nowrap",
+                                                "px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider border whitespace-nowrap",
                                                 parsed.urgency.toLowerCase().includes('urgent') || parsed.urgency.toLowerCase().includes('high')
                                                     ? 'bg-rose-50 text-rose-700 border-rose-100'
-                                                    : 'bg-slate-50 text-slate-600 border-slate-100'
+                                                    : 'bg-amber-50 text-amber-700 border-amber-100'
                                             )}>
-                                                {parsed.urgency}
+                                                {parsed.urgency} Urgency
                                             </span>
                                         )}
                                     </div>
                                 )}
-                                <p className="mt-0.5 truncate text-[10px] text-slate-500 leading-relaxed" title={parsed.text || item.description}>
-                                    {parsed.text || item.description}
-                                </p>
+                                {parsed.text ? (
+                                    <p className="mt-0.5 truncate text-[10px] text-slate-500 leading-relaxed" title={parsed.text}>
+                                        {parsed.text}
+                                    </p>
+                                ) : !hasBadges ? (
+                                    <p className="mt-0.5 truncate text-[10px] text-slate-500 leading-relaxed" title={item.description}>
+                                        {item.description}
+                                    </p>
+                                ) : null}
                             </>
                         );
                     })()}
                 </div>
             </td>
-            <td className="px-5 py-4 truncate text-slate-800 text-xs font-bold max-w-[150px]">{item.buyerName}</td>
+            <td className="px-5 py-4 text-slate-800 text-xs font-bold">{item.buyerName}</td>
             <td className="px-5 py-4 truncate text-slate-600 text-xs">{item.category}</td>
             <td className="px-5 py-4 text-slate-600 text-xs whitespace-nowrap">
                 {item.startDate ? new Date(item.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
@@ -392,33 +417,47 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
         const mappedRequirements = (requirements || []).map((r: any) => {
             const status = getProcurementStatus({ status: r.status, dueDate: r.endDate || r.lastDate || r.requiredBy });
             const days = Math.max(0, Math.ceil((new Date(r.endDate || r.lastDate || r.requiredBy || '').getTime() - Date.now()) / 86400000));
+            // Detect method from data fields, falling back to parsing it from the description
+            let method = String(r.canonicalMethod || r.procurementMethod || '').toUpperCase();
+            if (!method) {
+                const parsed = parseDescription(r.description);
+                if (parsed.method) {
+                    method = parsed.method.replace(/\s+/g, '_').toUpperCase();
+                }
+            }
+            const sourceId = r.sourceId || Math.abs(r.id);
             
             // Link formatting based on authentication & procurement method
-            let link = `/marketplace/requirements/${r.id}`;
-            const isLoggedIn = !!user;
-            const isSeller = user?.role === 'seller';
-            if (isLoggedIn && isSeller) {
-                const method = String(r.canonicalMethod || r.procurementMethod || '').toUpperCase();
-                const sourceId = r.sourceId || Math.abs(r.id);
-                if (['RFQ', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'RATE_CONTRACT'].includes(method)) {
-                    link = `/seller/rfq?requirementId=${sourceId}`;
-                } else if (['RFP', 'SINGLE_SOURCE', 'PAC'].includes(method)) {
-                    link = `/seller/rfp?requirementId=${sourceId}`;
-                } else if (['OPEN_TENDER', 'LIMITED_TENDER', 'TWO_STAGE_TENDER', 'EMERGENCY_PURCHASE'].includes(method)) {
-                    link = `/seller/rfq?requirementId=${sourceId}`;
-                } else if (method === 'REVERSE_AUCTION') {
-                    link = `/seller/rfq?requirementId=${sourceId}`;
+            let link = `/marketplace/requirements/${sourceId}`;
+            if (method === 'REVERSE_AUCTION' || r.linkedAuctionId) {
+                const auctionId = r.linkedAuctionId || sourceId;
+                link = `/reverse-auctions/${auctionId}`;
+            } else {
+                const isLoggedIn = !!user;
+                const isSeller = user?.role === 'seller';
+                if (isLoggedIn && isSeller) {
+                    if (['RFQ', 'DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'RATE_CONTRACT'].includes(method)) {
+                        link = `/seller/rfq?requirementId=${sourceId}`;
+                    } else if (['RFP', 'SINGLE_SOURCE', 'PAC'].includes(method)) {
+                        link = `/seller/rfp?requirementId=${sourceId}`;
+                    } else if (['OPEN_TENDER', 'LIMITED_TENDER', 'TWO_STAGE_TENDER', 'EMERGENCY_PURCHASE'].includes(method)) {
+                        if (r.requirementNumber) {
+                            link = `/tenders?tender=${r.requirementNumber}`;
+                        } else {
+                            link = `/seller/rfq?requirementId=${sourceId}`;
+                        }
+                    }
                 }
             }
 
             return {
                 id: r.id,
-                displayId: r.bidNumber || r.requirementNumber || `REQ-${r.id}`,
+                displayId: r.bidNumber || r.requirementNumber || `REQ-${sourceId}`,
                 title: r.title,
                 description: getFormattedDescription(r.description),
-                category: r.category || 'Multi-category',
+                category: typeof r.category === 'object' ? (r.category?.name || 'Multi-category') : (r.category || 'Multi-category'),
                 budget: r.estimatedValue || r.budgetMin || null,
-                buyerName: r.buyerOrganizationName || r.buyerName || 'Verified Buyer',
+                buyerName: r.buyerOrganization?.organizationName || r.buyerOrganizationName || r.buyerName || 'Verified Buyer',
                 location: r.deliveryLocation || r.location || 'Jharsuguda, Odisha',
                 startDate: r.startDate || r.createdAt,
                 endDate: r.endDate || r.lastDate || r.requiredBy,

@@ -297,8 +297,8 @@ router.post('/bids/:bidId/participation/:participationId/financial-quote', authe
   return apiResponse.success(res, data, 200, 'Financial quote saved securely');
 }));
 
-router.post('/bids/:bidId/participation/:participationId/submit', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: participationParamSchema }), asyncRoute(async (req, res) => {
-  const data = await service.finalSubmitParticipation(req, req.params.bidId, Number(req.params.participationId));
+router.post('/bids/:bidId/participation/:participationId/submit', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: participationParamSchema, body: z.object({ acceptedTerms: z.boolean().optional() }).passthrough().optional() }), asyncRoute(async (req, res) => {
+  const data = await service.finalSubmitParticipation(req, req.params.bidId, Number(req.params.participationId), req.body || {});
   return apiResponse.success(res, data, 200, 'Participation submitted successfully');
 }));
 
@@ -308,7 +308,7 @@ router.get('/seller/bids', authenticate, requireAccountType('seller'), asyncRout
     include: { bid: true, documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true },
     orderBy: { createdAt: 'desc' }
   });
-  return apiResponse.success(res, rows.map((row: any) => ({ ...service.serializeParticipation(row, { canSeeFinancial: true }), bid: service.serializeBid(row.bid, { actor: req.user }) })), 200, 'Seller bids fetched');
+  return apiResponse.success(res, rows.map((row: any) => ({ ...service.serializeParticipation(row, { canSeeFinancial: true, ownView: true }), bid: service.serializeBid(row.bid, { actor: req.user }) })), 200, 'Seller bids fetched');
 }));
 
 router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
@@ -320,7 +320,7 @@ router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('selle
       throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
     }
   }
-  return apiResponse.success(res, { bid: service.serializeBid(bid, { actor: req.user }), participation: participation ? service.serializeParticipation(participation, { canSeeFinancial: true, bid }) : null }, 200, 'Bid status fetched');
+  return apiResponse.success(res, { bid: service.serializeBid(bid, { actor: req.user }), participation: participation ? service.serializeParticipation(participation, { canSeeFinancial: true, bid, ownView: true }) : null }, 200, 'Bid status fetched');
 }));
 
 router.post('/bids/:bidId/clarifications/:clarificationId/respond', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: clarificationParamSchema, body: z.object({ response: z.string().trim().min(2).max(5000) }) }), asyncRoute(async (req, res) => {
@@ -392,7 +392,7 @@ router.get('/buyer/bids/:bidId/participants', authenticate, requireAccountType('
   const bid = await service.resolveBid(req.params.bidId);
   service.assertBuyerOwner(req.user!, bid);
   const canSeeFinancial = ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
-  return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial })), 200, 'Participants fetched');
+  return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial, bid })), 200, 'Participants fetched');
 }));
 
 router.post('/buyer/bids/:bidId/clarifications', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.update'), validate({ params: idParamSchema, body: clarificationSchema }), asyncRoute(async (req, res) => {

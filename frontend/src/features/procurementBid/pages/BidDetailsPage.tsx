@@ -86,15 +86,15 @@ export default function BidDetailsPage() {
         if (alive) {
           const type = String(bidData?.procurementType || bidData?.bidType || '').toUpperCase();
           if (type === 'RFQ') {
-            router.push(`/seller/rfq?requestId=${bidData.id}`);
+            router.replace(`/seller/rfq?requestId=${bidData.id}`);
             return;
           }
           if (type === 'RFP') {
-            router.push(`/seller/rfp?requestId=${bidData.id}`);
+            router.replace(`/seller/rfp?requestId=${bidData.id}`);
             return;
           }
           if (type === 'OPEN_TENDER' || type === 'TENDER' || bidData?.sourceModel === 'TENDER') {
-            router.push(`/tenders?tender=${bidData.sourceId || bidData.id}`);
+            router.replace(`/tenders?tender=${bidData.sourceId || bidData.id}`);
             return;
           }
 

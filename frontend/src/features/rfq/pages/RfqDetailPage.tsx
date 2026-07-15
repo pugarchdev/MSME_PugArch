@@ -35,6 +35,7 @@ import { cn } from '../../../lib/utils';
 import { useQuoteRequest } from '../hooks';
 import { useQuery } from '@tanstack/react-query';
 import { openFileAsset } from '../../../lib/files';
+import ClarificationPanel from '../components/ClarificationPanel';
 
 /* ═══════════════════════════════════════════════
    HELPERS
@@ -1181,6 +1182,16 @@ export default function RfqDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── Clarifications & Q&A ── */}
+      {(requestId > 0 || requirementId > 0) && user && (
+        <ClarificationPanel
+          quoteRequestId={requirementId > 0 ? requirementId : requestId}
+          kind={requirementId > 0 ? 'requirement' : 'quote-request'}
+          role={user?.role === 'seller' ? 'seller' : 'buyer'}
+          deadlinePassed={!!rfqData?.deadlineDate && new Date(rfqData.deadlineDate).getTime() < Date.now()}
+        />
+      )}
 
       {/* ── Full-width: Additional Details Accordion ── */}
       {detailSections.length > 0 && (

@@ -323,9 +323,13 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
   const canSeeParticipants = options.includeParticipants || isAdmin || isBuyerOwner;
   const canSeeFinancial = options.includeFinancial || isAdmin || (isBuyerOwner && financialOpenStatuses.includes(bid.status));
 
+  // Buyer packet documents are part of the tender pack sellers must respond to.
+  // Newer rows are stored SELLER_AFTER_LOGIN; this list also unlocks legacy rows
+  // that were saved BUYER_ADMIN_ONLY before the visibility fix.
+  const sellerVisibleBuyerDocTypes = ['TECHNICAL_PACKET_DOCUMENT', 'FINANCIAL_PACKET_DOCUMENT', 'FINANCIAL_BOQ_PRICE_SCHEDULE'];
   const publicDocuments = (bid.documents || []).filter((doc: any) => {
     if (doc.visibility === 'PUBLIC') return true;
-    if (doc.visibility === 'SELLER_AFTER_LOGIN' && actor?.role === 'seller') return true;
+    if (actor?.role === 'seller' && (doc.visibility === 'SELLER_AFTER_LOGIN' || sellerVisibleBuyerDocTypes.includes(doc.documentType))) return true;
     return isAdmin || isBuyerOwner;
   });
 
@@ -358,6 +362,7 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
     status: bid.status,
     approvalStatus: bid.approvalStatus,
     lifecycleStage: bid.lifecycleStage,
+    visibility: bid.visibility,
     evaluationMethod: bid.evaluationMethod,
     isEmdRequired: bid.isEmdRequired,
     emdAmount: moneyNumber(bid.emdAmount),
@@ -430,10 +435,13 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
   };
 };
 
-export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean; bid?: any } = {}) => {
+export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean; bid?: any; ownView?: boolean } = {}) => {
   let allowed = options.canSeeFinancial;
   const bid = options.bid || p.bid;
-  if (bid && (bid.procurementType === 'TWO_PACKET_BID' || bid.bidType === 'TWO_PACKET_BID')) {
+  // Two-packet bids keep each seller's financial quote sealed until that seller
+  // clears technical evaluation, regardless of the bid-level status gate.
+  // A seller always sees their own quote (ownView).
+  if (!options.ownView && bid && (bid.packetType === 'TWO_PACKET' || bid.procurementType === 'TWO_PACKET_BID' || bid.bidType === 'TWO_PACKET_BID')) {
     if (p.technicalStatus !== 'QUALIFIED') {
       allowed = false;
     }
@@ -463,17 +471,22 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     financialSubmittedAt: p.financialSubmittedAt,
     isWithdrawn: p.isWithdrawn,
     rejectionReason: p.rejectionReason,
-    documents: (p.documents || []).map((doc: any) => ({
-      id: doc.id,
-      documentCategory: doc.documentCategory,
-      documentName: doc.documentName,
-      fileName: doc.fileName,
-      mimeType: doc.mimeType,
-      fileSize: doc.fileSize,
-      documentStatus: doc.documentStatus,
-      uploadedAt: doc.uploadedAt,
-      fileAssetId: doc.fileAssetId
-    })),
+    documents: (p.documents || [])
+      // Sealed financial quote documents must not leak file handles before financial opening.
+      .filter((doc: any) => allowed || options.ownView || doc.documentCategory !== 'FINANCIAL_QUOTE')
+      .map((doc: any) => ({
+        id: doc.id,
+        documentCategory: doc.documentCategory,
+        documentName: doc.documentName,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        fileSize: doc.fileSize,
+        documentStatus: doc.documentStatus,
+        uploadedAt: doc.uploadedAt,
+        fileAssetId: doc.fileAssetId
+      })),
+    // Buyers still see that a sealed quote exists without getting the file handle.
+    hasSealedFinancialQuote: !allowed && !options.ownView && (p.documents || []).some((doc: any) => doc.documentCategory === 'FINANCIAL_QUOTE'),
     clarifications: p.clarifications,
     evaluations: p.evaluations,
     awards: p.awards
@@ -739,6 +752,7 @@ export const listPublicBids = async (query: any, actor?: any) => {
         buyerOrganization: true,
         participations: { select: { id: true } },
         awards: true,
+        invitations: { select: { sellerOrgId: true, sellerUserId: true } },
         buyer: {
           select: {
             id: true,
@@ -792,7 +806,26 @@ export const listPublicBids = async (query: any, actor?: any) => {
   ]);
 
   const items = [
-    ...bids.map((bid: any) => ({ ...serializeBid(bid), sourceModel: 'PROCUREMENT_BID', sourceId: bid.id })),
+    ...bids.map((bid: any) => ({
+      ...serializeBid(bid),
+      sourceModel: 'PROCUREMENT_BID',
+      sourceId: bid.id,
+      // Emit whether THIS seller was explicitly invited (relational rows or legacy
+      // technicalPacket JSON). The invitations page filters on this flag.
+      isInvited: actorInviteIds.length > 0 && (
+        (bid.invitations || []).some((inv: any) =>
+          actorInviteIds.includes(Number(inv.sellerOrgId)) || actorInviteIds.includes(Number(inv.sellerUserId))
+        ) ||
+        (() => {
+          const tp: any = bid.technicalPacket;
+          const embedded = [
+            ...(Array.isArray(tp?.vendors?.invitedSellers) ? tp.vendors.invitedSellers : []),
+            ...(Array.isArray(tp?.qualifiedVendors) ? tp.qualifiedVendors : [])
+          ].map(Number);
+          return embedded.some(v => actorInviteIds.includes(v));
+        })()
+      )
+    })),
     ...tenderBidActivities.map(serializeTenderBidActivity)
   ]
     .sort((a: any, b: any) => {
@@ -1250,7 +1283,7 @@ export const saveFinancialQuote = async (req: AuthRequest & { file?: Express.Mul
   return { participation: serializeParticipation(updated), document: doc };
 };
 
-export const finalSubmitParticipation = async (req: AuthRequest, bidId: string, participationId: number) => {
+export const finalSubmitParticipation = async (req: AuthRequest, bidId: string, participationId: number, body: any = {}) => {
   const { bid, participation } = await assertOwnParticipation(req, bidId, participationId);
   if (participation.sellerId !== req.user!.id) throw new ApiError(403, 'Only the owner seller can submit.', 'FORBIDDEN_ROLE');
   if (participation.submissionStatus === 'SUBMITTED') throw new ApiError(400, 'Participation has already been submitted.', 'PARTICIPATION_ALREADY_SUBMITTED');
@@ -1262,11 +1295,35 @@ export const finalSubmitParticipation = async (req: AuthRequest, bidId: string, 
   if (!participation.quotedAmount || !docs.some((doc: any) => doc.documentCategory === 'FINANCIAL_QUOTE')) {
     throw new ApiError(400, 'Please upload financial quote before final submission.', 'REQUIRED_DOCUMENT_MISSING');
   }
+  // Enforce the buyer-defined required-document checklist: the seller must map an
+  // uploaded file to every named document the buyer listed at publish time.
+  const requiredDocs: string[] = Array.isArray(bid.requiredDocuments) ? bid.requiredDocuments.filter(Boolean) : [];
+  if (requiredDocs.length) {
+    const uploadedNames = new Set(
+      docs.map((doc: any) => String(doc.documentName || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const missing = requiredDocs.filter(name => !uploadedNames.has(String(name).trim().toLowerCase()));
+    if (missing.length) {
+      throw new ApiError(
+        400,
+        `Missing required documents: ${missing.join(', ')}. Upload each listed document before final submission.`,
+        'REQUIRED_DOCUMENT_MISSING',
+        { missingDocuments: missing }
+      );
+    }
+  }
+  // Enforce acknowledgement of buyer terms & eligibility criteria when the buyer published any.
+  const hasConditions = (bid.termsAndConditions || []).length > 0 || (bid.eligibilityCriteria || []).length > 0;
+  if (hasConditions && body.acceptedTerms !== true) {
+    throw new ApiError(400, 'You must accept the buyer terms & conditions and confirm eligibility before submitting.', 'TERMS_NOT_ACCEPTED');
+  }
   const ack = {
     acknowledgementId: `ACK-BP-${participation.id}-${Date.now()}`,
     responseId: participation.participationNumber,
     timestamp: new Date().toISOString(),
-    message: 'Participation submitted successfully.'
+    message: 'Participation submitted successfully.',
+    acceptedTerms: body.acceptedTerms === true,
+    acceptedTermsAt: body.acceptedTerms === true ? new Date().toISOString() : undefined
   };
   const updated = await db.procurementBidParticipation.update({
     where: { id: participation.id },

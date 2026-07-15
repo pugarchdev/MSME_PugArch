@@ -78,6 +78,8 @@ model User {
   receivedRequests                   QuoteRequest[]                          @relation("SellerRequests")
   quoteRequestClarificationsAsked    QuoteRequestClarification[]             @relation("QuoteRequestClarificationAskedBy")
   quoteRequestClarificationsAnswered QuoteRequestClarification[]             @relation("QuoteRequestClarificationAnsweredBy")
+  requirementClarificationsAsked     RequirementClarification[]              @relation("RequirementClarificationAskedBy")
+  requirementClarificationsAnswered  RequirementClarification[]              @relation("RequirementClarificationAnsweredBy")
   sellerInvoices                     Invoice[]                               @relation("SellerInvoices")
   sellerPurchaseOrders               PurchaseOrder[]                         @relation("SellerPurchaseOrders")
   sellerProfile                      SellerProfile?
@@ -564,6 +566,30 @@ model RequirementResponse {
   @@index([status])
   @@index([createdAt])
   @@index([updatedAt])
+}
+
+// Q&A thread for marketplace procurement entities. Polymorphic: entityType is
+// 'REQUIREMENT' (BuyerRequirement.id) or 'AUCTION' (Auction.id). Serves the
+// /seller/rfq?requirementId= flow AND reverse-auction clarifications with one table.
+model RequirementClarification {
+  id           Int       @id @default(autoincrement())
+  entityType   String    @default("REQUIREMENT")
+  entityId     Int
+  question     String
+  response     String?
+  visibility   String    @default("PUBLIC")
+  askedById    Int
+  answeredById Int?
+  askedAt      DateTime  @default(now())
+  answeredAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  askedBy    User  @relation("RequirementClarificationAskedBy", fields: [askedById], references: [id], onDelete: Restrict)
+  answeredBy User? @relation("RequirementClarificationAnsweredBy", fields: [answeredById], references: [id])
+
+  @@index([entityType, entityId, visibility])
+  @@index([askedById])
 }
 
 model GuestCart {

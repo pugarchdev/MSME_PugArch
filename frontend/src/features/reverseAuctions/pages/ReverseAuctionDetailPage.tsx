@@ -8,6 +8,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { EmptyState, InlineError, LoadingState } from '../../shared/FeatureStates';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../../shared/format';
 import { reverseAuctionApi } from '../api';
+import AuctionClarificationPanel from '../components/AuctionClarificationPanel';
 import { procurementBidApi } from '../../procurementBid/api';
 import { marketplaceApi, type MarketplaceSeller } from '../../marketplace/api';
 import { useAuth } from '../../../hooks/useAuth';
@@ -382,6 +383,15 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
           </section>
         )}
 
+        {/* Clarifications & Queries — seller asks, buyer answers */}
+        {user && isSeller && (
+          <AuctionClarificationPanel
+            auctionId={id}
+            role="seller"
+            closed={['CLOSED', 'CANCELLED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(status)}
+          />
+        )}
+
         {/* Bottom Checklist Card */}
         <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex items-start gap-4">
@@ -693,6 +703,9 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               </CardContent>
             </Card>
           )}
+
+          {/* SECTION 7: Clarifications — answer seller questions */}
+          <AuctionClarificationPanel auctionId={id} role="buyer" />
 
         </div>
 

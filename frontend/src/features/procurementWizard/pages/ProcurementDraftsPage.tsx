@@ -82,6 +82,8 @@ interface DisplayDraft {
   specifications: string;
   specificationDocumentName: string;
   isLocal: boolean;
+  /** True once the draft was submitted/published — kept in the list as history. */
+  isPublished?: boolean;
   raw: any;
 }
 
@@ -162,6 +164,7 @@ const mapServerDraftToDisplay = (server: any): DisplayDraft => {
     specifications: firstItem?.description || payloadItem?.specification || payload.basics?.justification || server.description || '',
     specificationDocumentName: payloadDoc?.fileName || '',
     isLocal: false,
+    isPublished: Boolean(server.isPublished),
     raw: server,
   };
 };
@@ -421,8 +424,12 @@ export default function ProcurementDraftsPage() {
     );
   };
 
-  const sourceBadge = (isLocal: boolean) =>
-    isLocal ? (
+  const sourceBadge = (isLocal: boolean, isPublished?: boolean) =>
+    isPublished ? (
+      <span className="inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">
+        Published
+      </span>
+    ) : isLocal ? (
       <span className="inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
         Local
       </span>
@@ -646,7 +653,10 @@ export default function ProcurementDraftsPage() {
                         >
                           <td className="rounded-l-2xl px-4 py-3 text-center text-xs font-bold text-slate-500">{idx + 1}</td>
                           <td className="w-[240px] min-w-[200px] whitespace-normal break-words px-4 py-3 font-bold text-slate-900">
-                            {d.title}
+                            <span className="inline-flex flex-wrap items-center gap-1.5">
+                              {d.title}
+                              {d.isPublished && sourceBadge(d.isLocal, true)}
+                            </span>
                           </td>
                           <td className="px-4 py-3">{methodBadge(d.methodSlug)}</td>
                           <td className="px-4 py-3 text-slate-600">{d.categoryName || '-'}</td>
@@ -674,14 +684,16 @@ export default function ProcurementDraftsPage() {
                               >
                                 <Trash2 className="mr-1 h-3 w-3" /> Delete
                               </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={(e) => { e.stopPropagation(); handleContinue(d); }}
-                                 className="h-7 bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
-                              >
-                                Continue <ArrowRight className="ml-1 h-3 w-3" />
-                              </Button>
+                              {!d.isPublished && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={(e) => { e.stopPropagation(); handleContinue(d); }}
+                                   className="h-7 bg-[#12335f] px-2 text-[10px] font-black uppercase text-white hover:bg-[#0b2445]"
+                                >
+                                  Continue <ArrowRight className="ml-1 h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>

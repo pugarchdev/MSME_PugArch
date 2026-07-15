@@ -319,7 +319,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length || bid.bidDocuments?.length,
           terms,
           nextAction: '',
-          isInvitation: method === 'LIMITED_TENDER' || bid.isInvited || bid.visibility === 'INVITED_SUPPLIERS',
+          isInvitation: bid.isInvited || method === 'LIMITED_TENDER' || bid.visibility === 'PRIVATE' || bid.visibility === 'INVITED_SUPPLIERS',
           detailRows: [
             { label: 'Bid type', value: bid.bidType || 'Not specified' },
             { label: 'Procurement type', value: bid.procurementType || 'Open Bid' },
@@ -397,7 +397,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length,
           terms: asTextList(req.terms),
           nextAction: '',
-          isInvitation: reqMethod === 'LIMITED_TENDER' || req.visibility === 'INVITED_SUPPLIERS',
+          isInvitation: isReqPrivate || reqMethod === 'LIMITED_TENDER' || reqInvites.includes(user?.id) || reqInvites.includes(user?.organizationId),
           detailRows: [
             { label: 'Requirement type', value: req.requirementType || 'Not specified' },
             { label: 'Visibility', value: req.visibility || 'Public' },

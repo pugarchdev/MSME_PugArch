@@ -691,12 +691,144 @@ router.get('/reverse-auctions/:id/participants', requirePermission('reverse_auct
   }
 });
 
+// ── Auction Clarifications (Q&A between sellers and the buyer) ──
+// Stored in the polymorphic RequirementClarification table with entityType='AUCTION'
+// and entityId=Auction.id (canonicalized via resolveAuctionId, so either id works).
+
+const auctionClarificationAskBody = z.object({
+  question: z.string().trim().min(3).max(2000),
+  visibility: z.enum(['PUBLIC', 'PRIVATE']).optional().default('PUBLIC')
+});
+
+const auctionClarificationReplyBody = z.object({
+  response: z.string().trim().min(1).max(3000)
+});
+
+const isAuctionManagerUser = (req: AuthRequest, auction: any) =>
+  isAdmin(req) || auction.createdByUserId === req.user?.id || (req.user?.organizationId && auction.buyerOrgId === req.user.organizationId);
+
+router.post('/reverse-auctions/:id/clarifications', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const body = auctionClarificationAskBody.parse(req.body);
+
+    // Closed/awarded auctions no longer take questions.
+    const status = String(auction.statusEnum || auction.status || '').toUpperCase();
+    if (['CLOSED', 'CANCELLED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(status)) {
+      throw new ApiError(400, 'The clarification window has closed for this auction.', 'AUCTION_CLARIFICATION_CLOSED');
+    }
+    // Sellers ask; the buyer/manager may also post announcements.
+    if (req.user?.role !== 'seller' && !isAuctionManagerUser(req, auction)) {
+      throw new ApiError(403, 'Access denied', 'AUCTION_CLARIFICATION_FORBIDDEN');
+    }
+
+    const clarification = await db.requirementClarification.create({
+      data: {
+        entityType: 'AUCTION',
+        entityId: id,
+        question: body.question,
+        visibility: body.visibility,
+        askedById: req.user!.id
+      }
+    });
+
+    // Notify the auction owner (best-effort).
+    if (auction.createdByUserId && auction.createdByUserId !== req.user?.id) {
+      void notificationService.notifyNow(auction.createdByUserId, {
+        title: 'New Auction Clarification',
+        message: `Regarding "${auction.title || auction.auctionCode}": ${body.question.substring(0, 100)}${body.question.length > 100 ? '…' : ''}`,
+        type: 'auction_clarification',
+        priority: 'medium',
+        redirectUrl: `/reverse-auctions/${id}`
+      }).catch(err => logger.warn({ err, auctionId: id }, 'Auction clarification notify failed'));
+    }
+
+    await writeAuctionEvent(req, id, 'clarification_asked', 'Clarification question asked', { clarificationId: clarification.id });
+    return apiResponse.created(res, maskSensitive(clarification), 'Clarification submitted');
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return apiResponse.error(res, 400, 'Question must be 3-2000 characters.', 'VALIDATION_ERROR');
+    }
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to submit clarification', error.code || 'AUCTION_CLARIFICATION_ERROR');
+  }
+});
+
+router.post('/reverse-auctions/:id/clarifications/:clarId/reply', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const clarId = Number(req.params.clarId);
+    const body = auctionClarificationReplyBody.parse(req.body);
+
+    // Only the auction manager (buyer side) or admin can answer.
+    if (!isAuctionManagerUser(req, auction)) {
+      throw new ApiError(403, 'Only the auction owner can answer clarifications.', 'AUCTION_CLARIFICATION_FORBIDDEN');
+    }
+
+    const clarification = await db.requirementClarification.findUnique({ where: { id: clarId } });
+    if (!clarification || clarification.entityType !== 'AUCTION' || clarification.entityId !== id) {
+      throw new ApiError(404, 'Clarification not found', 'CLARIFICATION_NOT_FOUND');
+    }
+    if (clarification.response) {
+      throw new ApiError(409, 'Clarification already answered.', 'ALREADY_ANSWERED');
+    }
+
+    const updated = await db.requirementClarification.update({
+      where: { id: clarId },
+      data: { response: body.response, answeredById: req.user!.id, answeredAt: new Date() }
+    });
+
+    void notificationService.notifyNow(clarification.askedById, {
+      title: 'Auction Clarification Answered',
+      message: `Your question on "${auction.title || auction.auctionCode}" has been answered.`,
+      type: 'auction_clarification_replied',
+      priority: 'medium',
+      redirectUrl: `/reverse-auctions/${id}`
+    }).catch(err => logger.warn({ err, auctionId: id }, 'Auction clarification reply notify failed'));
+
+    await writeAuctionEvent(req, id, 'clarification_answered', 'Clarification answered', { clarificationId: clarId });
+    return apiResponse.success(res, maskSensitive(updated));
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return apiResponse.error(res, 400, 'Reply must be 1-3000 characters.', 'VALIDATION_ERROR');
+    }
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to submit reply', error.code || 'AUCTION_CLARIFICATION_ERROR');
+  }
+});
+
+router.get('/reverse-auctions/:id/clarifications', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = await resolveAuctionId(Number(req.params.id));
+    if (!id) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+
+    const clarifications = await db.requirementClarification.findMany({
+      where: { entityType: 'AUCTION', entityId: id },
+      orderBy: { askedAt: 'asc' }
+    });
+
+    // Buyer/manager sees all; sellers see PUBLIC threads + their own PRIVATE ones.
+    const filtered = isAuctionManagerUser(req, auction)
+      ? clarifications
+      : clarifications.filter((c: any) => c.visibility === 'PUBLIC' || c.askedById === req.user?.id);
+
+    return apiResponse.success(res, maskSensitive(filtered));
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load clarifications', error.code || 'AUCTION_CLARIFICATION_ERROR');
+  }
+});
+
 /**
  * Self-enrolment for PUBLIC/OPEN reverse auctions. A verified seller opts in explicitly
  * (auditable) which creates their AuctionParticipant row and unlocks the bidding console.
  * Private/invite-only auctions reject self-join — they require a buyer invite.
- */
-router.post('/reverse-auctions/:id/join', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+ */router.post('/reverse-auctions/:id/join', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
   try {
     if (req.user?.role !== 'seller') throw new ApiError(403, 'Only sellers can join an auction', 'AUCTION_JOIN_FORBIDDEN');
     const sellerOrgId = req.user.organizationId;

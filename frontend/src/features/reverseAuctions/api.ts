@@ -131,5 +131,23 @@ export const reverseAuctionApi = {
   result: (id: number) =>
     api.get(`/api/reverse-auctions/${id}/result`, { headers: headers(), skipCache: true }).then(res => json<any>(res)),
   recommendAward: (id: number, participantId?: number) =>
-    api.post(`/api/reverse-auctions/${id}/award-recommendation`, { participantId }, { headers: headers() }).then(res => json<any>(res))
+    api.post(`/api/reverse-auctions/${id}/award-recommendation`, { participantId }, { headers: headers() }).then(res => json<any>(res)),
+  clarifications: (id: number) =>
+    api.get(`/api/reverse-auctions/${id}/clarifications`, { headers: headers(), skipCache: true }).then(res => json<AuctionClarification[]>(res)),
+  askClarification: (id: number, question: string, visibility: 'PUBLIC' | 'PRIVATE' = 'PUBLIC') =>
+    api.post(`/api/reverse-auctions/${id}/clarifications`, { question, visibility }, { headers: headers() }).then(res => json<AuctionClarification>(res)),
+  replyClarification: (id: number, clarId: number, response: string) =>
+    api.post(`/api/reverse-auctions/${id}/clarifications/${clarId}/reply`, { response }, { headers: headers() }).then(res => json<AuctionClarification>(res))
+};
+
+export type AuctionClarification = {
+  id: number;
+  entityId: number;
+  question: string;
+  response?: string | null;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  askedById: number;
+  answeredById?: number | null;
+  askedAt: string;
+  answeredAt?: string | null;
 };

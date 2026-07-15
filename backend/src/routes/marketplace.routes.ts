@@ -2602,6 +2602,164 @@ router.get('/buyer/requirements/:id/responses', authenticate, authorize('buyer',
     }
 });
 
+// ── Requirement Clarifications (Q&A on a BuyerRequirement) ──
+// Mirrors /quote-requests/:id/clarifications but keyed on requirementId so the
+// /seller/rfq?requirementId= flow gets a working Q&A thread.
+
+const requirementClarificationAskBody = z.object({
+    question: z.string().trim().min(3).max(2000),
+    visibility: z.enum(['PUBLIC', 'PRIVATE']).optional().default('PUBLIC')
+});
+
+const requirementClarificationReplyBody = z.object({
+    response: z.string().trim().min(1).max(3000)
+});
+
+const isRequirementOwner = (req: AuthRequest, requirement: any) =>
+    requirement.createdById === Number(req.user?.id) ||
+    (req.user?.organizationId && requirement.buyerOrganizationId === req.user.organizationId);
+
+router.post('/marketplace/requirements/:id/clarifications', authenticate, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+        const body = requirementClarificationAskBody.parse(req.body);
+
+        const requirement = await db.buyerRequirement.findUnique({
+            where: { id },
+            select: { id: true, title: true, lastDate: true, status: true, createdById: true, buyerOrganizationId: true }
+        });
+        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+        if (requirement.lastDate && new Date(requirement.lastDate) < new Date()) {
+            return apiResponse.error(res, 400, 'The clarification window has closed for this requirement.', 'REQUIREMENT_DEADLINE_PASSED');
+        }
+        // Sellers ask; the buyer owner may also post (their message doubles as an announcement).
+        if (req.user?.role !== 'seller' && !isRequirementOwner(req, requirement)) {
+            return apiResponse.error(res, 403, 'Access denied', 'ACCESS_DENIED');
+        }
+
+        const clarification = await db.requirementClarification.create({
+            data: {
+                entityType: 'REQUIREMENT',
+                entityId: id,
+                question: body.question,
+                visibility: body.visibility,
+                askedById: Number(req.user?.id)
+            }
+        });
+
+        // Notify the buyer owner (best-effort).
+        if (requirement.createdById && requirement.createdById !== Number(req.user?.id)) {
+            try {
+                const { notificationService } = await import('../services/notification.service.js');
+                await notificationService.notifyNow(requirement.createdById, {
+                    title: 'New Clarification Question',
+                    message: `Regarding "${requirement.title}": ${body.question.substring(0, 100)}${body.question.length > 100 ? '…' : ''}`,
+                    type: 'requirement_clarification',
+                    priority: 'medium',
+                    redirectUrl: `/marketplace/requirements/${id}`
+                });
+            } catch (notifyError) {
+                console.warn('[Requirement Clarification] notify failed', notifyError);
+            }
+        }
+
+        return res.status(201).json({ success: true, data: clarification });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return apiResponse.error(res, 400, 'Question must be 3-2000 characters.', 'VALIDATION_ERROR');
+        }
+        console.error('[Requirement Clarification Ask]', error);
+        return apiResponse.error(res, 500, 'Failed to submit clarification', 'REQUIREMENT_CLARIFICATION_ERROR');
+    }
+});
+
+router.post('/marketplace/requirements/:id/clarifications/:clarId/reply', authenticate, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        const clarId = Number(req.params.clarId);
+        if (!id || id < 1 || !clarId || clarId < 1) return apiResponse.error(res, 400, 'Invalid ID', 'INVALID_ID');
+        const body = requirementClarificationReplyBody.parse(req.body);
+
+        const requirement = await db.buyerRequirement.findUnique({
+            where: { id },
+            select: { id: true, title: true, createdById: true, buyerOrganizationId: true }
+        });
+        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+        // Only the requirement owner (buyer side) or admin can answer.
+        const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'master_admin';
+        if (!isPrivileged && !isRequirementOwner(req, requirement)) {
+            return apiResponse.error(res, 403, 'Only the requirement owner can answer clarifications.', 'ACCESS_DENIED');
+        }
+
+        const clarification = await db.requirementClarification.findUnique({ where: { id: clarId } });
+        if (!clarification || clarification.entityType !== 'REQUIREMENT' || clarification.entityId !== id) {
+            return apiResponse.error(res, 404, 'Clarification not found', 'CLARIFICATION_NOT_FOUND');
+        }
+        if (clarification.response) {
+            return apiResponse.error(res, 409, 'Clarification already answered.', 'ALREADY_ANSWERED');
+        }
+
+        const updated = await db.requirementClarification.update({
+            where: { id: clarId },
+            data: { response: body.response, answeredById: Number(req.user?.id), answeredAt: new Date() }
+        });
+
+        // Notify the asking seller (best-effort).
+        if (clarification.askedById) {
+            try {
+                const { notificationService } = await import('../services/notification.service.js');
+                await notificationService.notifyNow(clarification.askedById, {
+                    title: 'Clarification Answered',
+                    message: `Your question on "${requirement.title}" has been answered.`,
+                    type: 'requirement_clarification_replied',
+                    priority: 'medium',
+                    redirectUrl: `/seller/rfq?requirementId=${id}`
+                });
+            } catch (notifyError) {
+                console.warn('[Requirement Clarification] notify failed', notifyError);
+            }
+        }
+
+        return ok(res, updated);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return apiResponse.error(res, 400, 'Reply must be 1-3000 characters.', 'VALIDATION_ERROR');
+        }
+        console.error('[Requirement Clarification Reply]', error);
+        return apiResponse.error(res, 500, 'Failed to submit reply', 'REQUIREMENT_CLARIFICATION_ERROR');
+    }
+});
+
+router.get('/marketplace/requirements/:id/clarifications', authenticate, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        if (!id || id < 1) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+
+        const requirement = await db.buyerRequirement.findUnique({
+            where: { id },
+            select: { id: true, createdById: true, buyerOrganizationId: true }
+        });
+        if (!requirement) return apiResponse.error(res, 404, 'Requirement not found', 'REQUIREMENT_NOT_FOUND');
+
+        const clarifications = await db.requirementClarification.findMany({
+            where: { entityType: 'REQUIREMENT', entityId: id },
+            orderBy: { askedAt: 'asc' }
+        });
+
+        // Buyers/admins see everything; sellers see PUBLIC threads + their own PRIVATE ones.
+        const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'master_admin' || isRequirementOwner(req, requirement);
+        const filtered = isPrivileged
+            ? clarifications
+            : clarifications.filter((c: any) => c.visibility === 'PUBLIC' || c.askedById === Number(req.user?.id));
+
+        return ok(res, filtered);
+    } catch (error) {
+        console.error('[Requirement Clarifications List]', error);
+        return apiResponse.error(res, 500, 'Failed to load clarifications', 'REQUIREMENT_CLARIFICATION_ERROR');
+    }
+});
+
 router.get('/seller/requirement-responses', authenticate, authorize('seller', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
     try {
         const query = responseListQuery.parse(req.query);

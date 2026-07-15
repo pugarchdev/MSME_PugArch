@@ -730,7 +730,13 @@ export default function BidComparisonPage() {
                                 {p.documents.map((d: any, idx: number) => (
                                   <button
                                     key={idx}
-                                    onClick={() => toast.info(`Downloading ${d.fileName || d.documentName}...`)}
+                                    onClick={() => {
+                                      if (d.fileAssetId) {
+                                        window.open(`/api/files/${d.fileAssetId}/view`, '_blank', 'noopener');
+                                      } else {
+                                        toast.error('File is not available for download.');
+                                      }
+                                    }}
                                     className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:underline truncate max-w-[160px]"
                                     title={d.fileName || d.documentName}
                                   >

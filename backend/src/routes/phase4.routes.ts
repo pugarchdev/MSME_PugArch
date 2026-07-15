@@ -1070,6 +1070,7 @@ export const serializeProcurementDraft = (requirement: any) => {
     ...requirement,
     methodSlug,
     workflowStatus: Object.entries(procurementStatusMap).find(([, value]) => value === requirement.status)?.[0] || requirement.status,
+    isPublished: !['DRAFT', 'REJECTED'].includes(String(requirement.status || '').toUpperCase()),
     draftStep,
     payload
   };
@@ -4104,8 +4105,10 @@ router.post('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(
 router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
 
-  // We load V1 drafts from requirement table
-  const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED'] } };
+  // We load V1 drafts from requirement table. Submitted/published rows stay
+  // listed (flagged isPublished) so the buyer keeps a draft-history record
+  // after publishing instead of the card silently vanishing.
+  const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'OPEN'] } };
   if (query.procurementMethod) reqWhere.procurementMethod = procurementMethodCodeFor(query.procurementMethod);
   if (query.categoryId) reqWhere.categoryId = query.categoryId;
   if (query.q) reqWhere.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];
@@ -4116,11 +4119,12 @@ router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(a
     orderBy: { updatedAt: 'desc' }
   });
 
-  // Load V2 drafts from bidWizardDraft table
+  // Load V2 drafts from bidWizardDraft table. SUBMITTED rows are the published
+  // wizard drafts (submitViaWizard marks them SUBMITTED instead of deleting).
   const v2Drafts = await db.bidWizardDraft.findMany({
     where: {
       buyerId: userId(req),
-      draftStatus: 'DRAFT'
+      draftStatus: { in: ['DRAFT', 'SUBMITTED'] }
     },
     orderBy: { updatedAt: 'desc' }
   });
@@ -4146,7 +4150,8 @@ router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(a
     return {
       id: d.id,
       buyerId: d.buyerId,
-      status: 'DRAFT',
+      status: d.draftStatus === 'SUBMITTED' ? 'PUBLISHED' : 'DRAFT',
+      isPublished: d.draftStatus === 'SUBMITTED',
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       title,

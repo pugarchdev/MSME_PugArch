@@ -205,6 +205,9 @@ export const canAccessFileAsset = async (asset: any, user: { id: number; role: s
     if (doc.visibility === 'PUBLIC') return true;
     if (user.role === 'buyer' && doc.bid.buyerId === user.id) return true;
     if (user.role === 'seller' && doc.visibility === 'SELLER_AFTER_LOGIN') return true;
+    // Buyer packet documents (templates/schedules the seller must fill) are part
+    // of the tender pack. Legacy rows predate the SELLER_AFTER_LOGIN visibility.
+    if (user.role === 'seller' && ['TECHNICAL_PACKET_DOCUMENT', 'FINANCIAL_PACKET_DOCUMENT', 'FINANCIAL_BOQ_PRICE_SCHEDULE'].includes(doc.documentType)) return true;
     return false;
   }
   if (['procurement_bid_participation', 'procurement_participation_document', 'procurement_financial_quote'].includes(asset.entityType)) {

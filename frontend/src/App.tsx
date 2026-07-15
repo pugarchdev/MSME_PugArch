@@ -125,6 +125,7 @@ const RfpDetailPage = lazy(() => import('./features/rfq/pages/RfpDetailPage'));
 const SubmitQuotationPage = lazy(() => import('./features/rfq/pages/SubmitQuotationPage'));
 const RfqComparisonPage = lazy(() => import('./features/rfq/pages/RfqComparisonPage'));
 const InviteLoginPopup = lazy(() => import('./features/notifications/InviteLoginPopup'));
+const BuyerRequirementListPage = lazy(() => import('./features/marketplace/pages/BuyerRequirementListPage'));
 
 import Sidebar, { Header } from './components/layout/Navbar';
 import { OrgApprovalBanner } from './components/OrgApprovalBanner';
@@ -213,11 +214,18 @@ const rolePreloaders = {
     () => import('./features/procurement/pages/MyProcurementsPage'),
     () => import('./features/procurementWizard/pages/CreateProcurementPage'),
     () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
+    () => import('./features/procurement/pages/BuyerProcurementHub'),
+    () => import('./features/procurementBid/pages/BidComparisonPage'),
+    () => import('./features/reverseAuctions/pages/ReverseAuctionListPage'),
     // LEGACY: CreateBidPage preload removed — /buyer/create-bid now shows LegacyNoticePage
   ],
   seller: [
     () => import('./features/sellerOpportunities/pages/SellerOpportunitiesPage'),
     () => import('./features/sellerOpportunities/pages/SellerEventListPage'),
+    () => import('./features/procurementBid/pages/BidsListingPage'),
+    () => import('./features/procurementBid/pages/BidParticipationPage'),
+    () => import('./features/procurementBid/pages/SellerBidsPage'),
+    () => import('./features/reverseAuctions/pages/ReverseAuctionListPage'),
   ],
   admin: [
     () => import('./features/admin/pages/AdminRecordsPage'),
@@ -287,6 +295,7 @@ const isPublicRoute = (route: string) => {
   if (route.startsWith('/marketplace')) return true;
   if (route.startsWith('/bids')) return true;
   if (route.startsWith('/tenders')) return true;
+  if (route.startsWith('/reverse-auctions')) return true;
   if (route.startsWith('/admin/bids')) return true;
   if (/^\/vendors\/-?\d+$/.test(route)) return true;
   if (/^\/buyer-requirements\/-?\d+$/.test(route)) return true;
@@ -392,7 +401,7 @@ export default function App() {
           return;
         }
       }
-      if (!['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
+      if (!['/', '/login', '/shg/login', '/forgot-password', '/register', '/seller/register', '/buyer/register', '/hershg/register', '/admin/register', '/invite/accept', '/invite/signup', '/cart', '/help', '/user-guide', ...publicInfoRoutes].includes(pathname) && !pathname.startsWith('/marketplace') && !pathname.startsWith('/bids') && !pathname.startsWith('/admin/bids') && !pathname.startsWith('/tenders') && !pathname.startsWith('/reverse-auctions') && !/^\/vendors\/\d+$/.test(pathname) && !/^\/buyer-requirements\/\d+$/.test(pathname)) {
         router.replace('/');
       }
     }
@@ -476,6 +485,7 @@ export default function App() {
     if (pathname === '/marketplace/sellers') return <MarketplaceSellersPage />;
     if (pathname === '/marketplace/buyers') return <MarketplaceBuyersPage />;
     if (pathname === '/marketplace/cart') return <GuestCartPage />;
+    if (pathname === '/marketplace/requirements') return <BuyerRequirementListPage />;
     
     if (pathname === '/marketplace/compare') return <MarketplaceComparePage />;
     

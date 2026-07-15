@@ -429,9 +429,8 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
             
             // Link formatting based on authentication & procurement method
             let link = `/marketplace/requirements/${sourceId}`;
-            if (method === 'REVERSE_AUCTION' || r.linkedAuctionId) {
-                const auctionId = r.linkedAuctionId || sourceId;
-                link = `/reverse-auctions/${auctionId}`;
+            if (r.linkedAuctionId) {
+                link = `/reverse-auctions/${r.linkedAuctionId}`;
             } else {
                 const isLoggedIn = !!user;
                 const isSeller = user?.role === 'seller';
@@ -480,7 +479,9 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
         });
     }, [requirements, tenders, bids, user]);
 
-    const viewAllHref = '/marketplace';
+    const viewAllHref = user
+        ? (user.role === 'seller' ? '/seller/opportunities' : '/marketplace/requirements')
+        : '/marketplace/requirements';
     const emptyMessage = 'No active procurement opportunities found matching current records.';
 
     return (

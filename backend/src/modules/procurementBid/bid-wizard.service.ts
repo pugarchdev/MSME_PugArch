@@ -72,9 +72,9 @@ const collectDocumentSpecs = (formData: BidWizardFormData, bidType: BidType, pac
     ...asFileAssetIds(step4.pacCertificateUploads).map(fileAssetId => ({ fileAssetId, documentType: 'PAC_CERTIFICATE', visibility: 'BUYER_ADMIN_ONLY' })),
     ...asFileAssetIds(step4.competentAuthorityApprovalUploads).map(fileAssetId => ({ fileAssetId, documentType: 'COMPETENT_AUTHORITY_APPROVAL', visibility: 'BUYER_ADMIN_ONLY' })),
     ...asFileAssetIds(step4.priceReasonabilityDocumentUploads).map(fileAssetId => ({ fileAssetId, documentType: 'PRICE_REASONABILITY', visibility: 'BUYER_ADMIN_ONLY' })),
-    ...asFileAssetIds(step6.technicalPacket?.technicalDocumentUploads).map(fileAssetId => ({ fileAssetId, documentType: 'TECHNICAL_PACKET_DOCUMENT', visibility: 'BUYER_ADMIN_ONLY' })),
-    ...asFileAssetIds(step7.financialPacket?.financialDocumentUploads).map(fileAssetId => ({ fileAssetId, documentType: 'FINANCIAL_PACKET_DOCUMENT', visibility: 'BUYER_ADMIN_ONLY' })),
-    ...asFileAssetIds(step7.financialPacket?.boqPriceSchedule).map(fileAssetId => ({ fileAssetId, documentType: 'FINANCIAL_BOQ_PRICE_SCHEDULE', visibility: 'BUYER_ADMIN_ONLY' })),
+    ...asFileAssetIds(step6.technicalPacket?.technicalDocumentUploads).map(fileAssetId => ({ fileAssetId, documentType: 'TECHNICAL_PACKET_DOCUMENT', visibility: 'SELLER_AFTER_LOGIN' })),
+    ...asFileAssetIds(step7.financialPacket?.financialDocumentUploads).map(fileAssetId => ({ fileAssetId, documentType: 'FINANCIAL_PACKET_DOCUMENT', visibility: 'SELLER_AFTER_LOGIN' })),
+    ...asFileAssetIds(step7.financialPacket?.boqPriceSchedule).map(fileAssetId => ({ fileAssetId, documentType: 'FINANCIAL_BOQ_PRICE_SCHEDULE', visibility: 'SELLER_AFTER_LOGIN' })),
   ];
 
   return specs.filter((spec, index, all) =>

@@ -72,6 +72,8 @@ type PendingFile = {
   status: 'ready' | 'uploading' | 'uploaded' | 'error';
   error?: string;
   previewUrl: string;
+  /** Which buyer-required document this file satisfies (defaults to the file name). */
+  documentName?: string;
 };
 
 const steps = [
@@ -377,7 +379,7 @@ export default function BidParticipationPage() {
     setUploadingTechnical(true);
     setTechnicalFiles(prev => prev.map(item => ({ ...item, status: 'uploading', progress: 0 })));
     try {
-      const files = technicalFiles.map(item => item.file);
+      const files = technicalFiles.map(item => ({ file: item.file, documentName: item.documentName }));
       const uploaded = await procurementBidApi.uploadTechnicalDocuments(
         bid.id,
         participation.id,
@@ -629,7 +631,7 @@ export default function BidParticipationPage() {
               </div>
             )}
             {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => setStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
-            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} />}
+            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} />}
             {step === 2 && (
               bid?.procurementType === 'RFI' ? (
                 <RfiQuestionnaireForm
@@ -651,11 +653,13 @@ export default function BidParticipationPage() {
                 files={technicalFiles}
                 uploadedDocs={uploadedTechnicalDocs}
                 uploading={uploadingTechnical}
+                requiredDocuments={bid?.requiredDocuments || []}
                 onAdd={addTechnicalFiles}
                 onRemove={removeTechnicalFile}
                 onPreview={openPreview}
                 onUpload={uploadTechnical}
                 onNext={() => setStep(bid?.procurementType === 'RFI' ? 5 : 4)}
+                onTag={(id, documentName) => setTechnicalFiles(prev => prev.map(item => item.id === id ? { ...item, documentName: documentName || undefined } : item))}
               />
             )}
             {step === 4 && (
@@ -750,7 +754,7 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
   );
 }
 
-function EligibilityStep({ eligibility, setEligibility, onNext }: { eligibility: Record<string, boolean>; setEligibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onNext: () => void }) {
+function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, buyerTerms }: { eligibility: Record<string, boolean>; setEligibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onNext: () => void; buyerCriteria?: string[]; buyerTerms?: string[] }) {
   const rows = [
     ['gst', 'GST registration available'],
     ['pan', 'PAN available'],
@@ -761,7 +765,9 @@ function EligibilityStep({ eligibility, setEligibility, onNext }: { eligibility:
     ['notBlacklisted', 'Not blacklisted declaration'],
     ['terms', 'Terms accepted'],
   ];
-  const complete = Object.values(eligibility).every(Boolean);
+  // Buyer-defined dynamic criteria get their own checkboxes, keyed by index.
+  const dynamicRows = (buyerCriteria || []).map((text, index) => [`buyer_criteria_${index}`, text] as const);
+  const complete = rows.every(([key]) => eligibility[key]) && dynamicRows.every(([key]) => eligibility[key]);
   return (
     <div>
       <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="Check Eligibility" subtitle="Confirm eligibility before preparing the technical offer." />
@@ -773,6 +779,27 @@ function EligibilityStep({ eligibility, setEligibility, onNext }: { eligibility:
           </label>
         ))}
       </div>
+      {dynamicRows.length > 0 && (
+        <div className="mt-5">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer eligibility conditions for this bid</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            {dynamicRows.map(([key, label]) => (
+              <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50/40 text-slate-700'}`}>
+                <input type="checkbox" checked={Boolean(eligibility[key])} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      {(buyerTerms || []).length > 0 && (
+        <div className="mt-5 border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer terms &amp; conditions</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold text-slate-600">
+            {(buyerTerms || []).map((term, index) => <li key={index}>{term}</li>)}
+          </ul>
+        </div>
+      )}
       <div className="mt-5 flex justify-end">
         <button onClick={onNext} disabled={!complete} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
@@ -906,22 +933,49 @@ function RfiQuestionnaireForm({
   );
 }
 
-function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, onAdd, onRemove, onPreview, onUpload, onNext }: {
+function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, requiredDocuments, onAdd, onRemove, onPreview, onUpload, onNext, onTag }: {
   canUpload: boolean;
   files: PendingFile[];
   uploadedDocs: ParticipationDocument[];
   uploading: boolean;
+  requiredDocuments?: string[];
   onAdd: (files: FileList | File[]) => void;
   onRemove: (id: string) => void;
   onPreview: (item: PendingFile) => void;
   onUpload: () => void;
   onNext: () => void;
+  onTag?: (id: string, documentName: string) => void;
 }) {
+  const required = requiredDocuments || [];
+  const coveredNames = new Set([
+    ...uploadedDocs.map(doc => String(doc.documentName || '').trim().toLowerCase()),
+    ...files.map(item => String(item.documentName || '').trim().toLowerCase()),
+  ]);
+  const missingRequired = required.filter(name => !coveredNames.has(String(name).trim().toLowerCase()));
   return (
     <div>
       <StepTitle icon={<FileUp className="h-5 w-5" />} title="Upload Technical Documents" subtitle="Upload compliance, certificates, catalogues, experience proofs, and supporting technical documents." />
+      {required.length > 0 && (
+        <div className="mt-4 border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer-required documents checklist</p>
+          <div className="mt-2 space-y-1.5">
+            {required.map(name => {
+              const done = coveredNames.has(String(name).trim().toLowerCase());
+              return (
+                <div key={name} className="flex items-center gap-2 text-xs font-bold">
+                  {done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-slate-300" />}
+                  <span className={done ? 'text-emerald-700' : 'text-slate-600'}>{name}</span>
+                </div>
+              );
+            })}
+          </div>
+          {missingRequired.length > 0 && (
+            <p className="mt-2 text-[11px] font-bold text-amber-700">Tag each uploaded file with the required document it satisfies. Missing: {missingRequired.join(', ')}</p>
+          )}
+        </div>
+      )}
       <UploadDropZone disabled={!canUpload} multiple onFiles={onAdd} />
-      <FileList files={files} onRemove={onRemove} onPreview={onPreview} />
+      <FileList files={files} onRemove={onRemove} onPreview={onPreview} requiredDocuments={required} onTag={onTag} />
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button onClick={onUpload} disabled={!canUpload || uploading || !files.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
@@ -1227,7 +1281,7 @@ function UploadDropZone({ disabled, multiple, onFiles }: { disabled: boolean; mu
   );
 }
 
-function FileList({ files, onRemove, onPreview }: { files: PendingFile[]; onRemove: (id: string) => void; onPreview: (item: PendingFile) => void }) {
+function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { files: PendingFile[]; onRemove: (id: string) => void; onPreview: (item: PendingFile) => void; requiredDocuments?: string[]; onTag?: (id: string, documentName: string) => void }) {
   if (!files.length) return null;
   return (
     <div className="mt-4 space-y-2">
@@ -1241,6 +1295,17 @@ function FileList({ files, onRemove, onPreview }: { files: PendingFile[]; onRemo
               {item.status === 'uploading' && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full" style={{ width: `${item.progress}%`, backgroundColor: 'var(--bid-primary)' }} /></div>}
               {item.error && <p className="mt-1 text-[10px] font-bold text-red-600">{item.error}</p>}
             </div>
+            {requiredDocuments && requiredDocuments.length > 0 && onTag && item.status !== 'uploaded' && (
+              <select
+                value={item.documentName || ''}
+                onChange={event => onTag(item.id, event.target.value)}
+                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-black text-slate-700"
+                title="Which required document is this file?"
+              >
+                <option value="">Tag as required document…</option>
+                {requiredDocuments.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            )}
             <div className="flex gap-2">
               <button type="button" onClick={() => onPreview(item)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700"><Eye className="h-3.5 w-3.5" /> Preview</button>
               {item.status !== 'uploaded' && <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-white px-3 text-[10px] font-black text-red-600"><Trash2 className="h-3.5 w-3.5" /> Remove</button>}

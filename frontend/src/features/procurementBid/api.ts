@@ -55,6 +55,11 @@ const uploadFormData = (
       return;
     }
     if (xhr.status >= 200 && xhr.status < 300) {
+      // XHR bypasses api.fetch, so mirror its mutation-invalidation manually:
+      // uploads change bid/participation state and cached GETs must not go stale.
+      api.invalidate('/api/bids');
+      api.invalidate('/api/buyer/bids');
+      api.invalidate('/api/seller/bids');
       resolve(unwrapApiData(body));
       return;
     }
@@ -280,8 +285,8 @@ export const procurementBidApi = {
     const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participate`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
-  async submitParticipation(id: string, participationId: number) {
-    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participation/${participationId}/submit`, {}, { headers: authHeaders() });
+  async submitParticipation(id: string, participationId: number, body: Record<string, unknown> = {}) {
+    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participation/${participationId}/submit`, body, { headers: authHeaders() });
     return readApiBody(res);
   },
   async createBid(payload: Record<string, unknown>) {
@@ -417,16 +422,18 @@ export const procurementBidApi = {
   async uploadTechnicalDocuments(
     bidId: string,
     participationId: number,
-    files: File[],
+    files: Array<File | { file: File; documentName?: string }>,
     metadata: { documentCategory?: string; documentName?: string } = {},
     onProgress?: (fileIndex: number, percent: number) => void
   ) {
     const uploaded: any[] = [];
-    for (const [index, file] of files.entries()) {
+    for (const [index, entry] of files.entries()) {
+      const file = entry instanceof File ? entry : entry.file;
+      const documentName = entry instanceof File ? undefined : entry.documentName;
       const formData = new FormData();
       formData.append('file', file);
       formData.append('documentCategory', metadata.documentCategory || 'TECHNICAL_COMPLIANCE');
-      formData.append('documentName', metadata.documentName || file.name);
+      formData.append('documentName', documentName || metadata.documentName || file.name);
       uploaded.push(await uploadFormData(
         `/api/bids/${encodeURIComponent(bidId)}/participation/${participationId}/technical-documents`,
         formData,
@@ -459,8 +466,10 @@ export const procurementBidApi = {
     if (data.offeredItemDescription) formData.append('offeredItemDescription', data.offeredItemDescription);
     return uploadFormData(`/api/bids/${encodeURIComponent(bidId)}/participation/${participationId}/financial-quote`, formData, onProgress);
   },
-  async submitBidParticipation(bidId: string, participationId: number, _declarationData?: Record<string, unknown>) {
-    return this.submitParticipation(bidId, participationId);
+  async submitBidParticipation(bidId: string, participationId: number, declarationData?: Record<string, unknown>) {
+    // The declaration checkbox doubles as acceptance of buyer terms & eligibility criteria.
+    const accepted = Boolean(declarationData?.declaration ?? declarationData?.acceptedTerms);
+    return this.submitParticipation(bidId, participationId, { acceptedTerms: accepted });
   },
   async getSellerBids() {
     const res = await api.get('/api/seller/bids', { headers: authHeaders(), skipCache: true });
@@ -471,7 +480,7 @@ export const procurementBidApi = {
     const res = await api.get('/api/seller/requirement-responses', { headers: authHeaders(), skipCache: true });
     const body = await readJsonResponse(res);
     const unwrapped = unwrapApiData(body);
-    return unwrapped?.responses || unwrapped || [];
+    return Array.isArray(unwrapped?.responses) ? unwrapped.responses : Array.isArray(unwrapped) ? unwrapped : [];
   },
   async getSellerBidStatus(bidId: string) {
     const res = await api.fetch(`/api/seller/bids/${encodeURIComponent(bidId)}/status`, { method: 'GET', headers: authHeaders(), skipCache: true });

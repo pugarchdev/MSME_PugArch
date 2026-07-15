@@ -46,7 +46,7 @@ type ProcurementOpportunity = {
 const opportunityHref = (opp: ProcurementOpportunity) => {
   if (opp.source === 'rfq') return `/seller/rfq?requestId=${opp.id}`;
   const method = (opp.method || '').toUpperCase();
-  if (method === 'REVERSE_AUCTION') return `/reverse-auctions/${opp.id}`;
+  if (method === 'REVERSE_AUCTION') return `/bids/${opp.id}`;
   if (method === 'RFP') return `/seller/rfp?requestId=${opp.id}`;
   if (method === 'RFQ') return `/seller/rfq?requestId=${opp.id}`;
   return `/bids/${opp.id}`;
@@ -225,7 +225,7 @@ export default function Home() {
                 Browse active public procurement opportunities from verified buyers.
               </p>
             </div>
-            <a href={user ? '/seller/opportunities' : '/register'}>
+            <a href={user ? (user.role === 'seller' ? '/seller/opportunities' : '/marketplace/requirements') : '/marketplace/requirements'}>
               <Button variant="outline" size="sm" className="h-10 rounded-full border-slate-300 text-[10px] font-black uppercase tracking-wider">
                 View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>

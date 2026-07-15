@@ -73,9 +73,20 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
       ]);
       
       const bids = bidsData.status === 'fulfilled' ? bidsData.value : [];
-      const marketplaceResponses = mrData.status === 'fulfilled' ? mrData.value : [];
+      // Backend participations carry `submissionStatus` (DRAFT/SUBMITTED/...), not `status`.
+      // Normalize so route filters and KPIs work on one field.
+      const normalizedBids = (Array.isArray(bids) ? bids : []).map((b: any) => ({
+        ...b,
+        status: b.status ?? b.submissionStatus ?? 'DRAFT'
+      }));
+      const rawMarketplace = mrData.status === 'fulfilled' ? mrData.value : [];
+      const marketplaceResponses = Array.isArray(rawMarketplace)
+        ? rawMarketplace
+        : (rawMarketplace && typeof rawMarketplace === 'object' && 'responses' in rawMarketplace && Array.isArray((rawMarketplace as any).responses))
+          ? (rawMarketplace as any).responses
+          : [];
       
-      const normalizedMarketplace = (marketplaceResponses || []).map((res: any) => ({
+      const normalizedMarketplace = marketplaceResponses.map((res: any) => ({
         id: `mr-${res.id}`,
         bidId: `req-${res.requirementId}`,
         status: String(res.status || 'SUBMITTED').toUpperCase(),
@@ -97,7 +108,7 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
         }
       }));
       
-      setParticipations([...bids, ...normalizedMarketplace]);
+      setParticipations([...normalizedBids, ...normalizedMarketplace]);
     } catch (err: any) {
       console.error('[Seller Bids]', err);
       setError(err?.message || 'Unable to load your bids.');

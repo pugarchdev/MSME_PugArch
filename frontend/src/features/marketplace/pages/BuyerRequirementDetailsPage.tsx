@@ -150,7 +150,7 @@ const BuyerRequirementDetailsPage = () => {
         return;
       }
       setRedirecting(true);
-      window.location.href = route;
+      window.location.replace(route);
     }
   }, [requirement, redirecting, isSeller]);
 

@@ -457,7 +457,7 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <MetricCard label="Procurement Method" value={auction.data.procurementMethod === 'BID_WITH_REVERSE_AUCTION' ? 'Bid with Reverse Auction' : 'Reverse Auction'} icon={Scale} />
-                <MetricCard label="Buyer Organization" value={auction.data.buyerOrgId ? `Buyer Org #${auction.data.buyerOrgId}` : 'Verified Buyer'} icon={Building2} />
+                <MetricCard label="Buyer Organization" value={auction.data.buyerOrganizationName || (auction.data.buyerOrgId ? `Buyer Org #${auction.data.buyerOrgId}` : 'Verified Buyer')} icon={Building2} />
                 <MetricCard label="Category" value={auction.data.category || 'Not specified'} icon={Tag} />
                 <MetricCard label="Auction Type" value={auction.data.auctionType || 'ENGLISH_REVERSE'} icon={Settings} />
                 <MetricCard label="Auction Mode" value={auction.data.auctionMode || 'ONLINE'} icon={Activity} />
@@ -479,7 +479,17 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
                       View Event <ChevronRight className="h-4 w-4 ml-0.5" />
                     </Link>
                   </div>
-                ) : linkedBid.isLoading ? (
+                ) : auction.data.linkedRequirement ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{auction.data.linkedRequirement.title}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-0.5">Reference: {auction.data.linkedRequirement.requirementNumber || auction.data.linkedRequirement.id}</p>
+                    </div>
+                    <Link href={`/marketplace/requirements/${auction.data.linkedRequirement.id}`} className="inline-flex items-center text-xs font-black text-[#12335f] hover:underline">
+                      View Requirement <ChevronRight className="h-4 w-4 ml-0.5" />
+                    </Link>
+                  </div>
+                ) : (linkedBidId || tenderId) && linkedBid.isLoading ? (
                   <p className="text-xs font-semibold text-slate-500 animate-pulse">Resolving linked procurement details...</p>
                 ) : (
                   <p className="text-xs font-bold text-red-500">Linked procurement details unavailable.</p>

@@ -351,8 +351,19 @@ router.get('/reverse-auctions/:id', optionalAuthenticate, async (req: AuthReques
       }
     }
 
+    let buyerOrganizationName = 'Verified Buyer';
+    if (auction.buyerOrgId) {
+      const buyerOrg = await db.organization.findUnique({
+        where: { id: auction.buyerOrgId },
+        select: { organizationName: true }
+      });
+      if (buyerOrg) {
+        buyerOrganizationName = buyerOrg.organizationName;
+      }
+    }
+
     const linkedRequirement = await linkedRequirementSummary(auction);
-    return apiResponse.success(res, maskSensitive({ ...auction, isPublic, hasJoined, linkedRequirement }));
+    return apiResponse.success(res, maskSensitive({ ...auction, isPublic, hasJoined, linkedRequirement, buyerOrganizationName }));
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load auction', error.code || 'REVERSE_AUCTION_DETAIL_ERROR');
   }
@@ -664,7 +675,17 @@ router.get('/reverse-auctions/:id/participants', requirePermission('reverse_auct
     if (req.user?.role === 'seller') where.sellerOrgId = req.user.organizationId || -1;
     else assertAuctionManager(req, auction);
     const participants = await db.auctionParticipant.findMany({ where, orderBy: [{ currentRank: 'asc' }, { invitedAt: 'asc' }] });
-    return apiResponse.success(res, { participants: maskSensitive(participants) });
+    const orgIds = Array.from(new Set(participants.map((p: any) => p.sellerOrgId).filter(Boolean)));
+    const orgs = await db.organization.findMany({
+      where: { id: { in: orgIds } },
+      select: { id: true, organizationName: true }
+    });
+    const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
+    const mappedParticipants = participants.map((p: any) => ({
+      ...p,
+      sellerOrgName: orgMap.get(p.sellerOrgId) || `Organization #${p.sellerOrgId}`
+    }));
+    return apiResponse.success(res, { participants: maskSensitive(mappedParticipants) });
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load participants', error.code || 'REVERSE_AUCTION_PARTICIPANTS_ERROR');
   }
@@ -794,19 +815,16 @@ router.get('/reverse-auctions/:id/bids', requirePermission('reverse_auction.view
     else assertAuctionManager(req, auction);
     const bids = await db.auctionBid.findMany({ where, orderBy: [{ amount: 'asc' }, { submittedAt: 'asc' }] });
     
-    let mappedBids = bids;
-    if (req.user?.role !== 'seller') {
-      const orgIds = Array.from(new Set(bids.map((b: any) => b.sellerOrgId).filter(Boolean)));
-      const orgs = await db.organization.findMany({
-        where: { id: { in: orgIds as number[] } },
-        select: { id: true, organizationName: true }
-      });
-      const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
-      mappedBids = bids.map((b: any) => ({
-        ...b,
-        sellerOrgName: orgMap.get(b.sellerOrgId) || `Organization #${b.sellerOrgId}`
-      }));
-    }
+    const orgIds = Array.from(new Set(bids.map((b: any) => b.sellerOrgId).filter(Boolean)));
+    const orgs = await db.organization.findMany({
+      where: { id: { in: orgIds as number[] } },
+      select: { id: true, organizationName: true }
+    });
+    const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
+    const mappedBids = bids.map((b: any) => ({
+      ...b,
+      sellerOrgName: orgMap.get(b.sellerOrgId) || `Organization #${b.sellerOrgId}`
+    }));
     
     return apiResponse.success(res, { bids: maskSensitive(mappedBids) });
   } catch (error: any) {

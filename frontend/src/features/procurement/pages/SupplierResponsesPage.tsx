@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Search,
   RefreshCw,
@@ -38,7 +38,6 @@ import { formatDate } from '../../shared/format';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { EmptyState, LoadingState } from '../../shared/FeatureStates';
-import type { ProcurementBid } from '../../procurementBid/data';
 
 const formatCurrency = (value: number | string | null | undefined) => {
   const num = Number(value || 0);
@@ -140,13 +139,6 @@ const getTypeIcon = (type: string) => {
 
 export default function SupplierResponsesPage() {
   const { user } = useAuth();
-  const router = useRouter();
-
-  // Data state
-  const [bids, setBids] = useState<ProcurementBid[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
 
   // Filters
   type StatusTab = 'All' | 'Open' | 'Under Evaluation' | 'Awarded' | 'Closed';
@@ -158,63 +150,66 @@ export default function SupplierResponsesPage() {
   const [viewMode, setViewMode] = useResponsiveViewMode('supplier-responses:view-mode');
 
   // Debounce search
-  useEffect(() => {
+  React.useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
-  // Fetch buyer's own bids & marketplace requirements
-  const loadBids = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
-      setError('');
-      
-      const [bidsData, reqsData] = await Promise.allSettled([
-        procurementBidApi.getBuyerBids(),
-        marketplaceApi.getRequirements({ pageSize: 50 })
-      ]);
-      
-      const bids = bidsData.status === 'fulfilled' ? bidsData.value : [];
-      const requirements = reqsData.status === 'fulfilled' ? reqsData.value?.requirements || reqsData.value?.items || reqsData.value || [] : [];
-      
-      const buyerRequirements = (requirements || []).filter((r: any) => r.buyerId === user?.id || r.buyerOrganization?.id === user?.organizationId);
-      
-      const normalizedRequirements = buyerRequirements.map((req: any) => ({
-        id: `req-${req.id}`,
+  const fetchBids = async () => {
+    const [bidsData, reqsData] = await Promise.allSettled([
+      procurementBidApi.getBuyerBids(),
+      marketplaceApi.getRequirements({ pageSize: 50 })
+    ]);
+    const bids = bidsData.status === 'fulfilled' ? bidsData.value : [];
+    const requirements = reqsData.status === 'fulfilled'
+      ? reqsData.value?.requirements || reqsData.value?.items || reqsData.value || []
+      : [];
+    const buyerRequirements = (requirements || []).filter(
+      (r: any) => r.buyerId === user?.id || r.buyerOrganization?.id === user?.organizationId
+    );
+    const normalizedRequirements = buyerRequirements.map((req: any) => {
+      const realId = req.sourceId || Math.abs(Number(req.id));
+      return {
+        id: `req-${realId}`,
         title: req.title || 'Marketplace Requirement',
         itemName: req.title || 'Marketplace Requirement',
         buyerName: req.buyerOrganization?.organizationName || 'You',
         estimatedValue: req.budgetMax || req.budgetMin,
         status: req.status === 'PUBLISHED' ? 'Open' : req.status === 'CLOSED' ? 'Closed' : req.status === 'AWARDED' ? 'Awarded' : 'Open',
-        participantsCount: req.responsesCount || req.responses?.length || 0,
+        participantsCount: req._count?.responses || req.responsesCount || 0,
         endDate: req.lastDate,
         startDate: req.approvedAt || req.createdAt,
         procurementType: req.canonicalMethod || req.procurementMethod || 'RFQ',
         bidType: 'Product',
         isMarketplaceRequirement: true,
-        requirementId: req.id
-      }));
-      
-      setBids([...bids, ...normalizedRequirements]);
-    } catch (err: any) {
-      console.error('[Supplier Responses]', err);
-      setError(err?.message || 'Unable to load supplier responses.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user]);
+        requirementId: realId,
+      };
+    });
+    return [...bids, ...normalizedRequirements];
+  };
+
+  const { data: bids = [], isLoading: loading, isError, error: queryError, refetch, isFetching } = useQuery<any[]>({
+    queryKey: ['supplier-responses', user?.id],
+    queryFn: fetchBids,
+    staleTime: 60_000,
+    enabled: !!user?.id,
+  });
+
+  const error = isError ? (queryError as any)?.message || 'Unable to load supplier responses.' : '';
+  const refreshing = isFetching && !loading;
 
   const handleViewResponses = (bid: any) => {
     if (bid.isMarketplaceRequirement) {
-      window.location.href = `/marketplace/requirements/${bid.requirementId}`;
+      const method = String(bid.procurementType || '').toUpperCase();
+      if (method === 'REVERSE_AUCTION' || method.includes('AUCTION')) {
+        window.location.href = `/reverse-auctions/${bid.requirementId}`;
+      } else {
+        window.location.href = `/marketplace/requirements/${bid.requirementId}`;
+      }
     } else {
       window.location.href = `/bids/${bid.id}/results`;
     }
   };
-
-  useEffect(() => { loadBids(); }, [loadBids]);
 
   // KPI metrics
   const kpis = useMemo(() => {
@@ -288,7 +283,7 @@ export default function SupplierResponsesPage() {
             <p className="mt-1 text-sm font-semibold text-slate-500">Track bids, quotes, and proposals received from suppliers across your procurements.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => loadBids(true)} className="h-10 rounded-lg text-xs font-black uppercase shadow-sm bg-white hover:bg-slate-50 border-slate-200">
+            <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-lg text-xs font-black uppercase shadow-sm bg-white hover:bg-slate-50 border-slate-200">
               <RefreshCw className={cn("mr-2 h-4 w-4 text-[#12335f]", refreshing && "animate-spin")} />Refresh
             </Button>
           </div>
@@ -359,7 +354,7 @@ export default function SupplierResponsesPage() {
         <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-55/10 p-4 text-xs font-semibold text-red-700">
           <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />
           <span>{error}</span>
-          <Button variant="outline" onClick={() => loadBids()} className="ml-auto h-8 text-[10px] font-black uppercase rounded-lg border-red-200 hover:bg-red-50">Retry</Button>
+          <Button variant="outline" onClick={() => refetch()} className="ml-auto h-8 text-[10px] font-black uppercase rounded-lg border-red-200 hover:bg-red-50">Retry</Button>
         </div>
       )}
 
@@ -474,17 +469,14 @@ export default function SupplierResponsesPage() {
 
                         {/* Title & Reference */}
                         <td className="px-4 py-4 space-y-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                              #{bid.id}
-                            </span>
-                            {bid.location && (
+                          {bid.location && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-400">
                                 <MapPin className="h-3 w-3 shrink-0" />
                                 {bid.location}
                               </span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                           <p className="text-xs font-bold text-slate-900 leading-snug line-clamp-2">
                             {bid.title}
                           </p>
@@ -568,9 +560,6 @@ export default function SupplierResponsesPage() {
                           TYPE_BADGE_STYLES[typeVal] || 'border-slate-200 bg-slate-50 text-slate-700'
                         )}>
                           {typeVal}
-                        </span>
-                        <span className="text-[10px] font-mono font-semibold text-slate-400 tabular-nums">
-                          #{bid.id}
                         </span>
                       </div>
 

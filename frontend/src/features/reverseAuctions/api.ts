@@ -56,6 +56,7 @@ export type ReverseAuction = {
   linkedRequirementId?: number | null;
   isPublic?: boolean | null;
   hasJoined?: boolean | null;
+  buyerOrganizationName?: string | null;
   /** Read-only summary of the procurement the buyer created this auction from. */
   linkedRequirement?: {
     id: number;

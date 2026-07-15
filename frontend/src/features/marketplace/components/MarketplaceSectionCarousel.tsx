@@ -74,13 +74,12 @@ export function MarketplaceSectionCarousel({
                 {loading ? (
                     <div className="flex gap-4 overflow-hidden pb-5">
                         {Array.from({ length: 5 }).map((_, index) => (
-                            <div key={index} className="h-[370px] w-56 shrink-0 rounded-[24px] bg-white/90 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 sm:w-60 2xl:w-64">
-                                <div className="h-40 rounded-xl bg-slate-100" />
-                                <div className="mt-4 h-3 w-24 rounded bg-slate-100" />
-                                <div className="mt-3 h-4 w-full rounded bg-slate-100" />
-                                <div className="mt-2 h-4 w-2/3 rounded bg-slate-100" />
-                                <div className="mt-5 h-5 w-24 rounded bg-slate-100" />
-                                <div className="mt-7 h-8 rounded bg-slate-100" />
+                            <div key={index} className="h-[265px] sm:h-[275px] w-56 shrink-0 rounded-[24px] bg-white/90 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 sm:w-60 2xl:w-64 flex flex-col">
+                                <div className="h-26 sm:h-28 rounded-xl bg-slate-100 shrink-0" />
+                                <div className="mt-3 h-3 w-16 rounded bg-slate-100" />
+                                <div className="mt-2 h-4 w-full rounded bg-slate-100" />
+                                <div className="mt-1.5 h-3 w-2/3 rounded bg-slate-100" />
+                                <div className="mt-auto h-8 rounded bg-slate-100" />
                             </div>
                         ))}
                     </div>
@@ -99,7 +98,7 @@ export function MarketplaceSectionCarousel({
                         {viewAllUrl && (
                             <Link
                                 href={viewAllUrl}
-                                className="flex min-h-[370px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-[24px] border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center transition hover:bg-slate-100 hover:border-[#0b2447]/30 sm:w-56"
+                                className="flex h-[265px] sm:h-[275px] w-48 shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-[24px] border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center transition hover:bg-slate-100 hover:border-[#0b2447]/30 sm:w-56"
                             >
                                 <PackageSearch className="h-8 w-8 text-[#0b2447] transition-transform duration-300 hover:scale-110" />
                                 <span className="text-xs font-extrabold text-[#0b2447]">View complete section</span>

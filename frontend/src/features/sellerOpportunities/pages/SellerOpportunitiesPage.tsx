@@ -35,6 +35,7 @@ interface SellerOpportunity {
   href: string;
   detailsHref: string;
   sourceRef: string;
+  isInvitation?: boolean;
   publishedAt?: string;
   quantity?: string;
   description?: string;
@@ -318,6 +319,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length || bid.bidDocuments?.length,
           terms,
           nextAction: '',
+          isInvitation: method === 'LIMITED_TENDER' || bid.isInvited || bid.visibility === 'INVITED_SUPPLIERS',
           detailRows: [
             { label: 'Bid type', value: bid.bidType || 'Not specified' },
             { label: 'Procurement type', value: bid.procurementType || 'Open Bid' },
@@ -395,6 +397,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length,
           terms: asTextList(req.terms),
           nextAction: '',
+          isInvitation: reqMethod === 'LIMITED_TENDER' || req.visibility === 'INVITED_SUPPLIERS',
           detailRows: [
             { label: 'Requirement type', value: req.requirementType || 'Not specified' },
             { label: 'Visibility', value: req.visibility || 'Public' },
@@ -437,6 +440,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length,
           terms: asTextList(rfq.notes),
           nextAction: '',
+          isInvitation: true,
           detailRows: [
             { label: 'Buyer email', value: rfq.buyer?.email || 'Not shown' },
             { label: 'Buyer mobile', value: rfq.buyer?.mobile || 'Not shown' },
@@ -485,6 +489,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
           documentsCount: documents.length,
           terms: asTextList(auction.terms),
           nextAction: '',
+          isInvitation: auction.visibilityMode === 'INVITED_SELLERS_ONLY' || auction.isInvited || auction.invitedSellers?.some((v: any) => (v?.sellerOrgId || v) === user?.organizationId),
           detailRows: [
             { label: 'Auction start', value: formatDate(auction.startTime) },
             { label: 'Auction end', value: formatDate(auction.endTime) },
@@ -547,7 +552,13 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
     return items.filter(item => {
       const haystack = [item.title, item.buyer, item.category, item.location, item.status, item.type, item.sourceRef, item.description].join(' ').toLowerCase();
       if (text && !haystack.includes(text)) return false;
-      if (type && item.type !== type) return false;
+      if (type) {
+        if (type === 'Limited Tender') {
+          if (!item.isInvitation) return false;
+        } else if (item.type !== type) {
+          return false;
+        }
+      }
       if (status && item.status !== status) return false;
       if (location && item.location !== location) return false;
       if (category && item.category !== category) return false;
@@ -592,7 +603,7 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
         if (diff < 0 || diff > 7) return false;
       }
       if (kpiFilter === 'auctions' && item.type !== 'Reverse Auction') return false;
-      if (kpiFilter === 'invitations' && item.type !== 'Limited Tender') return false;
+      if (kpiFilter === 'invitations' && !item.isInvitation) return false;
       return true;
     });
 
@@ -696,8 +707,8 @@ export default function SellerOpportunitiesPage({ subRouteType = '' }: { subRout
       const diff = (new Date(item.closingDate).getTime() - Date.now()) / 86400000;
       return diff >= 0 && diff <= 7;
     }).length;
-    const auctionsLive = items.filter(item => item.type === 'Reverse Auction' && String(item.status).toUpperCase() === 'OPEN').length;
-    const invitations = items.filter(item => item.type === 'Limited Tender').length;
+    const auctionsLive = items.filter(item => item.type === 'Reverse Auction' && ['LIVE', 'OPEN', 'ACTIVE'].includes(String(item.status).toUpperCase())).length;
+    const invitations = items.filter(item => item.isInvitation).length;
 
     return { total, closingSoon, auctionsLive, invitations };
   }, [items]);

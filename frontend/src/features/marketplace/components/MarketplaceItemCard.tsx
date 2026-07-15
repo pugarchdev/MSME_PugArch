@@ -36,10 +36,21 @@ function inferItemType(item: MarketplaceDiscoveryItem, itemType?: MarketplaceIte
     return 'product';
 }
 
+const PRICING_LABELS: Record<string, string> = {
+    CUSTOM: 'Quote',
+    HOURLY: 'hr',
+    DAILY: 'day',
+    WEEKLY: 'week',
+    MONTHLY: 'month',
+    FIXED: 'fixed',
+    JOB: 'job',
+    YEAR: 'year'
+};
+
 function getCurrentPrice(item: MarketplaceDiscoveryItem, type: MarketplaceItemType) {
     const discountPrice = Number((item as any).discountPrice || 0);
     if (discountPrice > 0) return discountPrice;
-    return Number(type === 'service' ? (item as MarketplaceService).basePrice || 0 : (item as MarketplaceProduct).price || 0);
+    return Number(type === 'service' ? (item as any).basePrice || (item as any).price || 0 : (item as any).price || 0);
 }
 
 function getDiscount(item: MarketplaceDiscoveryItem) {
@@ -166,13 +177,13 @@ export function MarketplaceItemCard({
     };
 
     return (
-        <article className={cn('group flex min-h-[310px] w-52 shrink-0 snap-start flex-col overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)] hover:ring-[#0b2447]/25 sm:w-56 2xl:w-60', className)}>
-            <Link href={detailHref} onClick={cacheDetail} className="relative block h-32 overflow-hidden bg-gradient-to-b from-slate-50/50 to-slate-100/30">
+        <article className={cn('group flex h-[265px] sm:h-[275px] w-52 shrink-0 snap-start flex-col overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 border border-slate-100/50 backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)] hover:border-blue-400/50 hover:ring-blue-400/30 sm:w-56 2xl:w-60', className)}>
+            <Link href={detailHref} onClick={cacheDetail} className="relative block h-26 sm:h-28 overflow-hidden bg-gradient-to-b from-slate-50/50 to-slate-100/30 shrink-0">
                 {imageUrl ? (
-                    <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-contain p-3 transition-all duration-500 ease-out group-hover:scale-110 group-hover:rotate-1" />
+                    <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-contain p-2.5 transition-all duration-500 ease-out group-hover:scale-110 group-hover:rotate-1" />
                 ) : (
                     <span className="flex h-full w-full items-center justify-center text-slate-300 transition-transform duration-500 group-hover:scale-110">
-                        {type === 'service' ? <Wrench className="h-10 w-10" /> : <Package className="h-10 w-10" />}
+                        {type === 'service' ? <Wrench className="h-8 w-8" /> : <Package className="h-8 w-8" />}
                     </span>
                 )}
                 <span className="absolute left-2 top-2 rounded-full bg-white/90 backdrop-blur-sm px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-[#0b2447] shadow-sm border border-slate-200/50">
@@ -185,8 +196,8 @@ export function MarketplaceItemCard({
                 )}
             </Link>
 
-            <div className="flex flex-1 flex-col p-2.5">
-                <div className="mb-1.5 flex flex-wrap gap-1">
+            <div className="flex flex-1 flex-col p-2.5 pt-2">
+                <div className="mb-1 flex flex-wrap gap-1">
                     {sellerVerified && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-emerald-700 shadow-sm">
                             <BadgeCheck className="h-2.5 w-2.5 text-emerald-600" /> Verified
@@ -210,7 +221,7 @@ export function MarketplaceItemCard({
                     </Link>
                 )}
                 <Link href={detailHref} onClick={cacheDetail}>
-                    <h3 className="mt-1 line-clamp-2 text-xs font-extrabold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-[#0b2447]">
+                    <h3 className="mt-0.5 line-clamp-2 text-xs font-extrabold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-[#0b2447]">
                         {item.name}
                     </h3>
                 </Link>
@@ -221,57 +232,60 @@ export function MarketplaceItemCard({
                     </p>
                 )}
 
-                <div className="mt-2">
+                <div className="mt-1.5">
                     {price > 0 ? (
-                        <div>
-                            <p className="text-sm font-black text-[#0b2447]">{formatMoney(price)}</p>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                {discount && <span className="text-[10px] font-bold text-slate-400 line-through">{formatMoney(discount.original)}</span>}
-                                <span className="text-[10px] font-bold text-slate-500">
-                                    {type === 'service' ? ((item as MarketplaceService).pricingModel || 'Quote') : ((item as MarketplaceProduct).unitOfMeasure || (item as any).unit || 'Unit')}
-                                </span>
-                            </div>
+                        <div className="flex flex-wrap items-baseline gap-x-1">
+                            <span className="text-xs sm:text-sm font-black text-[#0b2447]">{formatMoney(price)}</span>
+                            {discount && <span className="text-[9px] font-bold text-slate-400 line-through">{formatMoney(discount.original)}</span>}
+                            <span className="text-[9px] font-bold text-slate-500">
+                                / {type === 'service' ? (PRICING_LABELS[String((item as MarketplaceService).pricingModel || 'CUSTOM').toUpperCase()] || 'Quote') : ((item as MarketplaceProduct).unitOfMeasure || (item as any).unit || 'Unit')}
+                            </span>
                         </div>
                     ) : (
-                        <span className="inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase text-amber-700">
+                        <span className="inline-flex rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-700">
                             Request quote
                         </span>
                     )}
                 </div>
 
-                <div className="mt-auto space-y-1.5 pt-2.5">
-                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                        <Link href={detailHref} onClick={cacheDetail} className="w-full">
-                            <Button type="button" variant="outline" size="sm" className="w-full h-8 gap-1.5 rounded-lg border-slate-200/80 text-[10px] font-extrabold text-slate-700 transition-all hover:bg-slate-50/80 active:scale-98">
-                                <Eye className="h-3 w-3 text-slate-500" /> Details
+                <div className="mt-auto pt-2">
+                    <div className="flex items-center gap-1">
+                        <Link href={detailHref} onClick={cacheDetail} className="flex-1">
+                            <Button type="button" variant="outline" size="sm" className="w-full h-8 px-1.5 text-[10px] font-extrabold text-slate-700 rounded-xl border-slate-200/80 transition-all hover:bg-slate-50 active:scale-98">
+                                Details
                             </Button>
                         </Link>
+                        
+                        {type === 'product' && price > 0 ? (
+                            showAddToCart && (
+                                quantity > 0 ? (
+                                    <div className="flex flex-1 items-center justify-between h-8 rounded-xl bg-[#0b2447] text-white px-1 shadow-inner">
+                                        <button type="button" onClick={(e) => changeQuantity(e, quantity - 1)} className="p-1 hover:bg-white/10 rounded active:scale-90">
+                                            <Minus className="h-2.5 w-2.5" />
+                                        </button>
+                                        <span className="text-[10px] font-black tabular-nums">{quantity}</span>
+                                        <button type="button" onClick={(e) => changeQuantity(e, quantity + 1)} className="p-1 hover:bg-white/10 rounded active:scale-90">
+                                            <Plus className="h-2.5 w-2.5" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Button type="button" onClick={addToCart} size="sm" className="flex-1 h-8 bg-[#0b2447] hover:bg-[#12335f] text-white text-[10px] font-extrabold rounded-xl transition-all active:scale-98">
+                                        + Cart
+                                    </Button>
+                                )
+                            )
+                        ) : (
+                            showRequestQuote && (
+                                <Button type="button" onClick={requestQuote} size="sm" className="flex-1 h-8 bg-[#b87c14] hover:bg-[#96630a] text-white text-[10px] font-extrabold rounded-xl transition-all active:scale-98">
+                                    Quote
+                                </Button>
+                            )
+                        )}
+
                         {showCompare && (
-                            <CompareToggleButton item={{ type, id: item.id, categoryId: category?.id }} iconOnly className="h-8 w-8 rounded-lg border-slate-200/80 hover:bg-slate-50/80 transition-all" />
+                            <CompareToggleButton item={{ type, id: item.id, categoryId: category?.id }} iconOnly className="h-8 w-8 rounded-xl border-slate-200/80 hover:bg-slate-50 transition-all shrink-0" />
                         )}
                     </div>
-                    {showAddToCart && (
-                        quantity > 0 ? (
-                            <div className="flex h-8 items-center justify-between overflow-hidden rounded-lg border-2 border-[#0b2447] bg-white transition-all duration-300 shadow-inner">
-                                <button type="button" onClick={(event) => changeQuantity(event, quantity - 1)} className="flex h-full w-8 items-center justify-center text-[#0b2447] transition hover:bg-[#0b2447]/5 active:scale-90" aria-label="Decrease quantity">
-                                    <Minus className="h-3 w-3" />
-                                </button>
-                                <span className="text-xs font-extrabold tabular-nums text-[#0b2447]">{quantity}</span>
-                                <button type="button" onClick={(event) => changeQuantity(event, quantity + 1)} className="flex h-full w-8 items-center justify-center text-[#0b2447] transition hover:bg-[#0b2447]/5 active:scale-90" aria-label="Increase quantity">
-                                    <Plus className="h-3 w-3" />
-                                </button>
-                            </div>
-                        ) : (
-                            <Button type="button" size="sm" onClick={addToCart} className="w-full h-8 gap-1.5 rounded-lg bg-gradient-to-r from-[#0b2447] to-[#07172e] font-black text-[10px] tracking-wide text-white transition-all duration-300 hover:from-[#12335f] hover:to-[#0b2447] hover:shadow-md active:scale-98">
-                                <ShoppingCart className="h-3 w-3" /> Add to Cart
-                            </Button>
-                        )
-                    )}
-                    {showRequestQuote && (
-                        <Button type="button" variant="outline" size="sm" onClick={requestQuote} className="w-full h-8 gap-1.5 rounded-lg border-[#0b2447]/20 text-[10px] font-extrabold text-[#0b2447] hover:bg-blue-50/40 active:scale-98 transition-all">
-                            <FileText className="h-3 w-3" /> Request Quote
-                        </Button>
-                    )}
                 </div>
             </div>
         </article>

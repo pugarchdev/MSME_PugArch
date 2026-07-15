@@ -336,6 +336,7 @@ const today = new Date().toISOString().split('T')[0];
 const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 const nextFortnight = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
 const toDateTimeLocal = (date: Date) => date.toISOString().slice(0, 16);
+const todayDateTime = toDateTimeLocal(new Date());
 const nextWeekDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000));
 const nextWeekPlusOneHourDateTime = toDateTimeLocal(new Date(Date.now() + 7 * 86400000 + 60 * 60000));
 
@@ -796,11 +797,11 @@ const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 
   schedule: {
     packetType: 'Single',
     publishDate: today,
-    submissionDate: nextWeek,
+    submissionDate: nextWeekDateTime,
     validityDays: 90,
-    submissionStartDate: today,
+    submissionStartDate: todayDateTime,
     clarificationAllowed: true,
-    clarificationDeadline: nextWeek,
+    clarificationDeadline: nextWeekDateTime,
     preBidMeeting: false,
     preBidDate: '',
     technicalOpeningDate: nextWeek,
@@ -3772,8 +3773,50 @@ function ScheduleStepForm({
   const updateSchedule = (key: keyof Draft['schedule'], val: any) => {
     updateDraft(c => ({ ...c, schedule: { ...c.schedule, [key]: val } }));
   };
+  const getMinutesBetween = (start: string, end: string): number => {
+    if (!start || !end) return 0;
+    const startTime = new Date(start).getTime();
+    const endTime = new Date(end).getTime();
+    if (isNaN(startTime) || isNaN(endTime)) return 0;
+    return Math.max(0, Math.floor((endTime - startTime) / 60000));
+  };
+
+  const getEndDateTime = (start: string, durationMinutes: number): string => {
+    if (!start) return '';
+    const startTime = new Date(start).getTime();
+    if (isNaN(startTime)) return '';
+    const endTime = new Date(startTime + durationMinutes * 60000);
+    const year = endTime.getFullYear();
+    const month = String(endTime.getMonth() + 1).padStart(2, '0');
+    const date = String(endTime.getDate()).padStart(2, '0');
+    const hours = String(endTime.getHours()).padStart(2, '0');
+    const minutes = String(endTime.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${date}T${hours}:${minutes}`;
+  };
+
   const updateAuction = <K extends keyof AuctionConfig>(key: K, val: AuctionConfig[K]) => {
-    updateDraft(c => ({ ...c, auctionConfig: { ...c.auctionConfig, [key]: val } }));
+    updateDraft(c => {
+      const nextConfig = { ...c.auctionConfig, [key]: val };
+      if (key === 'startDateTime') {
+        const start = val as string;
+        if (nextConfig.endDateTime) {
+          nextConfig.durationMinutes = getMinutesBetween(start, nextConfig.endDateTime);
+        } else if (nextConfig.durationMinutes > 0) {
+          nextConfig.endDateTime = getEndDateTime(start, nextConfig.durationMinutes);
+        }
+      } else if (key === 'endDateTime') {
+        const end = val as string;
+        if (nextConfig.startDateTime) {
+          nextConfig.durationMinutes = getMinutesBetween(nextConfig.startDateTime, end);
+        }
+      } else if (key === 'durationMinutes') {
+        const dur = Number(val || 0);
+        if (nextConfig.startDateTime && dur > 0) {
+          nextConfig.endDateTime = getEndDateTime(nextConfig.startDateTime, dur);
+        }
+      }
+      return { ...c, auctionConfig: nextConfig };
+    });
   };
   const updateTrigger = <K extends keyof AuctionConfig['triggerConfiguration']>(
     key: K,
@@ -4021,6 +4064,9 @@ function ScheduleStepForm({
             </Field>
             <Field label="Reserve Price" error={fieldError(draft.auctionConfig.reservePrice !== null && draft.auctionConfig.reservePrice > draft.auctionConfig.startingBidPrice, 'Reserve price cannot exceed starting bid price.')}>
               <input type="number" min={0} value={draft.auctionConfig.reservePrice ?? ''} onChange={e => updateAuction('reservePrice', e.target.value ? Number(e.target.value) : null)} className={controlClass(fieldError(draft.auctionConfig.reservePrice !== null && draft.auctionConfig.reservePrice > draft.auctionConfig.startingBidPrice, 'Reserve price cannot exceed starting bid price.'))} />
+              <p className="text-[10px] text-slate-500 font-semibold mt-1 leading-normal">
+                Reserve Price is the maximum price you (the buyer) are willing to pay. Sellers' bids must be equal to or lower than this price to win. It is hidden from sellers during the auction.
+              </p>
             </Field>
             <Field label="Minimum Bid Decrement" required error={fieldError(showErrors && draft.auctionConfig.minimumBidDecrement <= 0, 'Minimum bid decrement must be greater than 0.')}>
               <input type="number" min={0} value={draft.auctionConfig.minimumBidDecrement || ''} onChange={e => updateAuction('minimumBidDecrement', Number(e.target.value || 0))} className={controlClass(fieldError(showErrors && draft.auctionConfig.minimumBidDecrement <= 0, 'Minimum bid decrement must be greater than 0.'))} />
@@ -4263,7 +4309,7 @@ function ScheduleStepForm({
 
         <Field label="Submission Start Date" required error={fieldError(showErrors && !draft.schedule.submissionStartDate, 'Submission start date is required.')}>
           <input
-            type="date"
+            type="datetime-local"
             value={draft.schedule.submissionStartDate}
             onChange={e => updateSchedule('submissionStartDate', e.target.value)}
             className={controlClass(fieldError(showErrors && !draft.schedule.submissionStartDate, 'Submission start date is required.'))}
@@ -4272,7 +4318,7 @@ function ScheduleStepForm({
 
         <Field label="Submission End Date (Deadline)" required error={fieldError(showErrors && (!draft.schedule.submissionDate || new Date(draft.schedule.submissionDate) <= new Date(draft.schedule.submissionStartDate)), 'Submission deadline must be after start date.')}>
           <input
-            type="date"
+            type="datetime-local"
             value={draft.schedule.submissionDate}
             onChange={e => updateSchedule('submissionDate', e.target.value)}
             className={controlClass(fieldError(showErrors && (!draft.schedule.submissionDate || new Date(draft.schedule.submissionDate) <= new Date(draft.schedule.submissionStartDate)), 'Submission deadline must be after start date.'))}
@@ -4333,7 +4379,7 @@ function ScheduleStepForm({
           {draft.schedule.clarificationAllowed && (
             <Field label="Clarification Deadline Date">
               <input
-                type="date"
+                type="datetime-local"
                 value={draft.schedule.clarificationDeadline}
                 onChange={e => updateSchedule('clarificationDeadline', e.target.value)}
                 className={inputClass}

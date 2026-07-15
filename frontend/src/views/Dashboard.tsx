@@ -390,9 +390,7 @@ export default function Dashboard() {
   }, [user, adminStats, summaryData]);
 
   const isDashboardLoading = isProfileLoading || (user?.role === 'admin' ? isAdminStatsLoading : isSummaryLoading);
-  if (isDashboardLoading) {
-    return <PremiumLoader />;
-  }
+
 
   const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();

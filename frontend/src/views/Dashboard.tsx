@@ -390,9 +390,6 @@ export default function Dashboard() {
   }, [user, adminStats, summaryData]);
 
   const isDashboardLoading = isProfileLoading || (user?.role === 'admin' ? isAdminStatsLoading : isSummaryLoading);
-  if (isDashboardLoading) {
-    return <PremiumLoader />;
-  }
 
   const handleGstSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -585,6 +582,10 @@ export default function Dashboard() {
     const status = user?.sectionStatus?.[section as keyof typeof user.sectionStatus];
     return reason && ['rejected', 'resubmission_required'].includes(status || '');
   }), [user?.sectionRejectionReasons, user?.sectionStatus]);
+
+  if (isDashboardLoading) {
+    return <PremiumLoader />;
+  }
 
   if (user?.role === 'admin') {
     return (

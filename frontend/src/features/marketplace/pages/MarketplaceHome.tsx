@@ -139,23 +139,7 @@ export default function MarketplaceHome() {
     const isPreparingPage = isHomeLoading && !data;
 
     if (isPreparingPage) {
-        return (
-            <div className="flex min-h-dvh flex-col bg-slate-50">
-                <div className="brand-tricolor-strip w-full" />
-                <MarketplaceHeader user={user} />
-                <main className="flex-1 p-6 space-y-6 mx-auto max-w-[1680px] w-full animate-pulse">
-                    <div className="h-64 bg-slate-200/60 rounded-3xl" />
-                    <div className="h-10 bg-slate-200/50 rounded-xl w-48" />
-                    <div className="grid gap-6 md:grid-cols-4">
-                        <div className="h-56 bg-slate-200/30 rounded-2xl border border-slate-200/20" />
-                        <div className="h-56 bg-slate-200/30 rounded-2xl border border-slate-200/20" />
-                        <div className="h-56 bg-slate-200/30 rounded-2xl border border-slate-200/20" />
-                        <div className="h-56 bg-slate-200/30 rounded-2xl border border-slate-200/20" />
-                    </div>
-                </main>
-                <MarketplaceFooter />
-            </div>
-        );
+        return <PremiumLoader />;
     }
 
     const categories = homeLayoutData?.categories?.length ? homeLayoutData.categories : data?.categories || [];

@@ -342,7 +342,7 @@ function LegacyNoticePage({ title, target = '/buyer/procurement/create' }: { tit
 let globalMounted = false;
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, isLoggingOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname() || '/';
   const [mounted, setMounted] = useState(globalMounted);
@@ -439,6 +439,10 @@ export default function App() {
   }
 
   const renderRoute = () => {
+    if (isLoggingOut) {
+      return <PremiumLoader />;
+    }
+
     const isCurrentShg = isShgUser(user);
     const authenticatedHome = user?.role === 'master_admin' ? '/master-admin' : isCurrentShg ? '/shg/onboarding' : '/dashboard';
 
@@ -526,7 +530,12 @@ export default function App() {
     }
 
     if (pathname === '/cart' && !user) return <GuestCartPage />;
-    if (!user) return null;
+    if (!user) {
+      if (!isPublicRoute(pathname)) {
+        return <PremiumLoader />;
+      }
+      return null;
+    }
     const shgRouteOk = isCurrentShg || roleOk(user.role, ['shg']);
     if ((pathname === '/master-admin' || pathname.startsWith('/master-admin/')) && roleOk(user.role, ['master_admin'])) return <MasterAdminPage />;
     if (pathname === '/dashboard' && user.role === 'master_admin') return <Redirect to="/master-admin" />;

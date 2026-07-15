@@ -67,6 +67,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  isLoggingOut: boolean;
   login: (token: string, user: User, refreshToken?: string) => void;
   logout: () => void;
   refreshUser: (options?: { skipCache?: boolean }) => Promise<void>;
@@ -93,8 +94,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return true;
   });
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const logout = useCallback(async () => {
+    setIsLoggingOut(true);
     setLoading(true);
     try {
       await api.post('/api/auth/logout', {}).catch(() => undefined);
@@ -105,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setUser(null);
       setLoading(false);
+      setIsLoggingOut(false);
       api.invalidate();
     }
   }, []);
@@ -202,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, isLoggingOut, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

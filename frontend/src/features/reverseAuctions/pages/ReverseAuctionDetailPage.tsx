@@ -25,7 +25,7 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
   // Return to the page the seller came from; fall back to their opportunities list on a cold open.
   const goBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) router.back();
-    else router.push(isSeller ? '/seller/opportunities' : '/reverse-auctions');
+    else router.push(isSeller ? '/seller/opportunities' : '/buyer/my-procurements?type=Reverse Auction');
   };
 
   // Queries
@@ -171,11 +171,11 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
     return (
       <div className="mx-auto max-w-[1600px] px-4 md:px-8 space-y-5 pb-12">
         {/* Back Button */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={goBack} className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f] transition-all">
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back
           </button>
-        </div>
+        </div> */}
 
         {/* guest notice banner */}
         {!user && (
@@ -419,9 +419,9 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
       <div className="flex flex-col gap-3 border-b border-slate-200 bg-white p-4 rounded-lg shadow-xs border md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={goBack} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
+            {/* <button type="button" onClick={goBack} className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-black text-slate-600 hover:border-[#12335f] hover:text-[#12335f]">
               Back
-            </button>
+            </button> */}
             <span className="rounded bg-emerald-50 px-2 py-0.5 text-[9px] uppercase font-bold text-emerald-700 border border-emerald-200">
               {status}
             </span>
@@ -430,6 +430,9 @@ export default function ReverseAuctionDetailPage({ id }: { id: number }) {
           <h1 className="mt-2 text-xl font-black text-slate-950">{auction.data.title || 'Reverse Auction Sourcing'}</h1>
         </div>
         <div className="flex flex-wrap gap-1.5">
+          <Link href={`/reverse-auctions/${id}/live`} className="w-full sm:w-auto">
+                  <Button type="button" className="w-full"><Activity className="mr-2 h-4 w-4" />Open Full Live Board</Button>
+                </Link>
           <Button variant="outline" onClick={() => invalidate()}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
           
           {status === 'DRAFT' && (

@@ -93,7 +93,7 @@ export default function SellerProcurementHub() {
       label: 'Reverse Auctions',
       desc: 'Participate in live dynamic price auctions and scheduled downward bids.',
       count: data.reverseAuctionsLive || 0,
-      href: '/reverse-auctions',
+      href: '/seller/opportunities/auctions',
       icon: Gavel,
       tone: 'rose'
     },

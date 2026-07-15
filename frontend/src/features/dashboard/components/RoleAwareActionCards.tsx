@@ -250,7 +250,7 @@ function RoleAwareActionCards() {
         {
             label: 'Negotiate Price',
             count: data.reverseAuctionsActive || data.reverseAuctionsScheduled || 0,
-            href: '/reverse-auctions',
+            href: '/buyer/my-procurements?type=Reverse Auction',
             icon: Gavel,
             tone: 'amber',
             show: isBuyer,

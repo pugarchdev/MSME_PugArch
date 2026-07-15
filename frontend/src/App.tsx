@@ -95,7 +95,6 @@ const BidResultsPage = lazy(() => import('./features/procurementBid/pages/BidRes
 const BidComparisonPage = lazy(() => import('./features/procurementBid/pages/BidComparisonPage'));
 const AdminBidManagementPage = lazy(() => import('./features/procurementBid/pages/AdminBidManagementPage'));
 const ProcurementOrdersPage = lazy(() => import('./features/procurementBid/pages/ProcurementOrdersPage'));
-const ReverseAuctionListPage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionListPage'));
 const ReverseAuctionCreatePage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionCreatePage'));
 const ReverseAuctionDetailPage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionDetailPage'));
 const ReverseAuctionLivePage = lazy(() => import('./features/reverseAuctions/pages/ReverseAuctionLivePage'));
@@ -216,7 +215,6 @@ const rolePreloaders = {
     () => import('./features/procurementWizard/pages/ProcurementDraftsPage'),
     () => import('./features/procurement/pages/BuyerProcurementHub'),
     () => import('./features/procurementBid/pages/BidComparisonPage'),
-    () => import('./features/reverseAuctions/pages/ReverseAuctionListPage'),
     // LEGACY: CreateBidPage preload removed — /buyer/create-bid now shows LegacyNoticePage
   ],
   seller: [
@@ -225,7 +223,6 @@ const rolePreloaders = {
     () => import('./features/procurementBid/pages/BidsListingPage'),
     () => import('./features/procurementBid/pages/BidParticipationPage'),
     () => import('./features/procurementBid/pages/SellerBidsPage'),
-    () => import('./features/reverseAuctions/pages/ReverseAuctionListPage'),
   ],
   admin: [
     () => import('./features/admin/pages/AdminRecordsPage'),
@@ -726,7 +723,10 @@ export default function App() {
         if (user.role === 'seller') {
           return <Redirect to="/seller/opportunities/auctions" />;
         }
-        return <ReverseAuctionListPage />;
+        if (user.role === 'buyer') {
+          return <Redirect to="/buyer/my-procurements?type=Reverse Auction" />;
+        }
+        return <Redirect to="/dashboard" />;
       }
       if (pathname === '/reverse-auctions/create') {
         return <Redirect to="/buyer/procurement/create?method=REVERSE_AUCTION" />;

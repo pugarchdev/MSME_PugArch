@@ -120,7 +120,6 @@ const preloadRegistry: Record<string, () => Promise<any>> = {
   
   '/reports': () => import('../../features/reports/pages/RoleReportsPage'),
   
-  '/reverse-auctions': () => import('../../features/reverseAuctions/pages/ReverseAuctionListPage'),
   '/reverse-auctions/create': () => import('../../features/reverseAuctions/pages/ReverseAuctionCreatePage'),
   '/seller/direct-purchase': () => import('../../features/directPurchase/pages/DirectPurchasePage'),
   '/buyer/tracking': () => import('../../views/ParcelTracking'),

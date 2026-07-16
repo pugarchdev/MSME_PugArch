@@ -1195,14 +1195,24 @@ export default function CreateProcurementPage() {
     try {
       const stepToSave = stepOverride !== undefined ? stepOverride : activeStep;
       const payload = buildProcurementApiPayload(draft, stepToSave);
-      const res = await saveProcurementDraft(payload);
+      let savedAsNewDraft = false;
+      let res: any;
+      try {
+        res = await saveProcurementDraft(payload);
+      } catch (err) {
+        if (!payload.id || !shouldRetryDraftSaveAsNew(err)) {
+          throw err;
+        }
+        res = await saveProcurementDraft(withoutServerDraftId(payload));
+        savedAsNewDraft = true;
+      }
       const serverId = Number(res?.id || res?.data?.id || draft.id || 0);
       if (serverId) {
         updateDraft(current => ({ ...current, id: serverId }));
       }
-      if (!silent) toast.success('Draft saved successfully');
-    } catch (err) {
-      if (!silent) toast.error('Failed to save draft on server');
+      if (!silent) toast.success(savedAsNewDraft ? 'Draft saved as a new draft' : 'Draft saved successfully');
+    } catch (err: any) {
+      if (!silent) toast.error(err?.message ? `Failed to save draft: ${err.message}` : 'Failed to save draft on server');
     } finally {
       setSavingDraft(false);
     }
@@ -4891,6 +4901,28 @@ function Field({ label, required, className, children, error }: { label: string;
 
 const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 shadow-3xs outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
 const textareaClass = 'w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-3xs outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15';
+
+const shouldRetryDraftSaveAsNew = (err: unknown) => {
+  const error = err as { status?: number; code?: string; body?: { code?: string }; message?: string };
+  const code = String(error?.code || error?.body?.code || '');
+  if (code === 'PROCUREMENT_DRAFT_NOT_FOUND' || code === 'PROCUREMENT_DRAFT_LOCKED') return true;
+
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    (error?.status === 404 && message.includes('procurement draft')) ||
+    (error?.status === 409 && (message.includes('draft') || message.includes('submitted') || message.includes('locked')))
+  );
+};
+
+const withoutServerDraftId = (payload: ReturnType<typeof buildProcurementApiPayload>) => {
+  const { id: _draftId, payload: wizardPayload, ...rest } = payload as Record<string, any>;
+  if (!wizardPayload || typeof wizardPayload !== 'object' || Array.isArray(wizardPayload)) {
+    return { ...rest, payload: wizardPayload };
+  }
+
+  const { id: _wizardDraftId, ...wizardPayloadWithoutId } = wizardPayload;
+  return { ...rest, payload: wizardPayloadWithoutId };
+};
 
 // Compatibility payload mapping helper
 const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {

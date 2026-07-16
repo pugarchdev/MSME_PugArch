@@ -26,7 +26,11 @@ export const unwrap = async <T>(response: Response): Promise<T> => {
       }
     }
     const message = body?.message || body?.error || 'Request failed';
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number; code?: string; body?: unknown };
+    error.status = response.status;
+    error.code = body?.code || body?.errorCode;
+    error.body = body;
+    throw error;
   }
   return (body?.data ?? body) as T;
 };

@@ -2075,13 +2075,56 @@ model AuctionParticipant {
   disqualificationReason String?
   lastBidAmount          Decimal?          @db.Decimal(18, 2)
   currentRank            Int?
+  // Pre-bid qualification stage (document submission + optional initial quote).
+  // qualificationStatus tracks the seller's progress through the pre-bid gate:
+  // PENDING -> IN_PROGRESS -> SUBMITTED -> QUALIFIED | DISQUALIFIED. The auction-level
+  // `status` (ParticipantStatus) is promoted to TECHNICALLY_QUALIFIED only when the
+  // buyer approves, which is what unlocks live bidding.
+  qualificationStatus      String?         @default("PENDING")
+  qualificationSubmittedAt DateTime?
+  qualifiedAt              DateTime?
+  qualificationRemarks     String?
+  initialQuoteAmount       Decimal?        @db.Decimal(18, 2)
+  initialQuoteGstPercent   Decimal?        @db.Decimal(5, 2)
+  initialQuoteTotal        Decimal?        @db.Decimal(18, 2)
+  makeBrand                String?
+  model                    String?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
+
+  qualificationDocuments AuctionQualificationDocument[]
 
   @@unique([auctionId, sellerOrgId])
   @@index([auctionId, status])
   @@index([sellerOrgId, status])
   @@index([sellerUserId])
+}
+
+// Mandatory technical/eligibility documents a seller uploads to qualify for a
+// reverse auction, before the live bidding stage opens. Mirrors the two-packet
+// pattern used by ProcurementBidParticipationDocument, scoped to an auction.
+model AuctionQualificationDocument {
+  id               Int                 @id @default(autoincrement())
+  auctionId        Int
+  participantId    Int
+  sellerOrgId      Int
+  sellerUserId     Int?
+  documentCategory String              @default("TECHNICAL")
+  documentName     String
+  fileAssetId      Int?
+  fileName         String?
+  fileUrl          String?
+  fileKey          String?
+  mimeType         String?
+  fileSize         Int?
+  uploadedAt       DateTime            @default(now())
+  createdAt        DateTime            @default(now())
+
+  participant      AuctionParticipant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([participantId])
+  @@index([sellerOrgId])
 }
 
 model AuctionEventLog {

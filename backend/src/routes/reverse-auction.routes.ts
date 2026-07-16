@@ -11,6 +11,9 @@ import { maskSensitive } from '../utils/maskSensitive.js';
 import { auditLog } from '../modules/audit/audit.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { logger } from '../config/logger.js';
+import { upload } from '../config/storage.js';
+import { uploadFile } from '../services/storage/storage.service.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 const db = prisma as any;
@@ -125,6 +128,17 @@ const inviteSchema = z.object({
 const bidSchema = z.object({ amount: z.coerce.number().positive(), deviceHash: z.string().trim().max(128).optional() });
 const cancelSchema = z.object({ reason: z.string().trim().min(5).max(500) });
 const awardSchema = z.object({ participantId: z.coerce.number().int().positive().optional(), remarks: z.string().trim().max(1000).optional() });
+const initialQuoteSchema = z.object({
+  quotedAmount: z.coerce.number().positive(),
+  gstPercentage: z.coerce.number().min(0).max(100).optional().default(0),
+  totalAmount: z.coerce.number().positive().optional(),
+  makeBrand: z.string().trim().max(160).optional(),
+  model: z.string().trim().max(160).optional()
+});
+const qualificationReviewSchema = z.object({
+  decision: z.enum(['QUALIFY', 'DISQUALIFY']),
+  remarks: z.string().trim().max(1000).optional()
+});
 
 const isAdmin = (req: AuthRequest) => req.user?.role === 'admin' || req.user?.role === 'master_admin';
 
@@ -584,7 +598,17 @@ router.patch('/reverse-auctions/:id', requirePermission('reverse_auction.update'
   }
 });
 
-const transition = (target: string, enumStatus: string, extra?: (req: AuthRequest) => Record<string, unknown>) =>
+// Before an auction can go LIVE, enough sellers must have cleared the pre-bid
+// qualification stage — otherwise the auction opens with no eligible bidders.
+const assertEnoughQualifiedBidders = async (auction: any) => {
+  const qualified = await db.auctionParticipant.count({ where: { auctionId: auction.id, status: 'TECHNICALLY_QUALIFIED' } });
+  const minimum = Math.max(1, Number(auction.minimumQualifiedBidders) || 1);
+  if (qualified < minimum) {
+    throw new ApiError(400, `At least ${minimum} technically qualified bidder(s) are required before the auction can go live (currently ${qualified}).`, 'AUCTION_INSUFFICIENT_QUALIFIED');
+  }
+};
+
+const transition = (target: string, enumStatus: string, extra?: (req: AuthRequest) => Record<string, unknown>, guard?: (auction: any) => Promise<void>) =>
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id);
@@ -595,6 +619,7 @@ const transition = (target: string, enumStatus: string, extra?: (req: AuthReques
       if (['CLOSED', 'CANCELLED'].includes(current)) {
         throw new ApiError(400, 'Cannot transition an auction that is closed or cancelled', 'AUCTION_ALREADY_FINALIZED');
       }
+      if (guard) await guard(auction);
       const data = { status: target, statusEnum: enumStatus, ...(extra ? extra(req) : {}) };
       const updated = await db.auction.update({ where: { id }, data });
       await writeAuctionEvent(req, id, target.toLowerCase(), `Auction moved to ${target}`, data);
@@ -605,7 +630,7 @@ const transition = (target: string, enumStatus: string, extra?: (req: AuthReques
   };
 
 router.post('/reverse-auctions/:id/schedule', requirePermission('reverse_auction.publish', orgScope), transition('SCHEDULED', 'SCHEDULED'));
-router.post('/reverse-auctions/:id/start', requirePermission('reverse_auction.publish', orgScope), transition('LIVE', 'LIVE', () => ({ actualStartedAt: new Date() })));
+router.post('/reverse-auctions/:id/start', requirePermission('reverse_auction.publish', orgScope), transition('LIVE', 'LIVE', () => ({ actualStartedAt: new Date() }), assertEnoughQualifiedBidders));
 router.post('/reverse-auctions/:id/pause', requirePermission('reverse_auction.update', orgScope), transition('PAUSED', 'PAUSED'));
 router.post('/reverse-auctions/:id/resume', requirePermission('reverse_auction.publish', orgScope), transition('LIVE', 'LIVE'));
 router.post('/reverse-auctions/:id/close', requirePermission('reverse_auction.close', orgScope), transition('CLOSED', 'CLOSED', () => ({ actualClosedAt: new Date() })));
@@ -844,18 +869,263 @@ router.get('/reverse-auctions/:id/clarifications', requirePermission('reverse_au
     if (!(await isAuctionPublic(auction))) {
       throw new ApiError(403, 'This auction is invite-only. Please wait for the buyer to invite your organization.', 'AUCTION_INVITE_ONLY');
     }
-    // BID_WITH_REVERSE_AUCTION requires technical qualification first, so self-join is not allowed there.
-    if (String(auction.procurementMethod || '') === 'BID_WITH_REVERSE_AUCTION') {
-      throw new ApiError(403, 'This auction requires technical qualification before bidding.', 'AUCTION_REQUIRES_QUALIFICATION');
-    }
-
+    // Every reverse auction now runs a pre-bid qualification stage: joining only
+    // creates the participant in INVITED / PENDING qualification. The seller must
+    // upload the mandatory documents (plus an initial quote for the hybrid method)
+    // and be promoted to TECHNICALLY_QUALIFIED by the buyer before bidding opens.
     const participant = await db.auctionParticipant.create({
-      data: { auctionId: id, sellerOrgId, sellerUserId: req.user.id || null, status: 'INVITED' }
+      data: { auctionId: id, sellerOrgId, sellerUserId: req.user.id || null, status: 'INVITED', qualificationStatus: 'PENDING' }
     });
     await writeAuctionEvent(req, id, 'seller_joined', 'Seller joined public reverse auction', { sellerOrgId });
-    return apiResponse.created(res, { participant: maskSensitive(participant) }, 'Joined auction');
+    return apiResponse.created(res, { participant: maskSensitive(participant), requiresQualification: true }, 'Joined auction — complete qualification to bid');
   } catch (error: any) {
     return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to join auction', error.code || 'REVERSE_AUCTION_JOIN_ERROR');
+  }
+});
+
+// ── Pre-bid Qualification Stage ──────────────────────────────────────────────
+// Sellers must qualify before the live auction: upload mandatory documents and,
+// for BID_WITH_REVERSE_AUCTION, an initial commercial quote; then submit for
+// buyer review. The buyer qualifies (-> TECHNICALLY_QUALIFIED, unlocks bidding)
+// or disqualifies. This is the process behind the gate enforced in POST /bids.
+
+const requiresInitialQuote = (auction: any) => String(auction?.procurementMethod || '') === 'BID_WITH_REVERSE_AUCTION';
+
+// The seller's own participant row for an auction, or throw. Sellers self-serve
+// their qualification, so the row must already exist (via invite or self-join).
+const getOwnParticipant = async (req: AuthRequest, auctionId: number) => {
+  const sellerOrgId = req.user?.organizationId;
+  if (!sellerOrgId) throw new ApiError(400, 'Seller organization is required', 'AUCTION_NO_ORG');
+  const participant = await db.auctionParticipant.findFirst({ where: { auctionId, sellerOrgId } });
+  if (!participant) throw new ApiError(404, 'You are not a participant in this auction. Join or await an invite first.', 'AUCTION_PARTICIPANT_NOT_FOUND');
+  return participant;
+};
+
+const assertQualificationEditable = (participant: any) => {
+  if (participant.status === 'TECHNICALLY_QUALIFIED') throw new ApiError(400, 'You are already qualified for this auction.', 'AUCTION_ALREADY_QUALIFIED');
+  if (participant.status === 'DISQUALIFIED') throw new ApiError(400, 'Your qualification was declined for this auction.', 'AUCTION_DISQUALIFIED');
+  if (participant.qualificationStatus === 'SUBMITTED') throw new ApiError(400, 'Your qualification is already submitted and under review.', 'AUCTION_QUALIFICATION_SUBMITTED');
+};
+
+// Seller uploads one mandatory qualification document.
+router.post('/reverse-auctions/:id/qualification/documents', requirePermission('reverse_auction.bid.submit', orgScope), upload.single('file'), async (req: AuthRequest & { file?: Express.Multer.File }, res: Response) => {
+  try {
+    if (req.user?.role !== 'seller') throw new ApiError(403, 'Only sellers can upload qualification documents', 'AUCTION_QUALIFICATION_FORBIDDEN');
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    if (['CLOSED', 'CANCELLED', 'AWARDED', 'AWARD_RECOMMENDED'].includes(String(auction.statusEnum || auction.status || '').toUpperCase())) {
+      throw new ApiError(400, 'This auction is no longer accepting qualification submissions.', 'AUCTION_QUALIFICATION_CLOSED');
+    }
+    const participant = await getOwnParticipant(req, auctionId);
+    assertQualificationEditable(participant);
+    if (!req.file) throw new ApiError(400, 'File is required', 'FILE_REQUIRED');
+
+    const asset = await uploadFile(req.file, {
+      ownerId: req.user!.id,
+      ownerRole: req.user!.role,
+      entityType: 'auction_qualification_document',
+      entityId: participant.id,
+      purpose: String(req.body.documentCategory || 'TECHNICAL'),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    }, env.STORAGE_PROVIDER);
+
+    const doc = await db.auctionQualificationDocument.create({
+      data: {
+        auctionId,
+        participantId: participant.id,
+        sellerOrgId: participant.sellerOrgId,
+        sellerUserId: req.user!.id,
+        documentCategory: String(req.body.documentCategory || 'TECHNICAL'),
+        documentName: String(req.body.documentName || req.body.documentCategory || 'Technical Document'),
+        fileAssetId: asset.id,
+        fileName: asset.originalName,
+        fileUrl: asset.url,
+        fileKey: asset.key,
+        mimeType: asset.mimeType,
+        fileSize: asset.size
+      }
+    });
+    if (participant.qualificationStatus !== 'IN_PROGRESS') {
+      await db.auctionParticipant.update({ where: { id: participant.id }, data: { qualificationStatus: 'IN_PROGRESS' } });
+    }
+    await writeAuctionEvent(req, auctionId, 'qualification_document_uploaded', 'Qualification document uploaded', { participantId: participant.id, documentCategory: doc.documentCategory });
+    return apiResponse.created(res, { document: maskSensitive(doc) }, 'Document uploaded');
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to upload document', error.code || 'AUCTION_QUALIFICATION_UPLOAD_ERROR');
+  }
+});
+
+// Seller saves / updates their initial commercial quote (required for hybrid method).
+router.post('/reverse-auctions/:id/qualification/initial-quote', requirePermission('reverse_auction.bid.submit', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'seller') throw new ApiError(403, 'Only sellers can submit an initial quote', 'AUCTION_QUALIFICATION_FORBIDDEN');
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const participant = await getOwnParticipant(req, auctionId);
+    assertQualificationEditable(participant);
+    const payload = initialQuoteSchema.parse(req.body);
+    const total = payload.totalAmount ?? payload.quotedAmount + (payload.quotedAmount * payload.gstPercentage / 100);
+    const updated = await db.auctionParticipant.update({
+      where: { id: participant.id },
+      data: {
+        initialQuoteAmount: payload.quotedAmount,
+        initialQuoteGstPercent: payload.gstPercentage,
+        initialQuoteTotal: total,
+        makeBrand: payload.makeBrand || null,
+        model: payload.model || null,
+        qualificationStatus: participant.qualificationStatus === 'PENDING' ? 'IN_PROGRESS' : participant.qualificationStatus
+      }
+    });
+    await writeAuctionEvent(req, auctionId, 'qualification_quote_saved', 'Initial commercial quote saved', { participantId: participant.id });
+    // Quote amount is sensitive until the auction opens — never echo it back.
+    return apiResponse.success(res, { participant: maskSensitive({ ...updated, initialQuoteAmount: 'MASKED', initialQuoteTotal: 'MASKED' }) }, 200, 'Initial quote saved');
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 400, error.message || 'Unable to save initial quote', error.code || 'AUCTION_QUALIFICATION_QUOTE_ERROR');
+  }
+});
+
+// Seller submits their qualification packet for buyer review.
+router.post('/reverse-auctions/:id/qualification/submit', requirePermission('reverse_auction.bid.submit', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'seller') throw new ApiError(403, 'Only sellers can submit qualification', 'AUCTION_QUALIFICATION_FORBIDDEN');
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const participant = await getOwnParticipant(req, auctionId);
+    assertQualificationEditable(participant);
+
+    const docCount = await db.auctionQualificationDocument.count({ where: { participantId: participant.id } });
+    if (!docCount) throw new ApiError(400, 'Upload at least one mandatory document before submitting.', 'AUCTION_QUALIFICATION_NO_DOCUMENTS');
+    if (requiresInitialQuote(auction) && participant.initialQuoteAmount == null) {
+      throw new ApiError(400, 'An initial commercial quote is required to qualify for this auction.', 'AUCTION_QUALIFICATION_QUOTE_REQUIRED');
+    }
+
+    const updated = await db.auctionParticipant.update({
+      where: { id: participant.id },
+      data: { qualificationStatus: 'SUBMITTED', qualificationSubmittedAt: new Date() }
+    });
+    await writeAuctionEvent(req, auctionId, 'qualification_submitted', 'Seller submitted qualification for review', { participantId: participant.id });
+
+    // Notify the auction manager(s) that a submission is awaiting review.
+    void (async () => {
+      const title = auction.title || auction.auctionCode || `Reverse Auction #${auctionId}`;
+      if (auction.createdByUserId) {
+        await notificationService.notifyWithEmail(auction.createdByUserId, {
+          title: 'Auction Qualification Submitted',
+          message: `A seller submitted qualification documents for "${title}". Review and qualify them to let them bid.`,
+          type: 'reverse_auction_qualification',
+          priority: 'high',
+          redirectUrl: `/reverse-auctions/${auctionId}`,
+          emailSubject: `Qualification submitted — ${title}`,
+          emailHtml: `<p>A seller has submitted their qualification packet for the reverse auction "${title}".</p><p>Log in to review documents and qualify or decline the bidder.</p>`
+        });
+      }
+    })().catch(err => logger.warn({ err, auctionId }, 'Failed to notify buyer of qualification submission'));
+
+    return apiResponse.success(res, { participant: maskSensitive(updated) }, 200, 'Qualification submitted for review');
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 400, error.message || 'Unable to submit qualification', error.code || 'AUCTION_QUALIFICATION_SUBMIT_ERROR');
+  }
+});
+
+// Qualification overview. Sellers see their own packet; buyers/managers see every participant.
+router.get('/reverse-auctions/:id/qualification', requirePermission('reverse_auction.view', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const isSeller = req.user?.role === 'seller';
+    const where: any = { auctionId };
+    if (isSeller) where.sellerOrgId = req.user?.organizationId || -1;
+    else assertAuctionManager(req, auction);
+
+    const participants = await db.auctionParticipant.findMany({
+      where,
+      include: { qualificationDocuments: { orderBy: { uploadedAt: 'desc' } } },
+      orderBy: [{ qualificationSubmittedAt: 'asc' }, { invitedAt: 'asc' }]
+    });
+    const orgIds = Array.from(new Set(participants.map((p: any) => p.sellerOrgId).filter(Boolean)));
+    const orgs = await db.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, organizationName: true } });
+    const orgMap = new Map(orgs.map((o: any) => [o.id, o.organizationName]));
+
+    // Sellers must not see rivals' quote amounts; buyers only see quotes once submitted.
+    const mapped = participants.map((p: any) => {
+      const base = { ...p, sellerOrgName: orgMap.get(p.sellerOrgId) || `Organization #${p.sellerOrgId}` };
+      const ownRow = isSeller && p.sellerOrgId === req.user?.organizationId;
+      if (!ownRow && isSeller) {
+        return { id: p.id, sellerOrgId: p.sellerOrgId, sellerOrgName: base.sellerOrgName, status: p.status, qualificationStatus: p.qualificationStatus };
+      }
+      return base;
+    });
+    return apiResponse.success(res, {
+      requiresInitialQuote: requiresInitialQuote(auction),
+      participants: maskSensitive(mapped)
+    });
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 500, error.message || 'Unable to load qualification', error.code || 'AUCTION_QUALIFICATION_LOAD_ERROR');
+  }
+});
+
+// Buyer reviews a submitted seller: qualify (unlock bidding) or disqualify.
+router.post('/reverse-auctions/:id/qualification/:participantId/review', requirePermission('reverse_auction.invite_seller', orgScope), async (req: AuthRequest, res: Response) => {
+  try {
+    const auctionId = await resolveAuctionId(Number(req.params.id));
+    if (!auctionId) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    const auction = await db.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
+    assertAuctionManager(req, auction);
+    const payload = qualificationReviewSchema.parse(req.body);
+    const participant = await db.auctionParticipant.findFirst({ where: { id: Number(req.params.participantId), auctionId } });
+    if (!participant) throw new ApiError(404, 'Participant not found', 'AUCTION_PARTICIPANT_NOT_FOUND');
+    if (participant.qualificationStatus !== 'SUBMITTED') {
+      throw new ApiError(400, 'Only submitted qualifications can be reviewed.', 'AUCTION_QUALIFICATION_NOT_SUBMITTED');
+    }
+
+    const qualify = payload.decision === 'QUALIFY';
+    const updated = await db.auctionParticipant.update({
+      where: { id: participant.id },
+      data: {
+        status: qualify ? 'TECHNICALLY_QUALIFIED' : 'DISQUALIFIED',
+        qualificationStatus: qualify ? 'QUALIFIED' : 'DISQUALIFIED',
+        qualifiedAt: qualify ? new Date() : null,
+        qualificationRemarks: payload.remarks || null,
+        disqualificationReason: qualify ? null : (payload.remarks || 'Did not meet qualification criteria')
+      }
+    });
+    await writeAuctionEvent(req, auctionId, qualify ? 'seller_qualified' : 'seller_disqualified', qualify ? 'Seller technically qualified' : 'Seller disqualified', { participantId: participant.id });
+
+    void (async () => {
+      const title = auction.title || auction.auctionCode || `Reverse Auction #${auctionId}`;
+      const targets = participant.sellerUserId
+        ? [{ id: participant.sellerUserId }]
+        : await db.user.findMany({ where: { organizationId: participant.sellerOrgId }, select: { id: true } });
+      for (const u of targets) {
+        await notificationService.notifyWithEmail(u.id, {
+          title: qualify ? 'Qualified for Reverse Auction' : 'Auction Qualification Declined',
+          message: qualify
+            ? `Your organization is qualified for "${title}". You can place bids once the auction goes live.`
+            : `Your qualification for "${title}" was not accepted.${payload.remarks ? ` Reason: ${payload.remarks}` : ''}`,
+          type: 'reverse_auction_qualification',
+          priority: qualify ? 'high' : 'medium',
+          redirectUrl: `/reverse-auctions/${auctionId}`,
+          emailSubject: qualify ? `You are qualified — ${title}` : `Qualification update — ${title}`,
+          emailHtml: qualify
+            ? `<p>Congratulations — your organization has been technically qualified for the reverse auction "${title}".</p><p>Log in when the auction goes live to place your competitive bids.</p>`
+            : `<p>Your qualification submission for "${title}" was not accepted.</p>${payload.remarks ? `<p><strong>Reason:</strong> ${payload.remarks}</p>` : ''}`
+        });
+      }
+    })().catch(err => logger.warn({ err, auctionId }, 'Failed to notify seller of qualification decision'));
+
+    return apiResponse.success(res, { participant: maskSensitive(updated) }, 200, qualify ? 'Seller qualified' : 'Seller disqualified');
+  } catch (error: any) {
+    return apiResponse.error(res, error.statusCode || 400, error.message || 'Unable to review qualification', error.code || 'AUCTION_QUALIFICATION_REVIEW_ERROR');
   }
 });
 
@@ -868,17 +1138,16 @@ router.post('/reverse-auctions/:id/bids', requirePermission('reverse_auction.bid
       db.$transaction(async (tx: any) => {
         const auction = await tx.auction.findUnique({ where: { id: auctionId } });
         if (!auction) throw new ApiError(404, 'Auction not found', 'AUCTION_NOT_FOUND');
-        const allowedParticipantStatuses = String(auction.procurementMethod || '') === 'BID_WITH_REVERSE_AUCTION'
-          ? ['TECHNICALLY_QUALIFIED']
-          : ['INVITED', 'ACCEPTED', 'TECHNICALLY_QUALIFIED'];
+        // Both reverse-auction methods now run a pre-bid qualification stage, so only
+        // participants the buyer promoted to TECHNICALLY_QUALIFIED may place live bids.
         const participant = await tx.auctionParticipant.findFirst({
           where: {
             auctionId,
             sellerOrgId: req.user?.organizationId || -1,
-            status: { in: allowedParticipantStatuses }
+            status: 'TECHNICALLY_QUALIFIED'
           }
         });
-        if (!participant) throw new ApiError(403, 'Only qualified sellers can participate in this auction', 'AUCTION_SELLER_NOT_QUALIFIED');
+        if (!participant) throw new ApiError(403, 'Only technically qualified sellers can bid. Complete the qualification stage first.', 'AUCTION_SELLER_NOT_QUALIFIED');
         const now = new Date();
         if (!['LIVE', 'active'].includes(String(auction.status))) throw new ApiError(409, 'Auction is not live', 'AUCTION_NOT_LIVE');
         if (auction.startTime > now || auction.endTime <= now) throw new ApiError(409, 'Auction is outside the bidding window', 'AUCTION_WINDOW_CLOSED');

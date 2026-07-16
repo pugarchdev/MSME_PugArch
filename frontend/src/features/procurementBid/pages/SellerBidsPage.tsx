@@ -39,6 +39,39 @@ const formatCurrency = (value: number | string | null | undefined) => {
   return `₹${num.toLocaleString('en-IN')}`;
 };
 
+// Seller participations progress through a 6-state submission machine
+// (DRAFT -> TECHNICAL_DOCUMENTS_UPLOADED -> FINANCIAL_QUOTE_UPLOADED -> SUBMITTED,
+// plus WITHDRAWN / REJECTED). The old code bucketed only the exact DRAFT and
+// SUBMITTED strings, so in-progress rows disappeared from every tab. These
+// helpers classify every state into exactly one visible bucket.
+const statusOf = (p: any) => String(p?.status ?? p?.submissionStatus ?? 'DRAFT').toUpperCase();
+const finalStatusOf = (p: any) => String(p?.finalStatus ?? '').toUpperCase();
+
+// A seller is "awarded" only once an award is admin-approved (or the participation
+// is flagged AWARDED). A merely RECOMMENDED award is not yet a win, so it must not
+// surface on the Awarded page or in its KPI count.
+const isAwarded = (p: any) =>
+  finalStatusOf(p) === 'AWARDED' ||
+  (Array.isArray(p?.awards) && p.awards.some((a: any) =>
+    String(a?.awardStatus || '').toUpperCase() === 'ADMIN_APPROVED' || !!a?.awardedAt
+  ));
+
+// Draft = still being prepared by the seller and not yet awarded/withdrawn/rejected.
+const isDraft = (p: any) => {
+  if (isAwarded(p)) return false;
+  const s = statusOf(p);
+  return s === 'DRAFT' || s === 'TECHNICAL_DOCUMENTS_UPLOADED' || s === 'FINANCIAL_QUOTE_UPLOADED';
+};
+
+// Submitted = the seller finalised their bid. Awarded rows also originate from a
+// submission, so keep them visible under Submitted too (they additionally show
+// on the Awarded page). Withdrawn/rejected are excluded.
+const isSubmitted = (p: any) => {
+  if (isAwarded(p)) return true;
+  const s = statusOf(p);
+  return s === 'SUBMITTED';
+};
+
 export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?: BidTypeFilter }) {
   const { user } = useAuth();
   const router = useRouter();
@@ -155,9 +188,9 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
   // Calculate Metrics/KPIs dynamically based on sub-route
   const kpiData = useMemo(() => {
     const all = participations;
-    const submitted = all.filter(p => String(p.status).toUpperCase() === 'SUBMITTED');
-    const drafts = all.filter(p => String(p.status).toUpperCase() === 'DRAFT');
-    const awarded = all.filter(p => p.awards && p.awards.length > 0);
+    const submitted = all.filter(isSubmitted);
+    const drafts = all.filter(isDraft);
+    const awarded = all.filter(isAwarded);
 
     const underTech = submitted.filter(p => p.bid?.lifecycleStage === 'TECHNICAL_EVALUATION').length;
     const underFin = submitted.filter(p => p.bid?.lifecycleStage === 'FINANCIAL_EVALUATION').length;
@@ -187,11 +220,11 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
 
     // Filter by route category
     if (subRouteType === 'submitted') {
-      list = list.filter(p => String(p.status).toUpperCase() === 'SUBMITTED');
+      list = list.filter(isSubmitted);
     } else if (subRouteType === 'draft') {
-      list = list.filter(p => String(p.status).toUpperCase() === 'DRAFT');
+      list = list.filter(isDraft);
     } else if (subRouteType === 'awarded') {
-      list = list.filter(p => p.awards && p.awards.length > 0);
+      list = list.filter(isAwarded);
     }
 
     // Filter by search query
@@ -275,7 +308,9 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
       return;
     }
     const bidId = item.bid?.id || item.bidId;
-    if (String(item.status).toUpperCase() === 'DRAFT') {
+    // Any not-yet-submitted participation (draft or partially uploaded) resumes the
+    // participate flow; finalised/awarded ones open the read-only details view.
+    if (isDraft(item)) {
       window.location.href = `/bids/${bidId}/participate`;
     } else {
       window.location.href = `/bids/${bidId}`;
@@ -416,7 +451,7 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
                     </span>
 
                     <Button onClick={() => handleAction(item)} className="h-8 bg-[#12335f] text-[10px] font-black uppercase text-white hover:bg-[#0b2445] rounded-lg px-4">
-                      {String(item.status).toUpperCase() === 'DRAFT' ? 'Resume Draft' : 'View Details'}
+                      {isDraft(item) ? 'Resume Draft' : 'View Details'}
                     </Button>
                   </div>
                 </div>
@@ -472,7 +507,7 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
                       </td>
                       <td className="p-3 text-right" onClick={e => e.stopPropagation()}>
                         <Button onClick={() => handleAction(item)} className="h-8 bg-[#12335f] text-[10px] font-black uppercase text-white hover:bg-[#0b2445] rounded-lg">
-                          {String(item.status).toUpperCase() === 'DRAFT' ? 'Resume' : 'View'}
+                          {isDraft(item) ? 'Resume' : 'View'}
                         </Button>
                       </td>
                     </tr>

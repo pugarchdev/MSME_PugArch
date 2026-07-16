@@ -804,8 +804,8 @@ const defaultDraft = (type: ProcurementMethodId = 'RFQ', buyerType: BuyerType = 
     clarificationDeadline: nextWeekDateTime,
     preBidMeeting: false,
     preBidDate: '',
-    technicalOpeningDate: nextWeek,
-    financialOpeningDate: nextWeek,
+    technicalOpeningDate: nextWeekDateTime,
+    financialOpeningDate: nextWeekDateTime,
     bidValidityDate: nextFortnight,
     allowWithdrawal: true,
     allowRevision: true,
@@ -4337,7 +4337,7 @@ function ScheduleStepForm({
         {(draft.basics.isTechnicalEvaluationNeeded || isTwoPacket) && (
           <Field label="Technical Opening Date" required error={fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) <= new Date(draft.schedule.submissionDate)), 'Technical opening must be after submission deadline.')}>
             <input
-              type="date"
+              type="datetime-local"
               value={draft.schedule.technicalOpeningDate}
               onChange={e => updateSchedule('technicalOpeningDate', e.target.value)}
               className={controlClass(fieldError(showErrors && (!draft.schedule.technicalOpeningDate || new Date(draft.schedule.technicalOpeningDate) <= new Date(draft.schedule.submissionDate)), 'Technical opening must be after submission deadline.'))}
@@ -4351,7 +4351,7 @@ function ScheduleStepForm({
         {isTwoPacket && (
           <Field label="Financial Opening Date" required error={fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) <= new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be after technical opening.')}>
             <input
-              type="date"
+              type="datetime-local"
               value={draft.schedule.financialOpeningDate}
               onChange={e => updateSchedule('financialOpeningDate', e.target.value)}
               className={controlClass(fieldError(showErrors && (!draft.schedule.financialOpeningDate || new Date(draft.schedule.financialOpeningDate) <= new Date(draft.schedule.technicalOpeningDate)), 'Financial opening must be after technical opening.'))}

@@ -892,6 +892,13 @@ router.post('/reverse-auctions/:id/bids', requirePermission('reverse_auction.bid
         if (payload.amount > maxAllowed) {
           throw new ApiError(400, `Bid must be at least ${requiredDecrement.toFixed(2)} below current lowest amount`, 'AUCTION_MIN_DECREMENT');
         }
+        // Reserve price is the buyer's floor: in a reverse auction sellers drive the
+        // price down, so a bid under the reserve is rejected. (bidSchema already
+        // guarantees amount > 0, so no separate positivity check is needed here.)
+        const reserve = auction.reservePrice != null ? toNumber(auction.reservePrice) : null;
+        if (reserve != null && reserve > 0 && payload.amount < reserve) {
+          throw new ApiError(400, `Bid cannot be below the auction reserve price`, 'AUCTION_BELOW_RESERVE');
+        }
 
         const msToEnd = new Date(auction.endTime).getTime() - now.getTime();
         const shouldExtend = auction.autoExtensionEnabled &&

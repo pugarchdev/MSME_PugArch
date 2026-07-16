@@ -881,13 +881,13 @@ function ProcurementDetailModal({ approval, summary, onClose }: {
                                     <SectionTitle>📅 Schedule / Timeline</SectionTitle>
                                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                         <InfoCell label="Publish Date" value={schedule.publishDate ? formatDate(schedule.publishDate) : undefined} />
-                                        <InfoCell label="Submission Date" value={schedule.submissionDate ? formatDate(schedule.submissionDate) : undefined} />
-                                        <InfoCell label="Opening Date" value={schedule.openingDate ? formatDate(schedule.openingDate) : undefined} />
+                                        <InfoCell label="Submission Date" value={schedule.submissionDate ? formatDateTime(schedule.submissionDate) : undefined} />
+                                        <InfoCell label="Opening Date" value={schedule.openingDate ? formatDateTime(schedule.openingDate) : undefined} />
                                         <InfoCell label="Delivery Date" value={schedule.deliveryDate ? formatDate(schedule.deliveryDate) : undefined} />
                                         <InfoCell label="Validity (Days)" value={schedule.validityDays > 0 ? schedule.validityDays : undefined} />
                                         <InfoCell label="Pre-Bid Meeting" value={schedule.preBidMeeting} />
                                         {schedule.preBidMeeting && schedule.preBidDate && (
-                                            <InfoCell label="Pre-Bid Date" value={formatDate(schedule.preBidDate)} />
+                                            <InfoCell label="Pre-Bid Date" value={formatDateTime(schedule.preBidDate)} />
                                         )}
                                     </div>
                                 </div>
@@ -977,11 +977,11 @@ function ProcurementDetailModal({ approval, summary, onClose }: {
                                         <div className="border-t border-slate-100 pt-3">
                                             <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2">Tender Timeline</p>
                                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                                <InfoCell label="Bid Start Date" value={tender.bidStartDate ? formatDate(tender.bidStartDate) : undefined} />
-                                                <InfoCell label="Bid Closing Date" value={tender.bidClosingDate ? formatDate(tender.bidClosingDate) : undefined} />
+                                                <InfoCell label="Bid Start Date" value={tender.bidStartDate ? formatDateTime(tender.bidStartDate) : undefined} />
+                                                <InfoCell label="Bid Closing Date" value={tender.bidClosingDate ? formatDateTime(tender.bidClosingDate) : undefined} />
                                                 <InfoCell label="Bid Closing Time" value={tender.bidClosingTime} />
-                                                <InfoCell label="Technical Evaluation Date" value={tender.technicalEvaluationDate ? formatDate(tender.technicalEvaluationDate) : undefined} />
-                                                <InfoCell label="Financial Evaluation Date" value={tender.financialEvaluationDate ? formatDate(tender.financialEvaluationDate) : undefined} />
+                                                <InfoCell label="Technical Evaluation Date" value={tender.technicalEvaluationDate ? formatDateTime(tender.technicalEvaluationDate) : undefined} />
+                                                <InfoCell label="Financial Evaluation Date" value={tender.financialEvaluationDate ? formatDateTime(tender.financialEvaluationDate) : undefined} />
                                                 <InfoCell label="Award Date" value={tender.awardDate ? formatDate(tender.awardDate) : undefined} />
                                             </div>
                                         </div>

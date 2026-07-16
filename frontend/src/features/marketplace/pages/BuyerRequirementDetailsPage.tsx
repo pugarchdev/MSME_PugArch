@@ -32,6 +32,17 @@ const formatDate = (value?: string | null) => {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'Not set';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 'Not set';
+  return `${d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+};
+
 const formatMoney = (value?: number | string | null) => {
   const num = Number(value);
   if (!num || Number.isNaN(num)) return '—';
@@ -404,9 +415,9 @@ const BuyerRequirementDetailsPage = () => {
               <div className="mt-6">
                 <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Bid Timeline & Commercial Rules</h3>
                 <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {payload.tender?.bidStartDate && <DetailRow icon={Calendar} label="Bid Start" value={formatDate(payload.tender.bidStartDate)} />}
-                  {payload.tender?.bidClosingDate && <DetailRow icon={Calendar} label="Bid Closing" value={formatDate(payload.tender.bidClosingDate)} />}
-                  {payload.tender?.technicalEvaluationDate && <DetailRow icon={Calendar} label="Technical Opening" value={formatDate(payload.tender.technicalEvaluationDate)} />}
+                  {payload.tender?.bidStartDate && <DetailRow icon={Calendar} label="Bid Start" value={formatDateTime(payload.tender.bidStartDate)} />}
+                  {payload.tender?.bidClosingDate && <DetailRow icon={Calendar} label="Bid Closing" value={formatDateTime(payload.tender.bidClosingDate)} />}
+                  {payload.tender?.technicalEvaluationDate && <DetailRow icon={Calendar} label="Technical Opening" value={formatDateTime(payload.tender.technicalEvaluationDate)} />}
                   {payload.rules?.emdRequired ? <DetailRow icon={IndianRupee} label="EMD" value={formatMoney(payload.rules.emdAmount)} /> : null}
                   {payload.tender?.performanceSecurityAmount ? <DetailRow icon={Shield} label="Performance Security" value={formatMoney(payload.tender.performanceSecurityAmount)} /> : null}
                 </div>

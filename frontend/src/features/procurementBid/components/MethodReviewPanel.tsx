@@ -5,6 +5,7 @@ import { CANONICAL_METHOD_LABELS } from '../../../types/enums';
 import { fetchReviewContext } from '../../audit/api';
 import ProcurementCompliancePanel from '../../compliance/ProcurementCompliancePanel';
 import type { ProcurementComplianceWarning } from '../../compliance/types';
+import { formatDateTime } from '../../shared/format';
 
 interface Props {
   requestId: number;
@@ -110,8 +111,8 @@ export default function MethodReviewPanel({ requestId }: Props) {
           {/* Two Packet */}
           {method === 'TWO_PACKET_BID' && (
             <div className="space-y-2">
-              <DetailRow label="Technical Opening" value={ctx.technicalOpeningDate ? new Date(ctx.technicalOpeningDate).toLocaleDateString('en-IN') : 'Not set'} />
-              <DetailRow label="Financial Opening" value={ctx.financialOpeningDate ? new Date(ctx.financialOpeningDate).toLocaleDateString('en-IN') : 'Not set'} />
+              <DetailRow label="Technical Opening" value={ctx.technicalOpeningDate ? formatDateTime(ctx.technicalOpeningDate) : 'Not set'} />
+              <DetailRow label="Financial Opening" value={ctx.financialOpeningDate ? formatDateTime(ctx.financialOpeningDate) : 'Not set'} />
             </div>
           )}
 

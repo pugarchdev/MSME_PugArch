@@ -92,6 +92,8 @@ export interface ProcurementBid {
   allowReverseAuction?: boolean;
   packetType?: string;
   version?: number;
+  buyer?: any;
+  buyerOrganization?: any;
 }
 
 export interface ProcurementBidDocument {

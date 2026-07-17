@@ -31,25 +31,97 @@ import {
   ClipboardCheck,
   ClipboardList,
   Package,
+  CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApi } from '../../shared/apiClient';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
-import { useQuoteRequest } from '../hooks';
 import { useQuery } from '@tanstack/react-query';
 import { openFileAsset } from '../../../lib/files';
+import { procurementBidApi } from '../../procurementBid/api';
+
+const isPresentValue = (value: any): boolean => {
+  if (value === null || value === undefined || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+};
+
+const humanizeKey = (key: string): string =>
+  key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+
+const formatDetailValue = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toLocaleDateString('en-IN');
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) {
+    return value
+      .map(item => {
+        if (item && typeof item === 'object') {
+          return String(item.name || item.label || item.supplierName || item.itemName || item.fileName || item.location || item.id || JSON.stringify(item));
+        }
+        return String(item);
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .filter(([, v]) => isPresentValue(v))
+      .map(([k, v]) => `${humanizeKey(k)}: ${formatDetailValue(v)}`)
+      .join('; ');
+  }
+  return String(value);
+};
+
+const detailFieldsFromObject = (source: any, labelMap: Record<string, string> = {}) => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+  return Object.entries(source)
+    .filter(([key, value]) => isPresentValue(value) && !['id', 'documents', 'items', 'boqTable'].includes(key))
+    .map(([key, value]) => ({
+      label: labelMap[key] || humanizeKey(key),
+      value: formatDetailValue(value)
+    }))
+    .filter(field => field.value);
+};
+
+const detailSection = (title: string, source: any, labelMap?: Record<string, string>) => {
+  const fields = detailFieldsFromObject(source, labelMap);
+  return fields.length ? { title, fields } : null;
+};
+
+const formatDisplayValue = (val: string, label?: string) => {
+  if (!val) return '—';
+  if (val.match(/^[A-Z][A-Z0-9_]*$/)) {
+    return val
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return val;
+};
 
 export default function RfpDetailPage() {
+  const [activeSection, setActiveSection] = React.useState<number | null>(0);
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname() || '';
   const { user } = useAuth();
-  const requestId = Number(searchParams?.get('requestId') || 0);
-  const requirementId = Number(searchParams?.get('requirementId') || 0);
+  const requestId = searchParams?.get('requestId') || '';
+  const requirementId = searchParams?.get('requirementId') || '';
 
-  const { data: quoteData, isLoading: quoteLoading, error: quoteError } = useQuoteRequest(requestId);
+  // Fetch ProcurementBid data when requestId is provided (numeric ID or REQ-* reference ID)
+  const { data: bidData, isLoading: bidLoading, error: bidError } = useQuery({
+    queryKey: ['procurement-bid-rfp-detail', requestId],
+    queryFn: () => procurementBidApi.detail(requestId),
+    enabled: !!requestId,
+  });
 
+  // Fetch BuyerRequirement data when requirementId is provided
   const { data: reqData, isLoading: reqLoading, error: reqError } = useQuery({
     queryKey: ['marketplace-requirement-rfp-detail', requirementId],
     queryFn: async () => {
@@ -59,11 +131,57 @@ export default function RfpDetailPage() {
     enabled: !!requirementId,
   });
 
-  const isLoading = (!!requestId && quoteLoading) || (!!requirementId && reqLoading);
-  const error = (!!requestId && quoteError) || (!!requirementId && reqError);
+  const isLoading = (!!requestId && bidLoading) || (!!requirementId && reqLoading);
+  const error = (!!requestId && bidError) || (!!requirementId && reqError);
 
-  // Map requirement data back to rfpData structure if it exists
-  const rfpData: any = reqData ? {
+  // Map data from whichever source responded
+  const rfpData: any = bidData ? {
+    id: bidData.id || bidData.sourceId,
+    subject: bidData.title,
+    buyer: bidData.buyer || {
+      name: bidData.buyerName,
+      email: '',
+      mobile: '',
+      buyerProfile: null
+    },
+    estimatedValue: bidData.estimatedValue,
+    deadlineDate: bidData.endDate,
+    createdAt: bidData.startDate,
+    status: bidData.status,
+    location: bidData.deliveryLocation,
+    requirementNumber: bidData.id,
+    paymentTerms: bidData.technicalPacket?.terms?.paymentTerms || bidData.terms?.[0] || '',
+    deliveryTerms: bidData.technicalPacket?.terms?.deliveryTerms || '',
+    description: bidData.description,
+    payload: bidData.technicalPacket,
+    documents: bidData.documents?.length
+      ? bidData.documents
+      : (bidData.bidDocuments?.length
+        ? bidData.bidDocuments
+        : ((bidData as any).requiredDocuments || []).map((name: any, i: number) => ({
+            id: `req-doc-${i}`,
+            fileName: typeof name === 'string' ? name : name?.name || 'Required Document',
+            documentType: 'REQUIRED',
+            fileUrl: '#',
+          }))
+      ),
+    items:
+      ((bidData as any).items?.length ? (bidData as any).items : null)
+      || bidData.technicalPacket?.boq
+      || bidData.technicalPacket?.items
+      || bidData.technicalPacket?.wizardData?.items
+      || (bidData as any).financialPacket?.boq
+      || [],
+    category: bidData.category,
+    buyerOrganization: bidData.buyerOrganization || { organizationName: bidData.buyerName },
+    buyerOrganizationName: bidData.buyerName,
+    emdAmount: bidData.emdAmount,
+    isEmdRequired: bidData.isEmdRequired,
+    evaluationMethod: bidData.evaluationMethod,
+    contactPerson: bidData.technicalPacket?.internal?.contactPerson || bidData.buyer?.name || '',
+    buyerEmail: bidData.technicalPacket?.internal?.email || bidData.buyer?.email || '',
+    buyerMobile: bidData.technicalPacket?.internal?.mobile || bidData.buyer?.mobile || '',
+  } : reqData ? {
     id: reqData.id,
     subject: reqData.title || reqData.description,
     buyer: {
@@ -87,7 +205,7 @@ export default function RfpDetailPage() {
     items: reqData.items,
     category: reqData.category,
     buyerOrganization: reqData.buyerOrganization,
-  } : quoteData;
+  } : null;
 
   const formatCurrency = (val?: number) => {
     if (!val) return '—';
@@ -119,6 +237,35 @@ export default function RfpDetailPage() {
     }
   };
 
+  // Payload data extraction
+  const payload = rfpData?.payload || {};
+  const basics = payload.basics || {};
+  const internal = payload.internal || {};
+  const schedule = payload.schedule || {};
+  const terms = payload.terms || {};
+  const rules = payload.rules || {};
+  const evaluation = payload.evaluation || {};
+
+  // Detail Sections for Accordion
+  const detailSections = rfpData?.payload ? [
+    detailSection('Procurement Intent', {
+      ...(payload.basics || {}),
+      buyerType: payload.buyerType,
+      buyingType: payload.buyingType,
+      recommendedMethod: payload.recommendation?.id,
+      recommendationReason: payload.recommendation?.reason,
+    }),
+    detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails }),
+    detailSection('Vendor / Supplier Selection', payload.vendors),
+    detailSection('Timeline & Rules', { ...(payload.schedule || {}), ...(payload.tender || {}), ...(payload.rules || {}) }),
+    detailSection('Commercial Terms', payload.terms),
+    detailSection('Evaluation Basis', payload.evaluation),
+    detailSection('Approval Notes', payload.approval),
+    detailSection('Service Details', payload.serviceDetails),
+    detailSection('Rate Contract', payload.rateContractConfig || payload.rateContract),
+    detailSection('Reverse Auction', payload.auctionConfig),
+  ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }> : [];
+
   if (isLoading) {
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
@@ -130,13 +277,13 @@ export default function RfpDetailPage() {
 
   // Determine which RFP is being viewed
   let subject = rfpData?.subject || rfpData?.title || '';
-  const isSeedId = [100, 101, 102, 103, 104].includes(requestId);
+  const isSeedId = [100, 101, 102, 103, 104].includes(Number(requestId));
   if (!subject && isSeedId) {
-    if (requestId === 100) subject = '[SEED] Implementation of Cloud-Based Inventory System';
-    else if (requestId === 101) subject = '[SEED] Structural Design Consultancy for Nagpur Plant';
-    else if (requestId === 102) subject = '[SEED] Hazardous Chemical Waste Disposal Service';
-    else if (requestId === 103) subject = '[SEED] Warehouse Robot Sorting Automation Integration';
-    else if (requestId === 104) subject = '[SEED] Annual Maintenance Contract for HVAC Systems';
+    if (Number(requestId) === 100) subject = '[SEED] Implementation of Cloud-Based Inventory System';
+    else if (Number(requestId) === 101) subject = '[SEED] Structural Design Consultancy for Nagpur Plant';
+    else if (Number(requestId) === 102) subject = '[SEED] Hazardous Chemical Waste Disposal Service';
+    else if (Number(requestId) === 103) subject = '[SEED] Warehouse Robot Sorting Automation Integration';
+    else if (Number(requestId) === 104) subject = '[SEED] Annual Maintenance Contract for HVAC Systems';
   }
   if (!subject) subject = 'RFP Sourcing Opportunity';
 
@@ -147,7 +294,7 @@ export default function RfpDetailPage() {
   const isHvac = isSeedId && (subject.toLowerCase().includes('hvac') || subject.toLowerCase().includes('annual'));
 
   // 1. RFP Number
-  let rfpNumberString = rfpData?.requirementNumber || (rfpData?.id ? `RFP-2026-015${Math.abs(rfpData.id)}` : '—');
+  let rfpNumberString = rfpData?.requirementNumber || (rfpData?.id ? `RFP-2026-015${Math.abs(Number(rfpData.id))}` : '—');
   if (!rfpData?.requirementNumber && isSeedId) {
     if (isInventory) rfpNumberString = 'SEED-BID-RFP-100-8451';
     else if (isStructural) rfpNumberString = 'SEED-BID-RFP-101-9214';
@@ -160,18 +307,22 @@ export default function RfpDetailPage() {
   const orgName = rfpData?.buyerOrganization?.organizationName 
     || rfpData?.buyer?.buyerProfile?.organizationName 
     || rfpData?.buyerOrganizationName
+    || rfpData?.buyer?.name
     || (isSeedId ? 'Govt. Buyer Org' : '—');
 
   const contactPerson = rfpData?.contactPerson 
     || rfpData?.buyer?.buyerProfile?.contactPerson 
+    || rfpData?.payload?.internal?.contactPerson
     || (isSeedId ? 'M. R. Patnaik' : '—');
 
   const email = rfpData?.buyer?.email 
     || rfpData?.buyerEmail 
+    || rfpData?.payload?.internal?.email
     || (isSeedId ? 'tenders@govorg.in' : '—');
 
   const phone = rfpData?.buyer?.mobile 
     || rfpData?.buyerMobile 
+    || rfpData?.payload?.internal?.mobile
     || (isSeedId ? '+91 94370 67890' : '—');
 
   let address = '—';
@@ -196,8 +347,8 @@ export default function RfpDetailPage() {
   }
 
   // 4. Category & Subcategory
-  let category = rfpData?.category || (isSeedId ? 'IT Services' : '—');
-  let subCategory = isSeedId ? 'ERP Implementation' : '—';
+  let category = rfpData?.category || rfpData?.payload?.basics?.category || (isSeedId ? 'IT Services' : '—');
+  let subCategory = rfpData?.payload?.basics?.subCategory || (isSeedId ? 'ERP Implementation' : '—');
   if (isSeedId) {
     if (isInventory) {
       category = 'IT & Computer Equipment';
@@ -283,7 +434,7 @@ export default function RfpDetailPage() {
 
   // 10. Documents
   const documents: any[] = [];
-  const rawDocs = (rfpData as any)?.documents || (reqData as any)?.documents || (quoteData as any)?.documents || [];
+  const rawDocs = (rfpData as any)?.documents || (reqData as any)?.documents || (bidData as any)?.bidDocuments || [];
   if (Array.isArray(rawDocs) && rawDocs.length > 0) {
     rawDocs.forEach((doc: any) => {
       documents.push({
@@ -314,7 +465,7 @@ export default function RfpDetailPage() {
       router.push(`/login?redirect=${encodeURIComponent(pathname + (requestId ? `?requestId=${requestId}` : (requirementId ? `?requirementId=${requirementId}` : '')))}`);
       return;
     }
-    const targetBidId = requestId || rfpData?.payload?.linkedProcurementBidId || rfpData?.tenders?.[0]?.id || Math.abs(requirementId);
+    const targetBidId = requestId || rfpData?.payload?.linkedProcurementBidId || rfpData?.tenders?.[0]?.id || (requirementId && !isNaN(Number(requirementId)) ? Math.abs(Number(requirementId)) : requirementId);
     router.push(`/bids/${targetBidId}/participate`);
   };
 
@@ -329,10 +480,19 @@ export default function RfpDetailPage() {
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 md:px-8">
       {/* ── Breadcrumb Navigation ── */}
       <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
-        <span className="hover:text-slate-800 cursor-pointer" onClick={() => window.location.href = '/seller/opportunities'}>Opportunities</span>
-        <ChevronRight className="h-3 w-3" />
-        <span className="hover:text-slate-800 cursor-pointer" onClick={() => window.location.href = '/seller/opportunities/rfps'}>RFPs</span>
-        <ChevronRight className="h-3 w-3" />
+        {pathname.startsWith('/buyer') ? (
+          <>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/buyer/my-procurements')}>My Procurements</span>
+            <ChevronRight className="h-3 w-3" />
+          </>
+        ) : (
+          <>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities')}>Opportunities</span>
+            <ChevronRight className="h-3 w-3" />
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities/rfps')}>RFPs</span>
+            <ChevronRight className="h-3 w-3" />
+          </>
+        )}
         <span className="hover:text-slate-800 cursor-pointer">{rfpNumberString}</span>
         <ChevronRight className="h-3 w-3" />
         <span className="text-blue-600">Details</span>
@@ -531,8 +691,8 @@ export default function RfpDetailPage() {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
               <Info className="h-3 w-3 text-sky-600" /> Payment Terms
             </span>
-            <span className="text-sm font-black text-slate-800 block truncate" title={rfpData?.paymentTerms || "Milestone Based"}>
-              {rfpData?.paymentTerms || "Milestone Based"}
+            <span className="text-sm font-black text-slate-800 block truncate" title={rfpData?.paymentTerms || rfpData?.payload?.terms?.paymentTerms || "Milestone Based"}>
+              {rfpData?.paymentTerms || rfpData?.payload?.terms?.paymentTerms || "Milestone Based"}
             </span>
           </div>
 
@@ -541,7 +701,7 @@ export default function RfpDetailPage() {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
               <ClipboardCheck className="h-3 w-3 text-teal-600" /> Evaluation Method
             </span>
-            <span className="text-sm font-black text-slate-800 block">QCBS</span>
+            <span className="text-sm font-black text-slate-800 block">{rfpData?.evaluationMethod || rfpData?.payload?.evaluation?.evaluationMethod || 'QCBS'}</span>
           </div>
 
           {/* EMD Required */}
@@ -550,7 +710,7 @@ export default function RfpDetailPage() {
               <IndianRupee className="h-3 w-3 text-rose-500" /> EMD Required
             </span>
             <span className="text-sm font-black text-slate-850 text-slate-800 block">
-              {formatCurrency(isInventory || isStructural || isWaste || isRobot || isHvac ? 100000 : 250000)}
+              {rfpData?.emdAmount ? formatCurrency(Number(rfpData.emdAmount)) : rfpData?.payload?.terms?.emdAmount ? formatCurrency(Number(rfpData.payload.terms.emdAmount)) : formatCurrency(isInventory || isStructural || isWaste || isRobot || isHvac ? 100000 : 250000)}
             </span>
           </div>
         </div>
@@ -711,6 +871,91 @@ export default function RfpDetailPage() {
           </div>
         </section>
       </div>
+
+      {/* ── Additional Details Accordion ── */}
+      {detailSections.length > 0 && (
+        <section className="mt-8 border border-slate-100 rounded-3xl bg-white shadow-sm overflow-hidden">
+          <div className="p-6 pb-4 border-b border-slate-100/60 bg-slate-50/30">
+            <h2 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Layers className="h-5 w-5 text-purple-600" />
+              Additional Details
+            </h2>
+            <p className="text-xs font-semibold text-slate-500 mt-1">
+              Comprehensive specifications, terms, and requirements for this RFP.
+            </p>
+          </div>
+          
+          <div className="p-4 grid gap-3">
+            {detailSections.map((section, idx) => {
+              const isOpen = activeSection === idx;
+              const getSectionIcon = (title: string) => {
+                const t = title.toLowerCase();
+                if (t.includes('intent') || t.includes('scope')) return ClipboardList;
+                if (t.includes('buyer') || t.includes('user') || t.includes('contact') || t.includes('org')) return Info;
+                if (t.includes('item') || t.includes('qty')) return Package;
+                if (t.includes('date') || t.includes('time') || t.includes('schedule')) return CalendarDays;
+                if (t.includes('price') || t.includes('budget') || t.includes('cost') || t.includes('value')) return IndianRupee;
+                if (t.includes('terms') || t.includes('eligibility') || t.includes('criteria') || t.includes('rule')) return ClipboardCheck;
+                return Layers;
+              };
+              const SectionIcon = getSectionIcon(section.title);
+              return (
+                <div 
+                  key={`${section.title}-${idx}`} 
+                  className={cn(
+                    "rounded-2xl border transition-all duration-300 overflow-hidden",
+                    isOpen 
+                      ? "border-[#12335f]/25 bg-slate-50/30 shadow-sm border-l-4 border-l-[#12335f]" 
+                      : "border-slate-100 hover:border-slate-200 bg-white border-l-4 border-l-transparent"
+                  )}
+                >
+                  {/* Accordion Header */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection(isOpen ? null : idx)}
+                    className="group w-full flex items-center justify-between p-4 text-left font-black text-xs uppercase tracking-wider text-[#12335f] hover:bg-slate-50/50 transition-colors"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors font-black",
+                        isOpen ? "bg-[#12335f] text-white" : "bg-[#12335f]/10 text-[#12335f]"
+                      )}>
+                        <SectionIcon className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+                        {section.title}
+                      </span>
+                    </span>
+                    <ChevronRight className={cn(
+                      "h-4 w-4 text-slate-400 transition-transform duration-300 group-hover:scale-110",
+                      isOpen && "rotate-90 text-[#12335f]"
+                    )} />
+                  </button>
+
+                  {/* Accordion Body */}
+                  <div className={cn(
+                    "grid transition-all duration-300 ease-in-out border-t border-slate-100/60 bg-white",
+                    isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                  )}>
+                    <div className="overflow-hidden">
+                      <div className="px-6 pb-6 pt-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                          {section.fields.map((field, fieldIdx) => (
+                            <div key={`${field.label}-${fieldIdx}`} className="rounded-xl border border-slate-100 bg-slate-50/30 p-4 hover:bg-slate-50/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{field.label}</p>
+                              <p className="mt-1.5 text-xs font-bold leading-relaxed text-slate-800 break-words whitespace-pre-wrap">{formatDisplayValue(field.value, field.label)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
     </div>
   );

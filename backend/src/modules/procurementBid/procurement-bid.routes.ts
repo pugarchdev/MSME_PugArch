@@ -186,23 +186,93 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
   try {
     bid = await service.resolveBid(token);
   } catch (err: any) {
-    // Fallback: if no ProcurementBid found, check if this is a Requirement ID
-    if (err?.code === 'BID_NOT_FOUND' && /^\d+$/.test(token)) {
-      const requirement = await prisma.requirement.findUnique({
-        where: { id: Number(token) },
-        include: {
-          items: true,
-          organization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
-          category: true,
-          buyer: { select: { id: true, name: true, email: true, role: true, buyerProfile: { select: { departmentName: true } } } },
+    // Fallback: if no ProcurementBid found, check if this is a Requirement ID or Reference Number
+    if (err?.code === 'BID_NOT_FOUND' && (/^\d+$/.test(token) || token.startsWith('REQ-'))) {
+      const parsedId = token.startsWith('REQ-') ? Number(token.replace('REQ-', '')) : Number(token);
+      let requirement = null;
+
+      if (Number.isFinite(parsedId) && parsedId !== 0) {
+        const buyerReq = await prisma.buyerRequirement.findFirst({
+          where: { id: parsedId },
+          include: {
+            buyerOrganization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
+            category: true,
+            createdBy: { select: { id: true, name: true, email: true, mobile: true, role: true, buyerProfile: { select: { departmentName: true, representativeName: true, email: true, mobile: true } } } },
+          }
+        });
+        if (buyerReq) {
+          requirement = buyerReq as any;
+          // Map to match the shape expected by the frontend
+          requirement.organization = buyerReq.buyerOrganization;
+          requirement.buyer = buyerReq.createdBy;
+          requirement.requirementNumber = `REQ-${String(Math.abs(Number(buyerReq.id))).padStart(5, '0')}`;
+          
+          requirement.payload = {
+            basics: {
+              title: buyerReq.title,
+              description: buyerReq.description,
+              quantity: buyerReq.quantity,
+              unit: buyerReq.unit,
+              category: buyerReq.category?.name,
+              budgetMin: buyerReq.budgetMin,
+              budgetMax: buyerReq.budgetMax,
+              deliveryLocation: buyerReq.location,
+            },
+            internal: {
+              contactPerson: buyerReq.contactPerson,
+              email: buyerReq.createdBy?.email || buyerReq.createdBy?.buyerProfile?.email,
+              mobile: buyerReq.createdBy?.mobile || buyerReq.createdBy?.buyerProfile?.mobile,
+            },
+            schedule: {
+              submissionDate: buyerReq.lastDate,
+            },
+            terms: {
+              termsAndConditions: buyerReq.terms ? [buyerReq.terms] : [],
+            },
+            requiredDocs: buyerReq.requiredDocuments || [],
+          };
         }
-      });
+      }
+
+      if (!requirement) {
+        requirement = await prisma.requirement.findFirst({
+          where: /^\d+$/.test(token) ? { id: Number(token) } : { requirementNumber: token },
+          include: {
+            items: true,
+            organization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
+            category: true,
+            buyer: { select: { id: true, name: true, email: true, mobile: true, role: true, buyerProfile: { select: { departmentName: true, representativeName: true, email: true, mobile: true } } } },
+          }
+        });
+      }
       if (requirement) {
         const payload = requirement.payload && typeof requirement.payload === 'object' ? requirement.payload as any : {};
-        const basics = payload.basics || {};
-        const schedule = payload.schedule || {};
+        // If legacy requirement doesn't have basics/internal/schedule/terms in payload, reconstruct them
+        const basics = payload.basics || {
+          title: requirement.title,
+          description: requirement.description,
+          quantity: requirement.items?.[0]?.quantity,
+          unit: requirement.items?.[0]?.unitOfMeasure,
+          category: requirement.category?.name,
+          estimatedValue: requirement.estimatedValue,
+          deliveryLocation: [requirement.organization?.district, requirement.organization?.state].filter(Boolean).join(', ')
+        };
+        const schedule = payload.schedule || {
+          submissionDate: requirement.requiredBy || requirement.createdAt
+        };
         const terms = payload.terms || {};
-        const internal = payload.internal || {};
+        const internal = payload.internal || {
+          contactPerson: requirement.buyer?.buyerProfile?.contactPerson || requirement.buyer?.name,
+          email: requirement.buyer?.email || requirement.buyer?.buyerProfile?.email,
+          mobile: requirement.buyer?.mobile || requirement.buyer?.buyerProfile?.mobile
+        };
+
+        // Merge back into payload so frontend technicalPacket has these fields
+        payload.basics = basics;
+        payload.schedule = schedule;
+        payload.terms = terms;
+        payload.internal = internal;
+        
         const synthesized = {
           id: requirement.id,
           bidNumber: requirement.requirementNumber || `REQ-${requirement.id}`,

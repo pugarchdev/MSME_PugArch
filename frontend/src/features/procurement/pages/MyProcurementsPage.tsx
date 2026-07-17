@@ -468,17 +468,17 @@ export default function MyProcurementsPage() {
       route = auctionId ? `/reverse-auctions/${auctionId}` : null;
     } else if (typeLower === 'bid_tender') {
       if (methodLower === 'rfq') {
-        route = `/seller/rfq?requestId=${p.id}`;
+        route = `/buyer/rfq/detail?requestId=${p.id}`;
       } else if (methodLower === 'rfp') {
-        route = `/seller/rfp?requestId=${p.id}`;
+        route = `/buyer/rfp/detail?requestId=${p.id}`;
       } else {
         route = `/tenders?tender=${p.referenceNumber}`;
       }
     } else if (typeLower === 'requirement') {
       if (methodLower === 'rfp') {
-        route = `/seller/rfp?requirementId=${p.id}`;
+        route = `/buyer/rfp/detail?requirementId=${p.id}`;
       } else {
-        route = `/seller/rfq?requirementId=${p.id}`;
+        route = `/buyer/rfq/detail?requirementId=${p.id}`;
       }
     }
 

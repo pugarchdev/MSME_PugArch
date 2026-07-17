@@ -2242,13 +2242,25 @@ router.get('/marketplace/requirements', optionalAuthenticate, shortCache(30), as
 
 router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30), async (req: AuthRequest, res: Response) => {
     try {
-        const id = Number(req.params.id);
-        if (isNaN(id) || id === 0) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+        const idToken = String(req.params.id || '').trim();
+        let id = Number(idToken);
+        let hasNumericId = idToken !== '' && Number.isFinite(id) && id !== 0;
+        
+        if (!hasNumericId && idToken.startsWith('REQ-')) {
+            const parsed = Number(idToken.replace('REQ-', ''));
+            if (Number.isFinite(parsed) && parsed !== 0) {
+                id = parsed;
+                hasNumericId = true;
+            }
+        }
+        
+        const hasReferenceId = idToken.length > 0 && !hasNumericId;
+        if (!hasNumericId && !hasReferenceId) return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
 
         let requirement: any = null;
         let isLegacy = false;
 
-        if (id < 0) {
+        if (hasNumericId && id < 0) {
             const legacyId = Math.abs(id);
             const legacyReq = await db.requirement.findFirst({
                 where: { id: legacyId },
@@ -2260,15 +2272,18 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
             requirement = mapLegacyRequirementToPublic(legacyReq);
             isLegacy = true;
         } else {
-            const buyerReq = await db.buyerRequirement.findFirst({
-                where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } },
-                select: publicRequirementDetailSelect
-            });
-            if (buyerReq) {
-                requirement = decorateRequirement(buyerReq);
-            } else {
+            if (hasNumericId) {
+                const buyerReq = await db.buyerRequirement.findFirst({
+                    where: { id, status: { in: ['PUBLISHED', 'OPEN', 'CLOSED', 'AWARDED'] } },
+                    select: publicRequirementDetailSelect
+                });
+                if (buyerReq) {
+                    requirement = decorateRequirement(buyerReq);
+                }
+            }
+            if (!requirement) {
                 const legacyReq = await db.requirement.findFirst({
-                    where: { id },
+                    where: hasNumericId ? { id } : { requirementNumber: idToken },
                     select: publicLegacyRequirementDetailSelect
                 });
                 if (legacyReq) {

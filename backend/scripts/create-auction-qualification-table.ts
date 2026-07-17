@@ -53,7 +53,11 @@ async function main() {
     await prisma.$executeRawUnsafe(statement);
   }
   const participantCols = await prisma.$queryRawUnsafe(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'AuctionParticipant' AND column_name LIKE '%ualif%' OR column_name LIKE 'initialQuote%' ORDER BY column_name;`
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_name = 'AuctionParticipant'
+        AND (column_name LIKE '%ualif%' OR column_name LIKE 'initialQuote%')
+      ORDER BY column_name;`
   );
   const docCols = await prisma.$queryRawUnsafe(
     `SELECT column_name FROM information_schema.columns WHERE table_name = 'AuctionQualificationDocument' ORDER BY ordinal_position;`

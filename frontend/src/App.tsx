@@ -630,6 +630,8 @@ export default function App() {
     }
     if (pathname === '/buyer/procurement' && roleOk(user.role, ['buyer'])) return <BuyerProcurementHub />;
     if (pathname === '/buyer/my-procurements' && roleOk(user.role, ['buyer'])) return <MyProcurementsPage />;
+    if (pathname === '/buyer/rfq/detail' && roleOk(user.role, ['buyer'])) return <RfqDetailPage />;
+    if (pathname === '/buyer/rfp/detail' && roleOk(user.role, ['buyer'])) return <RfpDetailPage />;
     if (pathname === '/buyer/rate-contracts' && roleOk(user.role, ['buyer'])) return <RateContractsPage />;
     if (pathname === '/buyer/procurement/checkout' && roleOk(user.role, ['buyer'])) return <ProcurementCheckoutPage />;
     if (pathname === '/buyer/address-book' && roleOk(user.role, ['buyer'])) return <AddressBookPage />;

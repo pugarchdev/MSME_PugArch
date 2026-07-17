@@ -226,10 +226,14 @@ const bidInclude: any = {
       id: true,
       name: true,
       email: true,
+      mobile: true,
       role: true,
       buyerProfile: {
         select: {
-          departmentName: true
+          departmentName: true,
+          representativeName: true,
+          email: true,
+          mobile: true
         }
       }
     }

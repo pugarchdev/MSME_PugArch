@@ -261,6 +261,8 @@ export const normalizeBid = (raw: any): ProcurementBid => {
       url: doc.fileUrl || doc.url,
     })),
     technicalPacket: pkt || undefined,
+    buyer: raw.buyer || null,
+    buyerOrganization: raw.buyerOrganization || raw.organization || null,
   };
 };
 

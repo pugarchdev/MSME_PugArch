@@ -4108,7 +4108,7 @@ router.get('/procurement/drafts', authenticate, authorize('buyer'), asyncRoute(a
   // We load V1 drafts from requirement table. Submitted/published rows stay
   // listed (flagged isPublished) so the buyer keeps a draft-history record
   // after publishing instead of the card silently vanishing.
-  const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'OPEN'] } };
+  const reqWhere: any = { buyerId: userId(req), status: { in: ['DRAFT', 'REJECTED', 'SUBMITTED', 'APPROVED'] } };
   if (query.procurementMethod) reqWhere.procurementMethod = procurementMethodCodeFor(query.procurementMethod);
   if (query.categoryId) reqWhere.categoryId = query.categoryId;
   if (query.q) reqWhere.OR = [{ title: { contains: query.q, mode: 'insensitive' } }, { description: { contains: query.q, mode: 'insensitive' } }];

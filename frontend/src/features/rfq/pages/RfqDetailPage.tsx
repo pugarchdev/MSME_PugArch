@@ -32,10 +32,10 @@ import { toast } from 'sonner';
 import { getApi } from '../../shared/apiClient';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
-import { useQuoteRequest } from '../hooks';
 import { useQuery } from '@tanstack/react-query';
 import { openFileAsset } from '../../../lib/files';
 import ClarificationPanel from '../components/ClarificationPanel';
+import { procurementBidApi } from '../../procurementBid/api';
 
 /* ═══════════════════════════════════════════════
    HELPERS
@@ -166,13 +166,19 @@ export default function RfqDetailPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname() || '';
   const { user } = useAuth();
-  const requestId = Number(searchParams?.get('requestId') || 0);
-  const requirementId = Number(searchParams?.get('requirementId') || 0);
+  const requestId = searchParams?.get('requestId') || '';
+  const requirementId = searchParams?.get('requirementId') || '';
 
   const [activeSection, setActiveSection] = useState<number | null>(0);
 
-  const { data: quoteData, isLoading: quoteLoading, error: quoteError } = useQuoteRequest(requestId);
+  // Fetch ProcurementBid data when requestId is provided (numeric ID or REQ-* reference ID)
+  const { data: bidData, isLoading: bidLoading, error: bidError } = useQuery({
+    queryKey: ['procurement-bid-rfq-detail', requestId],
+    queryFn: () => procurementBidApi.detail(requestId),
+    enabled: !!requestId,
+  });
   
+  // Fetch BuyerRequirement data when requirementId is provided
   const { data: reqData, isLoading: reqLoading, error: reqError } = useQuery({
     queryKey: ['marketplace-requirement-rfq-detail', requirementId],
     queryFn: async () => {
@@ -182,11 +188,62 @@ export default function RfqDetailPage() {
     enabled: !!requirementId,
   });
 
-  const isLoading = (!!requestId && quoteLoading) || (!!requirementId && reqLoading);
-  const error = (!!requestId && quoteError) || (!!requirementId && reqError);
+  const isLoading = (!!requestId && bidLoading) || (!!requirementId && reqLoading);
+  const error = (!!requestId && bidError) || (!!requirementId && reqError);
 
-  // Map requirement data back to rfqData structure if it exists
-  const rfqData: any = reqData ? {
+  // Map data from whichever source responded
+  const rfqData: any = bidData ? {
+    id: bidData.id || bidData.sourceId,
+    subject: bidData.title,
+    buyer: bidData.buyer || {
+      name: bidData.buyerName,
+      email: '',
+      mobile: '',
+      buyerProfile: null
+    },
+    estimatedValue: bidData.estimatedValue,
+    deadlineDate: bidData.endDate,
+    createdAt: bidData.startDate,
+    updatedAt: bidData.startDate,
+    status: bidData.status,
+    location: bidData.deliveryLocation,
+    requirementNumber: bidData.id,
+    paymentTerms: bidData.technicalPacket?.terms?.paymentTerms || bidData.terms?.[0] || '',
+    deliveryTerms: bidData.technicalPacket?.terms?.deliveryTerms || '',
+    payload: bidData.technicalPacket,
+    description: bidData.description,
+    documents: bidData.documents?.length
+      ? bidData.documents
+      : (bidData.bidDocuments?.length
+        ? bidData.bidDocuments
+        : ((bidData as any).requiredDocuments || []).map((name: any, i: number) => ({
+            id: `req-doc-${i}`,
+            fileName: typeof name === 'string' ? name : name?.name || 'Required Document',
+            documentType: 'REQUIRED',
+            fileUrl: '#',
+          }))
+      ),
+    items:
+      ((bidData as any).items?.length ? (bidData as any).items : null)
+      || bidData.technicalPacket?.boq
+      || bidData.technicalPacket?.items
+      || bidData.technicalPacket?.wizardData?.items
+      || (bidData as any).financialPacket?.boq
+      || [],
+    procurementMethod: bidData.procurementType || 'RFQ',
+    category: bidData.category,
+    categoryName: bidData.category,
+    quantity: bidData.quantity,
+    unit: '',
+    buyerOrganization: bidData.buyerOrganization || { organizationName: bidData.buyerName },
+    buyerOrganizationName: bidData.buyerName,
+    emdAmount: bidData.emdAmount,
+    isEmdRequired: bidData.isEmdRequired,
+    evaluationMethod: bidData.evaluationMethod,
+    contactPerson: bidData.technicalPacket?.internal?.contactPerson || '',
+    buyerEmail: bidData.technicalPacket?.internal?.email || '',
+    buyerMobile: bidData.technicalPacket?.internal?.mobile || '',
+  } : reqData ? {
     id: reqData.id,
     subject: reqData.title || reqData.description,
     buyer: {
@@ -216,10 +273,7 @@ export default function RfqDetailPage() {
     unit: reqData.unit,
     directPurchase: reqData.directPurchase,
     buyerOrganization: reqData.buyerOrganization,
-  } : (quoteData ? {
-    ...quoteData,
-    payload: (quoteData as any).payload
-  } : null);
+  } : null;
 
   if (isLoading) {
     return (
@@ -232,12 +286,12 @@ export default function RfqDetailPage() {
 
   /* ── Data Extraction ── */
   let subject = rfqData?.subject || rfqData?.title || '';
-  const isSeedId = [180, 181, 182, 183].includes(requestId);
+  const isSeedId = [180, 181, 182, 183].includes(Number(requestId));
   if (!subject && isSeedId) {
-    if (requestId === 180) subject = '[SEED] Supply of High-Grade Copper Wire Reels';
-    else if (requestId === 181) subject = '[SEED] Bulk Office Stationery and Printing Paper Sourcing';
-    else if (requestId === 182) subject = '[SEED] Spare Parts for CNC Milling Machinery';
-    else if (requestId === 183) subject = '[SEED] Industrial Grade Fire Extinguishers and Safety Gear';
+    if (Number(requestId) === 180) subject = '[SEED] Supply of High-Grade Copper Wire Reels';
+    else if (Number(requestId) === 181) subject = '[SEED] Bulk Office Stationery and Printing Paper Sourcing';
+    else if (Number(requestId) === 182) subject = '[SEED] Spare Parts for CNC Milling Machinery';
+    else if (Number(requestId) === 183) subject = '[SEED] Industrial Grade Fire Extinguishers and Safety Gear';
   }
   if (!subject) subject = 'RFQ Sourcing Opportunity';
 
@@ -247,7 +301,7 @@ export default function RfqDetailPage() {
   const isFire = isSeedId && (subject.toLowerCase().includes('fire') || subject.toLowerCase().includes('extinguisher'));
 
   // RFQ Number
-  let rfqNumberString = rfqData?.requirementNumber || (rfqData?.id ? `RFQ-2026-0101${Math.abs(rfqData.id)}` : '—');
+  let rfqNumberString = rfqData?.requirementNumber || (rfqData?.id ? `RFQ-2026-0101${Math.abs(Number(rfqData.id))}` : '—');
   if (!rfqData?.requirementNumber && isSeedId) {
     if (isCopper) rfqNumberString = 'SEED-BID-RFQ-180-0169';
     else if (isStationery) rfqNumberString = 'SEED-BID-RFQ-181-2036';
@@ -264,9 +318,31 @@ export default function RfqDetailPage() {
   const rules = payload.rules || {};
   const evaluation = payload.evaluation || {};
 
+  // Detail Sections for Accordion
+  const detailSections = rfqData?.payload ? [
+    detailSection('Procurement Intent', {
+      ...(payload.basics || {}),
+      buyerType: payload.buyerType,
+      buyingType: payload.buyingType,
+      recommendedMethod: payload.recommendation?.id,
+      recommendationReason: payload.recommendation?.reason,
+    }),
+    detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails }),
+    detailSection('Vendor / Supplier Selection', payload.vendors),
+    detailSection('Timeline & Rules', { ...(payload.schedule || {}), ...(payload.tender || {}), ...(payload.rules || {}) }),
+    detailSection('Commercial Terms', payload.terms),
+    detailSection('Evaluation Basis', payload.evaluation),
+    detailSection('Approval Notes', payload.approval),
+    detailSection('Service Details', payload.serviceDetails),
+    detailSection('Rate Contract', payload.rateContractConfig || payload.rateContract),
+    detailSection('Reverse Auction', payload.auctionConfig),
+  ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }> : [];
+
   // Buyer Info
   const orgName = rfqData?.buyerOrganization?.organizationName 
     || rfqData?.buyer?.buyerProfile?.organizationName 
+    || rfqData?.buyerOrganizationName
+    || rfqData?.buyer?.name
     || internal.orgName 
     || basics.buyerOrganizationName 
     || (isSeedId ? 'Govt. Buyer Org' : '—');
@@ -415,7 +491,7 @@ export default function RfqDetailPage() {
     fileAssetId?: number | null;
     url?: string;
   }> = [];
-  const rawDocs = (rfqData as any)?.documents || (reqData as any)?.documents || (quoteData as any)?.documents || [];
+  const rawDocs = (rfqData as any)?.documents || (reqData as any)?.documents || (bidData as any)?.bidDocuments || [];
   if (Array.isArray(rawDocs) && rawDocs.length > 0) {
     rawDocs.forEach((doc: any) => {
       documents.push({
@@ -487,25 +563,6 @@ export default function RfqDetailPage() {
     { label: 'Order', date: 'Pending', active: false },
   ];
 
-  // Detail Sections for Accordion
-  const detailSections = rfqData?.payload ? [
-    detailSection('Procurement Intent', {
-      ...(payload.basics || {}),
-      buyerType: payload.buyerType,
-      buyingType: payload.buyingType,
-      recommendedMethod: payload.recommendation?.id,
-      recommendationReason: payload.recommendation?.reason,
-    }),
-    detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails }),
-    detailSection('Vendor / Supplier Selection', payload.vendors),
-    detailSection('Timeline & Rules', { ...(payload.schedule || {}), ...(payload.tender || {}), ...(payload.rules || {}) }),
-    detailSection('Commercial Terms', payload.terms),
-    detailSection('Evaluation Basis', payload.evaluation),
-    detailSection('Approval Notes', payload.approval),
-    detailSection('Service Details', payload.serviceDetails),
-    detailSection('Rate Contract', payload.rateContractConfig || payload.rateContract),
-    detailSection('Reverse Auction', payload.auctionConfig),
-  ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }> : [];
 
   /* ── Handlers ── */
   const handleDownload = () => {
@@ -546,10 +603,19 @@ export default function RfqDetailPage() {
 
       {/* ── Breadcrumb Navigation ── */}
       <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
-        <span className="hover:text-slate-800 cursor-pointer" onClick={() => window.location.href = '/seller/opportunities'}>Opportunities</span>
-        <ChevronRight className="h-3 w-3" />
-        <span className="hover:text-slate-800 cursor-pointer" onClick={() => window.location.href = '/seller/opportunities/rfqs'}>RFQs</span>
-        <ChevronRight className="h-3 w-3" />
+        {pathname.startsWith('/buyer') ? (
+          <>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/buyer/my-procurements')}>My Procurements</span>
+            <ChevronRight className="h-3 w-3" />
+          </>
+        ) : (
+          <>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities')}>Opportunities</span>
+            <ChevronRight className="h-3 w-3" />
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities/rfqs')}>RFQs</span>
+            <ChevronRight className="h-3 w-3" />
+          </>
+        )}
         <span className="hover:text-slate-800 cursor-pointer">{rfqNumberString}</span>
         <ChevronRight className="h-3 w-3" />
         <span className="text-[#12335f]">Details</span>
@@ -1183,11 +1249,10 @@ export default function RfqDetailPage() {
         </div>
       </div>
 
-      {/* ── Clarifications & Q&A ── */}
-      {(requestId > 0 || requirementId > 0) && user && (
+      {Number(rfqData?.sourceId || rfqData?.id || 0) > 0 && user && (
         <ClarificationPanel
-          quoteRequestId={requirementId > 0 ? requirementId : requestId}
-          kind={requirementId > 0 ? 'requirement' : 'quote-request'}
+          quoteRequestId={Number(rfqData?.sourceId || rfqData?.id || 0)}
+          kind={rfqData?.sourceModel === 'REQUIREMENT' || !!requirementId ? 'requirement' : 'quote-request'}
           role={user?.role === 'seller' ? 'seller' : 'buyer'}
           deadlinePassed={!!rfqData?.deadlineDate && new Date(rfqData.deadlineDate).getTime() < Date.now()}
         />

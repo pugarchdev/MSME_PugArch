@@ -2411,7 +2411,21 @@ router.post('/buyer/requirements', authenticate, authorize('buyer', 'admin', 'ma
 
 router.post('/marketplace/requirements/:id/responses', authenticate, authorize('seller'), async (req: AuthRequest, res: Response) => {
     try {
-        const id = Number(req.params.id);
+        const idToken = String(req.params.id || '').trim();
+        let id = Number(idToken);
+
+        // Resolve string requirement numbers (e.g. REQ-2026-555FA0C7B053) to numeric IDs
+        if (!Number.isFinite(id) || id === 0) {
+            const byRefId = await db.buyerRequirement.findFirst({
+                where: { requirementNumber: idToken },
+                select: { id: true }
+            });
+            if (!byRefId) {
+                return apiResponse.error(res, 400, 'Invalid requirement ID', 'INVALID_ID');
+            }
+            id = byRefId.id;
+        }
+
         const body = responseSchema.parse(req.body);
         if (req.user?.role !== 'seller') {
             return apiResponse.error(res, 403, 'Only seller accounts can respond to buyer requirements.', 'SELLER_ROLE_REQUIRED');

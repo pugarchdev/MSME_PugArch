@@ -137,7 +137,8 @@ export default function SubmitQuotationPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const requirementId = Number(searchParams?.get('requirementId') || 0);
+  const requirementIdParam = searchParams?.get('requirementId');
+  const requirementId = requirementIdParam ? (isNaN(Number(requirementIdParam)) ? requirementIdParam : Number(requirementIdParam)) : 0;
 
   const [offeredPrice, setOfferedPrice] = useState('');
   const [offeredQuantity, setOfferedQuantity] = useState('');
@@ -216,9 +217,12 @@ export default function SubmitQuotationPage() {
     }
   }, [ownResponse]);
 
+  // Use the numeric ID from fetched data for API calls; the URL param may be a string like REQ-2026-...
+  const resolvedId = rfqData?.id || requirementId;
+
   // Save draft to database
   const saveDraft = useCallback(async () => {
-    if (!requirementId) return;
+    if (!resolvedId) return;
     try {
       const payload: any = {
         offeredPrice: offeredPrice ? Number(offeredPrice) : undefined,
@@ -234,22 +238,23 @@ export default function SubmitQuotationPage() {
       const responseData = buildResponseData();
       if (responseData) payload.responseData = responseData;
 
-      await postApi(`/api/marketplace/requirements/${requirementId}/responses`, payload);
+      await postApi(`/api/marketplace/requirements/${resolvedId}/responses`, payload);
       
       const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastSaved(now);
       setDraftSaved(true);
+      toast.success('Draft saved successfully');
       setTimeout(() => setDraftSaved(false), 2000);
     } catch (err: any) {
       console.warn('Failed to save draft to server', err);
       toast.error('Failed to save draft to server');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requirementId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
+  }, [resolvedId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
 
   // Auto-save on field changes (debounced at 5 seconds)
   React.useEffect(() => {
-    if (!requirementId) return;
+    if (!resolvedId || !rfqData) return; // Wait until data is loaded
     const hasDynamicInput = docUploads.some(doc => doc.status === 'done') || lineQuotes.some(line => line.unitPrice !== '');
     if (!offeredPrice && !offeredQuantity && !deliveryTimeline && !terms && !message && !uploadState && !hasDynamicInput) {
       return;
@@ -261,7 +266,7 @@ export default function SubmitQuotationPage() {
       saveDraft();
     }, 5000);
     return () => clearTimeout(timer);
-  }, [offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes, requirementId, saveDraft, ownResponse]);
+  }, [offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes, resolvedId, rfqData, saveDraft, ownResponse]);
 
   const orgName = rfqData?.buyerOrganization?.organizationName || 'Buyer';
   const subject = rfqData?.title || 'Sourcing Requirement';
@@ -477,7 +482,7 @@ export default function SubmitQuotationPage() {
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    if (!requirementId) {
+    if (!resolvedId) {
       toast.error('Invalid requirement');
       return;
     }
@@ -490,6 +495,7 @@ export default function SubmitQuotationPage() {
         deliveryTimeline: deliveryTimeline.trim(),
         message: message.trim(),
         terms: terms.trim() || undefined,
+        status: 'SUBMITTED',
       };
       if (uploadState?.url) {
         payload.attachmentUrl = uploadState.url;
@@ -497,7 +503,7 @@ export default function SubmitQuotationPage() {
       const responseData = buildResponseData();
       if (responseData) payload.responseData = responseData;
 
-      await postApi(`/api/marketplace/requirements/${requirementId}/responses`, payload);
+      await postApi(`/api/marketplace/requirements/${resolvedId}/responses`, payload);
       localStorage.removeItem(`rfq_draft_${requirementId}`);
       setSubmitted(true);
       toast.success('Quotation submitted successfully');

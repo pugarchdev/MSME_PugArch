@@ -575,7 +575,10 @@ export default function RfqDetailPage() {
       router.push(`/login?redirect=${encodeURIComponent(pathname + (requestId ? `?requestId=${requestId}` : (requirementId ? `?requirementId=${requirementId}` : '')))}`);
       return;
     }
-    const id = requirementId || requestId;
+    // Prefer the actual numeric ID from the fetched data over the URL parameter,
+    // which may be a string requirement number (e.g. REQ-2026-...).
+    const numericId = rfqData?.id;
+    const id = numericId || requirementId || requestId;
     if (!id) {
       toast.error('Requirement ID not found');
       return;

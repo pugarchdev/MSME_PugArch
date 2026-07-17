@@ -2631,6 +2631,148 @@ router.get('/buyer/requirements/:id/responses', authenticate, authorize('buyer',
     }
 });
 
+router.post('/buyer/requirements/:id/responses/:responseId/accept', authenticate, authorize('buyer', 'admin', 'master_admin'), async (req: AuthRequest, res: Response) => {
+    try {
+        const id = Number(req.params.id);
+        const responseId = Number(req.params.responseId);
+        
+        if (!id || id < 1 || !responseId || responseId < 1) {
+            return apiResponse.error(res, 400, 'Invalid IDs', 'INVALID_ID');
+        }
+
+        const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'master_admin';
+        const ownershipFilters: any[] = [{ createdById: Number(req.user?.id) }];
+        if (req.user?.organizationId) ownershipFilters.push({ buyerOrganizationId: req.user.organizationId });
+
+        const requirement = await db.buyerRequirement.findFirst({
+            where: {
+                id,
+                ...(isPrivileged ? {} : { OR: ownershipFilters }),
+                status: { in: ['OPEN', 'PUBLISHED', 'CLOSED'] }
+            }
+        });
+
+        if (!requirement) {
+            return apiResponse.error(res, 404, 'Requirement not found or not in an awardable state', 'REQUIREMENT_NOT_AWARDABLE');
+        }
+
+        const targetResponse = await db.requirementResponse.findFirst({
+            where: { id: responseId, requirementId: id }
+        });
+
+        if (!targetResponse) {
+            return apiResponse.error(res, 404, 'Response not found', 'RESPONSE_NOT_FOUND');
+        }
+
+        await db.$transaction(async (tx: any) => {
+            // Update the accepted response
+            await tx.requirementResponse.update({
+                where: { id: responseId },
+                data: { status: 'ACCEPTED' }
+            });
+            
+            // Reject all other responses
+            await tx.requirementResponse.updateMany({
+                where: { requirementId: id, id: { not: responseId } },
+                data: { status: 'REJECTED' }
+            });
+
+            // Update requirement status to AWARDED
+            await tx.buyerRequirement.update({
+                where: { id },
+                data: { status: 'AWARDED' }
+            });
+
+            // Generate Purchase Order
+            const poNumber = `PO-RFQ-${requirement.id}-${Date.now()}`;
+            const amount = targetResponse.offeredPrice || 0;
+            
+            const purchaseOrder = await tx.purchaseOrder.create({
+                data: {
+                    poNumber,
+                    buyerId: Number(req.user?.id),
+                    sellerId: targetResponse.sellerUserId,
+                    title: requirement.title || `PO for RFQ ${requirement.id}`,
+                    amount: amount,
+                    totalValue: Number(amount),
+                    status: 'GENERATED',
+                    poStatus: 'ISSUED',
+                    sourceType: 'BuyerRequirement',
+                    sourceId: requirement.id,
+                    deliveryType: targetResponse.deliveryTimeline || null,
+                    paymentTerms: requirement.terms || null
+                }
+            });
+
+            // Parse response data for line items
+            const responseData: any = typeof targetResponse.responseData === 'string' 
+                ? JSON.parse(targetResponse.responseData) 
+                : (targetResponse.responseData || {});
+            
+            const lineItems = Array.isArray(responseData.lineItems) ? responseData.lineItems : [];
+            
+            if (lineItems.length > 0) {
+                // Generate items from seller's quote
+                for (const item of lineItems) {
+                    await tx.purchaseOrderItem.create({
+                        data: {
+                            purchaseOrderId: purchaseOrder.id,
+                            itemName: item.itemName || 'Item',
+                            description: item.remarks || null,
+                            quantity: item.quantity || 1,
+                            unitOfMeasure: 'Unit', // Fallback
+                            unitPrice: item.unitPrice || 0,
+                            taxRate: item.gstPercent || 0,
+                            totalAmount: (Number(item.quantity || 1) * Number(item.unitPrice || 0)) * (1 + Number(item.gstPercent || 0) / 100)
+                        }
+                    });
+                }
+            } else {
+                // Generate single item from RFQ root fields
+                await tx.purchaseOrderItem.create({
+                    data: {
+                        purchaseOrderId: purchaseOrder.id,
+                        itemName: requirement.title || `Item for RFQ ${requirement.id}`,
+                        quantity: targetResponse.offeredQuantity || requirement.quantity || 1,
+                        unitOfMeasure: requirement.unit || 'Unit',
+                        unitPrice: amount,
+                        totalAmount: amount
+                    }
+                });
+            }
+
+            // Create Notification for Seller
+            await tx.notification.create({
+                data: {
+                    userId: targetResponse.sellerUserId,
+                    title: 'Quotation Accepted',
+                    message: `Your quotation for RFQ #${requirement.id} has been accepted. A Purchase Order (${poNumber}) has been generated.`,
+                    type: 'PO_GENERATED',
+                    priority: 'high',
+                    redirectUrl: `/dashboard/orders`
+                }
+            });
+
+            // Create Notification for Buyer
+            await tx.notification.create({
+                data: {
+                    userId: Number(req.user?.id),
+                    title: 'Purchase Order Generated',
+                    message: `Purchase Order ${poNumber} has been successfully generated and issued to the seller.`,
+                    type: 'PO_GENERATED',
+                    priority: 'high',
+                    redirectUrl: `/buyer/orders`
+                }
+            });
+        });
+
+        return ok(res, { success: true, message: 'Response accepted and PO generated successfully.' });
+    } catch (error: any) {
+        console.error('[Accept Requirement Response]', error);
+        return apiResponse.error(res, 500, error?.message || 'Failed to accept response', 'REQUIREMENT_RESPONSE_ACCEPT_ERROR');
+    }
+});
+
 // ── Requirement Clarifications (Q&A on a BuyerRequirement) ──
 // Mirrors /quote-requests/:id/clarifications but keyed on requirementId so the
 // /seller/rfq?requirementId= flow gets a working Q&A thread.

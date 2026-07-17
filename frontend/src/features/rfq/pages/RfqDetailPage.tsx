@@ -183,13 +183,16 @@ export default function RfqDetailPage() {
     queryKey: ['marketplace-requirement-rfq-detail', requirementId],
     queryFn: async () => {
       const data = await getApi<any>(`/api/marketplace/requirements/${requirementId}`);
-      return data.requirement || data;
+      return data;
     },
     enabled: !!requirementId,
   });
 
   const isLoading = (!!requestId && bidLoading) || (!!requirementId && reqLoading);
   const error = (!!requestId && bidError) || (!!requirementId && reqError);
+
+  const reqObj = reqData?.requirement || reqData;
+  const ownResponse = reqData?.ownResponse || null;
 
   // Map data from whichever source responded
   const rfqData: any = bidData ? {
@@ -243,36 +246,36 @@ export default function RfqDetailPage() {
     contactPerson: bidData.technicalPacket?.internal?.contactPerson || '',
     buyerEmail: bidData.technicalPacket?.internal?.email || '',
     buyerMobile: bidData.technicalPacket?.internal?.mobile || '',
-  } : reqData ? {
-    id: reqData.id,
-    subject: reqData.title || reqData.description,
+  } : reqObj ? {
+    id: reqObj.id,
+    subject: reqObj.title || reqObj.description,
     buyer: {
-      name: reqData.buyerOrganization?.organizationName || 'Buyer',
-      email: reqData.buyerEmail || reqData.buyer?.email || '',
-      mobile: reqData.buyerMobile || reqData.buyer?.mobile || '',
-      buyerProfile: reqData.buyerOrganization || reqData.buyer?.buyerProfile
+      name: reqObj.buyerOrganization?.organizationName || 'Buyer',
+      email: reqObj.buyerEmail || reqObj.buyer?.email || '',
+      mobile: reqObj.buyerMobile || reqObj.buyer?.mobile || '',
+      buyerProfile: reqObj.buyerOrganization || reqObj.buyer?.buyerProfile
     },
-    estimatedValue: reqData.estimatedValue || reqData.budgetMax || reqData.budgetMin,
-    deadlineDate: reqData.lastDate,
-    createdAt: reqData.createdAt,
-    updatedAt: reqData.updatedAt,
-    status: reqData.status,
-    items: reqData.items,
-    tenders: reqData.tenders,
-    location: reqData.location,
-    requirementNumber: reqData.requirementNumber,
-    paymentTerms: reqData.paymentTerms || reqData.payload?.paymentTerms || reqData.payload?.terms?.paymentTerms,
-    deliveryTerms: reqData.deliveryTerms || reqData.payload?.deliveryTerms || reqData.payload?.terms?.deliveryTerms,
-    payload: reqData.payload,
-    description: reqData.description,
-    documents: reqData.documents,
-    procurementMethod: reqData.procurementMethod || reqData.procurementMethodLabel,
-    category: reqData.category,
-    categoryName: reqData.category?.name,
-    quantity: reqData.quantity,
-    unit: reqData.unit,
-    directPurchase: reqData.directPurchase,
-    buyerOrganization: reqData.buyerOrganization,
+    estimatedValue: reqObj.estimatedValue || reqObj.budgetMax || reqObj.budgetMin,
+    deadlineDate: reqObj.lastDate,
+    createdAt: reqObj.createdAt,
+    updatedAt: reqObj.updatedAt,
+    status: reqObj.status,
+    items: reqObj.items,
+    tenders: reqObj.tenders,
+    location: reqObj.location,
+    requirementNumber: reqObj.requirementNumber,
+    paymentTerms: reqObj.paymentTerms || reqObj.payload?.paymentTerms || reqObj.payload?.terms?.paymentTerms,
+    deliveryTerms: reqObj.deliveryTerms || reqObj.payload?.deliveryTerms || reqObj.payload?.terms?.deliveryTerms,
+    payload: reqObj.payload,
+    description: reqObj.description,
+    documents: reqObj.documents,
+    procurementMethod: reqObj.procurementMethod || reqObj.procurementMethodLabel,
+    category: reqObj.category,
+    categoryName: reqObj.category?.name,
+    quantity: reqObj.quantity,
+    unit: reqObj.unit,
+    directPurchase: reqObj.directPurchase,
+    buyerOrganization: reqObj.buyerOrganization,
   } : null;
 
   if (isLoading) {
@@ -679,7 +682,7 @@ export default function RfqDetailPage() {
             onClick={handleDownload}
             className="h-10 rounded-xl border-slate-200 text-xs font-black uppercase text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
           >
-            <Download className="h-4 w-4" /> Download RFQ
+            <Download className="h-4 w-4" /> <span className="hidden sm:inline">Download</span> RFQ
           </Button>
           {user && user.role === 'seller' && (
             <Button
@@ -687,7 +690,7 @@ export default function RfqDetailPage() {
               onClick={handleSubmitQuotation}
               className="h-10 rounded-xl bg-[#12335f] px-6 text-xs font-black uppercase text-white hover:bg-[#0b2447] shadow-sm transition-colors flex items-center gap-1.5"
             >
-              Submit Quotation <ArrowRight className="h-4 w-4" />
+              {ownResponse?.status === 'SUBMITTED' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
             </Button>
           )}
         </div>

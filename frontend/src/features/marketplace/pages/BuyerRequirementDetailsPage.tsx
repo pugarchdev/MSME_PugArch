@@ -109,6 +109,7 @@ const BuyerRequirementDetailsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
 
   const user = (() => { try { return JSON.parse(localStorage.getItem('msme_user_cache') || '{}'); } catch { return {}; } })();
   const isLoggedIn = !!user?.id;
@@ -118,7 +119,7 @@ const BuyerRequirementDetailsPage = () => {
   // Seller responses — buyer/admin only; endpoint enforces ownership server-side.
   const [sellerResponses, setSellerResponses] = useState<any[]>([]);
   const [responsesLoading, setResponsesLoading] = useState(false);
-  const [responsesView, setResponsesView] = useState<'cards' | 'compare'>('cards');
+  const [responsesView, setResponsesView] = useState<'list' | 'cards' | 'compare'>('list');
   useEffect(() => {
     const numericId = Number(id);
     if (!isBuyer || !numericId || numericId < 1) return;
@@ -148,6 +149,28 @@ const BuyerRequirementDetailsPage = () => {
       setLoading(false);
     }
   }, [id]);
+
+  const handleAccept = async (responseId: number) => {
+    if (!window.confirm('Are you sure you want to accept this quotation? All other quotations will be automatically rejected.')) return;
+    try {
+      setAcceptingId(responseId);
+      await postApi(`/api/buyer/requirements/${id}/responses/${responseId}/accept`);
+      
+      // Update local state immediately to reflect accepted state without waiting for cache expiration
+      setRequirement((prev: any) => prev ? { ...prev, status: 'AWARDED' } : prev);
+      setSellerResponses((prev: any[]) => prev.map(r => 
+        r.id === responseId 
+          ? { ...r, status: 'ACCEPTED' } 
+          : { ...r, status: 'REJECTED' }
+      ));
+      
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to accept quotation');
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -203,6 +226,16 @@ const BuyerRequirementDetailsPage = () => {
   const detailRoute = getDetailRoute(requirement);
   const directPurchase = requirement.directPurchase || null;
   const payload = requirement.payload || {};
+
+  const termsAndConditions = payload.termsAndConditions || requirement.terms;
+  const paymentTerms = payload.paymentTerms || requirement.paymentTerms;
+  const deliveryTerms = payload.deliveryTerms || requirement.deliveryTerms;
+  const reqDocuments = Array.isArray(payload.documents) && payload.documents.length > 0
+    ? payload.documents
+    : (Array.isArray(requirement.requiredDocuments) ? requirement.requiredDocuments.map((d: any) => typeof d === 'string' ? { name: d } : d) : []);
+  const consigneeDetails = payload.consigneeDetails || requirement.consignees || requirement.consigneeDetails || [];
+
+  const canAccept = isBuyer && !['AWARDED', 'CANCELLED', 'REJECTED'].includes(requirement?.status);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -381,11 +414,11 @@ const BuyerRequirementDetailsPage = () => {
             )}
 
             {/* Buyer-filled procurement facts from the creation wizard */}
-            {Array.isArray(payload.documents) && payload.documents.length > 0 && (
+            {Array.isArray(reqDocuments) && reqDocuments.length > 0 && (
               <div className="mt-6">
-                <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Required Documents ({payload.documents.length})</h3>
+                <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Required Documents ({reqDocuments.length})</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {payload.documents.map((doc: any, i: number) => (
+                  {reqDocuments.map((doc: any, i: number) => (
                     <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-xs font-semibold text-slate-700">
                       <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                       <span className="min-w-0 truncate">{doc.name || doc.fileName || `Document ${i + 1}`}</span>
@@ -396,11 +429,11 @@ const BuyerRequirementDetailsPage = () => {
               </div>
             )}
 
-            {Array.isArray(payload.consigneeDetails) && payload.consigneeDetails.length > 0 && (
+            {Array.isArray(consigneeDetails) && consigneeDetails.length > 0 && (
               <div className="mt-6">
                 <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Consignees / Delivery Points</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {payload.consigneeDetails.map((consignee: any, i: number) => (
+                  {consigneeDetails.map((consignee: any, i: number) => (
                     <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-xs font-semibold text-slate-700">
                       <span className="font-black text-slate-900">{consignee.name || `Consignee ${i + 1}`}</span>
                       {consignee.location ? <span className="block mt-0.5 text-slate-500">{consignee.location}</span> : null}
@@ -425,22 +458,22 @@ const BuyerRequirementDetailsPage = () => {
             )}
 
             {/* Payload extra data (terms, conditions, etc.) */}
-            {payload.termsAndConditions && (
+            {termsAndConditions && (
               <div className="mt-6">
                 <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Terms & Conditions</h3>
-                <p className="text-sm font-medium text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-200">{payload.termsAndConditions}</p>
+                <p className="text-sm font-medium text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-200">{termsAndConditions}</p>
               </div>
             )}
-            {payload.paymentTerms && (
+            {paymentTerms && (
               <div className="mt-4">
                 <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Payment Terms</h3>
-                <p className="text-sm font-medium text-slate-700 leading-relaxed bg-slate-50 rounded-xl p-4 border border-slate-200">{payload.paymentTerms}</p>
+                <p className="text-sm font-medium text-slate-700 leading-relaxed bg-slate-50 rounded-xl p-4 border border-slate-200">{paymentTerms}</p>
               </div>
             )}
-            {payload.deliveryTerms && (
+            {deliveryTerms && (
               <div className="mt-4">
                 <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Delivery Terms</h3>
-                <p className="text-sm font-medium text-slate-700 leading-relaxed bg-slate-50 rounded-xl p-4 border border-slate-200">{payload.deliveryTerms}</p>
+                <p className="text-sm font-medium text-slate-700 leading-relaxed bg-slate-50 rounded-xl p-4 border border-slate-200">{deliveryTerms}</p>
               </div>
             )}
 
@@ -475,8 +508,8 @@ const BuyerRequirementDetailsPage = () => {
           </div>
 
           {/* ─── Seller Responses (owner buyer / admin only) ─── */}
-          {isBuyer && (responsesLoading || sellerResponses.length > 0) && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          {isBuyer && (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="flex items-center gap-2 text-base font-black text-[#0b2447]">
                   <Users className="h-4 w-4" /> Seller Responses
@@ -484,7 +517,7 @@ const BuyerRequirementDetailsPage = () => {
                 <div className="flex items-center gap-3">
                   {sellerResponses.length >= 2 && (
                     <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                      {(['cards', 'compare'] as const).map(mode => (
+                      {(['list', 'cards', 'compare'] as const).map(mode => (
                         <button
                           key={mode}
                           type="button"
@@ -493,7 +526,7 @@ const BuyerRequirementDetailsPage = () => {
                             responsesView === mode ? 'bg-white text-[#0b2447] shadow-sm' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          {mode === 'cards' ? 'Cards' : 'Compare'}
+                          {mode === 'cards' ? 'Cards' : mode === 'compare' ? 'Compare' : 'List'}
                         </button>
                       ))}
                     </div>
@@ -503,12 +536,31 @@ const BuyerRequirementDetailsPage = () => {
                   </span>
                 </div>
               </div>
-              {responsesView === 'compare' && sellerResponses.length >= 2 ? (
-                <ResponseComparisonTable responses={sellerResponses} />
+              {responsesLoading ? (
+                <div className="mt-8 flex flex-col items-center justify-center p-6 text-center animate-pulse">
+                  <div className="h-10 w-10 rounded-full border-4 border-slate-200 border-t-[#0b2447] animate-spin mb-4" />
+                  <p className="text-sm font-bold text-slate-500">Loading responses...</p>
+                </div>
+              ) : sellerResponses.length === 0 ? (
+                <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-8 text-center">
+                  <Users className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+                  <p className="text-sm font-black text-slate-700">No responses yet</p>
+                  <p className="mt-1 max-w-xs text-xs font-medium text-slate-500">
+                    Sellers have not submitted any responses or quotations for this requirement yet.
+                  </p>
+                </div>
+              ) : responsesView === 'compare' && sellerResponses.length >= 2 ? (
+                <div className="mt-6">
+                  <ResponseComparisonTable responses={sellerResponses} canAccept={canAccept} acceptingId={acceptingId} onAccept={handleAccept} />
+                </div>
+              ) : responsesView === 'list' && sellerResponses.length >= 1 ? (
+                <div className="mt-6">
+                  <ResponseListTable responses={sellerResponses} canAccept={canAccept} acceptingId={acceptingId} onAccept={handleAccept} />
+                </div>
               ) : (
-                <div className="mt-4 space-y-4">
+                <div className="mt-6 space-y-4">
                   {sellerResponses.map((response: any) => (
-                    <SellerResponseCard key={response.id} response={response} />
+                    <SellerResponseCard key={response.id} response={response} canAccept={canAccept} acceptingId={acceptingId} onAccept={() => handleAccept(response.id)} />
                   ))}
                 </div>
               )}
@@ -523,7 +575,7 @@ const BuyerRequirementDetailsPage = () => {
 };
 
 /** One seller's submission: headline commercials + dynamic responseData (line quotes, documents). */
-function SellerResponseCard({ response }: { response: any }) {
+function SellerResponseCard({ response, canAccept, acceptingId, onAccept }: { response: any; canAccept?: boolean; acceptingId?: number | null; onAccept?: () => void }) {
   const responseData = response.responseData || {};
   const lineItems: any[] = Array.isArray(responseData.lineItems) ? responseData.lineItems : [];
   const docs: any[] = Array.isArray(responseData.documents) ? responseData.documents : [];
@@ -560,13 +612,30 @@ function SellerResponseCard({ response }: { response: any }) {
         }`}>
           {response.status}
         </span>
+        {canAccept && (
+          <button
+            onClick={onAccept}
+            disabled={acceptingId !== null}
+            className="inline-flex shrink-0 items-center rounded-full bg-[#0b2447] px-3 py-1 text-[10px] font-black uppercase text-white shadow-sm hover:bg-[#12335f] transition disabled:opacity-50"
+          >
+            {acceptingId === response.id ? 'Accepting...' : 'Accept'}
+          </button>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryTile label="Offered Price" value={formatMoney(response.offeredPrice)} />
         <SummaryTile label="Offered Quantity" value={response.offeredQuantity != null ? String(response.offeredQuantity) : '—'} />
         <SummaryTile label="Delivery Timeline" value={response.deliveryTimeline || '—'} />
-        <SummaryTile label="Attachment" value={response.attachmentUrl ? 'Attached' : '—'} href={response.attachmentUrl || undefined} />
+        <SummaryTile 
+          label="Attachment" 
+          value={response.attachmentUrl ? 'Attached' : '—'} 
+          onClick={response.attachmentUrl ? () => {
+            import('../../../lib/files').then(({ openFileAsset }) => {
+              openFileAsset({ url: response.attachmentUrl }, 'Attachment');
+            });
+          } : undefined} 
+        />
       </div>
 
       {response.message && (
@@ -634,7 +703,7 @@ function SellerResponseCard({ response }: { response: any }) {
  * Side-by-side comparison: sellers as columns, commercial facts as rows.
  * Lowest offered price and each item's lowest unit price highlighted (L1).
  */
-function ResponseComparisonTable({ responses }: { responses: any[] }) {
+function ResponseComparisonTable({ responses, canAccept, acceptingId, onAccept }: { responses: any[]; canAccept?: boolean; acceptingId?: number | null; onAccept?: (id: number) => void }) {
   const sorted = [...responses].sort((a, b) => (Number(a.offeredPrice) || Infinity) - (Number(b.offeredPrice) || Infinity));
   const validPrices = sorted.map(r => Number(r.offeredPrice)).filter(p => Number.isFinite(p) && p > 0);
   const lowestPrice = validPrices.length ? Math.min(...validPrices) : null;
@@ -664,16 +733,40 @@ function ResponseComparisonTable({ responses }: { responses: any[] }) {
         <thead className="border-b border-slate-200 bg-slate-50">
           <tr>
             <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 w-44">Criteria</th>
-            {sorted.map((r, i) => (
-              <th key={r.id} className="px-3 py-2.5">
-                <span className="block text-xs font-black text-slate-900">{sellerName(r)}</span>
-                <span className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
-                  i === 0 && lowestPrice != null ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {i === 0 && lowestPrice != null ? 'L1 · Lowest' : `L${i + 1}`}
-                </span>
-              </th>
-            ))}
+            {sorted.map((r, i) => {
+              const isLowest = i === 0 && lowestPrice != null;
+              return (
+                <th key={r.id} className={`px-4 py-3 align-top min-w-[200px] border-l border-slate-200 ${isLowest ? 'bg-emerald-50/30' : ''}`}>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-bold text-slate-900 leading-tight">{sellerName(r)}</span>
+                    <span className={`inline-flex self-start rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                      isLowest ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {isLowest ? 'L1 - Lowest' : `L${i + 1}`}
+                    </span>
+                    {canAccept && (
+                      <button
+                        onClick={() => onAccept?.(r.id)}
+                        disabled={acceptingId !== null}
+                        className="mt-1 inline-flex self-start items-center rounded-md bg-[#0b2447] px-2.5 py-1 text-[10px] font-black uppercase text-white shadow-sm hover:bg-[#12335f] transition disabled:opacity-50"
+                      >
+                        {acceptingId === r.id ? 'Accepting...' : 'Accept'}
+                      </button>
+                    )}
+                    {r.status === 'ACCEPTED' && (
+                      <span className="mt-1 inline-flex self-start items-center rounded-md bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700 border border-emerald-200">
+                        Accepted
+                      </span>
+                    )}
+                    {r.status === 'REJECTED' && (
+                      <span className="mt-1 inline-flex self-start items-center rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-black uppercase text-red-700 border border-red-200">
+                        Rejected
+                      </span>
+                    )}
+                  </div>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
@@ -731,11 +824,80 @@ function ResponseComparisonTable({ responses }: { responses: any[] }) {
   );
 }
 
-function SummaryTile({ label, value, href }: { label: string; value: string; href?: string }) {
+function ResponseListTable({ responses, canAccept, acceptingId, onAccept }: { responses: any[]; canAccept?: boolean; acceptingId?: number | null; onAccept?: (id: number) => void }) {
+  const sorted = [...responses].sort((a, b) => (Number(a.offeredPrice) || Infinity) - (Number(b.offeredPrice) || Infinity));
+  const validPrices = sorted.map(r => Number(r.offeredPrice)).filter(p => Number.isFinite(p) && p > 0);
+  const lowestPrice = validPrices.length ? Math.min(...validPrices) : null;
+
+  const sellerName = (r: any) => r.sellerOrganization?.organizationName || r.sellerUser?.name || `Seller #${r.sellerUserId || r.id}`;
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <table className="w-full text-left text-xs">
+        <thead className="border-b border-slate-200 bg-slate-50">
+          <tr>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Seller</th>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Price</th>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Qty</th>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Delivery</th>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Submitted Date</th>
+            <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px] text-center">Rank</th>
+            {canAccept && <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px] text-right">Action</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {sorted.map((r, i) => {
+            const price = Number(r.offeredPrice);
+            const isLowest = lowestPrice != null && price === lowestPrice;
+            return (
+              <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-4 py-3 font-bold text-slate-900">
+                  {sellerName(r)}
+                  {r.status === 'ACCEPTED' && <span className="ml-2 inline-flex items-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase text-emerald-700 border border-emerald-200">Accepted</span>}
+                  {r.status === 'REJECTED' && <span className="ml-2 inline-flex items-center rounded-md bg-red-50 px-1.5 py-0.5 text-[9px] font-black uppercase text-red-700 border border-red-200">Rejected</span>}
+                </td>
+                <td className={`px-4 py-3 font-black tabular-nums ${isLowest ? 'text-emerald-700' : 'text-slate-900'}`}>
+                  {formatMoney(r.offeredPrice)}
+                </td>
+                <td className="px-4 py-3 tabular-nums">{r.offeredQuantity ?? '—'}</td>
+                <td className="px-4 py-3">{r.deliveryTimeline || '—'}</td>
+                <td className="px-4 py-3 text-slate-500">{formatDate(r.createdAt)}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                    isLowest ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {isLowest ? 'L1' : `L${i + 1}`}
+                  </span>
+                </td>
+                {canAccept && (
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => onAccept?.(r.id)}
+                      disabled={acceptingId !== null}
+                      className="inline-flex shrink-0 items-center rounded-md bg-[#0b2447] px-2.5 py-1 text-[10px] font-black uppercase text-white shadow-sm hover:bg-[#12335f] transition disabled:opacity-50"
+                    >
+                      {acceptingId === r.id ? 'Accepting...' : 'Accept'}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value, href, onClick }: { label: string; value: string; href?: string; onClick?: () => void }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-2.5">
       <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-      {href ? (
+      {onClick ? (
+        <button type="button" onClick={onClick} className="mt-0.5 block text-xs font-black text-blue-700 hover:underline cursor-pointer border-none bg-transparent p-0 text-left">
+          View attachment
+        </button>
+      ) : href ? (
         <a href={href} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-xs font-black text-blue-700 hover:underline">
           View attachment
         </a>

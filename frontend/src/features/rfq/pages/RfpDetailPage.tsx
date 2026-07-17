@@ -126,13 +126,17 @@ export default function RfpDetailPage() {
     queryKey: ['marketplace-requirement-rfp-detail', requirementId],
     queryFn: async () => {
       const data = await getApi<any>(`/api/marketplace/requirements/${requirementId}`);
-      return data.requirement || data;
+      return data;
     },
     enabled: !!requirementId,
   });
 
   const isLoading = (!!requestId && bidLoading) || (!!requirementId && reqLoading);
   const error = (!!requestId && bidError) || (!!requirementId && reqError);
+
+  const reqObj = reqData?.requirement || reqData;
+  const ownResponse = reqData?.ownResponse || null;
+  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && p.sellerId === user?.id) || ownResponse?.status === 'SUBMITTED';
 
   // Map data from whichever source responded
   const rfpData: any = bidData ? {
@@ -181,30 +185,30 @@ export default function RfpDetailPage() {
     contactPerson: bidData.technicalPacket?.internal?.contactPerson || bidData.buyer?.name || '',
     buyerEmail: bidData.technicalPacket?.internal?.email || bidData.buyer?.email || '',
     buyerMobile: bidData.technicalPacket?.internal?.mobile || bidData.buyer?.mobile || '',
-  } : reqData ? {
-    id: reqData.id,
-    subject: reqData.title || reqData.description,
+  } : reqObj ? {
+    id: reqObj.id,
+    subject: reqObj.title || reqObj.description,
     buyer: {
-      name: reqData.buyerOrganization?.organizationName || 'Buyer',
-      email: reqData.buyerEmail || reqData.buyer?.email || '',
-      mobile: reqData.buyerMobile || reqData.buyer?.mobile || '',
-      buyerProfile: reqData.buyerOrganization || reqData.buyer?.buyerProfile
+      name: reqObj.buyerOrganization?.organizationName || 'Buyer',
+      email: reqObj.buyerEmail || reqObj.buyer?.email || '',
+      mobile: reqObj.buyerMobile || reqObj.buyer?.mobile || '',
+      buyerProfile: reqObj.buyerOrganization || reqObj.buyer?.buyerProfile
     },
-    estimatedValue: reqData.estimatedValue || reqData.budgetMax || reqData.budgetMin,
-    deadlineDate: reqData.lastDate,
-    createdAt: reqData.createdAt,
-    status: reqData.status,
-    tenders: reqData.tenders,
-    location: reqData.location,
-    requirementNumber: reqData.requirementNumber,
-    paymentTerms: reqData.paymentTerms || reqData.payload?.paymentTerms,
-    deliveryTerms: reqData.deliveryTerms || reqData.payload?.deliveryTerms,
-    description: reqData.description,
-    payload: reqData.payload,
-    documents: reqData.documents,
-    items: reqData.items,
-    category: reqData.category,
-    buyerOrganization: reqData.buyerOrganization,
+    estimatedValue: reqObj.estimatedValue || reqObj.budgetMax || reqObj.budgetMin,
+    deadlineDate: reqObj.lastDate,
+    createdAt: reqObj.createdAt,
+    status: reqObj.status,
+    tenders: reqObj.tenders,
+    location: reqObj.location,
+    requirementNumber: reqObj.requirementNumber,
+    paymentTerms: reqObj.paymentTerms || reqObj.payload?.paymentTerms,
+    deliveryTerms: reqObj.deliveryTerms || reqObj.payload?.deliveryTerms,
+    description: reqObj.description,
+    payload: reqObj.payload,
+    documents: reqObj.documents,
+    items: reqObj.items,
+    category: reqObj.category,
+    buyerOrganization: reqObj.buyerOrganization,
   } : null;
 
   const formatCurrency = (val?: number) => {
@@ -549,7 +553,7 @@ export default function RfpDetailPage() {
               onClick={handleSubmitProposal}
               className="h-10 rounded-xl bg-teal-650 bg-teal-600 px-6 text-xs font-black uppercase text-white hover:bg-teal-700 shadow-sm transition-colors flex items-center gap-1.5"
             >
-              Submit Proposal <ArrowRight className="h-4 w-4" />
+              {hasSubmittedProposal ? 'View Submitted Proposal' : 'Submit Proposal'} <ArrowRight className="h-4 w-4" />
             </Button>
           )}
         </div>

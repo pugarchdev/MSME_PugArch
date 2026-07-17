@@ -252,15 +252,16 @@ export default function SubmitQuotationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
 
+  const isClosed = ['AWARDED', 'CLOSED', 'CANCELLED'].includes(rfqData?.status);
+  const isReadOnly = submitted || isClosed;
+
   // Auto-save on field changes (debounced at 5 seconds)
   React.useEffect(() => {
-    if (!resolvedId || !rfqData) return; // Wait until data is loaded
+    if (!resolvedId || isReadOnly || !rfqData) return;
     const hasDynamicInput = docUploads.some(doc => doc.status === 'done') || lineQuotes.some(line => line.unitPrice !== '');
     if (!offeredPrice && !offeredQuantity && !deliveryTimeline && !terms && !message && !uploadState && !hasDynamicInput) {
       return;
     }
-    // Don't auto-save if we are already submitted
-    if (ownResponse && ownResponse.status !== 'DRAFT') return;
 
     const timer = setTimeout(() => {
       saveDraft();
@@ -557,37 +558,6 @@ export default function SubmitQuotationPage() {
     );
   }
 
-  if (submitted) {
-    return (
-      <div className="mx-auto max-w-[800px] px-4 py-12">
-        <div className="rounded-3xl border border-emerald-100 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50">
-            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          </div>
-          <h2 className="mt-6 text-2xl font-black text-slate-900">Quotation Submitted</h2>
-          <p className="mt-3 text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-            Your quotation for <span className="font-bold text-slate-800">{subject}</span> has been submitted successfully.
-            The buyer will review your submission and get back to you.
-          </p>
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Button
-              onClick={handleBackToRfq}
-              className="bg-[#12335f] text-white rounded-xl px-6 h-11 text-xs font-black uppercase"
-            >
-              View Requirement
-            </Button>
-            <Button
-              onClick={() => window.location.href = '/seller/opportunities'}
-              variant="outline"
-              className="rounded-xl border-slate-200 h-11 text-xs font-black uppercase"
-            >
-              Back to Opportunities
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const fieldError = (field: string) => {
     if (!errors[field]) return null;
@@ -596,6 +566,34 @@ export default function SubmitQuotationPage() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 md:px-8 pb-12">
+      {submitted && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            <div>
+              <h3 className="text-sm font-black text-emerald-800">Quotation Submitted</h3>
+              <p className="text-xs font-semibold text-emerald-700">This quotation has been submitted. It is now in read-only mode.</p>
+            </div>
+          </div>
+          <Button onClick={handleBackToRfq} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-9 text-xs font-black uppercase shadow-sm">
+            Back to Requirement
+          </Button>
+        </div>
+      )}
+      {!submitted && isClosed && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-slate-500" />
+            <div>
+              <h3 className="text-sm font-black text-slate-800">Requirement {rfqData?.status}</h3>
+              <p className="text-xs font-semibold text-slate-500">This requirement is no longer accepting new quotations.</p>
+            </div>
+          </div>
+          <Button onClick={handleBackToRfq} className="bg-slate-600 hover:bg-slate-700 text-white rounded-xl h-9 text-xs font-black uppercase shadow-sm">
+            Back to Requirement
+          </Button>
+        </div>
+      )}
 
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
@@ -668,21 +666,28 @@ export default function SubmitQuotationPage() {
               Offered Price (₹) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <IndianRupee className="h-4 w-4 text-slate-400" />
-              </div>
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={offeredPrice}
                 onChange={e => { setOfferedPrice(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.offeredPrice; return n; }); }}
+                disabled={isReadOnly || (lineQuotes.length > 0)}
                 placeholder="e.g. 150000"
                 className={cn(
-                  "w-full rounded-xl border py-2.5 pl-9 pr-4 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition",
+                  "peer h-11 w-full rounded-xl border pl-9 pr-16 text-sm font-semibold text-slate-900 outline-none transition disabled:bg-slate-50 disabled:text-slate-500",
                   errors.offeredPrice ? "border-red-300 focus:ring-red-200 bg-red-50/30" : "border-slate-200 focus:ring-[#12335f]/20 focus:border-[#12335f]"
                 )}
               />
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <IndianRupee className="h-4 w-4 text-slate-400" />
+              </div>
+              <div className={cn(
+                "absolute inset-y-0 right-0 flex items-center rounded-r-xl border border-l-0 px-3 transition-colors",
+                errors.offeredPrice ? "border-red-300 bg-red-50/50 text-red-500" : "border-slate-200 bg-slate-50/50 text-slate-500 peer-focus:border-[#12335f]"
+              )}>
+                <span className="text-xs font-bold uppercase tracking-wider">INR</span>
+              </div>
             </div>
             {fieldError('offeredPrice')}
           </div>
@@ -702,9 +707,10 @@ export default function SubmitQuotationPage() {
                 step="1"
                 value={offeredQuantity}
                 onChange={e => { setOfferedQuantity(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.offeredQuantity; return n; }); }}
+                disabled={isReadOnly || (lineQuotes.length > 0)}
                 placeholder={`e.g. ${maxQuantity || 100}`}
                 className={cn(
-                  "w-full rounded-xl border py-2.5 pl-9 pr-4 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition",
+                  "w-full rounded-xl border py-2.5 pl-9 pr-4 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition disabled:bg-slate-50 disabled:text-slate-500",
                   errors.offeredQuantity ? "border-red-300 focus:ring-red-200 bg-red-50/30" : "border-slate-200 focus:ring-[#12335f]/20 focus:border-[#12335f]"
                 )}
               />
@@ -728,9 +734,10 @@ export default function SubmitQuotationPage() {
                 type="text"
                 value={deliveryTimeline}
                 onChange={e => { setDeliveryTimeline(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.deliveryTimeline; return n; }); }}
+                disabled={isReadOnly}
                 placeholder="e.g. 15 days, 30 days, 4 weeks"
                 className={cn(
-                  "w-full rounded-xl border py-2.5 pl-9 pr-4 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition",
+                  "w-full rounded-xl border py-2.5 pl-9 pr-4 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition disabled:bg-slate-50 disabled:text-slate-500",
                   errors.deliveryTimeline ? "border-red-300 focus:ring-red-200 bg-red-50/30" : "border-slate-200 focus:ring-[#12335f]/20 focus:border-[#12335f]"
                 )}
               />
@@ -746,9 +753,10 @@ export default function SubmitQuotationPage() {
             <textarea
               value={terms}
               onChange={e => setTerms(e.target.value)}
+              disabled={isReadOnly}
               placeholder="Any additional terms, warranty, payment terms, etc."
               rows={4}
-              className="w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition resize-y"
+              className="w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#12335f]/20 focus:border-[#12335f] transition resize-y disabled:bg-slate-50 disabled:text-slate-500"
             />
           </div>
         </section>
@@ -768,9 +776,10 @@ export default function SubmitQuotationPage() {
               value={message}
               onChange={e => { setMessage(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.message; return n; }); }}
               placeholder="Write a cover note for your quotation (min 10 characters)..."
+              disabled={isReadOnly}
               rows={6}
               className={cn(
-                "w-full rounded-xl border p-3 text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition resize-y",
+                "w-full rounded-xl border p-3 text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 transition resize-y disabled:bg-slate-50 disabled:text-slate-500",
                 errors.message ? "border-red-300 focus:ring-red-200 bg-red-50/30" : "border-slate-200 focus:ring-[#12335f]/20 focus:border-[#12335f]"
               )}
             />
@@ -934,8 +943,9 @@ export default function SubmitQuotationPage() {
                           step="0.01"
                           value={line.unitPrice}
                           onChange={e => updateLineQuote(idx, { unitPrice: e.target.value })}
+                          disabled={isReadOnly}
                           placeholder="0.00"
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15 disabled:bg-slate-50 disabled:text-slate-500"
                         />
                       </td>
                       <td className="px-4 py-2 text-right">
@@ -946,8 +956,9 @@ export default function SubmitQuotationPage() {
                           step="0.1"
                           value={line.gstPercent}
                           onChange={e => updateLineQuote(idx, { gstPercent: e.target.value })}
+                          disabled={isReadOnly}
                           placeholder="18"
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-xs font-bold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15 disabled:bg-slate-50 disabled:text-slate-500"
                         />
                       </td>
                       <td className="px-4 py-2">
@@ -955,8 +966,9 @@ export default function SubmitQuotationPage() {
                           type="text"
                           value={line.makeBrand}
                           onChange={e => updateLineQuote(idx, { makeBrand: e.target.value })}
+                          disabled={isReadOnly}
                           placeholder="Optional"
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#12335f] focus:ring-2 focus:ring-[#12335f]/15 disabled:bg-slate-50 disabled:text-slate-500"
                         />
                       </td>
                       <td className="px-4 py-3 text-xs font-black text-slate-900 text-right tabular-nums">
@@ -1028,32 +1040,34 @@ export default function SubmitQuotationPage() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {doc.status === 'done' ? (
-                      <button
-                        type="button"
-                        onClick={() => clearRequestedDoc(idx)}
-                        className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-black text-slate-600 hover:border-red-300 hover:text-red-600 transition"
-                      >
-                        Replace
-                      </button>
-                    ) : (
-                      <label className={cn(
-                        'inline-flex h-8 cursor-pointer items-center rounded-lg px-3 text-[11px] font-black text-white transition',
-                        doc.status === 'uploading' ? 'bg-slate-300 cursor-wait' : 'bg-[#12335f] hover:bg-[#0b2445]'
-                      )}>
-                        {doc.status === 'uploading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Upload'}
-                        <input
-                          type="file"
-                          className="hidden"
-                          disabled={doc.status === 'uploading'}
-                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) uploadRequestedDoc(idx, file);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
+                    {!isReadOnly && (
+                      doc.status === 'done' ? (
+                        <button
+                          type="button"
+                          onClick={() => clearRequestedDoc(idx)}
+                          className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-black text-slate-600 hover:border-red-300 hover:text-red-600 transition"
+                        >
+                          Replace
+                        </button>
+                      ) : (
+                        <label className={cn(
+                          'inline-flex h-8 cursor-pointer items-center rounded-lg px-3 text-[11px] font-black text-white transition',
+                          doc.status === 'uploading' ? 'bg-slate-300 cursor-wait' : 'bg-[#12335f] hover:bg-[#0b2445]'
+                        )}>
+                          {doc.status === 'uploading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Upload'}
+                          <input
+                            type="file"
+                            className="hidden"
+                            disabled={doc.status === 'uploading'}
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) uploadRequestedDoc(idx, file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )
                     )}
                   </div>
                 </div>
@@ -1075,8 +1089,9 @@ export default function SubmitQuotationPage() {
             type="checkbox"
             id="declaration"
             checked={declared}
+            disabled={isReadOnly}
             onChange={e => { setDeclared(e.target.checked); setErrors(prev => { const n = { ...prev }; delete n.declared; return n; }); }}
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/20 focus:ring-2"
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#12335f] focus:ring-[#12335f]/20 focus:ring-2 disabled:opacity-50"
           />
           <label htmlFor="declaration" className="text-xs font-semibold text-slate-600 leading-relaxed">
             I declare that the information provided in this quotation is accurate and complete. I understand that any false
@@ -1086,31 +1101,35 @@ export default function SubmitQuotationPage() {
         {fieldError('declared')}
 
         <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 border-t border-slate-100 w-full">
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="bg-[#12335f] hover:bg-[#0b2447] text-white rounded-xl px-8 h-12 text-xs font-black uppercase shadow-sm transition flex items-center gap-2 w-full sm:w-auto"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Submitting...
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="h-4 w-4" /> Submit Quotation
-              </>
-            )}
-          </Button>
-          <Button
-            type="button"
-            onClick={saveDraft}
-            disabled={submitting}
-            variant="outline"
-            className="rounded-xl border-slate-200 h-12 text-xs font-black uppercase text-[#12335f] hover:bg-slate-50 w-full sm:w-auto"
-          >
-            Save Draft
-          </Button>
+          {!isReadOnly && (
+            <>
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="bg-[#12335f] hover:bg-[#0b2447] text-white rounded-xl px-8 h-12 text-xs font-black uppercase shadow-sm transition flex items-center gap-2 w-full sm:w-auto"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Submitting...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="h-4 w-4" /> Submit Quotation
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                onClick={saveDraft}
+                disabled={submitting}
+                variant="outline"
+                className="rounded-xl border-slate-200 h-12 text-xs font-black uppercase text-[#12335f] hover:bg-slate-50 w-full sm:w-auto"
+              >
+                Save Draft
+              </Button>
+            </>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -1118,7 +1137,7 @@ export default function SubmitQuotationPage() {
             disabled={submitting}
             className="rounded-xl border-slate-200 h-12 text-xs font-black uppercase text-slate-500 w-full sm:w-auto"
           >
-            Cancel
+            {isReadOnly ? 'Back' : 'Cancel'}
           </Button>
           
           <div className="text-right sm:ml-auto shrink-0 mt-2 sm:mt-0 text-[10px] font-black uppercase tracking-wider text-slate-400">

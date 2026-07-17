@@ -631,7 +631,7 @@ export default function BidParticipationPage() {
               </div>
             )}
             {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => setStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
-            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} />}
+            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
             {step === 2 && (
               bid?.procurementType === 'RFI' ? (
                 <RfiQuestionnaireForm
@@ -692,6 +692,7 @@ export default function BidParticipationPage() {
                 setDeclaration={setDeclaration}
                 allEligibilityChecked={allEligibilityChecked}
                 onNext={() => setStep(6)}
+                disabled={isSubmitted}
               />
             )}
             {step === 6 && (
@@ -754,7 +755,7 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
   );
 }
 
-function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, buyerTerms }: { eligibility: Record<string, boolean>; setEligibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onNext: () => void; buyerCriteria?: string[]; buyerTerms?: string[] }) {
+function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, buyerTerms, disabled }: { eligibility: Record<string, boolean>; setEligibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onNext: () => void; buyerCriteria?: string[]; buyerTerms?: string[]; disabled?: boolean }) {
   const rows = [
     ['gst', 'GST registration available'],
     ['pan', 'PAN available'],
@@ -774,7 +775,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {rows.map(([key, label]) => (
           <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-            <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
+            <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
             {label}
           </label>
         ))}
@@ -785,7 +786,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             {dynamicRows.map(([key, label]) => (
               <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50/40 text-slate-700'}`}>
-                <input type="checkbox" checked={Boolean(eligibility[key])} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
+                <input type="checkbox" checked={Boolean(eligibility[key])} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
                 {label}
               </label>
             ))}
@@ -801,7 +802,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
         </div>
       )}
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!complete} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
+        <button onClick={onNext} disabled={!complete && !disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
     </div>
   );
@@ -1140,7 +1141,7 @@ function FinancialQuoteStep({
   );
 }
 
-function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, allEligibilityChecked, onNext }: {
+function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, allEligibilityChecked, onNext, disabled }: {
   bid: ProcurementBid;
   participation: ParticipationState | null;
   technicalDocs: ParticipationDocument[];
@@ -1149,6 +1150,7 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
   setDeclaration: (value: boolean) => void;
   allEligibilityChecked: boolean;
   onNext: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -1164,11 +1166,11 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         <Info label="Current status" value={participation?.submissionStatus || 'Draft'} />
       </div>
       <label className={`mt-5 flex items-start gap-3 border p-4 text-xs font-bold ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-        <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} className="mt-0.5 h-4 w-4" style={{ accentColor: 'var(--bid-primary)' }} />
+        <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!declaration} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
+        <button onClick={onNext} disabled={!declaration && !disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
       </div>
     </div>
   );

@@ -154,7 +154,7 @@ const BuyerRequirementDetailsPage = () => {
     if (!window.confirm('Are you sure you want to accept this quotation? All other quotations will be automatically rejected.')) return;
     try {
       setAcceptingId(responseId);
-      await postApi(`/api/buyer/requirements/${id}/responses/${responseId}/accept`);
+      await postApi(`/api/buyer/requirements/${id}/responses/${responseId}/accept`, {});
       
       // Update local state immediately to reflect accepted state without waiting for cache expiration
       setRequirement((prev: any) => prev ? { ...prev, status: 'AWARDED' } : prev);

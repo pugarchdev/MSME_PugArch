@@ -5,7 +5,13 @@ const headers = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const json = async <T>(response: Response): Promise<T> => unwrapApiData<T>(await readJsonResponse(response));
+const json = async <T>(response: Response): Promise<T> => {
+  const body = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(body?.message || 'Request failed');
+  }
+  return unwrapApiData<T>(body);
+};
 
 export type ReverseAuction = {
   id: number;

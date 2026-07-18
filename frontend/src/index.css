@@ -95,6 +95,24 @@ button {
   max-width: 100%;
 }
 
+/* Make placeholders lighter to distinguish them from filled values */
+input::placeholder,
+textarea::placeholder {
+  color: rgba(107, 114, 128, 0.5); /* lighter slate/gray */
+  opacity: 1; /* Reset default Firefox opacity if needed, ensuring our color is applied as is */
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: rgba(107, 114, 128, 0.5);
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: rgba(107, 114, 128, 0.5);
+  opacity: 1;
+}
+
 .dashboard-main {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;

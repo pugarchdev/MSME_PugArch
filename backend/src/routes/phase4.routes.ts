@@ -9674,8 +9674,16 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
 
   // 5) Requirement
   for (const r of requirements) {
-    const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
     const payload = (r as any).payload || {};
+
+    // Deduplication logic: Skip if this requirement has been converted to a ProcurementBid or DirectPurchase
+    const hasLinkedBid = procurementBids.some(b => b.bidNumber === r.requirementNumber || b.id === payload.linkedProcurementBidId);
+    if (hasLinkedBid) continue;
+
+    const hasLinkedDP = directPurchases.some(dp => Number(dp.requirementId) === r.id);
+    if (hasLinkedDP) continue;
+
+    const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
     const linkedAuction = auctionsByRequirementId[r.id];
     
     // Map status based on linked auction if applicable

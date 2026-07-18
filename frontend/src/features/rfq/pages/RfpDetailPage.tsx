@@ -136,7 +136,7 @@ export default function RfpDetailPage() {
 
   const reqObj = reqData?.requirement || reqData;
   const ownResponse = reqData?.ownResponse || null;
-  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && p.sellerId === user?.id) || ownResponse?.status === 'SUBMITTED';
+  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && p.sellerId === user?.id) || (ownResponse && ownResponse.status !== 'DRAFT');
 
   // Map data from whichever source responded
   const rfpData: any = bidData ? {

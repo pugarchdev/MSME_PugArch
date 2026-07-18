@@ -690,7 +690,7 @@ export default function RfqDetailPage() {
               onClick={handleSubmitQuotation}
               className="h-10 rounded-xl bg-[#12335f] px-6 text-xs font-black uppercase text-white hover:bg-[#0b2447] shadow-sm transition-colors flex items-center gap-1.5"
             >
-              {ownResponse?.status === 'SUBMITTED' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
+              {ownResponse && ownResponse.status !== 'DRAFT' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
             </Button>
           )}
         </div>

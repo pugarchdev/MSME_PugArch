@@ -2573,7 +2573,7 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
             return apiResponse.error(res, 403, 'You cannot submit a seller response to your own buyer requirement.', 'OWN_REQUIREMENT_RESPONSE_FORBIDDEN');
         }
         if (error instanceof Error && error.message === 'REQUIREMENT_RESPONSE_EXISTS') {
-            return apiResponse.error(res, 409, 'You have already submitted a response to this requirement.', 'REQUIREMENT_RESPONSE_EXISTS');
+            return apiResponse.error(res, 409, 'You have already submitted a quotation for this RFQ.', 'REQUIREMENT_RESPONSE_EXISTS');
         }
         console.error('[Requirement Response]', error);
         return apiResponse.error(res, 400, 'Unable to submit response', 'REQUIREMENT_RESPONSE_ERROR');

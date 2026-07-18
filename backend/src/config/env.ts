@@ -63,6 +63,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(5001),
   DATABASE_URL: withFallback(['POSTGRES_PRISMA_URL', 'POSTGRES_URL'], z.string().min(1).optional()),
+  PRISMA_CONNECTION_LIMIT: z.coerce.number().int().positive().default(10),
+  PRISMA_POOL_TIMEOUT: z.coerce.number().int().positive().default(30),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters').optional(),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters').optional(),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters').optional(),
@@ -209,6 +211,8 @@ if (!databaseUrl) {
   throw new Error('DATABASE_URL is required');
 }
 process.env.DATABASE_URL = databaseUrl;
+process.env.PRISMA_CONNECTION_LIMIT = String(parsed.data.PRISMA_CONNECTION_LIMIT);
+process.env.PRISMA_POOL_TIMEOUT = String(parsed.data.PRISMA_POOL_TIMEOUT);
 
 export const env = {
   ...parsed.data,

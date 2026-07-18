@@ -12,7 +12,7 @@ const prismaClientSingleton = () => {
   let dbUrl = process.env.DATABASE_URL;
   if (dbUrl && !dbUrl.includes('connection_limit=')) {
     const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.LAMBDA_TASK_ROOT);
-    const connectionLimit = process.env.PRISMA_CONNECTION_LIMIT || (isServerless ? '2' : '50');
+    const connectionLimit = process.env.PRISMA_CONNECTION_LIMIT || (isServerless ? '2' : '10');
     const poolTimeout = process.env.PRISMA_POOL_TIMEOUT || '30';
     dbUrl += (dbUrl.includes('?') ? '&' : '?') + `connection_limit=${connectionLimit}&pool_timeout=${poolTimeout}`;
   }

@@ -1081,7 +1081,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: Hea
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 transition-all duration-300">
+    <header className="bg-white/70 backdrop-blur-md border-b border-slate-200/50 sticky top-0 z-40 transition-all duration-300">
       <div className="brand-tricolor-strip" />
       <div className="h-14 px-4 flex items-center justify-between">
         <div className="flex items-center gap-4">

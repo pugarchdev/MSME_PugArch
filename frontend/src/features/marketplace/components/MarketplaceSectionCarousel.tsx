@@ -72,7 +72,7 @@ export function MarketplaceSectionCarousel({
                 )}
 
                 {loading ? (
-                    <div className="flex gap-4 overflow-hidden pb-5">
+                    <div className="flex gap-4 overflow-hidden pb-5 pt-3">
                         {Array.from({ length: 5 }).map((_, index) => (
                             <div key={index} className="h-[265px] sm:h-[275px] w-56 shrink-0 rounded-[24px] bg-white/90 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 sm:w-60 2xl:w-64 flex flex-col">
                                 <div className="h-26 sm:h-28 rounded-xl bg-slate-100 shrink-0" />
@@ -84,7 +84,7 @@ export function MarketplaceSectionCarousel({
                         ))}
                     </div>
                 ) : items.length > 0 ? (
-                    <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 pt-1 no-scrollbar xl:gap-5">
+                    <div ref={scrollRef} className="flex snap-x gap-4 overflow-x-auto pb-5 pt-3 no-scrollbar xl:gap-5">
                         {items.map((item) => (
                             <MarketplaceItemCard
                                 key={`${sectionKey}-${item.id}-${(item as any).itemType || ''}`}

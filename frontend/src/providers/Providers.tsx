@@ -2,7 +2,46 @@
 import { keepPreviousData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/hooks/useAuth';
 import { Toaster } from 'sonner';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import Lenis from 'lenis';
+
+function SmoothScroll() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Wait for the DOM to settle after page transitions
+    const timeoutId = setTimeout(() => {
+      const dashboardMain = document.querySelector('.dashboard-main');
+      
+      const lenis = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        ...(dashboardMain ? {
+          wrapper: dashboardMain as HTMLElement,
+          content: (dashboardMain.firstElementChild as HTMLElement) || (dashboardMain as HTMLElement),
+        } : {})
+      });
+
+      let rafId: number;
+      function raf(time: number) {
+        lenis.raf(time);
+        rafId = requestAnimationFrame(raf);
+      }
+      rafId = requestAnimationFrame(raf);
+
+      return () => {
+        cancelAnimationFrame(rafId);
+        lenis.destroy();
+      };
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [pathname]);
+
+  return null;
+}
 
 // Sensible defaults that make every query feel snappy:
 //  - staleTime: 15 minutes — within this window revisits use the cache
@@ -43,6 +82,7 @@ const queryClient = new QueryClient({
 export const Providers = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      <SmoothScroll />
       {children}
       <Toaster position="top-center" richColors closeButton expand={true} />
     </AuthProvider>

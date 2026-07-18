@@ -308,12 +308,23 @@ export default function SellerBidsPage({ subRouteType = 'all' }: { subRouteType?
       return;
     }
     const bidId = item.bid?.id || item.bidId;
+    
+    const typeStr = String(item.bid?.procurementType || item.bid?.bidType || item.bid?.category || '').toLowerCase();
+    const isRfp = typeStr.includes('rfp') || typeStr.includes('proposal');
+    const isRfq = typeStr.includes('rfq');
+
     // Any not-yet-submitted participation (draft or partially uploaded) resumes the
     // participate flow; finalised/awarded ones open the read-only details view.
     if (isDraft(item)) {
       window.location.href = `/bids/${bidId}/participate`;
     } else {
-      window.location.href = `/bids/${bidId}`;
+      if (isRfp) {
+        window.location.href = `/seller/rfp?requestId=${bidId}`;
+      } else if (isRfq) {
+        window.location.href = `/seller/rfq?requestId=${bidId}`;
+      } else {
+        window.location.href = `/bids/${bidId}`;
+      }
     }
   };
 

@@ -2332,7 +2332,13 @@ router.get('/marketplace/requirements/:id', optionalAuthenticate, shortCache(30)
                 }),
                 req.user?.role === 'seller'
                     ? db.requirementResponse.findFirst({
-                        where: { requirementId: requirement.id, sellerUserId: Number(req.user.id) },
+                        where: {
+                            requirementId: requirement.id,
+                            OR: [
+                                { sellerUserId: Number(req.user.id) },
+                                ...(req.user.organizationId ? [{ sellerOrganizationId: req.user.organizationId }] : [])
+                            ]
+                        },
                         orderBy: { createdAt: 'desc' },
                         select: {
                             id: true,
@@ -2512,7 +2518,10 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
             const existing = await tx.requirementResponse.findFirst({
                 where: {
                     requirementId: targetId,
-                    sellerUserId: Number(req.user?.id),
+                    OR: [
+                        { sellerUserId: Number(req.user?.id) },
+                        ...(req.user?.organizationId ? [{ sellerOrganizationId: req.user.organizationId }] : [])
+                    ],
                     status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED'] }
                 },
                 select: { id: true, status: true }

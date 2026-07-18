@@ -499,9 +499,6 @@ export default function App() {
     if (/^\/bids\/[^/]+\/results$/.test(pathname)) return <BidResultsPage />;
     if (/^\/bids\/[^/]+\/compare$/.test(pathname)) return <BidComparisonPage />;
     if (/^\/bids\/[^/]+$/.test(pathname)) {
-      if (user && user.role === 'buyer') {
-        return <Redirect to="/buyer/my-procurements" />;
-      }
       return <BidDetailsPage />;
     }
 

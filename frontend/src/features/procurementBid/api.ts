@@ -57,9 +57,9 @@ const uploadFormData = (
     if (xhr.status >= 200 && xhr.status < 300) {
       // XHR bypasses api.fetch, so mirror its mutation-invalidation manually:
       // uploads change bid/participation state and cached GETs must not go stale.
-      api.invalidate('/api/bids');
-      api.invalidate('/api/buyer/bids');
-      api.invalidate('/api/seller/bids');
+      api.invalidate('/api/procurement-bids');
+      api.invalidate('/api/buyer/procurement-bids');
+      api.invalidate('/api/seller/procurement-bids');
       resolve(unwrapApiData(body));
       return;
     }
@@ -269,37 +269,37 @@ export const normalizeBid = (raw: any): ProcurementBid => {
 export const procurementBidApi = {
   async list(params: Record<string, string | number> = {}) {
     const qs = buildQueryString(params);
-    const res = await api.get(`/api/bids${qs ? `?${qs}` : ''}`, { headers: authHeaders(), skipCache: true });
+    const res = await api.get(`/api/procurement-bids${qs ? `?${qs}` : ''}`, { headers: authHeaders(), skipCache: true });
     const body = await readJsonResponse(res);
     const data = unwrapApiData(body);
     return { ...data, items: (data.items || []).map(normalizeBid) };
   },
   async detail(id: string) {
-    const res = await api.get(`/api/bids/${encodeURIComponent(id)}`, { headers: authHeaders() });
+    const res = await api.get(`/api/procurement-bids/${encodeURIComponent(id)}`, { headers: authHeaders() });
     const body = await readJsonResponse(res);
     return normalizeBid(unwrapApiData(body));
   },
   async askClarification(id: string, question: string) {
-    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/clarifications/ask`, { question }, { headers: authHeaders() });
+    const res = await api.post(`/api/procurement-bids/${encodeURIComponent(id)}/clarifications/ask`, { question }, { headers: authHeaders() });
     return readApiBody(res);
   },
   async participate(id: string) {
-    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participate`, {}, { headers: authHeaders() });
+    const res = await api.post(`/api/procurement-bids/${encodeURIComponent(id)}/participate`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
   async submitParticipation(id: string, participationId: number, body: Record<string, unknown> = {}) {
-    const res = await api.post(`/api/bids/${encodeURIComponent(id)}/participation/${participationId}/submit`, body, { headers: authHeaders() });
+    const res = await api.post(`/api/procurement-bids/${encodeURIComponent(id)}/participation/${participationId}/submit`, body, { headers: authHeaders() });
     return readApiBody(res);
   },
   async createBid(payload: Record<string, unknown>) {
-    const res = await api.post('/api/buyer/bids', payload, { headers: authHeaders() });
+    const res = await api.post('/api/buyer/procurement-bids', payload, { headers: authHeaders() });
     return readApiBody(res);
   },
   async createBuyerBid(payload: Record<string, unknown>) {
     return this.createBid(payload);
   },
   async updateBuyerBid(bidId: string, payload: Record<string, unknown>) {
-    const res = await api.put(`/api/buyer/bids/${encodeURIComponent(bidId)}`, payload, { headers: authHeaders() });
+    const res = await api.put(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}`, payload, { headers: authHeaders() });
     return readApiBody(res);
   },
   async uploadBuyerBidDocuments(
@@ -315,7 +315,7 @@ export const procurementBidApi = {
       formData.append('documentType', metadata.documentType || 'TENDER_DOCUMENT');
       formData.append('visibility', metadata.visibility || 'PUBLIC');
       uploaded.push(await uploadFormData(
-        `/api/buyer/bids/${encodeURIComponent(bidId)}/documents`,
+        `/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/documents`,
         formData,
         percent => onProgress?.(index, percent)
       ));
@@ -323,17 +323,17 @@ export const procurementBidApi = {
     return uploaded;
   },
   async submitBidForApproval(bidId: string) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/submit-for-approval`, {}, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/submit-for-approval`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
   async getBuyerBids(_params: Record<string, string | number> = {}) {
-    const res = await api.fetch('/api/buyer/bids', { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch('/api/buyer/procurement-bids', { method: 'GET', headers: authHeaders(), skipCache: true });
     const data = await readApiBody(res);
     return (data || []).map(normalizeBid);
   },
   async getAdminBids(params: Record<string, string | number> = {}) {
     const qs = buildQueryString(params);
-    const res = await api.fetch(`/api/admin/bids${qs ? `?${qs}` : ''}`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch(`/api/admin/procurement-bids${qs ? `?${qs}` : ''}`, { method: 'GET', headers: authHeaders(), skipCache: true });
     const body = await readJsonResponse(res);
     const data = unwrapApiData(body);
     return (data || []).map(normalizeBid);
@@ -352,29 +352,29 @@ export const procurementBidApi = {
     return this.getAdminBids();
   },
   async approve(id: string) {
-    const res = await api.post(`/api/admin/bids/${encodeURIComponent(id)}/approve`, {}, { headers: authHeaders() });
+    const res = await api.post(`/api/admin/procurement-bids/${encodeURIComponent(id)}/approve`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
   async approveBid(bidId: string) {
     return this.approve(bidId);
   },
   async reject(id: string, reason: string) {
-    const res = await api.post(`/api/admin/bids/${encodeURIComponent(id)}/reject`, { reason }, { headers: authHeaders() });
+    const res = await api.post(`/api/admin/procurement-bids/${encodeURIComponent(id)}/reject`, { reason }, { headers: authHeaders() });
     return readApiBody(res);
   },
   async rejectBid(bidId: string, reason: string) {
     return this.reject(bidId, reason);
   },
   async getBidAuditLogs(bidId: string) {
-    const res = await api.fetch(`/api/admin/bids/${encodeURIComponent(bidId)}/audit`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch(`/api/admin/procurement-bids/${encodeURIComponent(bidId)}/audit`, { method: 'GET', headers: authHeaders(), skipCache: true });
     return readApiBody(res);
   },
   async getAdminBidParticipants(bidId: string) {
-    const res = await api.fetch(`/api/admin/bids/${encodeURIComponent(bidId)}/participants`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch(`/api/admin/procurement-bids/${encodeURIComponent(bidId)}/participants`, { method: 'GET', headers: authHeaders(), skipCache: true });
     return readApiBody(res) as Promise<ProcurementBidParticipation[]>;
   },
   async approveFinalAward(bidId: string, data: { awardId?: number; remarks?: string }) {
-    const res = await api.post(`/api/admin/bids/${encodeURIComponent(bidId)}/final-award-approval`, data, { headers: authHeaders() });
+    const res = await api.post(`/api/admin/procurement-bids/${encodeURIComponent(bidId)}/final-award-approval`, data, { headers: authHeaders() });
     return readApiBody(res);
   },
   async getProcurementReports(params: Record<string, string | number> = {}) {
@@ -383,27 +383,27 @@ export const procurementBidApi = {
     return readApiBody(res);
   },
   async getBidParticipants(bidId: string) {
-    const res = await api.fetch(`/api/buyer/bids/${encodeURIComponent(bidId)}/participants`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/participants`, { method: 'GET', headers: authHeaders(), skipCache: true });
     return readApiBody(res) as Promise<ProcurementBidParticipation[]>;
   },
   async raiseClarification(bidId: string, data: { participationId: number; clarificationType: string; question: string; dueDate?: string }) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/clarifications`, data, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/clarifications`, data, { headers: authHeaders() });
     return readApiBody(res);
   },
   async submitTechnicalEvaluation(bidId: string, data: { evaluations: Array<{ participationId: number; status: 'QUALIFIED' | 'DISQUALIFIED'; remarks?: string; score?: number }> }) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/technical-evaluation`, data, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/technical-evaluation`, data, { headers: authHeaders() });
     return readApiBody(res);
   },
   async completeTechnicalEvaluation(bidId: string) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/complete-technical-evaluation`, {}, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/complete-technical-evaluation`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
   async openFinancialEvaluation(bidId: string) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/open-financial-evaluation`, {}, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/open-financial-evaluation`, {}, { headers: authHeaders() });
     return readApiBody(res);
   },
   async recommendAward(bidId: string, data: { participationId: number; remarks?: string; adminOverrideReason?: string }) {
-    const res = await api.post(`/api/buyer/bids/${encodeURIComponent(bidId)}/recommend-award`, data, { headers: authHeaders() });
+    const res = await api.post(`/api/buyer/procurement-bids/${encodeURIComponent(bidId)}/recommend-award`, data, { headers: authHeaders() });
     return readApiBody(res);
   },
   async getBidResults(bidId: string) {
@@ -437,7 +437,7 @@ export const procurementBidApi = {
       formData.append('documentCategory', metadata.documentCategory || 'TECHNICAL_COMPLIANCE');
       formData.append('documentName', documentName || metadata.documentName || file.name);
       uploaded.push(await uploadFormData(
-        `/api/bids/${encodeURIComponent(bidId)}/participation/${participationId}/technical-documents`,
+        `/api/procurement-bids/${encodeURIComponent(bidId)}/participation/${participationId}/technical-documents`,
         formData,
         percent => onProgress?.(index, percent)
       ));
@@ -466,7 +466,7 @@ export const procurementBidApi = {
     if (data.makeBrand) formData.append('makeBrand', data.makeBrand);
     if (data.model) formData.append('model', data.model);
     if (data.offeredItemDescription) formData.append('offeredItemDescription', data.offeredItemDescription);
-    return uploadFormData(`/api/bids/${encodeURIComponent(bidId)}/participation/${participationId}/financial-quote`, formData, onProgress);
+    return uploadFormData(`/api/procurement-bids/${encodeURIComponent(bidId)}/participation/${participationId}/financial-quote`, formData, onProgress);
   },
   async submitBidParticipation(bidId: string, participationId: number, declarationData?: Record<string, unknown>) {
     // The declaration checkbox doubles as acceptance of buyer terms & eligibility criteria.
@@ -474,7 +474,7 @@ export const procurementBidApi = {
     return this.submitParticipation(bidId, participationId, { acceptedTerms: accepted });
   },
   async getSellerBids() {
-    const res = await api.get('/api/seller/bids', { headers: authHeaders(), skipCache: true });
+    const res = await api.get('/api/seller/procurement-bids', { headers: authHeaders(), skipCache: true });
     const body = await readJsonResponse(res);
     return unwrapApiData(body) || [];
   },
@@ -485,7 +485,7 @@ export const procurementBidApi = {
     return Array.isArray(unwrapped?.responses) ? unwrapped.responses : Array.isArray(unwrapped) ? unwrapped : [];
   },
   async getSellerBidStatus(bidId: string) {
-    const res = await api.fetch(`/api/seller/bids/${encodeURIComponent(bidId)}/status`, { method: 'GET', headers: authHeaders(), skipCache: true });
+    const res = await api.fetch(`/api/seller/procurement-bids/${encodeURIComponent(bidId)}/status`, { method: 'GET', headers: authHeaders(), skipCache: true });
     const data = await readApiBody(res);
     return {
       ...data,

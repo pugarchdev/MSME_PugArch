@@ -136,7 +136,7 @@ export default function RfpDetailPage() {
 
   const reqObj = reqData?.requirement || reqData;
   const ownResponse = reqData?.ownResponse || null;
-  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && p.sellerId === user?.id) || (ownResponse && ownResponse.status !== 'DRAFT');
+  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && (p.sellerId === user?.id || (user?.organizationId && p.seller?.organizationId === user?.organizationId))) || (ownResponse && ownResponse.status !== 'DRAFT');
 
   // Map data from whichever source responded
   const rfpData: any = bidData ? {
@@ -251,7 +251,7 @@ export default function RfpDetailPage() {
   const evaluation = payload.evaluation || {};
 
   // Detail Sections for Accordion
-  const detailSections = rfpData?.payload ? [
+  const detailSections = rfpData ? [
     detailSection('Procurement Intent', {
       ...(payload.basics || {}),
       buyerType: payload.buyerType,
@@ -259,15 +259,20 @@ export default function RfpDetailPage() {
       recommendedMethod: payload.recommendation?.id,
       recommendationReason: payload.recommendation?.reason,
     }),
-    detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails }),
+    detailSection('Consignee Details', { consigneeDetails: payload.consigneeDetails || rfpData.payload?.consigneeDetails }),
     detailSection('Vendor / Supplier Selection', payload.vendors),
     detailSection('Timeline & Rules', { ...(payload.schedule || {}), ...(payload.tender || {}), ...(payload.rules || {}) }),
-    detailSection('Commercial Terms', payload.terms),
+    detailSection('Commercial Terms', {
+      paymentTerms: rfpData.paymentTerms || payload.terms?.paymentTerms,
+      deliveryTerms: rfpData.deliveryTerms || payload.terms?.deliveryTerms,
+      ...(payload.terms || {})
+    }),
     detailSection('Evaluation Basis', payload.evaluation),
     detailSection('Approval Notes', payload.approval),
     detailSection('Service Details', payload.serviceDetails),
     detailSection('Rate Contract', payload.rateContractConfig || payload.rateContract),
     detailSection('Reverse Auction', payload.auctionConfig),
+    detailSection('Items / Line Items', rfpData.items?.length ? { itemsCount: rfpData.items.length, itemsList: rfpData.items.map((i: any) => `${i.itemName || i.name} (Qty: ${i.quantity})`).join(', ') } : null)
   ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }> : [];
 
   if (isLoading) {
@@ -957,6 +962,64 @@ export default function RfpDetailPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Seller Proposals (Buyer View) ── */}
+      {(user?.role === 'buyer' || user?.id === rfpData?.buyer?.id) && rfpData?.participations && rfpData.participations.length > 0 && (
+        <section className="mt-8 border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 pb-3.5 border-b border-slate-100">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+              <User className="h-4 w-4" />
+            </div>
+            <h2 className="text-base font-black text-slate-900 uppercase tracking-wider">
+              Seller Proposals
+            </h2>
+          </div>
+          
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[700px] text-left text-sm">
+              <thead className="bg-slate-50">
+                <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <th className="px-4 py-3 border-b border-slate-100">Seller Name</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Submission Status</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Tech Eval</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Submitted At</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                {rfpData.participations.filter((p: any) => p.submissionStatus === 'SUBMITTED').map((p: any) => (
+                  <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                    <td className="px-4 py-3 text-slate-900">{p.seller?.sellerProfile?.organizationName || p.seller?.name || `Seller #${p.sellerId}`}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                        {p.submissionStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{p.technicalStatus || 'Pending'}</td>
+                    <td className="px-4 py-3 text-xs">{formatDateString(p.updatedAt || p.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        type="button"
+                        onClick={() => router.push(`/bids/${rfpData.id}/results`)}
+                        className="h-8 rounded-lg bg-indigo-50 px-3 text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-100 flex items-center gap-1.5 ml-auto"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Review
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {rfpData.participations.filter((p: any) => p.submissionStatus === 'SUBMITTED').length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-xs font-bold text-slate-500">
+                      No proposals submitted yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
       )}

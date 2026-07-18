@@ -291,7 +291,7 @@ export default function BidsListingPage() {
               />
             ) : pageRows.length ? (
               viewMode === 'grid' ? (
-                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} viewHref={viewHref(bid)} participationHref={participationHref(bid)} participationLabel={user ? 'Participate' : 'Login to Participate'} onViewClick={() => handleViewDetails(bid.id)} />)}</div>
+                <div className="grid gap-4 xl:grid-cols-2">{pageRows.map(bid => <BidCard key={bid.id} bid={bid} viewHref={viewHref(bid)} participationHref={participationHref(bid)} participationLabel={user ? (bid.participated ? 'View Proposal' : 'Participate') : 'Login to Participate'} onViewClick={() => handleViewDetails(bid.id)} />)}</div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="overflow-x-auto">
@@ -326,7 +326,7 @@ export default function BidsListingPage() {
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2">
                                 <button onClick={() => handleViewDetails(bid.id)} type="button" className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700">View</button>
-                                <Link href={participationHref(bid)} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white">{user ? 'Participate' : 'Login'}</Link>
+                                <Link href={participationHref(bid)} className="inline-flex h-8 items-center rounded-md bg-[#0b2447] px-3 text-[10px] font-black text-white">{user ? (bid.participated ? 'View Proposal' : 'Participate') : 'Login'}</Link>
                               </div>
                             </td>
                           </tr>

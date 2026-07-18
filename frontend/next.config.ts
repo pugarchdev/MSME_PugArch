@@ -40,9 +40,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ['lucide-react'],
   env: {
     NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF || '',
-    // On Vercel, route API calls through /proxy to avoid CORS entirely.
-    // In local dev, use whatever is set in .env (e.g. http://localhost:5000).
-    NEXT_PUBLIC_API_URL: process.env.VERCEL_URL ? '/proxy' : (process.env.NEXT_PUBLIC_API_URL || ''),
+    // Only override NEXT_PUBLIC_API_URL if on Vercel
+    ...(process.env.VERCEL_URL ? { NEXT_PUBLIC_API_URL: '/proxy' } : {}),
   },
   eslint: {
     ignoreDuringBuilds: true

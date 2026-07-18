@@ -109,13 +109,13 @@ const awardIdParamSchema = z.object({ awardId: z.coerce.number().int().positive(
 const grnParamSchema = orderIdParamSchema.extend({ grnId: z.coerce.number().int().positive() });
 const invoiceParamSchema = orderIdParamSchema.extend({ invoiceId: z.coerce.number().int().positive() });
 
-router.get('/bids', asyncRoute(async (req, res) => {
+router.get('/procurement-bids', asyncRoute(async (req, res) => {
   const actor = await optionalActor(req);
   const data = await service.listPublicBids(req.query, actor);
   return apiResponse.success(res, data, 200, 'Bids fetched successfully');
 }));
 
-router.get('/bids/my', authenticate, requireAccountType('seller', 'buyer', 'admin'), asyncRoute(async (req, res) => {
+router.get('/procurement-bids/my', authenticate, requireAccountType('seller', 'buyer', 'admin'), asyncRoute(async (req, res) => {
   const role = String(req.user?.role || '');
   const currentUserId = Number(req.user?.id);
   const where = role === 'seller'
@@ -174,7 +174,7 @@ router.get('/bids/my', authenticate, requireAccountType('seller', 'buyer', 'admi
   return res.json(maskSensitive(bids));
 }));
 
-router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const actor = await optionalActor(req);
   const token = req.params.bidId;
   if (token.startsWith('TENDER-') || token.startsWith('TND-')) {
@@ -184,7 +184,7 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
 
   let bid: any;
   try {
-    bid = await service.resolveBid(token);
+    bid = await service.resolveBid(token, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
   } catch (err: any) {
     // Fallback: if no ProcurementBid found, check if this is a Requirement ID or Reference Number
     if (err?.code === 'BID_NOT_FOUND' && (/^\d+$/.test(token) || token.startsWith('REQ-'))) {
@@ -246,6 +246,45 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
         });
       }
       if (requirement) {
+        let participations: any[] = [];
+        if (actor?.role === 'buyer' || actor?.role === 'admin' || actor?.role === 'master_admin') {
+            const shadowBuyerReq = await prisma.buyerRequirement.findFirst({
+                where: {
+                    title: requirement.title,
+                    description: requirement.description || requirement.title,
+                    createdById: requirement.buyerId,
+                    buyerOrganizationId: requirement.organizationId || requirement.buyer?.organizationId || null
+                }
+            });
+
+            if (shadowBuyerReq) {
+                const responses = await prisma.requirementResponse.findMany({
+                    where: { requirementId: shadowBuyerReq.id },
+                    include: { 
+                        sellerUser: { select: { id: true, name: true, role: true, organizationId: true } },
+                        sellerOrganization: { select: { organizationName: true } }
+                    }
+                });
+                participations = responses.map((r: any) => ({
+                    id: r.id,
+                    bidId: requirement.id,
+                    sellerId: r.sellerUserId,
+                    seller: {
+                        ...r.sellerUser,
+                        organization: r.sellerOrganization
+                    },
+                    participationNumber: `PRT-${r.id}`,
+                technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
+                financialStatus: r.status === 'ACCEPTED' ? 'OPENED' : 'SEALED',
+                finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+                submissionStatus: 'SUBMITTED',
+                quotedAmount: r.offeredPrice,
+                offeredItemDescription: r.message || '',
+                createdAt: r.createdAt,
+            }));
+            }
+        }
+
         const payload = requirement.payload && typeof requirement.payload === 'object' ? requirement.payload as any : {};
         // If legacy requirement doesn't have basics/internal/schedule/terms in payload, reconstruct them
         const basics = payload.basics || {
@@ -315,7 +354,7 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
           buyerOrganization: requirement.organization,
           buyer: requirement.buyer,
           documents: [],
-          participations: [],
+          participations: participations,
           clarifications: [],
           evaluations: [],
           awards: [],
@@ -337,7 +376,7 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
   if (!service.canActorViewBid(actor as any, bid)) {
     throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
   }
-  const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id);
+  const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id || (actor.organizationId && p.seller?.organizationId === actor.organizationId));
   
   const sellerIds = (bid.participations || []).map((p: any) => p.sellerId);
   const sellerRatings = await service.getAverageRatingsForSellers(sellerIds);
@@ -345,34 +384,34 @@ router.get('/bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async
   return apiResponse.success(res, service.serializeBid(bid, { actor: actor || undefined, detail: true, includeParticipants: sellerCanSeeParticipants, sellerRatings }), 200, 'Bid details fetched successfully');
 }));
 
-router.get('/bids/:bidId/timeline', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/procurement-bids/:bidId/timeline', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, {});
   const timeline = await service.getProcurementTimeline(bid.id);
   return apiResponse.success(res, timeline, 200, 'Procurement lifecycle timeline fetched');
 }));
 
-router.post('/bids/:bidId/participate', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/participate', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const participation = await service.startParticipation(req, req.params.bidId);
   return apiResponse.created(res, participation, 'Bid participation started');
 }));
 
-router.post('/bids/:bidId/participation/:participationId/technical-documents', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: participationParamSchema }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/participation/:participationId/technical-documents', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: participationParamSchema }), asyncRoute(async (req, res) => {
   const category = String(req.body.documentCategory || 'TECHNICAL_COMPLIANCE');
   const doc = await service.uploadParticipationDocument(req, req.params.bidId, Number(req.params.participationId), category);
   return apiResponse.created(res, doc, 'Technical document uploaded');
 }));
 
-router.post('/bids/:bidId/participation/:participationId/financial-quote', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: participationParamSchema, body: financialQuoteSchema }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/participation/:participationId/financial-quote', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: participationParamSchema, body: financialQuoteSchema }), asyncRoute(async (req, res) => {
   const data = await service.saveFinancialQuote(req, req.params.bidId, Number(req.params.participationId), req.body);
   return apiResponse.success(res, data, 200, 'Financial quote saved securely');
 }));
 
-router.post('/bids/:bidId/participation/:participationId/submit', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: participationParamSchema, body: z.object({ acceptedTerms: z.boolean().optional() }).passthrough().optional() }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/participation/:participationId/submit', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: participationParamSchema, body: z.object({ acceptedTerms: z.boolean().optional() }).passthrough().optional() }), asyncRoute(async (req, res) => {
   const data = await service.finalSubmitParticipation(req, req.params.bidId, Number(req.params.participationId), req.body || {});
   return apiResponse.success(res, data, 200, 'Participation submitted successfully');
 }));
 
-router.get('/seller/bids', authenticate, requireAccountType('seller'), asyncRoute(async (req, res) => {
+router.get('/seller/procurement-bids', authenticate, requireAccountType('seller'), asyncRoute(async (req, res) => {
   const rows = await (prisma as any).procurementBidParticipation.findMany({
     where: { sellerId: req.user!.id },
     include: { bid: true, documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true },
@@ -381,8 +420,8 @@ router.get('/seller/bids', authenticate, requireAccountType('seller'), asyncRout
   return apiResponse.success(res, rows.map((row: any) => ({ ...service.serializeParticipation(row, { canSeeFinancial: true, ownView: true }), bid: service.serializeBid(row.bid, { actor: req.user }) })), 200, 'Seller bids fetched');
 }));
 
-router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
-  const bid = await service.resolveBid(req.params.bidId, { participations: { where: { sellerId: req.user!.id }, include: { documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true } } });
+router.get('/seller/procurement-bids/:bidId/status', authenticate, requireAccountType('seller'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+  const bid = await service.resolveBid(req.params.bidId, { participations: { where: { OR: [{ sellerId: req.user!.id }, ...(req.user!.organizationId ? [{ seller: { organizationId: req.user!.organizationId } }] : [])] }, include: { documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true } } });
   const participation = bid.participations?.[0];
   const isRestrictedBid = service.isRestrictedBidMethod(bid);
   if (isRestrictedBid) {
@@ -393,37 +432,37 @@ router.get('/seller/bids/:bidId/status', authenticate, requireAccountType('selle
   return apiResponse.success(res, { bid: service.serializeBid(bid, { actor: req.user }), participation: participation ? service.serializeParticipation(participation, { canSeeFinancial: true, bid, ownView: true }) : null }, 200, 'Bid status fetched');
 }));
 
-router.post('/bids/:bidId/clarifications/:clarificationId/respond', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: clarificationParamSchema, body: z.object({ response: z.string().trim().min(2).max(5000) }) }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/clarifications/:clarificationId/respond', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), upload.single('file'), validate({ params: clarificationParamSchema, body: z.object({ response: z.string().trim().min(2).max(5000) }) }), asyncRoute(async (req, res) => {
   const data = await service.respondClarification(req, req.params.bidId, Number(req.params.clarificationId), req.body.response);
   return apiResponse.success(res, data, 200, 'Clarification response submitted');
 }));
 
-router.post('/bids/:bidId/clarifications/ask', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema, body: z.object({ question: z.string().trim().min(5).max(3000) }) }), asyncRoute(async (req, res) => {
+router.post('/procurement-bids/:bidId/clarifications/ask', authenticate, requireAccountType('seller'), requirePermission('bid.submit'), validate({ params: idParamSchema, body: z.object({ question: z.string().trim().min(5).max(3000) }) }), asyncRoute(async (req, res) => {
   const data = await service.sellerAskClarification(req, req.params.bidId, req.body.question);
   return apiResponse.created(res, data, 'Clarification question submitted successfully');
 }));
 
-router.post('/buyer/bids', authenticate, requireAccountType('buyer'), requirePermission('tender.create'), validate({ body: bidBodySchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids', authenticate, requireAccountType('buyer'), requirePermission('tender.create'), validate({ body: bidBodySchema }), asyncRoute(async (req, res) => {
   const bid = await service.createBuyerBid(req, req.body);
   return apiResponse.created(res, bid, 'Bid draft created');
 }));
 
-router.put('/buyer/bids/:bidId', authenticate, requireAccountType('buyer'), requirePermission('tender.update'), validate({ params: idParamSchema, body: bidBaseSchema.partial() }), asyncRoute(async (req, res) => {
+router.put('/buyer/procurement-bids/:bidId', authenticate, requireAccountType('buyer'), requirePermission('tender.update'), validate({ params: idParamSchema, body: bidBaseSchema.partial() }), asyncRoute(async (req, res) => {
   const bid = await service.updateBuyerBid(req, req.params.bidId, req.body);
   return apiResponse.success(res, bid, 200, 'Bid updated');
 }));
 
-router.post('/buyer/bids/:bidId/documents', authenticate, requireAccountType('buyer'), requirePermission('tender.update'), upload.single('file'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/documents', authenticate, requireAccountType('buyer'), requirePermission('tender.update'), upload.single('file'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const doc = await service.uploadBuyerBidDocument(req, req.params.bidId, req.body);
   return apiResponse.created(res, doc, 'Bid document uploaded');
 }));
 
-router.post('/buyer/bids/:bidId/submit-for-approval', authenticate, requireAccountType('buyer'), requirePermission('tender.publish'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/submit-for-approval', authenticate, requireAccountType('buyer'), requirePermission('tender.publish'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.submitForApproval(req, req.params.bidId);
   return apiResponse.success(res, bid, 200, 'Bid submitted for admin approval');
 }));
 
-router.get('/buyer/bids', authenticate, requireAccountType('buyer'), asyncRoute(async (req, res) => {
+router.get('/buyer/procurement-bids', authenticate, requireAccountType('buyer'), asyncRoute(async (req, res) => {
   const bids = await (prisma as any).procurementBid.findMany({
     where: { buyerId: req.user!.id },
     include: {
@@ -458,39 +497,39 @@ router.get('/buyer/bids', authenticate, requireAccountType('buyer'), asyncRoute(
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeFinancial: true })), 200, 'Buyer bids fetched');
 }));
 
-router.get('/buyer/bids/:bidId/participants', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.view'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/buyer/procurement-bids/:bidId/participants', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.view'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId);
   service.assertBuyerOwner(req.user!, bid);
   const canSeeFinancial = ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
   return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial, bid })), 200, 'Participants fetched');
 }));
 
-router.post('/buyer/bids/:bidId/clarifications', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.update'), validate({ params: idParamSchema, body: clarificationSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/clarifications', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.update'), validate({ params: idParamSchema, body: clarificationSchema }), asyncRoute(async (req, res) => {
   const data = await service.askClarification(req, req.params.bidId, req.body);
   return apiResponse.created(res, data, 'Clarification requested');
 }));
 
-router.post('/buyer/bids/:bidId/technical-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.technical.evaluate'), validate({ params: idParamSchema, body: technicalEvaluationSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/technical-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.technical.evaluate'), validate({ params: idParamSchema, body: technicalEvaluationSchema }), asyncRoute(async (req, res) => {
   const data = await service.evaluateTechnical(req, req.params.bidId, req.body);
   return apiResponse.success(res, data, 200, 'Technical evaluation saved');
 }));
 
-router.post('/buyer/bids/:bidId/complete-technical-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.technical.evaluate'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/complete-technical-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.technical.evaluate'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const data = await service.completeTechnicalEvaluation(req, req.params.bidId);
   return apiResponse.success(res, data, 200, 'Technical evaluation completed');
 }));
 
-router.post('/buyer/bids/:bidId/open-financial-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.financial.evaluate'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/open-financial-evaluation', authenticate, requireAccountType('buyer', 'admin'), requirePermission('bid.financial.evaluate'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const data = await service.openFinancialEvaluation(req, req.params.bidId);
   return apiResponse.success(res, data, 200, 'Financial evaluation opened and L1/L2/L3/L4 ranking generated');
 }));
 
-router.post('/buyer/bids/:bidId/recommend-award', authenticate, requireAccountType('buyer', 'admin'), requirePermission('award.recommend'), validate({ params: idParamSchema, body: z.object({ participationId: z.coerce.number().int().positive(), remarks: z.string().trim().max(2000).optional(), adminOverrideReason: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
+router.post('/buyer/procurement-bids/:bidId/recommend-award', authenticate, requireAccountType('buyer', 'admin'), requirePermission('award.recommend'), validate({ params: idParamSchema, body: z.object({ participationId: z.coerce.number().int().positive(), remarks: z.string().trim().max(2000).optional(), adminOverrideReason: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
   const data = await service.recommendAward(req, req.params.bidId, req.body);
   return apiResponse.created(res, data, 'Award recommendation created');
 }));
 
-router.get('/admin/bids', authenticate, requireAccountType('admin'), requirePermission('tender.view'), checkFeatureEnabled('admin-bid-approval'), asyncRoute(async (req, res) => {
+router.get('/admin/procurement-bids', authenticate, requireAccountType('admin'), requirePermission('tender.view'), checkFeatureEnabled('admin-bid-approval'), asyncRoute(async (req, res) => {
   const bids = await (prisma as any).procurementBid.findMany({
     include: {
       documents: true,
@@ -515,28 +554,28 @@ router.get('/admin/bids', authenticate, requireAccountType('admin'), requirePerm
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeParticipants: true, includeFinancial: true })), 200, 'Admin bids fetched');
 }));
 
-router.post('/admin/bids/:bidId/approve', authenticate, requireAccountType('admin'), requirePermission('tender.publish'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.post('/admin/procurement-bids/:bidId/approve', authenticate, requireAccountType('admin'), requirePermission('tender.publish'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const data = await service.approveBid(req, req.params.bidId);
   return apiResponse.success(res, data, 200, 'Bid approved');
 }));
 
-router.post('/admin/bids/:bidId/reject', authenticate, requireAccountType('admin'), requirePermission('tender.publish'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ reason: z.string().trim().min(3).max(2000) }) }), asyncRoute(async (req, res) => {
+router.post('/admin/procurement-bids/:bidId/reject', authenticate, requireAccountType('admin'), requirePermission('tender.publish'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ reason: z.string().trim().min(3).max(2000) }) }), asyncRoute(async (req, res) => {
   const data = await service.rejectBid(req, req.params.bidId, req.body.reason);
   return apiResponse.success(res, data, 200, 'Bid rejected');
 }));
 
-router.get('/admin/bids/:bidId/audit', authenticate, requireAccountType('admin'), requirePermission('report.view'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/admin/procurement-bids/:bidId/audit', authenticate, requireAccountType('admin'), requirePermission('report.view'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, {});
   const logs = await (prisma as any).procurementAuditLog.findMany({ where: { entityId: String(bid.id) }, orderBy: { createdAt: 'desc' } });
   return apiResponse.success(res, logs, 200, 'Audit trail fetched');
 }));
 
-router.get('/admin/bids/:bidId/participants', authenticate, requireAccountType('admin'), requirePermission('tender.view'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
+router.get('/admin/procurement-bids/:bidId/participants', authenticate, requireAccountType('admin'), requirePermission('tender.view'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId, { participations: { include: { seller: { select: { id: true, name: true, email: true, role: true } }, documents: true } } });
   return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial: true })), 200, 'Admin bid participants fetched');
 }));
 
-router.post('/admin/bids/:bidId/final-award-approval', authenticate, requireAccountType('admin'), requirePermission('purchase_order.create'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ awardId: z.coerce.number().int().positive().optional(), remarks: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
+router.post('/admin/procurement-bids/:bidId/final-award-approval', authenticate, requireAccountType('admin'), requirePermission('purchase_order.create'), checkFeatureEnabled('admin-bid-approval'), validate({ params: idParamSchema, body: z.object({ awardId: z.coerce.number().int().positive().optional(), remarks: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
   const data = await service.approveFinalAward(req, req.params.bidId, req.body);
   return apiResponse.success(res, data, 200, 'Final award approved and PO generated');
 }));

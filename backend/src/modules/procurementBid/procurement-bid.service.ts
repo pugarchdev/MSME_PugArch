@@ -218,7 +218,7 @@ export const procurementAudit = async (
   }
 });
 
-const bidInclude: any = {
+export const bidInclude: any = {
   documents: true,
   invitations: true,
   buyer: {
@@ -241,7 +241,7 @@ const bidInclude: any = {
   buyerOrganization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
   participations: {
     include: {
-      seller: { select: { id: true, name: true, email: true, role: true, onboardingStatus: true } },
+      seller: { select: { id: true, name: true, email: true, role: true, onboardingStatus: true, organizationId: true } },
       documents: true,
       clarifications: { include: { files: true } },
       evaluations: true,
@@ -455,7 +455,7 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     id: p.id,
     bidId: p.bidId,
     sellerId: p.sellerId,
-    seller: p.seller ? { id: p.seller.id, name: p.seller.name, role: p.seller.role } : undefined,
+    seller: p.seller ? { id: p.seller.id, name: p.seller.name, role: p.seller.role, organizationId: p.seller.organizationId } : undefined,
     participationNumber: p.participationNumber,
     technicalStatus: p.technicalStatus,
     financialStatus: p.financialStatus,
@@ -1173,6 +1173,24 @@ export const startParticipation = async (req: AuthRequest, bidId: string) => {
   if (isRestrictedBidMethod(bid) && !isActorInvitedToBid(req.user!, bid)) {
     throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
   }
+
+  const whereClause: any = { bidId: bid.id };
+  if (req.user!.organizationId) {
+    whereClause.OR = [
+      { sellerId: req.user!.id },
+      { seller: { organizationId: req.user!.organizationId } }
+    ];
+  } else {
+    whereClause.sellerId = req.user!.id;
+  }
+
+  const existingParticipation = await db.procurementBidParticipation.findFirst({
+    where: whereClause
+  });
+  if (existingParticipation) {
+    throw new ApiError(409, 'You or your organization have already participated in this bid.', 'DUPLICATE_PARTICIPATION');
+  }
+
   try {
     const participation = await db.procurementBidParticipation.create({
       data: {

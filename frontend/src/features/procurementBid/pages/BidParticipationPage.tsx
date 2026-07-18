@@ -979,7 +979,7 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, req
       <FileList files={files} onRemove={onRemove} onPreview={onPreview} requiredDocuments={required} onTag={onTag} />
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
+        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Upload documents
         </button>
         <button onClick={onNext} disabled={!uploadedDocs.length} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50">Continue</button>
@@ -1306,6 +1306,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
               >
                 <option value="">Tag as required document…</option>
                 {requiredDocuments.map(name => <option key={name} value={name}>{name}</option>)}
+                <option value="Other">Other / Optional Document</option>
               </select>
             )}
             <div className="flex gap-2">

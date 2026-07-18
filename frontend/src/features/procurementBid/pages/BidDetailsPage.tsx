@@ -73,6 +73,11 @@ export default function BidDetailsPage() {
     return headers;
   }, [token]);
 
+  const myParticipation = useMemo(() => {
+    if (!bid || !user) return null;
+    return bid.participations?.find((p: any) => Number(p.sellerId) === Number(user.id));
+  }, [bid, user]);
+
   const loadBid = React.useCallback(() => {
     let alive = true;
     setLoading(true);
@@ -147,10 +152,6 @@ export default function BidDetailsPage() {
   }
 
   const isOwner = user?.role === 'buyer' && Number(bid.buyerId) === Number(user.id);
-  const myParticipation = useMemo(() => {
-    if (!bid || !user) return null;
-    return bid.participations?.find((p: any) => Number(p.sellerId) === Number(user.id));
-  }, [bid, user]);
 
   const isSubmitted = myParticipation?.submissionStatus === 'SUBMITTED';
   const isRequiresResubmission = myParticipation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION');

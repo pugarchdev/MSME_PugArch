@@ -467,13 +467,7 @@ export default function MyProcurementsPage() {
       const auctionId = p.linkedAuctionId || (typeLower === 'reverse_auction' ? p.id : null);
       route = auctionId ? `/reverse-auctions/${auctionId}` : null;
     } else if (typeLower === 'bid_tender') {
-      if (methodLower === 'rfq') {
-        route = `/buyer/rfq/detail?requestId=${p.id}`;
-      } else if (methodLower === 'rfp') {
-        route = `/buyer/rfp/detail?requestId=${p.id}`;
-      } else {
-        route = `/tenders?tender=${p.referenceNumber}`;
-      }
+      route = `/bids/${p.id}`;
     } else if (typeLower === 'requirement') {
       if (methodLower === 'rfp') {
         route = `/buyer/rfp/detail?requirementId=${p.id}`;

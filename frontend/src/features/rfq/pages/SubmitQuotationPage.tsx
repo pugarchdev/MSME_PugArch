@@ -249,7 +249,6 @@ export default function SubmitQuotationPage() {
       console.warn('Failed to save draft to server', err);
       toast.error('Failed to save draft to server');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
 
   const isClosed = ['AWARDED', 'CLOSED', 'CANCELLED'].includes(rfqData?.status);
@@ -344,7 +343,6 @@ export default function SubmitQuotationPage() {
         remarks: match?.remarks || ''
       };
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rfqData, ownResponse]);
 
   // Line-quote totals: when the seller prices per line, keep the headline offered price/qty in sync.

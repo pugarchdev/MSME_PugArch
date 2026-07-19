@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   AlertTriangle,
+  ArrowRight,
   BadgeCheck,
   CalendarClock,
   CheckCircle2,
@@ -17,6 +18,7 @@ import {
   IndianRupee,
   Loader2,
   Lock,
+  Unlock,
   RotateCcw,
   Send,
   ShieldCheck,
@@ -162,9 +164,11 @@ export default function BidParticipationPage() {
 
   const goToStep = React.useCallback((nextStep: number) => {
     setStep(nextStep);
-    window.setTimeout(() => {
-      stepContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 40);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        stepContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
   }, []);
 
   const activeSteps = useMemo(() => {
@@ -300,8 +304,6 @@ export default function BidParticipationPage() {
   const uploadedFinancialDocs = uploadedDocs.filter(doc => doc.documentCategory === 'FINANCIAL_QUOTE');
   const isSubmitted = participation?.submissionStatus === 'SUBMITTED';
   const allEligibilityChecked = Object.values(eligibility).every(Boolean);
-  const canUpload = Boolean(participation?.id && !closed && !isSubmitted);
-  const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (bid?.procurementType === 'RFI' || uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
 
   const guard = useMemo(() => {
     if (!user) return { tone: 'amber', message: 'Please login as a verified seller/vendor to participate in this bid.', action: 'Login to Participate' };
@@ -313,6 +315,29 @@ export default function BidParticipationPage() {
     if (closed) return { tone: 'red', message: 'This bid is closed. Participation is no longer allowed.' };
     return null;
   }, [closed, user, verifiedSeller, bid]);
+
+  const canPrepare = Boolean(!guard && !closed && !isSubmitted);
+  const canUpload = Boolean(participation?.id && canPrepare);
+  const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (bid?.procurementType === 'RFI' || uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
+  const technicalOfferStarted = Object.values(technicalOffer).some(value => Boolean(String(value || '').trim()));
+  const financialQuoteStarted = Boolean(quote.quotedAmount || uploadedFinancialDocs.length || participation?.quotedAmount);
+  const activeStepIndex = Math.max(activeSteps.findIndex(item => item.id === step), 0);
+  const navProgress = activeSteps.length > 0 ? Math.round(((activeStepIndex + 1) / activeSteps.length) * 100) : 0;
+  const submitRequirements = [
+    { ok: Boolean(participation?.id), label: participation?.id ? `Participation #${participation.id}` : 'Participation started' },
+    { ok: uploadedTechnicalDocs.length > 0, label: `${uploadedTechnicalDocs.length} technical document(s)` },
+    ...(bid?.procurementType === 'RFI' ? [] : [{ ok: Boolean(uploadedFinancialDocs.length || participation?.quotedAmount), label: 'Financial quote saved' }]),
+    { ok: declaration, label: 'Declaration accepted' },
+  ];
+  const completedStepIds = new Set<number>([
+    0,
+    ...(allEligibilityChecked ? [1] : []),
+    ...(technicalOfferStarted || Object.keys(rfiAnswers).length ? [2] : []),
+    ...(uploadedTechnicalDocs.length || technicalFiles.length ? [3] : []),
+    ...(financialQuoteStarted ? [4] : []),
+    ...(declaration ? [5] : []),
+    ...(isSubmitted ? [6, 7] : []),
+  ]);
 
   const openPreview = (item: PendingFile) => {
     setPreviewDocument({
@@ -554,12 +579,37 @@ export default function BidParticipationPage() {
           html {
             scroll-behavior: smooth;
           }
+          @keyframes bidStepFadeUp {
+            from {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .bid-step-body {
+            animation: bidStepFadeUp 260ms ease-out both;
+          }
+          .bid-soft-enter {
+            animation: bidStepFadeUp 360ms ease-out both;
+          }
           input:focus, textarea:focus {
             border-color: var(--bid-primary) !important;
             box-shadow: 0 0 0 2px var(--bid-light) !important;
           }
+          @media (prefers-reduced-motion: reduce) {
+            html {
+              scroll-behavior: auto;
+            }
+            .bid-step-body,
+            .bid-soft-enter {
+              animation: none;
+            }
+          }
         ` }} />
-      <main className="mx-auto w-full max-w-7xl scroll-smooth animate-in fade-in duration-500">
+      <main className="mx-auto w-full max-w-7xl scroll-smooth font-sans animate-in fade-in duration-500">
         <section className={`${surfaceClass} overflow-hidden p-5 animate-in fade-in slide-in-from-top-3 duration-500`}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -623,24 +673,42 @@ export default function BidParticipationPage() {
           <aside className="lg:sticky lg:top-28 lg:self-start">
             <div className={`${surfaceClass} overflow-hidden`}>
               <div className="border-b border-slate-100 p-4">
-                <p className="text-sm font-black" style={{ color: theme.primary }}>Submission Steps</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-black" style={{ color: theme.primary }}>Submission Steps</p>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                    {activeStepIndex + 1}/{activeSteps.length}
+                  </span>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${navProgress}%`, backgroundColor: theme.primary }}
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-4 lg:block lg:space-y-1">
                 {activeSteps.map((s) => {
-                  const locked = s.id >= 3 && !participation?.id;
                   const active = step === s.id;
-                  const done = s.id < step || (s.id === 7 && isSubmitted);
+                  const done = completedStepIds.has(s.id);
+                  const needsParticipation = s.id >= 3 && !participation?.id;
                   return (
                     <button
                       key={s.label}
                       type="button"
-                      disabled={locked}
                       onClick={() => goToStep(s.id)}
-                      className={`flex min-h-12 items-center gap-2 rounded-xl border p-2 text-left text-[11px] font-black transition-all duration-200 ${active ? `border-current ${theme.lightBg} shadow-sm` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm'}`}
+                      aria-current={active ? 'step' : undefined}
+                      className={`group flex min-h-14 w-full items-start gap-2 rounded-xl border p-2 text-left text-[11px] font-black transition-all duration-200 ${active ? `border-current ${theme.lightBg} shadow-sm ring-2 ring-current/10` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:-translate-y-0.5 hover:shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm'}`}
                       style={active ? { color: theme.primary, borderColor: theme.primary } : undefined}
                     >
-                      {locked ? <Lock className="h-3.5 w-3.5" /> : done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-                      <span>{s.label}</span>
+                      <span className="mt-0.5 shrink-0">
+                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Circle className="h-3.5 w-3.5 fill-current/10" /> : <Unlock className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-slate-600" />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block leading-snug">{s.label}</span>
+                        {needsParticipation && !done && (
+                          <span className="mt-0.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Prepare</span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
@@ -660,77 +728,82 @@ export default function BidParticipationPage() {
                 </div>
               </div>
             )}
-            {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => goToStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
-            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => goToStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
-            {step === 2 && (
-              bid?.procurementType === 'RFI' ? (
-                <RfiQuestionnaireForm
-                  questionnaire={questionnaire}
-                  answers={rfiAnswers}
-                  onChange={(qId, val) => setRfiAnswers(prev => ({ ...prev, [qId]: val }))}
-                  onNext={() => goToStep(3)}
-                  disabled={!participation?.id || isSubmitted}
-                  saving={savingRfi}
-                  onSave={saveRfiAnswers}
+            <div key={step} className="bid-step-body">
+              {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => goToStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
+              {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => goToStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
+              {step === 2 && (
+                bid?.procurementType === 'RFI' ? (
+                  <RfiQuestionnaireForm
+                    questionnaire={questionnaire}
+                    answers={rfiAnswers}
+                    onChange={(qId, val) => setRfiAnswers(prev => ({ ...prev, [qId]: val }))}
+                    onNext={() => goToStep(3)}
+                    canEdit={canPrepare}
+                    canSave={canUpload}
+                    saving={savingRfi}
+                    onSave={saveRfiAnswers}
+                  />
+                ) : (
+                  <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => goToStep(3)} disabled={!canPrepare} />
+                )
+              )}
+              {step === 3 && (
+                <TechnicalDocumentsStep
+                  canSelectFiles={canPrepare}
+                  canUpload={canUpload}
+                  files={technicalFiles}
+                  uploadedDocs={uploadedTechnicalDocs}
+                  uploading={uploadingTechnical}
+                  requiredDocuments={bid?.requiredDocuments || []}
+                  onAdd={addTechnicalFiles}
+                  onRemove={removeTechnicalFile}
+                  onPreview={openPreview}
+                  onUpload={uploadTechnical}
+                  onNext={() => goToStep(bid?.procurementType === 'RFI' ? 5 : 4)}
+                  onTag={(id, documentName) => setTechnicalFiles(prev => prev.map(item => item.id === id ? { ...item, documentName: documentName || undefined } : item))}
                 />
-              ) : (
-                <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => goToStep(3)} disabled={!participation?.id || isSubmitted} />
-              )
-            )}
-            {step === 3 && (
-              <TechnicalDocumentsStep
-                canUpload={canUpload}
-                files={technicalFiles}
-                uploadedDocs={uploadedTechnicalDocs}
-                uploading={uploadingTechnical}
-                requiredDocuments={bid?.requiredDocuments || []}
-                onAdd={addTechnicalFiles}
-                onRemove={removeTechnicalFile}
-                onPreview={openPreview}
-                onUpload={uploadTechnical}
-                onNext={() => goToStep(bid?.procurementType === 'RFI' ? 5 : 4)}
-                onTag={(id, documentName) => setTechnicalFiles(prev => prev.map(item => item.id === id ? { ...item, documentName: documentName || undefined } : item))}
-              />
-            )}
-            {step === 4 && (
-              <FinancialQuoteStep
-                canUpload={canUpload}
-                quote={quote}
-                setQuote={setQuote}
-                file={financialFile}
-                uploadedDocs={uploadedFinancialDocs}
-                saving={savingFinancial}
-                onFile={addFinancialFile}
-                onRemoveFile={() => { if (financialFile) URL.revokeObjectURL(financialFile.previewUrl); setFinancialFile(null); }}
-                onPreview={item => item && openPreview(item)}
-                onSave={saveFinancial}
-                onNext={() => goToStep(5)}
-                bid={bid}
-                rateContractData={rateContractData}
-                setRateContractData={setRateContractData}
-                rfqData={rfqData}
-                setRfqData={setRfqData}
-              />
-            )}
-            {step === 5 && (
-              <ReviewStep
-                bid={bid}
-                participation={participation}
-                technicalDocs={uploadedTechnicalDocs}
-                financialDocs={uploadedFinancialDocs}
-                declaration={declaration}
-                setDeclaration={setDeclaration}
-                allEligibilityChecked={allEligibilityChecked}
-                onNext={() => goToStep(6)}
-                disabled={isSubmitted}
-              />
-            )}
-            {step === 6 && (
-              <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} onSubmit={submitFinal} onTrack={() => goToStep(7)} />
-            )}
-            {step === 7 && (
-              <TrackStep bid={bid} participation={participation} />
-            )}
+              )}
+              {step === 4 && (
+                <FinancialQuoteStep
+                  canEdit={canPrepare}
+                  canSave={canUpload}
+                  quote={quote}
+                  setQuote={setQuote}
+                  file={financialFile}
+                  uploadedDocs={uploadedFinancialDocs}
+                  saving={savingFinancial}
+                  onFile={addFinancialFile}
+                  onRemoveFile={() => { if (financialFile) URL.revokeObjectURL(financialFile.previewUrl); setFinancialFile(null); }}
+                  onPreview={item => item && openPreview(item)}
+                  onSave={saveFinancial}
+                  onNext={() => goToStep(5)}
+                  bid={bid}
+                  rateContractData={rateContractData}
+                  setRateContractData={setRateContractData}
+                  rfqData={rfqData}
+                  setRfqData={setRfqData}
+                />
+              )}
+              {step === 5 && (
+                <ReviewStep
+                  bid={bid}
+                  participation={participation}
+                  technicalDocs={uploadedTechnicalDocs}
+                  financialDocs={uploadedFinancialDocs}
+                  declaration={declaration}
+                  setDeclaration={setDeclaration}
+                  allEligibilityChecked={allEligibilityChecked}
+                  onNext={() => goToStep(6)}
+                  disabled={isSubmitted}
+                />
+              )}
+              {step === 6 && (
+                <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} requirements={submitRequirements} onSubmit={submitFinal} onTrack={() => goToStep(7)} />
+              )}
+              {step === 7 && (
+                <TrackStep bid={bid} participation={participation} />
+              )}
+            </div>
           </section>
         </div>
       </main>
@@ -742,15 +815,20 @@ export default function BidParticipationPage() {
 
 function Info({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {
   return (
-    <div className={`border border-slate-100 bg-slate-50 p-3 ${wide ? 'sm:col-span-2' : ''}`}>
+    <div className={`min-w-0 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-sm ${wide ? 'sm:col-span-2' : ''}`}>
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 text-xs font-black text-slate-800">{value}</p>
+      <p className="mt-1 break-words text-xs font-black leading-relaxed text-slate-800">{value}</p>
     </div>
   );
 }
 
 function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
-  return <div className="flex items-center gap-2">{ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-slate-300" />} <span>{label}</span></div>;
+  return (
+    <div className={`flex items-center gap-2 rounded-lg px-2 py-1 transition-colors ${ok ? 'bg-emerald-50 text-emerald-800' : 'text-slate-500'}`}>
+      {ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-slate-300" />}
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blocked }: { bid: ProcurementBid; onStart: () => void; onContinue: () => void; starting: boolean; hasParticipation: boolean; blocked: boolean }) {
@@ -779,7 +857,9 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
           {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
           {hasParticipation ? 'Continue Participation' : 'Start Participation'}
         </button>
-        <button onClick={onContinue} disabled={!hasParticipation} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
+        <button onClick={onContinue} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -798,7 +878,6 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
   ];
   // Buyer-defined dynamic criteria get their own checkboxes, keyed by index.
   const dynamicRows = (buyerCriteria || []).map((text, index) => [`buyer_criteria_${index}`, text] as const);
-  const complete = rows.every(([key]) => eligibility[key]) && dynamicRows.every(([key]) => eligibility[key]);
   return (
     <div>
       <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="Check Eligibility" subtitle="Confirm eligibility before preparing the technical offer." />
@@ -832,7 +911,9 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
         </div>
       )}
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!complete && !disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -854,7 +935,9 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
         <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
       </div>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -865,7 +948,8 @@ function RfiQuestionnaireForm({
   answers,
   onChange,
   onNext,
-  disabled,
+  canEdit,
+  canSave,
   saving,
   onSave
 }: {
@@ -873,7 +957,8 @@ function RfiQuestionnaireForm({
   answers: Record<string, string>;
   onChange: (questionId: string, value: string) => void;
   onNext: () => void;
-  disabled: boolean;
+  canEdit: boolean;
+  canSave: boolean;
   saving: boolean;
   onSave: () => Promise<void>;
 }) {
@@ -899,7 +984,7 @@ function RfiQuestionnaireForm({
                     <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
                       <input
                         type="radio"
-                        disabled={disabled}
+                        disabled={!canEdit}
                         name={qId}
                         value="Yes"
                         checked={answers[qId] === 'Yes'}
@@ -912,7 +997,7 @@ function RfiQuestionnaireForm({
                     <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
                       <input
                         type="radio"
-                        disabled={disabled}
+                        disabled={!canEdit}
                         name={qId}
                         value="No"
                         checked={answers[qId] === 'No'}
@@ -927,7 +1012,7 @@ function RfiQuestionnaireForm({
                   <div>
                     <input
                       type="text"
-                      disabled={disabled}
+                      disabled={!canEdit}
                       value={answers[qId] || ''}
                       onChange={e => onChange(qId, e.target.value)}
                       placeholder="Specify uploaded filename or detail reference..."
@@ -937,7 +1022,7 @@ function RfiQuestionnaireForm({
                   </div>
                 ) : (
                   <textarea
-                    disabled={disabled}
+                    disabled={!canEdit}
                     value={answers[qId] || ''}
                     onChange={e => onChange(qId, e.target.value)}
                     placeholder="Provide your response..."
@@ -952,19 +1037,22 @@ function RfiQuestionnaireForm({
       <div className="mt-5 flex justify-end gap-3">
         <button
           onClick={onSave}
-          disabled={disabled || saving}
+          disabled={!canSave || saving}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save Answers
         </button>
-        <button onClick={onNext} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">Continue</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
 }
 
-function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, requiredDocuments, onAdd, onRemove, onPreview, onUpload, onNext, onTag }: {
+function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs, uploading, requiredDocuments, onAdd, onRemove, onPreview, onUpload, onNext, onTag }: {
+  canSelectFiles: boolean;
   canUpload: boolean;
   files: PendingFile[];
   uploadedDocs: ParticipationDocument[];
@@ -1005,21 +1093,29 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, req
           )}
         </div>
       )}
-      <UploadDropZone disabled={!canUpload} multiple onFiles={onAdd} />
+      <UploadDropZone disabled={!canSelectFiles} multiple onFiles={onAdd} />
       <FileList files={files} onRemove={onRemove} onPreview={onPreview} requiredDocuments={required} onTag={onTag} />
+      {files.length > 0 && !canUpload && canSelectFiles && (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+          Start participation to upload the prepared document set.
+        </p>
+      )}
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Upload documents
         </button>
-        <button onClick={onNext} disabled={!uploadedDocs.length} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
 }
 
 function FinancialQuoteStep({
-  canUpload,
+  canEdit,
+  canSave,
   quote,
   setQuote,
   file,
@@ -1036,7 +1132,8 @@ function FinancialQuoteStep({
   rfqData,
   setRfqData
 }: {
-  canUpload: boolean;
+  canEdit: boolean;
+  canSave: boolean;
   quote: { quotedAmount: string; gstPercentage: string; totalAmount: string };
   setQuote: React.Dispatch<React.SetStateAction<{ quotedAmount: string; gstPercentage: string; totalAmount: string }>>;
   file: PendingFile | null;
@@ -1096,21 +1193,21 @@ function FinancialQuoteStep({
           label={isBoq ? "Total Quoted Amount (from BOQ sheet)" : "Quoted amount"}
           value={quote.quotedAmount}
           onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canUpload}
+          disabled={!canEdit}
           required
         />
         <Input
           label="GST percentage"
           value={quote.gstPercentage}
           onChange={next => setQuote(prev => ({ ...prev, gstPercentage: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canUpload}
+          disabled={!canEdit}
           required
         />
         <Input
           label="Total amount"
           value={quote.totalAmount}
           onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canUpload}
+          disabled={!canEdit}
         />
       </div>
 
@@ -1122,7 +1219,7 @@ function FinancialQuoteStep({
               type="date"
               value={rateContractData.validityDate}
               onChange={e => setRateContractData(prev => ({ ...prev, validityDate: e.target.value }))}
-              disabled={!canUpload}
+              disabled={!canEdit}
               className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400`}
             />
           </label>
@@ -1130,7 +1227,7 @@ function FinancialQuoteStep({
             label="Rate Schedule / Commercial Notes"
             value={rateContractData.notes}
             onChange={val => setRateContractData(prev => ({ ...prev, notes: val }))}
-            disabled={!canUpload}
+            disabled={!canEdit}
           />
         </div>
       )}
@@ -1141,7 +1238,7 @@ function FinancialQuoteStep({
             label="RFQ Commercial Notes / Deviations"
             value={rfqData.notes}
             onChange={val => setRfqData(prev => ({ ...prev, notes: val }))}
-            disabled={!canUpload}
+            disabled={!canEdit}
           />
         </div>
       )}
@@ -1150,22 +1247,29 @@ function FinancialQuoteStep({
         <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">
           {isBoq ? "Upload Completed BOQ Excel sheet *" : "Upload Financial Proposal / Quote Document"}
         </span>
-        <UploadDropZone disabled={!canUpload} onFiles={files => onFile(Array.from(files)[0])} />
+        <UploadDropZone disabled={!canEdit} onFiles={files => onFile(Array.from(files)[0])} />
         {file && <FileList files={[file]} onRemove={onRemoveFile} onPreview={onPreview} />}
       </div>
 
       <UploadedList docs={uploadedDocs} title="Uploaded financial quote documents" />
+      {(quote.quotedAmount || file) && !canSave && canEdit && (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+          Start participation to save this financial quote securely.
+        </p>
+      )}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button
           onClick={onSave}
-          disabled={!canUpload || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
+          disabled={!canSave || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save quote
         </button>
-        <button onClick={onNext} disabled={!uploadedDocs.length && !quote.quotedAmount} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -1200,13 +1304,22 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!declaration && !disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
+          Continue to submit <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
 }
 
-function SubmitStep({ canSubmit, submitted, submitting, onSubmit, onTrack }: { canSubmit: boolean; submitted: boolean; submitting: boolean; onSubmit: () => void; onTrack: () => void }) {
+function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit, onTrack }: {
+  canSubmit: boolean;
+  submitted: boolean;
+  submitting: boolean;
+  requirements: Array<{ ok: boolean; label: string }>;
+  onSubmit: () => void;
+  onTrack: () => void;
+}) {
   return (
     <div>
       <StepTitle icon={<Send className="h-5 w-5" />} title="Submit Bid" subtitle="Final submission locks this participation for buyer evaluation." />
@@ -1214,6 +1327,19 @@ function SubmitStep({ canSubmit, submitted, submitting, onSubmit, onTrack }: { c
         {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10" style={{ color: 'var(--bid-primary)' }} />}
         <p className="mt-3 text-sm font-black text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
         <p className="mt-1 text-xs text-slate-500">{submitted ? 'You can track evaluation progress now.' : 'Please ensure all files and quote values are correct before submitting.'}</p>
+        {!submitted && (
+          <div className="mx-auto mt-3 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+            {requirements.map(item => (
+              <div
+                key={item.label}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[11px] font-black transition-all duration-200 ${item.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}
+              >
+                {item.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" />}
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button onClick={onTrack} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">Track status</button>
@@ -1253,7 +1379,7 @@ function TrackStep({ bid, participation }: { bid: ProcurementBid; participation:
 function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
   return (
     <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md text-white" style={{ backgroundColor: 'var(--bid-primary)' }}>{icon}</div>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-transform duration-300 hover:scale-105" style={{ backgroundColor: 'var(--bid-primary)' }}>{icon}</div>
       <div>
         <h2 className="text-lg font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h2>
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
@@ -1264,10 +1390,10 @@ function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: st
 
 function Panel({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="border border-slate-200 p-4">
+    <section className={`${panelClass} p-4`}>
       <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h3>
       <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
-        {items.map(item => <li key={item} className="bg-slate-50 px-3 py-2">{item}</li>)}
+        {items.map(item => <li key={item} className="rounded-lg bg-white px-3 py-2 font-semibold shadow-sm ring-1 ring-slate-100">{item}</li>)}
       </ul>
     </section>
   );
@@ -1302,7 +1428,7 @@ function UploadDropZone({ disabled, multiple, onFiles }: { disabled: boolean; mu
         setDragging(false);
         if (!disabled && event.dataTransfer.files.length) onFiles(event.dataTransfer.files);
       }}
-      className={`mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center border border-dashed p-5 text-center transition ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+      className={`mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition-all duration-300 ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : 'border-slate-300 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 hover:shadow-sm'}`}
       style={dragging ? { borderColor: 'var(--bid-primary)', backgroundColor: 'var(--bid-light)', color: 'var(--bid-primary)' } : undefined}
     >
       <FileUp className="h-8 w-8" />
@@ -1318,7 +1444,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
   return (
     <div className="mt-4 space-y-2">
       {files.map(item => (
-        <div key={item.id} className="border border-slate-200 bg-slate-50 p-3">
+        <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <FileText className="h-5 w-5" style={{ color: 'var(--bid-primary)' }} />
             <div className="min-w-0 flex-1">
@@ -1331,7 +1457,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
               <select
                 value={item.documentName || ''}
                 onChange={event => onTag(item.id, event.target.value)}
-                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-black text-slate-700"
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black text-slate-700 transition-colors focus:border-slate-400"
                 title="Which required document is this file?"
               >
                 <option value="">Tag as required document…</option>
@@ -1340,8 +1466,8 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
               </select>
             )}
             <div className="flex gap-2">
-              <button type="button" onClick={() => onPreview(item)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700"><Eye className="h-3.5 w-3.5" /> Preview</button>
-              {item.status !== 'uploaded' && <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-white px-3 text-[10px] font-black text-red-600"><Trash2 className="h-3.5 w-3.5" /> Remove</button>}
+              <button type="button" onClick={() => onPreview(item)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 transition-colors hover:bg-slate-50"><Eye className="h-3.5 w-3.5" /> Preview</button>
+              {item.status !== 'uploaded' && <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 text-[10px] font-black text-red-600 transition-colors hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Remove</button>}
             </div>
           </div>
         </div>
@@ -1356,10 +1482,10 @@ function UploadedList({ docs, title }: { docs: ParticipationDocument[]; title: s
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{title}</p>
       <div className="mt-2 space-y-2">
         {docs.length ? docs.map((doc, index) => (
-          <div key={`${doc.id || doc.fileName}-${index}`} className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+          <div key={`${doc.id || doc.fileName}-${index}`} className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
             <CheckCircle2 className="h-4 w-4" /> {doc.fileName || doc.documentName || 'Uploaded document'}
           </div>
-        )) : <p className="border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">No server-uploaded files yet.</p>}
+        )) : <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">No server-uploaded files yet.</p>}
       </div>
     </div>
   );

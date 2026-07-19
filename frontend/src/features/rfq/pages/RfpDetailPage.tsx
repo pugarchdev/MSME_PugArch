@@ -362,58 +362,69 @@ const ProcurementDetailSection = ({
   if (!entries.length) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200/60 bg-white shadow-sm shadow-slate-200/40 transition-all duration-300 hover:shadow-md hover:border-slate-300 overflow-hidden">
+    <div className="rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xl shadow-sm shadow-slate-200/50 transition-all duration-300 hover:shadow-lg hover:border-indigo-300/50 overflow-hidden group/section">
       <div 
-        className="flex items-center justify-between p-5 cursor-pointer bg-white hover:bg-slate-50 transition-colors"
+        className={cn(
+          "flex items-center justify-between p-5 cursor-pointer transition-all duration-500 ease-out",
+          isExpanded ? "bg-gradient-to-r from-indigo-50/50 via-white to-white border-b border-indigo-100/50" : "bg-white hover:bg-indigo-50/30"
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <h3 className="flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-900">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+        <h3 className="flex items-center gap-4 text-[13px] font-black uppercase tracking-[0.1em] text-slate-800 group-hover/section:text-indigo-900 transition-colors">
+          <span className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-300",
+            isExpanded ? "bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-200" : "bg-indigo-50/80 border-indigo-100 text-indigo-600 group-hover/section:bg-indigo-100"
+          )}>
             <Icon className="h-4 w-4" />
           </span>
           {title}
         </h3>
-        <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300 shrink-0", isExpanded ? "rotate-180" : "")} />
+        <span className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300",
+          isExpanded ? "bg-slate-100 text-slate-600 rotate-180" : "bg-transparent text-slate-400 group-hover/section:bg-slate-100 group-hover/section:text-slate-600"
+        )}>
+          <ChevronDown className="h-5 w-5 shrink-0" />
+        </span>
       </div>
-      <div className={cn("px-6 pb-6 pt-2 border-t border-slate-100 transition-all duration-300", isExpanded ? "block" : "hidden")}>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+      <div className={cn("px-6 pb-6 pt-5 transition-all duration-500 ease-in-out", isExpanded ? "block opacity-100 translate-y-0" : "hidden opacity-0 -translate-y-2")}>
+        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {entries.map(([key, value]) => {
           const keyStr = String(key);
           const keyLower = keyStr.toLowerCase();
           
-          let cardBg = 'bg-white border-slate-200';
-          let labelColor = 'text-slate-700';
-          let valueColor = 'text-slate-900 font-bold';
+          let cardBg = 'bg-white border-slate-200/70 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.04)] hover:border-indigo-300 hover:shadow-[0_8px_30px_-10px_rgba(99,102,241,0.15)]';
+          let labelColor = 'text-slate-500';
+          let valueColor = 'text-slate-900 font-medium';
           let badgeClass = '';
           
           if (keyLower.includes('status')) {
-            cardBg = 'bg-emerald-50/50 border-emerald-200';
-            labelColor = 'text-emerald-700';
-            valueColor = ''; // Managed by badge
-            badgeClass = 'inline-flex items-center rounded-full bg-emerald-100/80 px-2.5 py-0.5 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-300';
+            cardBg = 'bg-gradient-to-br from-emerald-50/80 to-white border-emerald-200 shadow-sm shadow-emerald-100/30 hover:border-emerald-400 hover:shadow-emerald-200/50';
+            labelColor = 'text-emerald-700/80';
+            valueColor = ''; 
+            badgeClass = 'inline-flex items-center rounded-md bg-emerald-100/80 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-300/50 uppercase tracking-wider';
           } else if (keyLower.includes('value') || keyLower.includes('budget') || keyLower.includes('price')) {
-            cardBg = 'bg-indigo-50/40 border-indigo-200';
-            labelColor = 'text-indigo-700';
-            valueColor = 'text-indigo-950 text-sm font-black tracking-tight'; 
-          } else if (keyLower.includes('deadline') || keyLower.includes('enddate') || keyLower.includes('closing') || keyLower.includes('urgency')) {
-            cardBg = 'bg-rose-50/50 border-rose-200';
-            labelColor = 'text-rose-700';
-            valueColor = 'text-rose-900 font-bold';
+            cardBg = 'bg-gradient-to-br from-indigo-50/60 to-white border-indigo-200 shadow-sm shadow-indigo-100/30 hover:border-indigo-400 hover:shadow-indigo-200/50';
+            labelColor = 'text-indigo-600/80';
+            valueColor = 'text-indigo-950 text-[15px] font-semibold tracking-tight'; 
+          } else if (keyLower.includes('deadline') || keyLower.includes('enddate') || keyLower.includes('closing') || keyLower.includes('urgency') || keyLower.includes('date')) {
+            cardBg = 'bg-gradient-to-br from-rose-50/60 to-white border-rose-200 shadow-sm shadow-rose-100/30 hover:border-rose-400 hover:shadow-rose-200/50';
+            labelColor = 'text-rose-600/80';
+            valueColor = 'text-rose-950 font-medium';
           } else if (keyLower.includes('title') || keyLower.includes('subject') || keyLower.includes('category')) {
-            cardBg = 'bg-sky-50/40 border-sky-200';
-            labelColor = 'text-sky-700';
-            valueColor = 'text-sky-950 font-bold';
+            cardBg = 'bg-gradient-to-br from-sky-50/60 to-white border-sky-200 shadow-sm shadow-sky-100/30 hover:border-sky-400 hover:shadow-sky-200/50';
+            labelColor = 'text-sky-600/80';
+            valueColor = 'text-sky-950 font-medium';
           } else if (keyLower.includes('rfpnumber') || keyLower.includes('requirementnumber') || keyLower === 'id' || keyLower === 'uuid') {
-            cardBg = 'bg-slate-50 border-slate-300';
-            labelColor = 'text-slate-600';
-            valueColor = 'text-slate-800 font-mono font-bold text-[11px]';
+            cardBg = 'bg-gradient-to-br from-slate-50/80 to-white border-slate-200 shadow-sm shadow-slate-100/30 hover:border-slate-400 hover:shadow-slate-200/50';
+            labelColor = 'text-slate-500';
+            valueColor = 'text-slate-800 font-mono text-[13px] bg-slate-100 px-2 py-0.5 rounded-md';
           }
 
           const isComplex = typeof value === 'object' && value !== null;
           return (
-            <div key={keyStr} className={cn(`group flex flex-col gap-1.5 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 ${cardBg}`, isComplex ? 'col-span-full' : '')}>
-              <p className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${labelColor}`}>{Array.isArray(data) ? title : humanizeKey(keyStr)}</p>
-              <div className={`text-sm leading-relaxed ${valueColor}`}>
+            <div key={keyStr} className={cn(`group flex flex-col gap-2 rounded-xl border p-4 transition-all duration-300 ease-out hover:-translate-y-1 ${cardBg}`, isComplex ? 'col-span-full' : '')}>
+              <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${labelColor}`}>{Array.isArray(data) ? title : humanizeKey(keyStr)}</p>
+              <div className={`text-[14px] leading-relaxed ${valueColor}`}>
                 {badgeClass ? (
                   <span className={badgeClass}>
                     <DetailValue value={value} valueKey={keyStr} />
@@ -617,8 +628,10 @@ export default function RfpDetailPage() {
       let base = `${day} ${month} ${year}`;
       if (includeTime) {
         let hours = d.getHours();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // the hour '0' should be '12'
         const minutes = d.getMinutes().toString().padStart(2, '0');
-        const ampm = 'IST';
         const formattedHours = hours.toString().padStart(2, '0');
         base += ` ${formattedHours}:${minutes} ${ampm}`;
       }
@@ -839,13 +852,13 @@ export default function RfpDetailPage() {
     : "No scope description provided.");
 
   // 8. Key Dates Rows
-  const preBidDateValue = firstPresent(schedule.preBidDate, schedule.preBidMeetingDate, tender.preBidDate, tender.preBidMeetingDate);
+  const clarificationEndDateValue = firstPresent(schedule.clarificationEndDate, schedule.clarificationDeadline, tender.clarificationEndDate, rfpData?.clarificationEndDate, schedule.preBidDate, schedule.preBidMeetingDate, tender.preBidDate, tender.preBidMeetingDate);
   const technicalEvalDateValue = firstPresent(tender.technicalEvaluationDate, schedule.technicalOpeningDate, rfpData?.technicalOpeningDate);
   const presentationDateValue = firstPresent(schedule.presentationDate, tender.presentationDate);
   const finalEvalDateValue = firstPresent(tender.financialEvaluationDate, schedule.financialOpeningDate, schedule.finalEvaluationDate, rfpData?.financialOpeningDate);
   const awardDateValue = firstPresent(tender.awardDate, schedule.awardDate, schedule.awardingDate);
 
-  let preBidMeetingDate = preBidDateValue ? formatDateString(preBidDateValue, true) : (isSeedId ? '15 Jul 2026, 11:00 IST' : '—');
+  let preBidMeetingDate = clarificationEndDateValue ? formatDateString(clarificationEndDateValue, true) : (isSeedId ? '15 Jul 2026, 11:00 AM' : '—');
   let submissionEndDate = closesAtFormatted;
   let technicalEvalDate = technicalEvalDateValue ? formatDateString(technicalEvalDateValue, true) : (isSeedId ? '30 Sep 2026' : '—');
   let presentationDate = presentationDateValue ? formatDateString(presentationDateValue, true) : (isSeedId ? '05 Aug 2026' : '—');
@@ -853,14 +866,14 @@ export default function RfpDetailPage() {
   let awardDate = awardDateValue ? formatDateString(awardDateValue, true) : (isSeedId ? '10 Aug 2026 (Tentative)' : '—');
 
   if (isSeedId && isStructural) {
-    preBidMeetingDate = '17 Jul 2026, 11:00 IST';
+    preBidMeetingDate = '17 Jul 2026, 11:00 AM';
     submissionEndDate = closesAtFormatted;
     technicalEvalDate = '28 Jul 2026 - 05 Aug 2026';
     presentationDate = '07 Aug 2026';
     finalEvalDate = '08 Aug 2026 - 11 Aug 2026';
     awardDate = '12 Aug 2026 (Tentative)';
   } else if (isSeedId && isWaste) {
-    preBidMeetingDate = '19 Jul 2026, 11:00 IST';
+    preBidMeetingDate = '19 Jul 2026, 11:00 AM';
     submissionEndDate = closesAtFormatted;
     technicalEvalDate = '30 Jul 2026 - 07 Aug 2026';
     presentationDate = '09 Aug 2026';
@@ -871,7 +884,7 @@ export default function RfpDetailPage() {
   // 7. Timeline Steps (blue checked circles, matching mockup style)
   const timelineSteps = [
     { label: 'RFP Published', date: publishedDateFormatted, completed: publishedDateFormatted !== '—' },
-    { label: 'Pre-Bid Meeting', date: preBidMeetingDate, completed: preBidMeetingDate !== '—' },
+    { label: 'Clarification Deadline', date: preBidMeetingDate, completed: preBidMeetingDate !== '—' },
     { label: 'Proposal Submission', date: submissionEndDate, completed: false },
     { label: 'Technical Evaluation', date: technicalEvalDate, completed: technicalEvalDate !== '—' && submissionEndDate === '—' },
     { label: 'Presentation', date: presentationDate, completed: false },
@@ -890,7 +903,7 @@ export default function RfpDetailPage() {
     rawDocs.forEach((doc: any) => {
       documents.push({
         id: doc.id,
-        name: doc.fileName || doc.documentType || 'Bid document',
+        name: doc.name || doc.title || doc.documentType || doc.originalName || doc.fileName || 'Bid document',
         meta: [doc.documentType, doc.mimeType].filter(Boolean).join(' - ') || 'Uploaded document',
         fileAssetId: doc.fileAssetId,
         url: doc.fileUrl || doc.url,
@@ -957,7 +970,7 @@ export default function RfpDetailPage() {
 
   const activeProcurementMethod = String(payload?.fullProcurementMethod || payload?.type || rfpData?.procurementType || '').toUpperCase();
   const activeBuyingType = String(payload?.buyingType || basics?.whatAreYouBuying || '').toUpperCase();
-  const isServiceType = activeProcurementMethod.includes('RFP') || activeProcurementMethod.includes('RFI') || activeBuyingType.includes('SERVICE');
+  const isServiceType = pathname.includes('rfp') || activeProcurementMethod.includes('RFP') || activeProcurementMethod.includes('RFI') || activeBuyingType.includes('SERVICE');
 
   const procurementDetailSections = [
     {
@@ -1505,7 +1518,7 @@ export default function RfpDetailPage() {
               <div className="absolute left-[19px] top-3 bottom-3 w-px bg-slate-200 z-0"></div>
               {[
                 { label: 'Bid Published', value: publishedDateFormatted, active: publishedDateFormatted !== '—', color: 'emerald' },
-                { label: 'Pre-Bid Meeting', value: preBidMeetingDate, active: preBidMeetingDate !== '—', color: 'slate' },
+                { label: 'Clarification Deadline', value: preBidMeetingDate, active: preBidMeetingDate !== '—', color: 'slate' },
                 { label: 'Proposal Submission End', value: submissionEndDate, active: submissionEndDate !== '—', color: 'rose', highlight: true },
                 { label: 'Technical Opening', value: technicalEvalDate, active: technicalEvalDate !== '—', color: 'blue' },
                 { label: 'Presentation', value: presentationDate, active: presentationDate !== '—', color: 'slate' },
@@ -1686,43 +1699,29 @@ export default function RfpDetailPage() {
 
       {/* ── Procurement Details Structured Grids ── */}
       <section ref={detailsRef} className={`${detailCardClass} mt-8 scroll-mt-24 space-y-8 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-        <div className="pb-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-950 uppercase tracking-wider flex items-center gap-2">
-            <Layers className="h-5 w-5 text-violet-600" />
+        <div className="pb-4 border-b border-slate-100 mb-8 pl-1">
+          <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 to-violet-700 uppercase tracking-widest flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 border border-indigo-200/50 shadow-sm shadow-indigo-100">
+              <Layers className="h-5 w-5 text-indigo-700" />
+            </span>
             Comprehensive Procurement Details
           </h2>
-          <p className="text-xs font-semibold text-slate-500 mt-1">
+          <p className="text-[13px] font-bold text-slate-500 mt-2 ml-14">
             Specifications, terms, and requirements for this RFP.
           </p>
         </div>
 
         {procurementDetailSections.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Left Column */}
-            <div className="space-y-6">
-              {procurementDetailSections.filter(s => ['Procurement Record', 'Procurement Intent & Method', 'Commercial Terms', 'Consignee & Delivery', 'Items / Line Items', 'RFP Service Details'].includes(s.title)).map(section => (
-                <ProcurementDetailSection
-                  key={section.title}
-                  title={section.title}
-                  icon={section.icon}
-                  data={section.data}
-                  defaultExpanded={['Procurement Record', 'Commercial Terms', 'Items / Line Items', 'RFP Service Details'].includes(section.title)}
-                />
-              ))}
-            </div>
-            
-            {/* Right Column */}
-            <div className="space-y-6">
-              {procurementDetailSections.filter(s => !['Procurement Record', 'Procurement Intent & Method', 'Commercial Terms', 'Consignee & Delivery', 'Items / Line Items', 'RFP Service Details'].includes(s.title)).map(section => (
-                <ProcurementDetailSection
-                  key={section.title}
-                  title={section.title}
-                  icon={section.icon}
-                  data={section.data}
-                  defaultExpanded={['Buyer Organization & Contact', 'Schedule, Tender & Rules'].includes(section.title)}
-                />
-              ))}
-            </div>
+          <div className="space-y-6">
+            {procurementDetailSections.map(section => (
+              <ProcurementDetailSection
+                key={section.title}
+                title={section.title}
+                icon={section.icon}
+                data={section.data}
+                defaultExpanded={true}
+              />
+            ))}
           </div>
         ) : (
           <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-xs font-bold text-slate-500">

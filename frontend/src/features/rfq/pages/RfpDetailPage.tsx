@@ -765,10 +765,10 @@ export default function RfpDetailPage() {
     else if (isWaste) closesAtFormatted = '30 Jul 2026 17:00 IST';
     else if (isRobot) closesAtFormatted = '02 Aug 2026 17:00 IST';
     else if (isHvac) closesAtFormatted = '04 Aug 2026 17:00 IST';
-    else closesAtFormatted = '26 Jul 2026 15:00 IST';
+    else closesAtFormatted = '30 Sep 2026 17:00 IST';
   }
 
-  const publishedDateFormatted = publishedDateValue ? formatDateString(publishedDateValue) : (isSeedId ? '10 Jul 2026' : '—');
+  const publishedDateFormatted = publishedDateValue ? formatDateString(publishedDateValue) : (isSeedId ? '16 Jul 2026' : '—');
 
   // 6. RFP Scope Text
   const scopeText = rfpData?.description || (isSeedId 
@@ -789,9 +789,9 @@ export default function RfpDetailPage() {
 
   let preBidMeetingDate = preBidDateValue ? formatDateString(preBidDateValue, true) : (isSeedId ? '15 Jul 2026, 11:00 IST' : '—');
   let submissionEndDate = closesAtFormatted;
-  let technicalEvalDate = technicalEvalDateValue ? formatDateString(technicalEvalDateValue, true) : (isSeedId ? '26 Jul 2026 - 03 Aug 2026' : '—');
+  let technicalEvalDate = technicalEvalDateValue ? formatDateString(technicalEvalDateValue, true) : (isSeedId ? '30 Sep 2026' : '—');
   let presentationDate = presentationDateValue ? formatDateString(presentationDateValue, true) : (isSeedId ? '05 Aug 2026' : '—');
-  let finalEvalDate = finalEvalDateValue ? formatDateString(finalEvalDateValue, true) : (isSeedId ? '06 Aug 2026 - 08 Aug 2026' : '—');
+  let finalEvalDate = finalEvalDateValue ? formatDateString(finalEvalDateValue, true) : (isSeedId ? '30 Sep 2026' : '—');
   let awardDate = awardDateValue ? formatDateString(awardDateValue, true) : (isSeedId ? '10 Aug 2026 (Tentative)' : '—');
 
   if (isSeedId && isStructural) {
@@ -1231,49 +1231,52 @@ export default function RfpDetailPage() {
       </div>
 
       <section ref={timelineRef} className={`${detailCardClass} scroll-mt-24 overflow-x-auto animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-        <div className="min-w-[1000px] flex items-center justify-between relative px-6 py-4">
+        <div className="min-w-[1000px] flex items-start justify-between relative px-6 py-8">
           {timelineSteps.map((step, idx) => {
             const hasNext = idx < timelineSteps.length - 1;
             const nextStepCompleted = hasNext && timelineSteps[idx + 1].completed;
-            return (
-              <div key={idx} className="flex items-center flex-1 last:flex-none">
-                {/* Circle Icon Node */}
-                <div className="flex flex-col items-center gap-3 relative z-10 w-32 text-center shrink-0">
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-500 hover:scale-105",
-                      step.completed
-                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100"
-                        : "bg-white border-slate-200 text-slate-400"
-                    )}
-                  >
-                    {step.completed ? (
-                      <Check className="h-4.5 w-4.5 stroke-[3]" />
-                    ) : (
-                      <div className="h-2.5 w-2.5 rounded-full bg-slate-200" />
-                    )}
-                  </div>
+            const stepNum = String(idx + 1).padStart(2, '0');
+            const isActive = step.completed;
 
-                  <div className="space-y-1">
-                    <p className={cn(
-                      "text-xs font-black tracking-tight",
-                      step.completed ? "text-emerald-700" : "text-slate-800"
-                    )}>
-                      {step.label}
-                    </p>
-                    <p className="text-[10px] font-semibold text-slate-500">
-                      {step.date}
-                    </p>
-                  </div>
+            return (
+              <div key={idx} className="flex flex-col items-center relative flex-1 last:flex-none">
+                {/* Background line segment */}
+                {hasNext && (
+                  <div className="absolute top-8 left-[50%] w-full h-[1px] bg-slate-300 z-0" />
+                )}
+                {/* Active line segment */}
+                {hasNext && isActive && nextStepCompleted && (
+                  <div className="absolute top-8 left-[50%] w-full h-[1.5px] bg-slate-800 z-0 transition-all duration-500" />
+                )}
+
+                {/* Circle Icon Node */}
+                <div className="flex h-16 w-16 items-center justify-center bg-white relative z-10 transition-all duration-300 hover:scale-105">
+                  {isActive ? (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-300 p-[3px]">
+                      <div className="flex h-full w-full items-center justify-center rounded-full border-[1.5px] border-slate-800 bg-white">
+                         <span className="font-serif text-[17px] text-slate-900 tracking-tight">{stepNum}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="font-serif text-[22px] text-slate-400 opacity-70 tracking-tight">{stepNum}</span>
+                  )}
                 </div>
 
-                {/* Connecting Line segment */}
-                {hasNext && (
-                  <div className={cn(
-                    "flex-1 h-[3px] -mt-10 mx-2 rounded transition-colors duration-500",
-                    step.completed && nextStepCompleted ? "bg-emerald-600" : "bg-slate-100"
-                  )} />
-                )}
+                {/* Labels */}
+                <div className="mt-4 space-y-1 text-center w-32 px-1">
+                  <p className={cn(
+                    "text-[13px] tracking-wide",
+                    isActive ? "text-slate-900 font-bold" : "text-slate-500 font-semibold"
+                  )}>
+                    {step.label}
+                  </p>
+                  <p className={cn(
+                    "text-[11px]",
+                    isActive ? "text-slate-500 font-medium" : "text-slate-400"
+                  )}>
+                    {step.date}
+                  </p>
+                </div>
               </div>
             );
           })}
@@ -1412,11 +1415,12 @@ export default function RfpDetailPage() {
             </h2>
             <div className="space-y-3">
               {[
+                { label: 'Bid Published', value: publishedDateFormatted, active: publishedDateFormatted !== '—' },
                 { label: 'Pre-Bid Meeting', value: preBidMeetingDate, active: preBidMeetingDate !== '—' },
                 { label: 'Proposal Submission End', value: submissionEndDate, active: submissionEndDate !== '—' },
-                { label: 'Technical Evaluation', value: technicalEvalDate, active: technicalEvalDate !== '—' },
+                { label: 'Technical Opening', value: technicalEvalDate, active: technicalEvalDate !== '—' },
                 { label: 'Presentation', value: presentationDate, active: presentationDate !== '—' },
-                { label: 'Final Evaluation', value: finalEvalDate, active: finalEvalDate !== '—' },
+                { label: 'Financial Opening', value: finalEvalDate, active: finalEvalDate !== '—' },
                 { label: 'Awarding Date', value: awardDate, active: awardDate !== '—' },
               ].map((row, idx) => (
                 <div key={idx} className="flex justify-between items-center rounded-xl px-2 py-1.5 text-xs font-semibold transition-all duration-200 hover:bg-slate-50">

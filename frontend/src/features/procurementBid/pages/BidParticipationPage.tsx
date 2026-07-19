@@ -78,8 +78,6 @@ type PendingFile = {
 };
 
 const steps = [
-  'View Bid',
-  'Check Eligibility',
   'Technical Offer',
   'Upload Technical Documents',
   'Financial Quote',
@@ -122,7 +120,7 @@ export default function BidParticipationPage() {
   const bidId = pathname.split('/')[2];
   const [bid, setBid] = useState<ProcurementBid | null>(null);
   const [participation, setParticipation] = useState<ParticipationState | null>(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
@@ -143,16 +141,6 @@ export default function BidParticipationPage() {
     deviation: '',
   });
   const [quote, setQuote] = useState({ quotedAmount: '', gstPercentage: '18', totalAmount: '' });
-  const [eligibility, setEligibility] = useState<Record<string, boolean>>({
-    gst: false,
-    pan: false,
-    udyam: false,
-    experience: false,
-    turnover: false,
-    delivery: false,
-    notBlacklisted: false,
-    terms: false,
-  });
   const [declaration, setDeclaration] = useState(false);
   const previewUrlsRef = React.useRef<string[]>([]);
 
@@ -173,8 +161,6 @@ export default function BidParticipationPage() {
 
   const activeSteps = useMemo(() => {
     const list = [
-      { id: 0, label: 'View Bid' },
-      { id: 1, label: 'Check Eligibility' },
       { id: 2, label: bid?.procurementType === 'RFI' ? 'Capability Answers' : 'Technical Offer' },
       { id: 3, label: 'Upload Technical Documents' },
       { id: 4, label: 'Financial Quote' },
@@ -303,7 +289,7 @@ export default function BidParticipationPage() {
   const uploadedTechnicalDocs = uploadedDocs.filter(doc => doc.documentCategory !== 'FINANCIAL_QUOTE');
   const uploadedFinancialDocs = uploadedDocs.filter(doc => doc.documentCategory === 'FINANCIAL_QUOTE');
   const isSubmitted = participation?.submissionStatus === 'SUBMITTED';
-  const allEligibilityChecked = Object.values(eligibility).every(Boolean);
+
 
   const guard = useMemo(() => {
     if (!user) return { tone: 'amber', message: 'Please login as a verified seller/vendor to participate in this bid.', action: 'Login to Participate' };
@@ -330,8 +316,6 @@ export default function BidParticipationPage() {
     { ok: declaration, label: 'Declaration accepted' },
   ];
   const completedStepIds = new Set<number>([
-    0,
-    ...(allEligibilityChecked ? [1] : []),
     ...(technicalOfferStarted || Object.keys(rfiAnswers).length ? [2] : []),
     ...(uploadedTechnicalDocs.length || technicalFiles.length ? [3] : []),
     ...(financialQuoteStarted ? [4] : []),
@@ -388,14 +372,14 @@ export default function BidParticipationPage() {
     }
     if (guard || !bid) return;
     if (participation?.id) {
-      goToStep(1);
+      goToStep(2);
       return;
     }
     setStarting(true);
     try {
       const created = await procurementBidApi.startBidParticipation(bid.id);
       setParticipation(created);
-      goToStep(1);
+      goToStep(2);
       toast.success('Participation started.');
     } catch (err: any) {
       toast.error(err?.message || 'Unable to start participation.');
@@ -729,8 +713,7 @@ export default function BidParticipationPage() {
               </div>
             )}
             <div key={step} className="bid-step-body">
-              {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => goToStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
-              {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => goToStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
+
               {step === 2 && (
                 bid?.procurementType === 'RFI' ? (
                   <RfiQuestionnaireForm
@@ -792,7 +775,6 @@ export default function BidParticipationPage() {
                   financialDocs={uploadedFinancialDocs}
                   declaration={declaration}
                   setDeclaration={setDeclaration}
-                  allEligibilityChecked={allEligibilityChecked}
                   onNext={() => goToStep(6)}
                   disabled={isSubmitted}
                 />
@@ -831,93 +813,9 @@ function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blocked }: { bid: ProcurementBid; onStart: () => void; onContinue: () => void; starting: boolean; hasParticipation: boolean; blocked: boolean }) {
-  return (
-    <div>
-      <StepTitle icon={<Eye className="h-5 w-5" />} title="View Bid" subtitle="Review the live bid details before starting participation." />
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Panel title="Bid details" items={[bid.description, `Item/service: ${bid.itemName}`, `Delivery location: ${bid.deliveryLocation}`, `Estimated value: ${money(bid.estimatedValue)}`]} />
-        <Panel title="Important dates" items={bid.importantDates.map(item => `${item.label}: ${formatDate(item.date)}`)} />
-        <Panel title="Eligibility criteria" items={bid.eligibility.length ? bid.eligibility : ['No eligibility criteria published currently.']} />
-        <Panel title="Required documents" items={bid.requiredDocuments.length ? bid.requiredDocuments : ['No required document list published currently.']} />
-        <Panel title="Terms and conditions" items={bid.terms.length ? bid.terms : ['No terms published currently.']} />
-        <div className={`${panelClass} p-4`}>
-          <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>Bid documents</h3>
-          <div className="mt-3 space-y-2">
-            {bid.bidDocuments?.length ? bid.bidDocuments.map(doc => (
-              <div key={doc.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs font-bold text-slate-600 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
-                <FileText className="h-4 w-4" style={{ color: 'var(--bid-primary)' }} /> {doc.name}
-              </div>
-            )) : <p className="text-xs font-bold text-slate-500">No bid documents uploaded currently.</p>}
-          </div>
-        </div>
-      </div>
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <button onClick={onStart} disabled={blocked || starting} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
-          {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-          {hasParticipation ? 'Continue Participation' : 'Start Participation'}
-        </button>
-        <button onClick={onContinue} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
-          Continue <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
 
-function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, buyerTerms, disabled }: { eligibility: Record<string, boolean>; setEligibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onNext: () => void; buyerCriteria?: string[]; buyerTerms?: string[]; disabled?: boolean }) {
-  const rows = [
-    ['gst', 'GST registration available'],
-    ['pan', 'PAN available'],
-    ['udyam', 'Udyam certificate available, if applicable'],
-    ['experience', 'Experience criteria accepted'],
-    ['turnover', 'Turnover criteria accepted'],
-    ['delivery', 'Delivery location accepted'],
-    ['notBlacklisted', 'Not blacklisted declaration'],
-    ['terms', 'Terms accepted'],
-  ];
-  // Buyer-defined dynamic criteria get their own checkboxes, keyed by index.
-  const dynamicRows = (buyerCriteria || []).map((text, index) => [`buyer_criteria_${index}`, text] as const);
-  return (
-    <div>
-      <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="Check Eligibility" subtitle="Confirm eligibility before preparing the technical offer." />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {rows.map(([key, label]) => (
-          <label key={key} className={`flex min-h-14 items-center gap-3 rounded-xl border p-3 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-            <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
-            {label}
-          </label>
-        ))}
-      </div>
-      {dynamicRows.length > 0 && (
-        <div className="mt-5">
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer eligibility conditions for this bid</p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            {dynamicRows.map(([key, label]) => (
-              <label key={key} className={`flex min-h-14 items-center gap-3 rounded-xl border p-3 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50/40 text-slate-700'}`}>
-                <input type="checkbox" checked={Boolean(eligibility[key])} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
-                {label}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-      {(buyerTerms || []).length > 0 && (
-        <div className={`${panelClass} mt-5 p-4`}>
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer terms &amp; conditions</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold text-slate-600">
-            {(buyerTerms || []).map((term, index) => <li key={index}>{term}</li>)}
-          </ul>
-        </div>
-      )}
-      <div className="mt-5 flex justify-end">
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
-          Continue <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
+
+
 
 function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any; onChange: (next: any) => void; onNext: () => void; disabled: boolean }) {
   const update = (key: string, next: string) => onChange({ ...value, [key]: next });
@@ -1275,14 +1173,13 @@ function FinancialQuoteStep({
   );
 }
 
-function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, allEligibilityChecked, onNext, disabled }: {
+function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, onNext, disabled }: {
   bid: ProcurementBid;
   participation: ParticipationState | null;
   technicalDocs: ParticipationDocument[];
   financialDocs: ParticipationDocument[];
   declaration: boolean;
   setDeclaration: (value: boolean) => void;
-  allEligibilityChecked: boolean;
   onNext: () => void;
   disabled?: boolean;
 }) {
@@ -1292,7 +1189,6 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <Info label="Bid" value={`${bid.id} - ${bid.title}`} />
         <Info label="Participation" value={participation?.id ? `#${participation.id}` : 'Not started'} />
-        <Info label="Eligibility checklist" value={allEligibilityChecked ? 'Completed' : 'Incomplete'} />
         <Info label="Technical documents" value={`${technicalDocs.length} uploaded`} />
         {bid?.procurementType !== 'RFI' && (
           <Info label="Financial quote" value={financialDocs.length || participation?.quotedAmount ? 'Saved' : 'Pending'} />

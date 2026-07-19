@@ -383,6 +383,18 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
     rejectedReason: isAdmin || isBuyerOwner ? bid.rejectedReason : undefined,
     createdAt: bid.createdAt,
     updatedAt: bid.updatedAt,
+    buyer: bid.buyer ? {
+      id: bid.buyer.id,
+      name: bid.buyer.name,
+      email: bid.buyer.email,
+      mobile: bid.buyer.mobile,
+      buyerProfile: bid.buyer.buyerProfile ? {
+        departmentName: bid.buyer.buyerProfile.departmentName,
+        representativeName: bid.buyer.buyerProfile.representativeName,
+        email: bid.buyer.buyerProfile.email,
+        mobile: bid.buyer.buyerProfile.mobile
+      } : null
+    } : null,
     buyerOrganization: bid.buyerOrganization,
     documents: publicDocuments.map((doc: any) => ({
       id: doc.id,

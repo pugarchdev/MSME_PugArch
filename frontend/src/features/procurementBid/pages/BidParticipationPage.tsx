@@ -32,7 +32,6 @@ import {
   PageShell,
   ProcurementEmptyState,
   ProcurementErrorState,
-  ProcurementHero,
   ProcurementLoadingState,
   StatusBadge,
   getThemeForMethod,
@@ -111,6 +110,8 @@ const formatBytes = (size?: number) => {
 
 const inputClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition-colors';
 const textAreaClass = 'min-h-24 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors';
+const surfaceClass = 'rounded-2xl border border-slate-200/80 bg-white/95 shadow-sm shadow-slate-200/50 transition-all duration-300 ease-out hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60';
+const panelClass = 'rounded-xl border border-slate-200/80 bg-slate-50/60 transition-all duration-300 ease-out hover:border-slate-300 hover:bg-white hover:shadow-sm';
 
 export default function BidParticipationPage() {
   const { user } = useAuth();
@@ -157,6 +158,14 @@ export default function BidParticipationPage() {
   const [rateContractData, setRateContractData] = useState({ validityDate: '', notes: '' });
   const [rfqData, setRfqData] = useState({ notes: '' });
   const [savingRfi, setSavingRfi] = useState(false);
+  const stepContentRef = React.useRef<HTMLElement | null>(null);
+
+  const goToStep = React.useCallback((nextStep: number) => {
+    setStep(nextStep);
+    window.setTimeout(() => {
+      stepContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 40);
+  }, []);
 
   const activeSteps = useMemo(() => {
     const list = [
@@ -354,14 +363,14 @@ export default function BidParticipationPage() {
     }
     if (guard || !bid) return;
     if (participation?.id) {
-      setStep(1);
+      goToStep(1);
       return;
     }
     setStarting(true);
     try {
       const created = await procurementBidApi.startBidParticipation(bid.id);
       setParticipation(created);
-      setStep(1);
+      goToStep(1);
       toast.success('Participation started.');
     } catch (err: any) {
       toast.error(err?.message || 'Unable to start participation.');
@@ -395,7 +404,7 @@ export default function BidParticipationPage() {
         documents: [...(prev?.documents || []), ...uploaded],
       }));
       toast.success('Technical documents uploaded.');
-      setStep(bid?.procurementType === 'RFI' ? 5 : 4);
+      goToStep(bid?.procurementType === 'RFI' ? 5 : 4);
     } catch (err: any) {
       setTechnicalFiles(prev => prev.map(item => item.status === 'uploading' ? { ...item, status: 'error', error: err?.message || 'Upload failed' } : item));
       toast.error(err?.message || 'Technical document upload failed.');
@@ -484,7 +493,7 @@ export default function BidParticipationPage() {
         documents: [...(prev?.documents || []), ...(data?.document ? [data.document] : [])],
       }));
       toast.success('Financial quote saved securely.');
-      setStep(5);
+      goToStep(5);
     } catch (err: any) {
       setFinancialFile(prev => prev ? { ...prev, status: 'error', error: err?.message || 'Upload failed' } : prev);
       toast.error(err?.message || 'Unable to save financial quote.');
@@ -499,7 +508,7 @@ export default function BidParticipationPage() {
     try {
       const submitted = await procurementBidApi.submitBidParticipation(bid.id, participation.id, { declaration });
       setParticipation(prev => ({ ...(prev || participation), ...submitted }));
-      setStep(7);
+      goToStep(7);
       toast.success('Bid submitted successfully.');
     } catch (err: any) {
       toast.error(err?.message || 'Unable to submit bid.');
@@ -511,8 +520,7 @@ export default function BidParticipationPage() {
   if (loading) {
     return (
       <PageShell>
-        <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle="Loading live bid participation context." theme={theme} />
+        <main className="mx-auto w-full max-w-6xl animate-in fade-in duration-300">
           <div className="mt-5"><ProcurementLoadingState message="Loading bid participation..." /></div>
         </main>
       </PageShell>
@@ -522,8 +530,7 @@ export default function BidParticipationPage() {
   if (error) {
     return (
       <PageShell>
-        <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} theme={theme} />
+        <main className="mx-auto w-full max-w-6xl animate-in fade-in duration-300">
           <div className="mt-5"><ProcurementErrorState message={error} onRetry={loadBid} /></div>
         </main>
       </PageShell>
@@ -533,8 +540,7 @@ export default function BidParticipationPage() {
   if (!bid) {
     return (
       <PageShell>
-        <main className="mx-auto w-full max-w-6xl">
-          <ProcurementHero title="Seller Bid Participation" subtitle={bidId || 'Requested bid'} action={<Link href="/bids" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Back to bids</Link>} theme={theme} />
+        <main className="mx-auto w-full max-w-6xl animate-in fade-in duration-300">
           <div className="mt-5"><ProcurementEmptyState title="No bid available currently." message="This bid was not returned by the live backend." /></div>
         </main>
       </PageShell>
@@ -545,15 +551,39 @@ export default function BidParticipationPage() {
     <PageShell>
       <div style={{ '--bid-primary': theme.primary, '--bid-light': theme.lightBg === 'bg-blue-50' ? '#eff6ff' : theme.lightBg === 'bg-emerald-50' ? '#ecfdf5' : theme.lightBg === 'bg-amber-50' ? '#fffbeb' : theme.lightBg === 'bg-rose-50' ? '#fff1f2' : theme.lightBg === 'bg-violet-50' ? '#f5f3ff' : theme.lightBg === 'bg-teal-50' ? '#f0fdfa' : theme.lightBg === 'bg-indigo-50' ? '#eef2ff' : theme.lightBg === 'bg-sky-50' ? '#f0f9ff' : theme.lightBg === 'bg-orange-50' ? '#fff7ed' : theme.lightBg === 'bg-lime-50' ? '#f7fee7' : '#f1f5f9' } as React.CSSProperties}>
         <style dangerouslySetInnerHTML={{ __html: `
+          html {
+            scroll-behavior: smooth;
+          }
           input:focus, textarea:focus {
             border-color: var(--bid-primary) !important;
             box-shadow: 0 0 0 2px var(--bid-light) !important;
           }
         ` }} />
-      <main className="mx-auto w-full max-w-7xl">
-        <ProcurementHero title="Seller Bid Participation" subtitle={`${bid.id} - ${bid.title}`} action={<Link href={`/bids/${bid.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">View bid</Link>} theme={theme} />
+      <main className="mx-auto w-full max-w-7xl scroll-smooth animate-in fade-in duration-500">
+        <section className={`${surfaceClass} overflow-hidden p-5 animate-in fade-in slide-in-from-top-3 duration-500`}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <ShieldCheck className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                Request for Proposal
+              </span>
+              <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Seller Bid Participation</h1>
+              <p className="mt-1 max-w-4xl truncate text-xs font-bold text-slate-500 sm:text-sm" title={`${bid.id} - ${bid.title}`}>
+                <span className="font-mono text-slate-700">{bid.id}</span>
+                <span className="mx-2 text-slate-300">/</span>
+                {bid.title}
+              </p>
+            </div>
+            <Link
+              href={`/bids/${bid.id}`}
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md"
+            >
+              View bid
+            </Link>
+          </div>
+        </section>
 
-        <section className="mt-5 border border-slate-200 bg-white">
+        <section className={`${surfaceClass} mt-5 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
           <div className="grid gap-4 p-4 lg:grid-cols-[1.3fr_0.7fr]">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -571,7 +601,7 @@ export default function BidParticipationPage() {
                 <Info label="Estimated value" value={money(bid.estimatedValue)} />
               </div>
             </div>
-            <div className="border border-slate-200 bg-slate-50 p-4">
+            <div className={`${panelClass} p-4`}>
               <p className="text-xs font-black uppercase tracking-wider text-slate-500">Participation readiness</p>
               <div className="mt-3 space-y-2 text-xs font-bold text-slate-600">
                 <ReadyRow ok={Boolean(participation?.id)} label={participation?.id ? `Participation #${participation.id}` : 'Start participation'} />
@@ -582,7 +612,7 @@ export default function BidParticipationPage() {
             </div>
           </div>
           {guard && (
-            <div className={`mx-4 mb-4 flex flex-col gap-3 border p-3 sm:flex-row sm:items-center sm:justify-between ${guard.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            <div className={`mx-4 mb-4 flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between animate-in fade-in slide-in-from-top-2 duration-300 ${guard.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
               <span className="flex items-center gap-2 text-xs font-black"><AlertTriangle className="h-4 w-4" /> {guard.message}</span>
               {guard.action && <button onClick={() => router.push('/login')} className="h-9 rounded-md px-4 text-xs font-black text-white" style={{ backgroundColor: theme.primary }}>{guard.action}</button>}
             </div>
@@ -591,7 +621,7 @@ export default function BidParticipationPage() {
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
           <aside className="lg:sticky lg:top-28 lg:self-start">
-            <div className="overflow-hidden border border-slate-200 bg-white">
+            <div className={`${surfaceClass} overflow-hidden`}>
               <div className="border-b border-slate-100 p-4">
                 <p className="text-sm font-black" style={{ color: theme.primary }}>Submission Steps</p>
               </div>
@@ -605,8 +635,8 @@ export default function BidParticipationPage() {
                       key={s.label}
                       type="button"
                       disabled={locked}
-                      onClick={() => setStep(s.id)}
-                      className={`flex min-h-12 items-center gap-2 rounded-md border p-2 text-left text-[11px] font-black transition ${active ? `border-current ${theme.lightBg}` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      onClick={() => goToStep(s.id)}
+                      className={`flex min-h-12 items-center gap-2 rounded-xl border p-2 text-left text-[11px] font-black transition-all duration-200 ${active ? `border-current ${theme.lightBg} shadow-sm` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : locked ? 'border-slate-100 bg-slate-50 text-slate-300' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm'}`}
                       style={active ? { color: theme.primary, borderColor: theme.primary } : undefined}
                     >
                       {locked ? <Lock className="h-3.5 w-3.5" /> : done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
@@ -618,7 +648,7 @@ export default function BidParticipationPage() {
             </div>
           </aside>
 
-          <section className="min-w-0 border border-slate-200 bg-white p-4">
+          <section ref={stepContentRef} className={`${surfaceClass} min-w-0 scroll-mt-24 p-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
             {participation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION') && step !== 7 && (
               <div className="mb-6 rounded-[20px] border border-amber-200 bg-amber-50/60 p-4 text-xs font-semibold text-amber-900 shadow-sm animate-pulse flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
@@ -630,21 +660,21 @@ export default function BidParticipationPage() {
                 </div>
               </div>
             )}
-            {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => setStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
-            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => setStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
+            {step === 0 && <ViewBidStep bid={bid} onStart={startParticipation} onContinue={() => goToStep(1)} starting={starting} hasParticipation={Boolean(participation?.id)} blocked={Boolean(guard)} />}
+            {step === 1 && <EligibilityStep eligibility={eligibility} setEligibility={setEligibility} onNext={() => goToStep(2)} buyerCriteria={bid?.eligibility || []} buyerTerms={bid?.terms || []} disabled={isSubmitted} />}
             {step === 2 && (
               bid?.procurementType === 'RFI' ? (
                 <RfiQuestionnaireForm
                   questionnaire={questionnaire}
                   answers={rfiAnswers}
                   onChange={(qId, val) => setRfiAnswers(prev => ({ ...prev, [qId]: val }))}
-                  onNext={() => setStep(3)}
+                  onNext={() => goToStep(3)}
                   disabled={!participation?.id || isSubmitted}
                   saving={savingRfi}
                   onSave={saveRfiAnswers}
                 />
               ) : (
-                <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => setStep(3)} disabled={!participation?.id || isSubmitted} />
+                <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => goToStep(3)} disabled={!participation?.id || isSubmitted} />
               )
             )}
             {step === 3 && (
@@ -658,7 +688,7 @@ export default function BidParticipationPage() {
                 onRemove={removeTechnicalFile}
                 onPreview={openPreview}
                 onUpload={uploadTechnical}
-                onNext={() => setStep(bid?.procurementType === 'RFI' ? 5 : 4)}
+                onNext={() => goToStep(bid?.procurementType === 'RFI' ? 5 : 4)}
                 onTag={(id, documentName) => setTechnicalFiles(prev => prev.map(item => item.id === id ? { ...item, documentName: documentName || undefined } : item))}
               />
             )}
@@ -674,7 +704,7 @@ export default function BidParticipationPage() {
                 onRemoveFile={() => { if (financialFile) URL.revokeObjectURL(financialFile.previewUrl); setFinancialFile(null); }}
                 onPreview={item => item && openPreview(item)}
                 onSave={saveFinancial}
-                onNext={() => setStep(5)}
+                onNext={() => goToStep(5)}
                 bid={bid}
                 rateContractData={rateContractData}
                 setRateContractData={setRateContractData}
@@ -691,12 +721,12 @@ export default function BidParticipationPage() {
                 declaration={declaration}
                 setDeclaration={setDeclaration}
                 allEligibilityChecked={allEligibilityChecked}
-                onNext={() => setStep(6)}
+                onNext={() => goToStep(6)}
                 disabled={isSubmitted}
               />
             )}
             {step === 6 && (
-              <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} onSubmit={submitFinal} onTrack={() => setStep(7)} />
+              <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} onSubmit={submitFinal} onTrack={() => goToStep(7)} />
             )}
             {step === 7 && (
               <TrackStep bid={bid} participation={participation} />
@@ -733,11 +763,11 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
         <Panel title="Eligibility criteria" items={bid.eligibility.length ? bid.eligibility : ['No eligibility criteria published currently.']} />
         <Panel title="Required documents" items={bid.requiredDocuments.length ? bid.requiredDocuments : ['No required document list published currently.']} />
         <Panel title="Terms and conditions" items={bid.terms.length ? bid.terms : ['No terms published currently.']} />
-        <div className="border border-slate-200 p-4">
+        <div className={`${panelClass} p-4`}>
           <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>Bid documents</h3>
           <div className="mt-3 space-y-2">
             {bid.bidDocuments?.length ? bid.bidDocuments.map(doc => (
-              <div key={doc.id} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-600">
+              <div key={doc.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs font-bold text-slate-600 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
                 <FileText className="h-4 w-4" style={{ color: 'var(--bid-primary)' }} /> {doc.name}
               </div>
             )) : <p className="text-xs font-bold text-slate-500">No bid documents uploaded currently.</p>}
@@ -745,11 +775,11 @@ function ViewBidStep({ bid, onStart, onContinue, starting, hasParticipation, blo
         </div>
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <button onClick={onStart} disabled={blocked || starting} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
+        <button onClick={onStart} disabled={blocked || starting} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
           {hasParticipation ? 'Continue Participation' : 'Start Participation'}
         </button>
-        <button onClick={onContinue} disabled={!hasParticipation} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Continue</button>
+        <button onClick={onContinue} disabled={!hasParticipation} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
       </div>
     </div>
   );
@@ -774,7 +804,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
       <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="Check Eligibility" subtitle="Confirm eligibility before preparing the technical offer." />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {rows.map(([key, label]) => (
-          <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+          <label key={key} className={`flex min-h-14 items-center gap-3 rounded-xl border p-3 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
             <input type="checkbox" checked={eligibility[key]} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
             {label}
           </label>
@@ -785,7 +815,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
           <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer eligibility conditions for this bid</p>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             {dynamicRows.map(([key, label]) => (
-              <label key={key} className={`flex min-h-14 items-center gap-3 border p-3 text-xs font-bold ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50/40 text-slate-700'}`}>
+              <label key={key} className={`flex min-h-14 items-center gap-3 rounded-xl border p-3 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${eligibility[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50/40 text-slate-700'}`}>
                 <input type="checkbox" checked={Boolean(eligibility[key])} onChange={event => setEligibility(prev => ({ ...prev, [key]: event.target.checked }))} disabled={disabled} className="h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
                 {label}
               </label>
@@ -794,7 +824,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
         </div>
       )}
       {(buyerTerms || []).length > 0 && (
-        <div className="mt-5 border border-slate-200 bg-slate-50 p-4">
+        <div className={`${panelClass} mt-5 p-4`}>
           <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer terms &amp; conditions</p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold text-slate-600">
             {(buyerTerms || []).map((term, index) => <li key={index}>{term}</li>)}
@@ -802,7 +832,7 @@ function EligibilityStep({ eligibility, setEligibility, onNext, buyerCriteria, b
         </div>
       )}
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!complete && !disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
+        <button onClick={onNext} disabled={!complete && !disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
     </div>
   );
@@ -824,7 +854,7 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
         <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
       </div>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
+        <button onClick={onNext} disabled={disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue</button>
       </div>
     </div>
   );
@@ -851,7 +881,7 @@ function RfiQuestionnaireForm({
     <div>
       <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="RFI Questionnaire" subtitle="Please provide detailed answers to the buyer's questionnaire." />
       {questionnaire.length === 0 ? (
-        <div className="mt-4 border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs font-bold text-slate-500 rounded">
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs font-bold text-slate-500">
           No questionnaire configured for this Request for Information.
         </div>
       ) : (
@@ -862,7 +892,7 @@ function RfiQuestionnaireForm({
             const type = String(q.type).toUpperCase();
 
             return (
-              <div key={qId} className="border border-slate-100 bg-slate-50 p-4 rounded">
+              <div key={qId} className={`${panelClass} p-4`}>
                 <span className="mb-2 block text-xs font-black text-slate-700">{idx + 1}. {label}</span>
                 {type === 'YES_NO' || type === 'YESNO' ? (
                   <div className="flex gap-4">
@@ -923,12 +953,12 @@ function RfiQuestionnaireForm({
         <button
           onClick={onSave}
           disabled={disabled || saving}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save Answers
         </button>
-        <button onClick={onNext} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Continue</button>
+        <button onClick={onNext} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">Continue</button>
       </div>
     </div>
   );
@@ -957,7 +987,7 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, req
     <div>
       <StepTitle icon={<FileUp className="h-5 w-5" />} title="Upload Technical Documents" subtitle="Upload compliance, certificates, catalogues, experience proofs, and supporting technical documents." />
       {required.length > 0 && (
-        <div className="mt-4 border border-slate-200 bg-slate-50 p-4">
+        <div className={`${panelClass} mt-4 p-4`}>
           <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer-required documents checklist</p>
           <div className="mt-2 space-y-1.5">
             {required.map(name => {
@@ -979,10 +1009,10 @@ function TechnicalDocumentsStep({ canUpload, files, uploadedDocs, uploading, req
       <FileList files={files} onRemove={onRemove} onPreview={onPreview} requiredDocuments={required} onTag={onTag} />
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
+        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Upload documents
         </button>
-        <button onClick={onNext} disabled={!uploadedDocs.length} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50">Continue</button>
+        <button onClick={onNext} disabled={!uploadedDocs.length} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
       </div>
     </div>
   );
@@ -1039,9 +1069,9 @@ function FinancialQuoteStep({
       <StepTitle icon={<IndianRupee className="h-5 w-5" />} title="Financial Quote" subtitle="Upload the commercial quote and save sealed quotation values before final submission." />
       
       {isBoq && (
-        <div className="mt-4 border border-blue-100 bg-blue-50 p-4 rounded">
-          <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider">BOQ Excel Template Download</h4>
-          <p className="mt-1 text-xs text-blue-700 font-bold">Please download the template, fill in your line-item rates, and upload the completed sheet below.</p>
+        <div className={`${panelClass} mt-4 p-4`}>
+          <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">BOQ Excel Template Download</h4>
+          <p className="mt-1 text-xs font-bold text-slate-600">Please download the template, fill in your line-item rates, and upload the completed sheet below.</p>
           <div className="mt-3">
             {boqTemplates.length > 0 ? boqTemplates.map(doc => (
               <a
@@ -1049,7 +1079,7 @@ function FinancialQuoteStep({
                 href={doc.fileUrl || `/api/files/${doc.fileAssetId}/view`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-9 items-center gap-2 rounded px-4 text-xs font-black text-white hover:opacity-90"
+                className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                 style={{ backgroundColor: 'var(--bid-primary)' }}
               >
                 Download {doc.fileName || 'BOQ Template'}
@@ -1130,12 +1160,12 @@ function FinancialQuoteStep({
         <button
           onClick={onSave}
           disabled={!canUpload || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save quote
         </button>
-        <button onClick={onNext} disabled={!uploadedDocs.length && !quote.quotedAmount} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50">Continue</button>
+        <button onClick={onNext} disabled={!uploadedDocs.length && !quote.quotedAmount} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">Continue</button>
       </div>
     </div>
   );
@@ -1165,12 +1195,12 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         )}
         <Info label="Current status" value={participation?.submissionStatus || 'Draft'} />
       </div>
-      <label className={`mt-5 flex items-start gap-3 border p-4 text-xs font-bold ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+      <label className={`mt-5 flex items-start gap-3 rounded-xl border p-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
         <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
       <div className="mt-5 flex justify-end">
-        <button onClick={onNext} disabled={!declaration && !disabled} className="h-10 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
+        <button onClick={onNext} disabled={!declaration && !disabled} className="h-10 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>Continue to submit</button>
       </div>
     </div>
   );
@@ -1180,14 +1210,14 @@ function SubmitStep({ canSubmit, submitted, submitting, onSubmit, onTrack }: { c
   return (
     <div>
       <StepTitle icon={<Send className="h-5 w-5" />} title="Submit Bid" subtitle="Final submission locks this participation for buyer evaluation." />
-      <div className="mt-4 grid gap-3 border border-slate-200 bg-slate-50 p-5 text-center">
+      <div className={`${panelClass} mt-4 grid gap-3 p-5 text-center`}>
         {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10" style={{ color: 'var(--bid-primary)' }} />}
         <p className="mt-3 text-sm font-black text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
         <p className="mt-1 text-xs text-slate-500">{submitted ? 'You can track evaluation progress now.' : 'Please ensure all files and quote values are correct before submitting.'}</p>
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onTrack} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700">Track status</button>
-        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white disabled:opacity-50" style={{ backgroundColor: 'var(--bid-primary)' }}>
+        <button onClick={onTrack} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">Track status</button>
+        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Final submit
         </button>
       </div>

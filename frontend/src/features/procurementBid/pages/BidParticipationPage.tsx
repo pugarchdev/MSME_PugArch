@@ -83,7 +83,6 @@ const steps = [
   'Financial Quote',
   'Review & Declaration',
   'Submit Bid',
-  'Track Status',
 ];
 
 const isSellerVerified = (user: any) => {
@@ -159,6 +158,7 @@ export default function BidParticipationPage() {
     });
   }, []);
 
+
   const activeSteps = useMemo(() => {
     const list = [
       { id: 2, label: bid?.procurementType === 'RFI' ? 'Capability Answers' : 'Technical Offer' },
@@ -166,7 +166,6 @@ export default function BidParticipationPage() {
       { id: 4, label: 'Financial Quote' },
       { id: 5, label: 'Review & Declaration' },
       { id: 6, label: 'Submit Bid' },
-      { id: 7, label: 'Track Status' },
     ];
     if (bid?.procurementType === 'RFI') {
       return list.filter(item => item.id !== 4);
@@ -221,7 +220,6 @@ export default function BidParticipationPage() {
                     deviation: parsedDesc?.deviation || '',
                   });
                 } catch (e) {
-                  // Fallback for non-JSON offeredItemDescription
                   setTechnicalOffer({
                     makeBrand: status.participation.makeBrand || '',
                     model: status.participation.model || '',
@@ -245,12 +243,8 @@ export default function BidParticipationPage() {
                   deviation: '',
                 });
               }
-              if (status.participation.submissionStatus === 'SUBMITTED') {
-                setStep(7);
-              }
             }
           } catch {
-            // A missing seller participation is normal before the seller starts.
           }
         }
       })
@@ -290,7 +284,6 @@ export default function BidParticipationPage() {
   const uploadedFinancialDocs = uploadedDocs.filter(doc => doc.documentCategory === 'FINANCIAL_QUOTE');
   const isSubmitted = participation?.submissionStatus === 'SUBMITTED';
 
-
   const guard = useMemo(() => {
     if (!user) return { tone: 'amber', message: 'Please login as a verified seller/vendor to participate in this bid.', action: 'Login to Participate' };
     if (user.role !== 'seller') return { tone: 'red', message: 'Only verified sellers/vendors can participate in bids.' };
@@ -320,7 +313,7 @@ export default function BidParticipationPage() {
     ...(uploadedTechnicalDocs.length || technicalFiles.length ? [3] : []),
     ...(financialQuoteStarted ? [4] : []),
     ...(declaration ? [5] : []),
-    ...(isSubmitted ? [6, 7] : []),
+    ...(isSubmitted ? [6] : []),
   ]);
 
   const openPreview = (item: PendingFile) => {
@@ -363,33 +356,6 @@ export default function BidParticipationPage() {
       if (removed) URL.revokeObjectURL(removed.previewUrl);
       return prev.filter(item => item.id !== id);
     });
-  };
-
-  const startParticipation = async () => {
-    if (!user) {
-      router.push(`/login?returnUrl=${encodeURIComponent(`/bids/${bidId}/participate`)}`);
-      return;
-    }
-    if (guard || !bid) return;
-    if (participation?.id) {
-      goToStep(2);
-      return;
-    }
-    setStarting(true);
-    try {
-      const created = await procurementBidApi.startBidParticipation(bid.id);
-      setParticipation(created);
-      goToStep(2);
-      toast.success('Participation started.');
-    } catch (err: any) {
-      toast.error(err?.message || 'Unable to start participation.');
-      try {
-        const status = await procurementBidApi.getSellerBidStatus(bid.id);
-        if (status?.participation) setParticipation(status.participation);
-      } catch {}
-    } finally {
-      setStarting(false);
-    }
   };
 
   const uploadTechnical = async () => {
@@ -517,7 +483,6 @@ export default function BidParticipationPage() {
     try {
       const submitted = await procurementBidApi.submitBidParticipation(bid.id, participation.id, { declaration });
       setParticipation(prev => ({ ...(prev || participation), ...submitted }));
-      goToStep(7);
       toast.success('Bid submitted successfully.');
     } catch (err: any) {
       toast.error(err?.message || 'Unable to submit bid.');
@@ -576,21 +541,9 @@ export default function BidParticipationPage() {
           .bid-step-body {
             animation: bidStepFadeUp 260ms ease-out both;
           }
-          .bid-soft-enter {
-            animation: bidStepFadeUp 360ms ease-out both;
-          }
           input:focus, textarea:focus {
             border-color: var(--bid-primary) !important;
             box-shadow: 0 0 0 2px var(--bid-light) !important;
-          }
-          @media (prefers-reduced-motion: reduce) {
-            html {
-              scroll-behavior: auto;
-            }
-            .bid-step-body,
-            .bid-soft-enter {
-              animation: none;
-            }
           }
         ` }} />
       <main className="mx-auto w-full max-w-7xl scroll-smooth font-sans animate-in fade-in duration-500">
@@ -701,7 +654,7 @@ export default function BidParticipationPage() {
           </aside>
 
           <section ref={stepContentRef} className={`${surfaceClass} min-w-0 scroll-mt-24 p-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-            {participation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION') && step !== 7 && (
+            {participation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION') && (
               <div className="mb-6 rounded-[20px] border border-amber-200 bg-amber-50/60 p-4 text-xs font-semibold text-amber-900 shadow-sm animate-pulse flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
@@ -713,7 +666,6 @@ export default function BidParticipationPage() {
               </div>
             )}
             <div key={step} className="bid-step-body">
-
               {step === 2 && (
                 bid?.procurementType === 'RFI' ? (
                   <RfiQuestionnaireForm
@@ -780,10 +732,7 @@ export default function BidParticipationPage() {
                 />
               )}
               {step === 6 && (
-                <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} requirements={submitRequirements} onSubmit={submitFinal} onTrack={() => goToStep(7)} />
-              )}
-              {step === 7 && (
-                <TrackStep bid={bid} participation={participation} />
+                <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} requirements={submitRequirements} onSubmit={submitFinal} />
               )}
             </div>
           </section>
@@ -812,10 +761,6 @@ function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
     </div>
   );
 }
-
-
-
-
 
 function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any; onChange: (next: any) => void; onNext: () => void; disabled: boolean }) {
   const update = (key: string, next: string) => onChange({ ...value, [key]: next });
@@ -1208,13 +1153,12 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
   );
 }
 
-function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit, onTrack }: {
+function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit }: {
   canSubmit: boolean;
   submitted: boolean;
   submitting: boolean;
   requirements: Array<{ ok: boolean; label: string }>;
   onSubmit: () => void;
-  onTrack: () => void;
 }) {
   return (
     <div>
@@ -1238,35 +1182,9 @@ function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit, 
         )}
       </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onTrack} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">Track status</button>
         <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Final submit
         </button>
-      </div>
-    </div>
-  );
-}
-
-function TrackStep({ bid, participation }: { bid: ProcurementBid; participation: ParticipationState | null }) {
-  const isTwoPacket = bid?.procurementType === 'TWO_PACKET_BID';
-  const showFinancial = !isTwoPacket || participation?.technicalStatus === 'QUALIFIED';
-
-  return (
-    <div>
-      <StepTitle icon={<ShieldCheck className="h-5 w-5" />} title="Track Status" subtitle="Follow the submitted bid through technical and financial evaluation." />
-      <div className="mt-4"><LifecycleTracker current={bid.currentStage} /></div>
-      
-      {isTwoPacket && participation?.technicalStatus !== 'QUALIFIED' && (
-        <div className="mt-4 border border-amber-100 bg-amber-50 p-4 text-xs font-bold text-amber-800 rounded">
-          ⚠️ Financial packet is sealed. It will only be opened and evaluated if you qualify the Technical Evaluation.
-        </div>
-      )}
-
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
-        <Info label="Submission" value={participation?.submissionStatus || 'Draft'} />
-        <Info label="Technical" value={participation?.technicalStatus || 'Pending'} />
-        <Info label="Financial" value={showFinancial ? (participation?.financialStatus || 'Locked') : 'Sealed & Locked'} />
-        <Info label="Final" value={participation?.finalStatus || 'Pending'} />
       </div>
     </div>
   );

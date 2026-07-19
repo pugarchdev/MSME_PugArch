@@ -317,7 +317,7 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
     return (
       <ul className="mt-1 space-y-1.5">
         {value.map((item, idx) => (
-          <li key={`${valueKey}-${idx}`} className="rounded-lg bg-white px-3 py-2.5 text-sm font-bold leading-relaxed text-slate-800 ring-1 ring-slate-200 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:ring-slate-300">
+          <li key={`${valueKey}-${idx}`} className="rounded-lg bg-white px-3 py-2.5 text-sm font-normal leading-relaxed text-slate-800 ring-1 ring-slate-200 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:ring-slate-300">
             {item && typeof item === 'object' ? summarizeComplexDetailValue(item, valueKey) : formatPrimitiveDetailValue(item, valueKey)}
           </li>
         ))}
@@ -333,7 +333,7 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
         {entries.map(([key, nestedValue]) => (
           <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-700">{humanizeKey(key)}</p>
-            <div className="mt-1.5 text-sm font-bold leading-relaxed text-slate-900">
+            <div className="mt-1.5 text-sm font-normal leading-relaxed text-slate-900">
               <DetailValue value={nestedValue} valueKey={key} depth={depth + 1} />
             </div>
           </div>
@@ -350,16 +350,79 @@ const ProcurementDetailSection = ({
   icon: Icon,
   data,
   defaultExpanded = false,
+  isPanelMode = false,
 }: {
   title: string;
   icon: any;
   data: any;
   defaultExpanded?: boolean;
+  isPanelMode?: boolean;
 }) => {
   const entries = Array.isArray(data) ? [[title, data]] : detailEntries(data);
   const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
 
   if (!entries.length) return null;
+
+  const contentGrid = (
+    <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      {entries.map(([key, value]) => {
+        const keyStr = String(key);
+        const keyLower = keyStr.toLowerCase();
+        
+        let cardBg = 'bg-white border-slate-200/70 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.04)] hover:border-indigo-300 hover:shadow-[0_8px_30px_-10px_rgba(99,102,241,0.15)]';
+        let labelColor = 'text-slate-500';
+        let valueColor = 'text-slate-900 font-normal';
+        let badgeClass = '';
+        
+        if (keyLower.includes('status')) {
+          cardBg = 'bg-gradient-to-br from-emerald-50/80 to-white border-emerald-200 shadow-sm shadow-emerald-100/30 hover:border-emerald-400 hover:shadow-emerald-200/50';
+          labelColor = 'text-emerald-700/80';
+          valueColor = ''; 
+          badgeClass = 'inline-flex items-center rounded-md bg-emerald-100/80 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-300/50 uppercase tracking-wider';
+        } else if (keyLower.includes('value') || keyLower.includes('budget') || keyLower.includes('price')) {
+          cardBg = 'bg-gradient-to-br from-indigo-50/60 to-white border-indigo-200 shadow-sm shadow-indigo-100/30 hover:border-indigo-400 hover:shadow-indigo-200/50';
+          labelColor = 'text-indigo-600/80';
+          valueColor = 'text-indigo-950 text-[15px] font-normal tracking-tight'; 
+        } else if (keyLower.includes('deadline') || keyLower.includes('enddate') || keyLower.includes('closing') || keyLower.includes('urgency') || keyLower.includes('date')) {
+          cardBg = 'bg-gradient-to-br from-rose-50/60 to-white border-rose-200 shadow-sm shadow-rose-100/30 hover:border-rose-400 hover:shadow-rose-200/50';
+          labelColor = 'text-rose-600/80';
+          valueColor = 'text-rose-950 font-normal';
+        } else if (keyLower.includes('title') || keyLower.includes('subject') || keyLower.includes('category')) {
+          cardBg = 'bg-gradient-to-br from-sky-50/60 to-white border-sky-200 shadow-sm shadow-sky-100/30 hover:border-sky-400 hover:shadow-sky-200/50';
+          labelColor = 'text-sky-600/80';
+          valueColor = 'text-sky-950 font-normal';
+        } else if (keyLower.includes('rfpnumber') || keyLower.includes('requirementnumber') || keyLower === 'id' || keyLower === 'uuid') {
+          cardBg = 'bg-gradient-to-br from-slate-50/80 to-white border-slate-200 shadow-sm shadow-slate-100/30 hover:border-slate-400 hover:shadow-slate-200/50';
+          labelColor = 'text-slate-500';
+          valueColor = 'text-slate-800 font-mono text-[13px] bg-slate-100 px-2 py-0.5 rounded-md';
+        }
+
+        const isComplex = typeof value === 'object' && value !== null;
+        return (
+          <div key={keyStr} className={cn(`group flex flex-col gap-2 rounded-xl border p-4 transition-all duration-300 ease-out hover:-translate-y-1 ${cardBg}`, isComplex ? 'col-span-full' : '')}>
+            <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${labelColor}`}>{Array.isArray(data) ? title : humanizeKey(keyStr)}</p>
+            <div className={`text-[14px] leading-relaxed ${valueColor}`}>
+              {badgeClass ? (
+                <span className={badgeClass}>
+                  <DetailValue value={value} valueKey={keyStr} />
+                </span>
+              ) : (
+                <DetailValue value={value} valueKey={keyStr} />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  if (isPanelMode) {
+    return (
+      <div className="animate-in fade-in slide-in-from-right-4 duration-500 ease-out">
+        {contentGrid}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xl shadow-sm shadow-slate-200/50 transition-all duration-300 hover:shadow-lg hover:border-indigo-300/50 overflow-hidden group/section">
@@ -387,55 +450,78 @@ const ProcurementDetailSection = ({
         </span>
       </div>
       <div className={cn("px-6 pb-6 pt-5 transition-all duration-500 ease-in-out", isExpanded ? "block opacity-100 translate-y-0" : "hidden opacity-0 -translate-y-2")}>
-        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {entries.map(([key, value]) => {
-          const keyStr = String(key);
-          const keyLower = keyStr.toLowerCase();
-          
-          let cardBg = 'bg-white border-slate-200/70 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.04)] hover:border-indigo-300 hover:shadow-[0_8px_30px_-10px_rgba(99,102,241,0.15)]';
-          let labelColor = 'text-slate-500';
-          let valueColor = 'text-slate-900 font-medium';
-          let badgeClass = '';
-          
-          if (keyLower.includes('status')) {
-            cardBg = 'bg-gradient-to-br from-emerald-50/80 to-white border-emerald-200 shadow-sm shadow-emerald-100/30 hover:border-emerald-400 hover:shadow-emerald-200/50';
-            labelColor = 'text-emerald-700/80';
-            valueColor = ''; 
-            badgeClass = 'inline-flex items-center rounded-md bg-emerald-100/80 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-300/50 uppercase tracking-wider';
-          } else if (keyLower.includes('value') || keyLower.includes('budget') || keyLower.includes('price')) {
-            cardBg = 'bg-gradient-to-br from-indigo-50/60 to-white border-indigo-200 shadow-sm shadow-indigo-100/30 hover:border-indigo-400 hover:shadow-indigo-200/50';
-            labelColor = 'text-indigo-600/80';
-            valueColor = 'text-indigo-950 text-[15px] font-semibold tracking-tight'; 
-          } else if (keyLower.includes('deadline') || keyLower.includes('enddate') || keyLower.includes('closing') || keyLower.includes('urgency') || keyLower.includes('date')) {
-            cardBg = 'bg-gradient-to-br from-rose-50/60 to-white border-rose-200 shadow-sm shadow-rose-100/30 hover:border-rose-400 hover:shadow-rose-200/50';
-            labelColor = 'text-rose-600/80';
-            valueColor = 'text-rose-950 font-medium';
-          } else if (keyLower.includes('title') || keyLower.includes('subject') || keyLower.includes('category')) {
-            cardBg = 'bg-gradient-to-br from-sky-50/60 to-white border-sky-200 shadow-sm shadow-sky-100/30 hover:border-sky-400 hover:shadow-sky-200/50';
-            labelColor = 'text-sky-600/80';
-            valueColor = 'text-sky-950 font-medium';
-          } else if (keyLower.includes('rfpnumber') || keyLower.includes('requirementnumber') || keyLower === 'id' || keyLower === 'uuid') {
-            cardBg = 'bg-gradient-to-br from-slate-50/80 to-white border-slate-200 shadow-sm shadow-slate-100/30 hover:border-slate-400 hover:shadow-slate-200/50';
-            labelColor = 'text-slate-500';
-            valueColor = 'text-slate-800 font-mono text-[13px] bg-slate-100 px-2 py-0.5 rounded-md';
-          }
+        {contentGrid}
+      </div>
+    </div>
+  );
+};
+const ProcurementDetailsLayout = ({ sections }: { sections: any[] }) => {
+  const [activeIndex, setActiveIndex] = React.useState(0);
 
-          const isComplex = typeof value === 'object' && value !== null;
-          return (
-            <div key={keyStr} className={cn(`group flex flex-col gap-2 rounded-xl border p-4 transition-all duration-300 ease-out hover:-translate-y-1 ${cardBg}`, isComplex ? 'col-span-full' : '')}>
-              <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${labelColor}`}>{Array.isArray(data) ? title : humanizeKey(keyStr)}</p>
-              <div className={`text-[14px] leading-relaxed ${valueColor}`}>
-                {badgeClass ? (
-                  <span className={badgeClass}>
-                    <DetailValue value={value} valueKey={keyStr} />
-                  </span>
-                ) : (
-                  <DetailValue value={value} valueKey={keyStr} />
+  const validSections = React.useMemo(() => {
+    return sections.filter(section => {
+      const entries = Array.isArray(section.data) ? [[section.title, section.data]] : detailEntries(section.data);
+      return entries.length > 0;
+    });
+  }, [sections]);
+
+  if (validSections.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-xs font-bold text-slate-500">
+        No additional procurement details were found for this RFP.
+      </p>
+    );
+  }
+
+  const currentSection = validSections[activeIndex] || validSections[0];
+  const activeIdxSafe = validSections[activeIndex] ? activeIndex : 0;
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-6">
+      {/* Left Navigation Menu */}
+      <div className="w-full lg:w-1/3 xl:w-1/4 shrink-0">
+        <div className="sticky top-24 space-y-1 rounded-2xl border border-slate-200/60 bg-white/50 p-2 backdrop-blur-xl shadow-sm">
+          {validSections.map((section, idx) => {
+            const isActive = idx === activeIdxSafe;
+            const Icon = section.icon;
+            return (
+              <button
+                key={section.title}
+                onClick={() => setActiveIndex(idx)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-all duration-300",
+                  isActive 
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 )}
-              </div>
-            </div>
-          );
-        })}
+              >
+                <Icon className={cn("h-4 w-4", isActive ? "text-indigo-100" : "text-slate-400")} />
+                <span className="text-[11px] font-black uppercase tracking-widest">{section.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right Content Panel */}
+      <div className="w-full lg:w-2/3 xl:w-3/4">
+        <div className="rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xl shadow-sm shadow-slate-200/50 p-1 lg:p-2 overflow-hidden">
+          <div className="flex items-center gap-4 px-4 pt-4 pb-4 border-b border-slate-100 mb-2 mx-2">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm shadow-indigo-100/50">
+              <currentSection.icon className="h-5 w-5" />
+            </span>
+            <h3 className="text-sm font-black uppercase tracking-[0.1em] text-slate-800">
+              {currentSection.title}
+            </h3>
+          </div>
+          <ProcurementDetailSection
+            key={currentSection.title}
+            title={currentSection.title}
+            icon={currentSection.icon}
+            data={currentSection.data}
+            defaultExpanded={true}
+            isPanelMode={true}
+          />
         </div>
       </div>
     </div>
@@ -522,6 +608,8 @@ export default function RfpDetailPage() {
         category: rawBid.category,
       },
       consigneeDetails: rawBid.consigneeDetails || (rawBid.deliveryLocation ? { default: { location: rawBid.deliveryLocation, name: 'Default Delivery Location' } } : null),
+      items: rawBid.items || rawBid.products || undefined,
+      serviceDetails: rawBid.serviceDetails || undefined,
       terms: {
         paymentTerms: rawBid.technicalPacket?.terms?.paymentTerms || rawBid.termsAndConditions?.[0] || rawBid.terms?.[0] || '',
         deliveryTerms: rawBid.technicalPacket?.terms?.deliveryTerms || rawBid.termsAndConditions?.[1] || '',
@@ -537,9 +625,14 @@ export default function RfpDetailPage() {
         packetType: rawBid.packetType
       },
       schedule: {
-        technicalOpeningDate: rawBid.technicalOpeningDate,
-        financialOpeningDate: rawBid.financialOpeningDate,
-        bidValidityDate: rawBid.bidValidityDate
+        technicalOpeningDate: rawBid.technicalOpeningDate || rawBid.technicalOpening,
+        financialOpeningDate: rawBid.financialOpeningDate || rawBid.financialOpening,
+        bidValidityDate: rawBid.bidValidityDate || rawBid.bidValidity,
+        clarificationDeadline: rawBid.clarificationEndDate || rawBid.clarificationDeadline,
+        preBidMeetingDate: rawBid.preBidMeetingDate || rawBid.preBidDate,
+        presentationDate: rawBid.presentationDate,
+        awardDate: rawBid.awardDate || rawBid.awardingDate,
+        finalEvaluationDate: rawBid.finalEvaluationDate || rawBid.financialEvaluationDate,
       }
     },
     documents: rawBid.documents?.length
@@ -903,7 +996,7 @@ export default function RfpDetailPage() {
     rawDocs.forEach((doc: any) => {
       documents.push({
         id: doc.id,
-        name: doc.name || doc.title || doc.documentType || doc.originalName || doc.fileName || 'Bid document',
+        name: doc.name || doc.title || doc.originalName || doc.fileName || doc.documentType || 'Bid document',
         meta: [doc.documentType, doc.mimeType].filter(Boolean).join(' - ') || 'Uploaded document',
         fileAssetId: doc.fileAssetId,
         url: doc.fileUrl || doc.url,
@@ -1712,17 +1805,7 @@ export default function RfpDetailPage() {
         </div>
 
         {procurementDetailSections.length > 0 ? (
-          <div className="space-y-6">
-            {procurementDetailSections.map(section => (
-              <ProcurementDetailSection
-                key={section.title}
-                title={section.title}
-                icon={section.icon}
-                data={section.data}
-                defaultExpanded={true}
-              />
-            ))}
-          </div>
+          <ProcurementDetailsLayout sections={procurementDetailSections} />
         ) : (
           <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-xs font-bold text-slate-500">
             No additional procurement details were found for this RFP.

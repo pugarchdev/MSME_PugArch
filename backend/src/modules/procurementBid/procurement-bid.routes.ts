@@ -80,12 +80,12 @@ const participationParamSchema = idParamSchema.extend({ participationId: z.coerc
 const clarificationParamSchema = idParamSchema.extend({ clarificationId: z.coerce.number().int().positive() });
 
 const financialQuoteSchema = z.object({
-  quotedAmount: z.coerce.number().positive(),
+  quotedAmount: z.coerce.number().nonnegative(),
   gstPercentage: z.coerce.number().min(0).max(100).optional(),
-  totalAmount: z.coerce.number().positive().optional(),
+  totalAmount: z.coerce.number().nonnegative().optional(),
   makeBrand: z.string().trim().max(160).optional(),
   model: z.string().trim().max(160).optional(),
-  offeredItemDescription: z.string().trim().max(2000).optional()
+  offeredItemDescription: z.string().trim().max(20000).optional()
 });
 
 const clarificationSchema = z.object({
@@ -376,7 +376,7 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
   if (!service.canActorViewBid(actor as any, bid)) {
     throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
   }
-  const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === actor.id || (actor.organizationId && p.seller?.organizationId === actor.organizationId));
+  const sellerCanSeeParticipants = actor?.role === 'seller' && (bid.participations || []).some((p: any) => p.sellerId === Number(actor.id) || (actor.organizationId && p.seller?.organizationId === actor.organizationId));
   
   const sellerIds = (bid.participations || []).map((p: any) => p.sellerId);
   const sellerRatings = await service.getAverageRatingsForSellers(sellerIds);

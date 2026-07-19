@@ -49,6 +49,42 @@ const formatMoney = (value?: number | string | null) => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 };
 
+const formatSpecifications = (specs: any) => {
+  if (!specs) return '—';
+  
+  try {
+    const parsed = typeof specs === 'string' ? JSON.parse(specs) : specs;
+    if (typeof parsed !== 'object' || parsed === null) return String(specs);
+
+    const ignoreKeys = ['draftMeta', 'payload', 'items', 'rules', 'specificationFileName', 'fileAssetId', 'id', 'name'];
+
+    const filtered = Object.entries(parsed)
+      .filter(([key, val]) => !ignoreKeys.includes(key) && val !== null && val !== '')
+      .map(([key, val]) => {
+        const formattedKey = key
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/_/g, ' ')
+          .replace(/^./, str => str.toUpperCase())
+          .trim();
+        return { key: formattedKey, val: String(val) };
+      });
+
+    if (filtered.length === 0) return '—';
+    
+    return (
+      <div className="flex flex-col gap-1.5 text-[11px]">
+        {filtered.map((item, idx) => (
+          <div key={idx} className="break-words leading-tight">
+            <span className="font-semibold text-slate-800">{item.key}:</span> <span className="text-slate-600">{item.val}</span>
+          </div>
+        ))}
+      </div>
+    );
+  } catch (e) {
+    return String(specs);
+  }
+};
+
 const daysLeft = (dateStr?: string | null) => {
   if (!dateStr) return null;
   const target = new Date(dateStr);
@@ -366,8 +402,8 @@ const BuyerRequirementDetailsPage = () => {
                           <td className="px-4 py-2.5">{item.quantity ?? '—'}</td>
                           <td className="px-4 py-2.5">{item.unitOfMeasure || '—'}</td>
                           <td className="px-4 py-2.5">{formatMoney(item.estimatedUnitPrice)}</td>
-                          <td className="px-4 py-2.5 text-xs text-slate-600 max-w-[200px]">
-                            {item.specifications ? (typeof item.specifications === 'string' ? item.specifications : JSON.stringify(item.specifications)) : '—'}
+                          <td className="px-4 py-2.5 text-xs text-slate-600 min-w-[250px] max-w-[400px]">
+                            {formatSpecifications(item.specifications)}
                           </td>
                         </tr>
                       ))}

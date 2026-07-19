@@ -184,9 +184,9 @@ export const canActorViewBid = (actor: Actor | null | undefined, bid: any) => {
   if (!isPrivateBid(bid)) return true;
   if (!actor) return false;
   if (actor.role === 'admin' || actor.role === 'master_admin') return true;
-  if (actor.role === 'buyer' && bid.buyerId === actor.id) return true;
+  if (actor.role === 'buyer' && bid.buyerId === Number(actor.id)) return true;
   if (actor.role === 'seller') {
-    const hasParticipation = (bid.participations || []).some((p: any) => p.sellerId === actor.id);
+    const hasParticipation = (bid.participations || []).some((p: any) => p.sellerId === Number(actor.id));
     if (hasParticipation) return true;
     if (isActorInvitedToBid(actor, bid)) return true;
   }
@@ -323,7 +323,7 @@ export const refreshBidStatus = async (bid: any) => {
 export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolean; includeParticipants?: boolean; includeFinancial?: boolean; sellerRatings?: Record<number, any> } = {}) => {
   const actor = options.actor;
   const isAdmin = actor?.role === 'admin' || actor?.role === 'master_admin';
-  const isBuyerOwner = actor?.role === 'buyer' && bid.buyerId === actor.id;
+  const isBuyerOwner = actor?.role === 'buyer' && bid.buyerId === Number(actor.id);
   const canSeeParticipants = options.includeParticipants || isAdmin || isBuyerOwner;
   const canSeeFinancial = options.includeFinancial || isAdmin || (isBuyerOwner && financialOpenStatuses.includes(bid.status));
 
@@ -414,7 +414,7 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
         ? (bid.clarifications || []).filter((c: any) => {
             const isRestrictedBid = ['DIRECT_PURCHASE', 'CATALOG_PURCHASE', 'REPEAT_ORDER', 'LIMITED_TENDER', 'SINGLE_SOURCE', 'PAC', 'EMERGENCY_PURCHASE'].includes(String(bid.procurementType || bid.bidType).toUpperCase());
             if (isRestrictedBid) {
-              return c.sellerId === actor.id;
+              return c.sellerId === Number(actor.id);
             }
             return true;
           }).map((c: any) => {
@@ -422,7 +422,7 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
             if (isRestrictedBid) {
               return c;
             }
-            const isOwn = c.sellerId === actor.id;
+            const isOwn = c.sellerId === Number(actor.id);
             return {
               id: c.id,
               bidId: c.bidId,
@@ -667,7 +667,7 @@ export const assertBuyerOwner = (actor: Actor, bid: any) => {
   if (actor.role !== 'buyer' && actor.role !== 'admin' && actor.role !== 'master_admin') {
     throw new ApiError(403, 'Buyer access required', 'FORBIDDEN_ROLE');
   }
-  if (actor.role === 'buyer' && bid.buyerId !== actor.id) {
+  if (actor.role === 'buyer' && bid.buyerId !== Number(actor.id)) {
     throw new ApiError(403, 'You cannot access another buyer bid.', 'FORBIDDEN_ROLE');
   }
 };

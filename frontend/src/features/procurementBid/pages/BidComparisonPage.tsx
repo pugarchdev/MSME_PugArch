@@ -13,6 +13,7 @@ import {
 import { PageShell, StatusBadge, ProcurementHero, ProcurementLoadingState, ProcurementErrorState } from '../components';
 import { money } from '../data';
 import { toast } from 'sonner';
+import { procurementBidApi } from '../api';
 
 export default function BidComparisonPage() {
   const params = useParams();
@@ -55,10 +56,8 @@ export default function BidComparisonPage() {
   const { data: bid, isLoading, error, refetch } = useQuery({
     queryKey: ['procurement-bid', bidId],
     queryFn: async () => {
-      const res = await api.fetch(`/api/bids/${bidId}`, { headers: authHeaders });
-      if (!res.ok) throw new Error('Failed to fetch bid details');
-      const json = await res.json();
-      return unwrapApiData<any>(json);
+      const res = await procurementBidApi.detail(bidId);
+      return res as any;
     },
     enabled: !!bidId && !!token,
   });

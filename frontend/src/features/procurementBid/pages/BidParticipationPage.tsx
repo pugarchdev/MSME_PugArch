@@ -297,7 +297,7 @@ export default function BidParticipationPage() {
   }, [closed, user, verifiedSeller, bid]);
 
   const canPrepare = Boolean(!guard && !closed && !isSubmitted);
-  const canUpload = Boolean(participation?.id && canPrepare);
+  const canUpload = Boolean(canPrepare);
   const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (bid?.procurementType === 'RFI' || uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
   const technicalOfferStarted = Object.values(technicalOffer).some(value => Boolean(String(value || '').trim()));
   const financialQuoteStarted = Boolean(quote.quotedAmount || uploadedFinancialDocs.length || participation?.quotedAmount);
@@ -360,14 +360,20 @@ export default function BidParticipationPage() {
   };
 
   const uploadTechnical = async () => {
-    if (!bid || !participation?.id || !technicalFiles.length) return;
+    if (!bid || !technicalFiles.length) return;
     setUploadingTechnical(true);
     setTechnicalFiles(prev => prev.map(item => ({ ...item, status: 'uploading', progress: 0 })));
     try {
+      let currentPartId = participation?.id;
+      if (!currentPartId) {
+        const initRes = await procurementBidApi.startBidParticipation(bid.id);
+        currentPartId = initRes.id;
+        setParticipation(initRes);
+      }
       const files = technicalFiles.map(item => ({ file: item.file, documentName: item.documentName }));
       const uploaded = await procurementBidApi.uploadTechnicalDocuments(
         bid.id,
-        participation.id,
+        currentPartId as number,
         files,
         { documentCategory: 'TECHNICAL_COMPLIANCE' },
         (fileIndex, percent) => {
@@ -375,10 +381,14 @@ export default function BidParticipationPage() {
         }
       );
       setTechnicalFiles(prev => prev.map(item => ({ ...item, status: 'uploaded', progress: 100 })));
-      setParticipation(prev => ({
-        ...(prev || participation),
-        documents: [...(prev?.documents || []), ...uploaded],
-      }));
+      setParticipation(prev => {
+        const base = prev || participation;
+        if (!base) return null as any;
+        return {
+          ...base,
+          documents: [...(base.documents || []), ...uploaded],
+        };
+      });
       toast.success('Technical documents uploaded.');
       goToStep(bid?.procurementType === 'RFI' ? 5 : 4);
     } catch (err: any) {
@@ -390,12 +400,18 @@ export default function BidParticipationPage() {
   };
 
   const saveRfiAnswers = async () => {
-    if (!bid || !participation?.id) return;
+    if (!bid) return;
     setSavingRfi(true);
     try {
+      let currentPartId = participation?.id;
+      if (!currentPartId) {
+        const initRes = await procurementBidApi.startBidParticipation(bid.id);
+        currentPartId = initRes.id;
+        setParticipation(initRes);
+      }
       const data = await procurementBidApi.uploadFinancialQuote(
         bid.id,
-        participation.id,
+        currentPartId as number,
         {
           quotedAmount: '0',
           gstPercentage: '0',
@@ -419,9 +435,15 @@ export default function BidParticipationPage() {
 
 
   const saveDraft = async () => {
-    if (!bid || !participation?.id) return;
+    if (!bid) return;
     setSavingDraft(true);
     try {
+      let currentPartId = participation?.id;
+      if (!currentPartId) {
+        const initRes = await procurementBidApi.startBidParticipation(bid.id);
+        currentPartId = initRes.id;
+        setParticipation(initRes);
+      }
       let description = '';
       if (bid.procurementType === 'RATE_CONTRACT') {
         description = JSON.stringify({
@@ -446,7 +468,7 @@ export default function BidParticipationPage() {
 
       const data = await procurementBidApi.uploadFinancialQuote(
         bid.id,
-        participation.id,
+        currentPartId as number,
         {
           quotedAmount: quote.quotedAmount || '0',
           gstPercentage: quote.gstPercentage || '18',
@@ -468,7 +490,7 @@ export default function BidParticipationPage() {
   };
 
   const saveFinancial = async () => {
-    if (!bid || !participation?.id) return;
+    if (!bid) return;
     if (!quote.quotedAmount) {
       toast.error('Enter quoted amount before saving financial quote.');
       return;
@@ -476,6 +498,12 @@ export default function BidParticipationPage() {
     setSavingFinancial(true);
     if (financialFile) setFinancialFile(prev => prev ? { ...prev, status: 'uploading', progress: 0 } : prev);
     try {
+      let currentPartId = participation?.id;
+      if (!currentPartId) {
+        const initRes = await procurementBidApi.startBidParticipation(bid.id);
+        currentPartId = initRes.id;
+        setParticipation(initRes);
+      }
       let description = '';
       if (bid.procurementType === 'RATE_CONTRACT') {
         description = JSON.stringify({
@@ -500,7 +528,7 @@ export default function BidParticipationPage() {
 
       const data = await procurementBidApi.uploadFinancialQuote(
         bid.id,
-        participation.id,
+        currentPartId as number,
         {
           file: financialFile?.file,
           quotedAmount: quote.quotedAmount,
@@ -997,11 +1025,7 @@ function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs
       )}
       <UploadDropZone disabled={!canSelectFiles} multiple onFiles={onAdd} />
       <FileList files={files} onRemove={onRemove} onPreview={onPreview} requiredDocuments={required} onTag={onTag} />
-      {files.length > 0 && !canUpload && canSelectFiles && (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
-          Start participation to upload the prepared document set.
-        </p>
-      )}
+
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
       <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
         <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
@@ -1162,11 +1186,7 @@ function FinancialQuoteStep({
       </div>
 
       <UploadedList docs={uploadedDocs} title="Uploaded financial quote documents" />
-      {(quote.quotedAmount || file) && !canSave && canEdit && (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
-          Start participation to save this financial quote securely.
-        </p>
-      )}
+
 
       <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
         <button

@@ -207,7 +207,7 @@ export default function SupplierResponsesPage() {
         window.location.href = `/marketplace/requirements/${bid.requirementId}`;
       }
     } else {
-      window.location.href = `/bids/${bid.id}/results`;
+      window.location.href = `/bids/${bid.id}/compare`;
     }
   };
 

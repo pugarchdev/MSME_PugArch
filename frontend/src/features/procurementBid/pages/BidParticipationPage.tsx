@@ -107,10 +107,10 @@ const formatBytes = (size?: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const inputClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition-colors';
-const textAreaClass = 'min-h-24 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors';
-const surfaceClass = 'rounded-2xl border border-slate-200/80 bg-white/95 shadow-sm shadow-slate-200/50 transition-all duration-300 ease-out hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60';
-const panelClass = 'rounded-xl border border-slate-200/80 bg-slate-50/60 transition-all duration-300 ease-out hover:border-slate-300 hover:bg-white hover:shadow-sm';
+const inputClass = 'h-10 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-sm font-medium outline-none transition-all focus:border-[var(--bid-primary)] focus:bg-white focus:ring-4 focus:ring-[var(--bid-primary)]/10';
+const textAreaClass = 'min-h-24 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium outline-none transition-all focus:border-[var(--bid-primary)] focus:bg-white focus:ring-4 focus:ring-[var(--bid-primary)]/10';
+const surfaceClass = 'rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition-all duration-300 ease-out';
+const panelClass = 'rounded-xl bg-slate-50/50 p-5 ring-1 ring-slate-100 transition-all duration-300 ease-out';
 
 export default function BidParticipationPage() {
   const { user } = useAuth();
@@ -547,125 +547,121 @@ export default function BidParticipationPage() {
           }
         ` }} />
       <main className="mx-auto w-full max-w-7xl scroll-smooth font-sans animate-in fade-in duration-500">
-        <section className={`${surfaceClass} overflow-hidden p-5 animate-in fade-in slide-in-from-top-3 duration-500`}>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <ShieldCheck className="h-3.5 w-3.5" style={{ color: theme.primary }} />
-                Request for Proposal
-              </span>
-              <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Seller Bid Participation</h1>
-              <p className="mt-1 max-w-4xl truncate text-xs font-bold text-slate-500 sm:text-sm" title={`${bid.id} - ${bid.title}`}>
-                <span className="font-mono text-slate-700">{bid.id}</span>
-                <span className="mx-2 text-slate-300">/</span>
-                {bid.title}
-              </p>
-            </div>
-            <Link
-              href={`/bids/${bid.id}`}
-              className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md"
-            >
-              View bid
-            </Link>
-          </div>
-        </section>
-
-        <section className={`${surfaceClass} mt-5 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <div className="grid gap-4 p-4 lg:grid-cols-[1.3fr_0.7fr]">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
+        {/* Sticky Top Summary & Stepper */}
+        <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/85 p-5 shadow-sm backdrop-blur-xl transition-all">
+          <div className="mx-auto max-w-6xl">
+            {/* Header Area */}
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <ShieldCheck className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                  Request for Proposal
+                </span>
+                <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Seller Bid Participation</h1>
+                <p className="mt-1 max-w-3xl truncate text-xs font-semibold text-slate-500 sm:text-sm" title={`${bid.id} - ${bid.title}`}>
+                  <span className="font-mono text-slate-700">{bid.id}</span>
+                  <span className="mx-2 text-slate-300">/</span>
+                  {bid.title}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
                 <StatusBadge label={bid.status} />
-                <StatusBadge label={participation?.submissionStatus || 'Not Started'} />
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600"><CalendarClock className="h-3 w-3" /> {daysLeft(bid.endDate)}</span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Info label="Buyer" value={bid.buyerName} />
-                <Info label="Buyer type" value={bid.buyerType} />
-                <Info label="Category" value={bid.category} />
-                <Info label="Quantity" value={bid.quantity} />
-                <Info label="Delivery" value={bid.deliveryLocation} wide />
-                <Info label="Closing date" value={formatDate(bid.endDate)} />
-                <Info label="Estimated value" value={money(bid.estimatedValue)} />
+                <Link
+                  href={`/bids/${bid.id}`}
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md"
+                >
+                  View bid details
+                </Link>
               </div>
             </div>
-            <div className={`${panelClass} p-4`}>
-              <p className="text-xs font-black uppercase tracking-wider text-slate-500">Participation readiness</p>
-              <div className="mt-3 space-y-2 text-xs font-bold text-slate-600">
-                <ReadyRow ok={Boolean(participation?.id)} label={participation?.id ? `Participation #${participation.id}` : 'Start participation'} />
-                <ReadyRow ok={uploadedTechnicalDocs.length > 0} label={`${uploadedTechnicalDocs.length} technical document(s) uploaded`} />
-                <ReadyRow ok={Boolean(uploadedFinancialDocs.length || participation?.quotedAmount)} label="Financial quote saved" />
-                <ReadyRow ok={declaration} label="Declaration accepted" />
-              </div>
-            </div>
-          </div>
-          {guard && (
-            <div className={`mx-4 mb-4 flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between animate-in fade-in slide-in-from-top-2 duration-300 ${guard.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              <span className="flex items-center gap-2 text-xs font-black"><AlertTriangle className="h-4 w-4" /> {guard.message}</span>
-              {guard.action && <button onClick={() => router.push('/login')} className="h-9 rounded-md px-4 text-xs font-black text-white" style={{ backgroundColor: theme.primary }}>{guard.action}</button>}
-            </div>
-          )}
-        </section>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
-          <aside className="lg:sticky lg:top-28 lg:self-start">
-            <div className={`${surfaceClass} overflow-hidden`}>
-              <div className="border-b border-slate-100 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black" style={{ color: theme.primary }}>Submission Steps</p>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500">
-                    {activeStepIndex + 1}/{activeSteps.length}
-                  </span>
-                </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${navProgress}%`, backgroundColor: theme.primary }}
-                  />
-                </div>
+            {/* Quick Summary Row */}
+            <div className="mt-4 flex flex-wrap items-center gap-6 rounded-xl bg-slate-50/50 p-3 ring-1 ring-slate-100">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">Buyer:</span>
+                <span className="font-semibold text-slate-900">{bid.buyerName}</span>
               </div>
-              <div className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-4 lg:block lg:space-y-1">
-                {activeSteps.map((s) => {
-                  const active = step === s.id;
-                  const done = completedStepIds.has(s.id);
-                  const needsParticipation = s.id >= 3 && !participation?.id;
-                  return (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">Value:</span>
+                <span className="font-semibold text-slate-900">{money(bid.estimatedValue)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">Closing:</span>
+                <span className="font-semibold text-rose-700">{formatDate(bid.endDate)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">Status:</span>
+                <span className="font-semibold text-slate-900">{participation?.submissionStatus || 'Draft'}</span>
+              </div>
+            </div>
+
+            {/* Modern Horizontal Stepper */}
+            <div className="mt-6 flex items-center justify-between gap-1 overflow-x-auto pb-4 pt-2">
+              {activeSteps.map((s, i) => {
+                const active = step === s.id;
+                const done = completedStepIds.has(s.id);
+                return (
+                  <div key={s.id} className="flex min-w-[150px] flex-1 items-center gap-1">
                     <button
-                      key={s.label}
                       type="button"
                       onClick={() => goToStep(s.id)}
-                      aria-current={active ? 'step' : undefined}
-                      className={`group flex min-h-14 w-full items-start gap-2 rounded-xl border p-2 text-left text-[11px] font-black transition-all duration-200 ${active ? `border-current ${theme.lightBg} shadow-sm ring-2 ring-current/10` : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:-translate-y-0.5 hover:shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm'}`}
-                      style={active ? { color: theme.primary, borderColor: theme.primary } : undefined}
+                      className={`group relative flex flex-1 flex-col items-start gap-1.5 rounded-xl border px-4 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:bg-white hover:shadow-md hover:border-slate-200 ${
+                        active ? 'z-10 bg-white' : done ? 'border-slate-100 bg-slate-50/50' : 'border-transparent bg-transparent'
+                      }`}
+                      style={active ? { 
+                        background: `linear-gradient(135deg, ${theme.primary}12 0%, white 100%)`, 
+                        borderColor: `${theme.primary}40`,
+                        boxShadow: `0 10px 25px -5px ${theme.primary}30, 0 8px 10px -6px ${theme.primary}10`
+                      } : undefined}
                     >
-                      <span className="mt-0.5 shrink-0">
-                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Circle className="h-3.5 w-3.5 fill-current/10" /> : <Unlock className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-slate-600" />}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block leading-snug">{s.label}</span>
-                        {needsParticipation && !done && (
-                          <span className="mt-0.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Prepare</span>
+                      {active && (
+                        <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: theme.primary }} />
+                          <span className="relative inline-flex h-3 w-3 rounded-full border border-white" style={{ backgroundColor: theme.primary }} />
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-300" style={{ color: active || done ? theme.primary : '#94a3b8' }}>
+                        {done ? (
+                          <CheckCircle2 className="h-4 w-4 animate-in zoom-in duration-300" />
+                        ) : (
+                          <Circle className={`h-4 w-4 transition-all duration-500 ${active ? 'fill-current/20 scale-110' : ''}`} />
                         )}
+                        Step {i + 1}
+                      </span>
+                      <span className={`text-xs transition-colors duration-300 ${active ? 'font-bold text-slate-900' : done ? 'font-semibold text-slate-700' : 'font-medium text-slate-500 group-hover:text-slate-700'}`}>
+                        {s.label}
                       </span>
                     </button>
-                  );
-                })}
-              </div>
+                    {i < activeSteps.length - 1 && (
+                      <div className="hidden sm:block relative h-[2px] w-8 shrink-0 overflow-hidden rounded-full bg-slate-100">
+                        <div 
+                          className="absolute left-0 top-0 h-full rounded-full transition-all duration-700 ease-in-out" 
+                          style={{ width: done ? '100%' : '0%', backgroundColor: theme.primary }} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </aside>
+          </div>
+        </div>
 
-          <section ref={stepContentRef} className={`${surfaceClass} min-w-0 scroll-mt-24 p-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
+        {/* Centered Form Area */}
+        <div className="mx-auto mt-8 max-w-6xl px-4 pb-20">
+          <section ref={stepContentRef} className={`${surfaceClass} overflow-hidden bg-white ring-1 ring-slate-200/60 shadow-lg shadow-slate-200/40 sm:rounded-[2rem]`}>
             {participation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION') && (
-              <div className="mb-6 rounded-[20px] border border-amber-200 bg-amber-50/60 p-4 text-xs font-semibold text-amber-900 shadow-sm animate-pulse flex items-start gap-3">
+              <div className="m-6 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-xs font-medium text-amber-900 shadow-sm animate-pulse flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-black uppercase tracking-wider text-amber-950">Revision/Resubmission Required</h4>
+                  <h4 className="font-semibold uppercase tracking-wider text-amber-950">Revision/Resubmission Required</h4>
                   <p className="mt-1 leading-relaxed text-amber-800">
                     This procurement has been amended by the buyer (V{bid?.version || 2}). Your previously submitted offer is now in draft. Please review the updated terms/specifications, update your quote if necessary, and click **Submit Bid** again.
                   </p>
                 </div>
               </div>
             )}
-            <div key={step} className="bid-step-body">
+            <div key={step} className="bid-step-body p-6 sm:p-8">
               {step === 2 && (
                 bid?.procurementType === 'RFI' ? (
                   <RfiQuestionnaireForm
@@ -747,8 +743,8 @@ export default function BidParticipationPage() {
 function Info({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {
   return (
     <div className={`min-w-0 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-sm ${wide ? 'sm:col-span-2' : ''}`}>
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-xs font-black leading-relaxed text-slate-800">{value}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-semibold leading-relaxed text-slate-800">{value}</p>
     </div>
   );
 }
@@ -767,7 +763,7 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
   return (
     <div>
       <StepTitle icon={<BadgeCheck className="h-5 w-5" />} title="Technical Offer" subtitle="Enter product/service specifics that will be attached to your financial quote save." />
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Input label="Make/Brand" value={value.makeBrand} onChange={next => update('makeBrand', next)} disabled={disabled} />
         <Input label="Model" value={value.model} onChange={next => update('model', next)} disabled={disabled} />
         <Field label="Offered product/service description" value={value.offeredItemDescription} onChange={next => update('offeredItemDescription', next)} disabled={disabled} />
@@ -777,8 +773,8 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
         <Input label="Service support" value={value.serviceSupport} onChange={next => update('serviceSupport', next)} disabled={disabled} />
         <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
       </div>
-      <div className="mt-5 flex justify-end">
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
+      <div className="sticky bottom-0 z-10 mt-6 flex justify-end border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
           Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -821,7 +817,7 @@ function RfiQuestionnaireForm({
 
             return (
               <div key={qId} className={`${panelClass} p-4`}>
-                <span className="mb-2 block text-xs font-black text-slate-700">{idx + 1}. {label}</span>
+                <span className="mb-2 block text-xs font-semibold text-slate-700">{idx + 1}. {label}</span>
                 {type === 'YES_NO' || type === 'YESNO' ? (
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
@@ -877,16 +873,16 @@ function RfiQuestionnaireForm({
           })}
         </div>
       )}
-      <div className="mt-5 flex justify-end gap-3">
+      <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
         <button
           onClick={onSave}
           disabled={!canSave || saving}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save Answers
         </button>
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
           Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -919,7 +915,7 @@ function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs
       <StepTitle icon={<FileUp className="h-5 w-5" />} title="Upload Technical Documents" subtitle="Upload compliance, certificates, catalogues, experience proofs, and supporting technical documents." />
       {required.length > 0 && (
         <div className={`${panelClass} mt-4 p-4`}>
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Buyer-required documents checklist</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Buyer-required documents checklist</p>
           <div className="mt-2 space-y-1.5">
             {required.map(name => {
               const done = coveredNames.has(String(name).trim().toLowerCase());
@@ -944,11 +940,11 @@ function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs
         </p>
       )}
       <UploadedList docs={uploadedDocs} title="Uploaded technical documents" />
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
+      <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
+        <button onClick={onUpload} disabled={!canUpload || uploading || !files.length || (required.length > 0 && files.some(f => !f.documentName))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }} title={(required.length > 0 && files.some(f => !f.documentName)) ? "Please tag all files before uploading" : ""}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Upload documents
         </button>
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
           Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -1010,7 +1006,7 @@ function FinancialQuoteStep({
       
       {isBoq && (
         <div className={`${panelClass} mt-4 p-4`}>
-          <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">BOQ Excel Template Download</h4>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-800">BOQ Excel Template Download</h4>
           <p className="mt-1 text-xs font-bold text-slate-600">Please download the template, fill in your line-item rates, and upload the completed sheet below.</p>
           <div className="mt-3">
             {boqTemplates.length > 0 ? boqTemplates.map(doc => (
@@ -1019,7 +1015,7 @@ function FinancialQuoteStep({
                 href={doc.fileUrl || `/api/files/${doc.fileAssetId}/view`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                 style={{ backgroundColor: 'var(--bid-primary)' }}
               >
                 Download {doc.fileName || 'BOQ Template'}
@@ -1057,7 +1053,7 @@ function FinancialQuoteStep({
       {isRateContract && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label>
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">Rate Validity Date <span className="text-red-500">*</span></span>
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Rate Validity Date <span className="text-red-500">*</span></span>
             <input
               type="date"
               value={rateContractData.validityDate}
@@ -1087,7 +1083,7 @@ function FinancialQuoteStep({
       )}
 
       <div className="mt-4">
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
           {isBoq ? "Upload Completed BOQ Excel sheet *" : "Upload Financial Proposal / Quote Document"}
         </span>
         <UploadDropZone disabled={!canEdit} onFiles={files => onFile(Array.from(files)[0])} />
@@ -1101,16 +1097,16 @@ function FinancialQuoteStep({
         </p>
       )}
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
         <button
           onClick={onSave}
           disabled={!canSave || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Save quote
         </button>
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
           Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -1144,8 +1140,8 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
-      <div className="mt-5 flex justify-end">
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
+      <div className="sticky bottom-0 z-10 mt-6 flex justify-end border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
           Continue to submit <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -1165,14 +1161,14 @@ function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit }
       <StepTitle icon={<Send className="h-5 w-5" />} title="Submit Bid" subtitle="Final submission locks this participation for buyer evaluation." />
       <div className={`${panelClass} mt-4 grid gap-3 p-5 text-center`}>
         {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10" style={{ color: 'var(--bid-primary)' }} />}
-        <p className="mt-3 text-sm font-black text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
+        <p className="mt-3 text-sm font-semibold text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
         <p className="mt-1 text-xs text-slate-500">{submitted ? 'You can track evaluation progress now.' : 'Please ensure all files and quote values are correct before submitting.'}</p>
         {!submitted && (
           <div className="mx-auto mt-3 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
             {requirements.map(item => (
               <div
                 key={item.label}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[11px] font-black transition-all duration-200 ${item.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[11px] font-semibold transition-all duration-200 ${item.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}
               >
                 {item.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" />}
                 <span>{item.label}</span>
@@ -1181,8 +1177,8 @@ function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit }
           </div>
         )}
       </div>
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
+      <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
+        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Final submit
         </button>
       </div>
@@ -1195,7 +1191,7 @@ function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: st
     <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-transform duration-300 hover:scale-105" style={{ backgroundColor: 'var(--bid-primary)' }}>{icon}</div>
       <div>
-        <h2 className="text-lg font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h2>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--bid-primary)' }}>{title}</h2>
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       </div>
     </div>
@@ -1205,7 +1201,7 @@ function StepTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: st
 function Panel({ title, items }: { title: string; items: string[] }) {
   return (
     <section className={`${panelClass} p-4`}>
-      <h3 className="text-sm font-black" style={{ color: 'var(--bid-primary)' }}>{title}</h3>
+      <h3 className="text-sm font-semibold" style={{ color: 'var(--bid-primary)' }}>{title}</h3>
       <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
         {items.map(item => <li key={item} className="rounded-lg bg-white px-3 py-2 font-semibold shadow-sm ring-1 ring-slate-100">{item}</li>)}
       </ul>
@@ -1216,7 +1212,7 @@ function Panel({ title, items }: { title: string; items: string[] }) {
 function Input({ label, value, onChange, disabled, required }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {
   return (
     <label>
-      <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">{label} {required && <span className="text-red-500">*</span>}</span>
+      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">{label} {required && <span className="text-red-500">*</span>}</span>
       <input value={value} onChange={event => onChange(event.target.value)} disabled={disabled} className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400`} />
     </label>
   );
@@ -1224,8 +1220,8 @@ function Input({ label, value, onChange, disabled, required }: { label: string; 
 
 function Field({ label, value, onChange, disabled, required }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {
   return (
-    <label className="md:col-span-2">
-      <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">{label} {required && <span className="text-red-500">*</span>}</span>
+    <label className="md:col-span-2 lg:col-span-3">
+      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">{label} {required && <span className="text-red-500">*</span>}</span>
       <textarea value={value} onChange={event => onChange(event.target.value)} disabled={disabled} className={`${textAreaClass} disabled:bg-slate-50 disabled:text-slate-400`} />
     </label>
   );
@@ -1246,7 +1242,7 @@ function UploadDropZone({ disabled, multiple, onFiles }: { disabled: boolean; mu
       style={dragging ? { borderColor: 'var(--bid-primary)', backgroundColor: 'var(--bid-light)', color: 'var(--bid-primary)' } : undefined}
     >
       <FileUp className="h-8 w-8" />
-      <span className="mt-3 text-sm font-black">Drag and drop files here</span>
+      <span className="mt-3 text-sm font-semibold">Drag and drop files here</span>
       <span className="mt-1 text-xs">PDF, DOC, DOCX, XLS, XLSX, CSV, JPG, PNG up to 10 MB</span>
       <input disabled={disabled} type="file" multiple={multiple} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png" onChange={event => event.target.files && onFiles(event.target.files)} className="hidden" />
     </label>
@@ -1262,7 +1258,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <FileText className="h-5 w-5" style={{ color: 'var(--bid-primary)' }} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-black text-slate-800">{item.file.name}</p>
+              <p className="truncate text-xs font-semibold text-slate-800">{item.file.name}</p>
               <p className="text-[10px] font-bold text-slate-500">{formatBytes(item.file.size)} - {item.status}</p>
               {item.status === 'uploading' && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full" style={{ width: `${item.progress}%`, backgroundColor: 'var(--bid-primary)' }} /></div>}
               {item.error && <p className="mt-1 text-[10px] font-bold text-red-600">{item.error}</p>}
@@ -1271,7 +1267,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
               <select
                 value={item.documentName || ''}
                 onChange={event => onTag(item.id, event.target.value)}
-                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black text-slate-700 transition-colors focus:border-slate-400"
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 transition-colors focus:border-slate-400"
                 title="Which required document is this file?"
               >
                 <option value="">Tag as required document…</option>
@@ -1280,8 +1276,8 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
               </select>
             )}
             <div className="flex gap-2">
-              <button type="button" onClick={() => onPreview(item)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black text-slate-700 transition-colors hover:bg-slate-50"><Eye className="h-3.5 w-3.5" /> Preview</button>
-              {item.status !== 'uploaded' && <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 text-[10px] font-black text-red-600 transition-colors hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Remove</button>}
+              <button type="button" onClick={() => onPreview(item)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"><Eye className="h-3.5 w-3.5" /> Preview</button>
+              {item.status !== 'uploaded' && <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 text-[10px] font-semibold text-red-600 transition-colors hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Remove</button>}
             </div>
           </div>
         </div>
@@ -1293,7 +1289,7 @@ function FileList({ files, onRemove, onPreview, requiredDocuments, onTag }: { fi
 function UploadedList({ docs, title }: { docs: ParticipationDocument[]; title: string }) {
   return (
     <div className="mt-4">
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{title}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
       <div className="mt-2 space-y-2">
         {docs.length ? docs.map((doc, index) => (
           <div key={`${doc.id || doc.fileName}-${index}`} className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">

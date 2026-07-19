@@ -289,7 +289,7 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
             <thead className="bg-slate-100/70">
               <tr>
                 {columns.map(column => (
-                  <th key={column} className="px-3 py-2.5 font-black uppercase tracking-wider text-slate-600">
+                  <th key={column} className="px-3 py-2.5 font-semibold uppercase tracking-wider text-slate-600">
                     {humanizeKey(column)}
                   </th>
                 ))}
@@ -329,7 +329,7 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
       <div className={cn('mt-2 grid gap-3', depth > 0 ? 'grid-cols-1' : 'sm:grid-cols-2 lg:grid-cols-3')}>
         {entries.map(([key, nestedValue]) => (
           <div key={key} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">{humanizeKey(key)}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">{humanizeKey(key)}</p>
             <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-700">
               <DetailValue value={nestedValue} valueKey={key} depth={depth + 1} />
             </div>
@@ -356,7 +356,7 @@ const ProcurementDetailSection = ({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-700">
+      <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700">
           <Icon className="h-4 w-4" />
         </span>
@@ -365,7 +365,7 @@ const ProcurementDetailSection = ({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {entries.map(([key, value]) => (
           <div key={String(key)} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">{Array.isArray(data) ? title : humanizeKey(String(key))}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">{Array.isArray(data) ? title : humanizeKey(String(key))}</p>
             <div className="mt-1.5 text-xs font-bold leading-relaxed text-slate-800">
               <DetailValue value={value} valueKey={String(key)} />
             </div>
@@ -1068,7 +1068,7 @@ export default function RfpDetailPage() {
   const InfoRow = ({ label, value, red }: { label: string; value: string; red?: boolean }) => (
     <div className="flex justify-between items-start gap-4 py-1.5 border-b border-slate-50 last:border-0">
       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</span>
-      <span className={cn("text-xs font-black text-right", red ? "text-red-600" : "text-slate-800")}>{value}</span>
+      <span className={cn("text-xs font-semibold text-right", red ? "text-red-600" : "text-slate-800")}>{value}</span>
     </div>
   );
 
@@ -1162,10 +1162,10 @@ export default function RfpDetailPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 animate-in fade-in slide-in-from-bottom-3 duration-500">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-950">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950">
               {subject}
             </h1>
-            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider', statusClass)}>
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider', statusClass)}>
               <ShieldCheck className="h-3.5 w-3.5" />
               {statusLabel}
             </span>
@@ -1183,7 +1183,7 @@ export default function RfpDetailPage() {
             type="button"
             variant="outline"
             onClick={handleDownload}
-            className="h-10 rounded-lg border-slate-200 text-xs font-black uppercase text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm flex items-center gap-1.5"
+            className="h-10 rounded-lg border-slate-200 text-xs font-semibold uppercase text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm flex items-center gap-1.5"
           >
             <Download className="h-4 w-4" /> Download RFP
           </Button>
@@ -1191,26 +1191,35 @@ export default function RfpDetailPage() {
             <Button
               type="button"
               onClick={handleSubmitProposal}
-              className="h-10 rounded-lg bg-slate-900 px-6 text-xs font-black uppercase text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md flex items-center gap-1.5"
+              className="h-10 rounded-lg bg-slate-900 px-6 text-xs font-semibold uppercase text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md flex items-center gap-1.5"
             >
               {hasSubmittedProposal ? 'View Submitted Proposal' : 'Submit Proposal'} <ArrowRight className="h-4 w-4" />
             </Button>
           )}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          {priorityCards.map(card => {
-            const Icon = card.icon;
-            return (
-              <div key={card.label} className={cn('rounded-lg border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md', card.className)}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider opacity-80">{card.label}</span>
-                  <Icon className="h-4 w-4 shrink-0" />
-                </div>
-                <p className="mt-2 truncate text-sm font-black" title={String(card.value)}>{card.value}</p>
-              </div>
-            );
-          })}
+        {/* Enterprise Highlight Strip */}
+        <div className="mt-6 flex flex-wrap gap-4 border-t border-slate-100 pt-6">
+          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><IndianRupee className="h-3 w-3 text-emerald-600" /> Estimated Value</span>
+            <span className="mt-2 text-lg font-bold text-emerald-800 block">{formatCurrency(estimatedValueVal)}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Clock className="h-3 w-3 text-rose-600" /> Closing Date</span>
+            <span className="mt-2 text-lg font-bold text-rose-700 block">{closesAtFormatted}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-slate-500" /> Technical Opening</span>
+            <span className="mt-2 text-lg font-bold text-slate-800 block">{technicalEvalDate}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><IndianRupee className="h-3 w-3 text-rose-500" /> EMD Required</span>
+            <span className="mt-2 text-lg font-bold text-slate-800 block">{emdDisplay}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><ClipboardCheck className="h-3 w-3 text-teal-600" /> Evaluation</span>
+            <span className="mt-2 text-lg font-bold text-slate-800 block">{evaluationMethodDisplay}</span>
+          </div>
         </div>
       </section>
 
@@ -1222,7 +1231,7 @@ export default function RfpDetailPage() {
               key={item.label}
               type="button"
               onClick={() => scrollToSection(item.ref)}
-              className="shrink-0 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500 transition-all duration-200 hover:bg-slate-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+              className="shrink-0 rounded-lg px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-all duration-200 hover:bg-slate-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
             >
               {item.label}
             </button>
@@ -1283,112 +1292,47 @@ export default function RfpDetailPage() {
         </div>
       </section>
 
-      {/* ── RFP Overview ── */}
+      {/* ── RFP Overview / General Info ── */}
       <section ref={overviewRef} className={`${detailCardClass} scroll-mt-24 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-        <div className="flex items-center gap-2 pb-3.5 border-b border-slate-100">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+        <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
             <ClipboardList className="h-4 w-4" />
           </div>
-          <h2 className="text-base font-black text-slate-900 uppercase tracking-wider">
-            RFP Overview
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+            General Information
           </h2>
         </div>
         
-        <div className="grid grid-cols-1 gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {/* Estimated Value */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <IndianRupee className="h-3 w-3 text-emerald-600" /> Estimated Value
-            </span>
-            <span className="text-sm font-black text-emerald-800 block">{formatCurrency(estimatedValueVal)}</span>
+        <div className="grid grid-cols-1 gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Layers className="h-3 w-3" /> RFP Number</span>
+            <span className="text-sm font-mono font-semibold text-slate-900">{rfpNumberString}</span>
           </div>
-
-          {/* RFP Number */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Layers className="h-3 w-3 text-slate-600" /> RFP Number
-            </span>
-            <span className="text-sm font-mono font-black text-slate-800 block">{rfpNumberString}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Package className="h-3 w-3" /> Category</span>
+            <span className="text-sm font-semibold text-slate-900">{category}</span>
           </div>
-
-          {/* Category */}
-          <div className={`${metricTileClass} min-w-0`}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Package className="h-3 w-3 text-amber-600" /> Category
-            </span>
-            <span className="text-sm font-black text-slate-800 block truncate" title={category}>{category}</span>
-          </div>
-
-          {/* Sub Category */}
           {subCategory && (
-            <div className={`${metricTileClass} min-w-0`}>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Package className="h-3 w-3 text-violet-600" /> Sub Category
-              </span>
-              <span className="text-sm font-black text-slate-800 block truncate" title={subCategory}>{subCategory}</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Package className="h-3 w-3" /> Sub Category</span>
+              <span className="text-sm font-semibold text-slate-900">{subCategory}</span>
             </div>
           )}
-
-          {/* Published Date */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Calendar className="h-3 w-3 text-slate-500" /> Published Date
-            </span>
-            <span className="text-sm font-black text-slate-800 block">{publishedDateFormatted}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3" /> Published</span>
+            <span className="text-sm font-semibold text-slate-900">{publishedDateFormatted}</span>
           </div>
-
-          {/* Closing Date */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Clock className="h-3 w-3 text-rose-600" /> Closing Date
-            </span>
-            <span className="text-sm font-black text-rose-700 block">{closesAtFormatted}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Clock className="h-3 w-3" /> Duration</span>
+            <span className="text-sm font-semibold text-slate-900">{projectDurationDisplay}</span>
           </div>
-
-          {/* Project Duration */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Clock className="h-3 w-3 text-indigo-600" /> Project Duration
-            </span>
-            <span className="text-sm font-black text-slate-800 block">{projectDurationDisplay}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><MapPin className="h-3 w-3" /> Delivery Location</span>
+            <span className="text-sm font-semibold text-slate-900">{deliveryLocationDisplay}</span>
           </div>
-
-          {/* Delivery Location */}
-          <div className={`${metricTileClass} min-w-0`}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <MapPin className="h-3 w-3 text-red-500" /> Delivery Location
-            </span>
-            <span className="text-sm font-black text-slate-800 block truncate" title={deliveryLocationDisplay}>
-              {deliveryLocationDisplay}
-            </span>
-          </div>
-
-          {/* Payment Terms */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Info className="h-3 w-3 text-sky-600" /> Payment Terms
-            </span>
-            <span className="text-sm font-black text-slate-800 block truncate" title={paymentTermsDisplay}>
-              {paymentTermsDisplay}
-            </span>
-          </div>
-
-          {/* Evaluation Method */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <ClipboardCheck className="h-3 w-3 text-teal-600" /> Evaluation Method
-            </span>
-            <span className="text-sm font-black text-slate-800 block">{evaluationMethodDisplay}</span>
-          </div>
-
-          {/* EMD Required */}
-          <div className={metricTileClass}>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <IndianRupee className="h-3 w-3 text-rose-500" /> EMD Required
-            </span>
-            <span className="text-sm font-black text-slate-850 text-slate-800 block">
-              {emdDisplay}
-            </span>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Info className="h-3 w-3" /> Payment Terms</span>
+            <span className="text-sm font-semibold text-slate-900">{paymentTermsDisplay}</span>
           </div>
         </div>
       </section>
@@ -1400,7 +1344,7 @@ export default function RfpDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Scope Card */}
           <section className={`${detailCardClass} space-y-3.5 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-            <h2 className="text-base font-black text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+            <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
               RFP Scope
             </h2>
             <p className="whitespace-pre-line text-xs font-semibold leading-relaxed text-slate-600">
@@ -1410,7 +1354,7 @@ export default function RfpDetailPage() {
 
           {/* Key Dates Card */}
           <section ref={keyDatesRef} className={`${detailCardClass} scroll-mt-24 space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-            <h2 className="text-base font-black text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+            <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
               Key Dates
             </h2>
             <div className="space-y-3">
@@ -1433,7 +1377,7 @@ export default function RfpDetailPage() {
                     </span>
                     {row.label}
                   </span>
-                  <span className={cn("font-bold", row.label.includes('End') ? "text-rose-700 font-extrabold" : "text-slate-800")}>{row.value}</span>
+                  <span className={cn("font-bold", row.label.includes('End') ? "text-rose-700 font-semibold" : "text-slate-800")}>{row.value}</span>
                 </div>
               ))}
             </div>
@@ -1442,7 +1386,7 @@ export default function RfpDetailPage() {
 
         {/* ═══ COLUMN 3: Buyer Information ═══ */}
         <section ref={buyerInfoRef} className={`${detailCardClass} scroll-mt-24 space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-black text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
             Buyer Information
           </h2>
           
@@ -1450,8 +1394,8 @@ export default function RfpDetailPage() {
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Organization</span>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs font-black text-slate-900">{orgName}</span>
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-600 border border-emerald-100">
+                <span className="text-xs font-semibold text-slate-900">{orgName}</span>
+                <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 border border-emerald-100">
                   <ShieldCheck className="h-3 w-3 stroke-[2.5]" /> Verified Buyer
                 </span>
               </div>
@@ -1485,7 +1429,7 @@ export default function RfpDetailPage() {
         
         {/* RFP Documents Card */}
         <section ref={documentsRef} className={`${detailCardClass} scroll-mt-24 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-black text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
             RFP Documents
           </h2>
           
@@ -1512,7 +1456,7 @@ export default function RfpDetailPage() {
                     <FileText className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-xs font-black text-slate-800 block leading-tight truncate">{doc.name}</span>
+                    <span className="text-xs font-semibold text-slate-800 block leading-tight truncate">{doc.name}</span>
                     <span className="text-[9px] font-bold text-slate-400 block mt-0.5 whitespace-nowrap">{doc.meta || 'Document'}</span>
                   </div>
                 </div>
@@ -1527,19 +1471,19 @@ export default function RfpDetailPage() {
 
         {/* Activity Snapshot Section */}
         <section className={`${detailCardClass} animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-black text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
             Activity Snapshot
           </h2>
           
           <div className="grid grid-cols-2 gap-4 mt-4">
             <div className="border-r border-slate-100 pr-4">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Queries</span>
-              <span className="text-xl font-black text-slate-900 mt-1 block tabular-nums">{totalQueries}</span>
+              <span className="text-xl font-semibold text-slate-900 mt-1 block tabular-nums">{totalQueries}</span>
             </div>
 
             <div className="pl-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Responses</span>
-              <span className="text-xl font-black text-slate-900 mt-1 block tabular-nums">{totalResponses}</span>
+              <span className="text-xl font-semibold text-slate-900 mt-1 block tabular-nums">{totalResponses}</span>
             </div>
           </div>
         </section>
@@ -1548,7 +1492,7 @@ export default function RfpDetailPage() {
       {/* ── Procurement Details Structured Grids ── */}
       <section ref={detailsRef} className={`${detailCardClass} mt-8 scroll-mt-24 space-y-8 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
         <div className="pb-4 border-b border-slate-100">
-          <h2 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <h2 className="text-base font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
             <Layers className="h-5 w-5 text-violet-600" />
             Comprehensive Procurement Details
           </h2>
@@ -1583,7 +1527,7 @@ export default function RfpDetailPage() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
               <User className="h-4 w-4" />
             </div>
-            <h2 className="text-base font-black text-slate-900 uppercase tracking-wider">
+            <h2 className="text-base font-semibold text-slate-900 uppercase tracking-wider">
               Seller Proposals
             </h2>
           </div>
@@ -1591,7 +1535,7 @@ export default function RfpDetailPage() {
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[700px] text-left text-sm">
               <thead className="bg-slate-50">
-                <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="px-4 py-3 border-b border-slate-100">Seller Name</th>
                   <th className="px-4 py-3 border-b border-slate-100">Submission Status</th>
                   <th className="px-4 py-3 border-b border-slate-100">Tech Eval</th>
@@ -1614,7 +1558,7 @@ export default function RfpDetailPage() {
                       <Button
                         type="button"
                         onClick={() => router.push(`/bids/${rfpData.id}/results`)}
-                        className="h-8 rounded-lg bg-indigo-50 px-3 text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-100 flex items-center gap-1.5 ml-auto"
+                        className="h-8 rounded-lg bg-indigo-50 px-3 text-[10px] font-semibold uppercase text-indigo-600 hover:bg-indigo-100 flex items-center gap-1.5 ml-auto"
                       >
                         <Eye className="h-3.5 w-3.5" /> Review
                       </Button>

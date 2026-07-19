@@ -34,6 +34,7 @@ import {
   Package,
   CalendarDays,
   Clipboard,
+  ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApi } from '../../shared/apiClient';
@@ -267,7 +268,7 @@ const getArrayColumns = (items: any[]) => {
 };
 
 const ArrayTableCell = ({ value, column }: { value: any; column: string }) => (
-  <span className="block max-h-20 overflow-hidden break-words">
+  <span className="block max-h-32 overflow-y-auto whitespace-pre-wrap break-words pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
     {value && typeof value === 'object'
       ? summarizeComplexDetailValue(value, column)
       : formatPrimitiveDetailValue(value, column)}
@@ -284,12 +285,13 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
     if (objectRows.length === value.length && objectRows.length > 0) {
       const columns = getArrayColumns(objectRows);
       return (
-        <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full table-fixed text-left text-xs">
-            <thead className="bg-slate-100/70">
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] text-left text-xs">
+              <thead className="bg-slate-50">
               <tr>
                 {columns.map(column => (
-                  <th key={column} className="px-3 py-2.5 font-semibold uppercase tracking-wider text-slate-600">
+                  <th key={column} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-200">
                     {humanizeKey(column)}
                   </th>
                 ))}
@@ -297,16 +299,17 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
             </thead>
             <tbody className="divide-y divide-slate-100">
               {objectRows.map((item, rowIndex) => (
-                <tr key={item.id || `${valueKey}-${rowIndex}`} className="transition-colors hover:bg-slate-50/80">
+                <tr key={item.id || `${valueKey}-${rowIndex}`} className="transition-all duration-200 hover:bg-slate-50 hover:shadow-sm">
                   {columns.map(column => (
-                    <td key={column} className="px-3 py-3 align-top font-semibold leading-relaxed text-slate-700">
+                    <td key={column} className="px-4 py-3.5 align-top text-xs font-semibold leading-relaxed text-slate-800">
                       <ArrayTableCell value={item[column]} column={column} />
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       );
     }
@@ -314,7 +317,7 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
     return (
       <ul className="mt-1 space-y-1.5">
         {value.map((item, idx) => (
-          <li key={`${valueKey}-${idx}`} className="rounded-lg bg-white px-2.5 py-2 text-xs font-semibold leading-relaxed text-slate-700 ring-1 ring-slate-200">
+          <li key={`${valueKey}-${idx}`} className="rounded-lg bg-white px-3 py-2.5 text-sm font-bold leading-relaxed text-slate-800 ring-1 ring-slate-200 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:ring-slate-300">
             {item && typeof item === 'object' ? summarizeComplexDetailValue(item, valueKey) : formatPrimitiveDetailValue(item, valueKey)}
           </li>
         ))}
@@ -326,11 +329,11 @@ const DetailValue = ({ value, valueKey = '', depth = 0 }: { value: any; valueKey
     const entries = detailEntries(value);
     if (!entries.length) return <span className="text-slate-400">N/A</span>;
     return (
-      <div className={cn('mt-2 grid gap-3', depth > 0 ? 'grid-cols-1' : 'sm:grid-cols-2 lg:grid-cols-3')}>
+      <div className={cn('mt-2 grid gap-3', depth > 0 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3')}>
         {entries.map(([key, nestedValue]) => (
-          <div key={key} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">{humanizeKey(key)}</p>
-            <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-700">
+          <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-700">{humanizeKey(key)}</p>
+            <div className="mt-1.5 text-sm font-bold leading-relaxed text-slate-900">
               <DetailValue value={nestedValue} valueKey={key} depth={depth + 1} />
             </div>
           </div>
@@ -346,38 +349,90 @@ const ProcurementDetailSection = ({
   title,
   icon: Icon,
   data,
+  defaultExpanded = false,
 }: {
   title: string;
   icon: any;
   data: any;
+  defaultExpanded?: boolean;
 }) => {
   const entries = Array.isArray(data) ? [[title, data]] : detailEntries(data);
+  const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
+
   if (!entries.length) return null;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700">
-          <Icon className="h-4 w-4" />
-        </span>
-        {title}
-      </h3>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {entries.map(([key, value]) => (
-          <div key={String(key)} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">{Array.isArray(data) ? title : humanizeKey(String(key))}</p>
-            <div className="mt-1.5 text-xs font-bold leading-relaxed text-slate-800">
-              <DetailValue value={value} valueKey={String(key)} />
+    <div className="rounded-xl border border-slate-200/60 bg-white shadow-sm shadow-slate-200/40 transition-all duration-300 hover:shadow-md hover:border-slate-300 overflow-hidden">
+      <div 
+        className="flex items-center justify-between p-5 cursor-pointer bg-white hover:bg-slate-50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <h3 className="flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-900">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+            <Icon className="h-4 w-4" />
+          </span>
+          {title}
+        </h3>
+        <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300 shrink-0", isExpanded ? "rotate-180" : "")} />
+      </div>
+      <div className={cn("px-6 pb-6 pt-2 border-t border-slate-100 transition-all duration-300", isExpanded ? "block" : "hidden")}>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+        {entries.map(([key, value]) => {
+          const keyStr = String(key);
+          const keyLower = keyStr.toLowerCase();
+          
+          let cardBg = 'bg-white border-slate-200';
+          let labelColor = 'text-slate-700';
+          let valueColor = 'text-slate-900 font-bold';
+          let badgeClass = '';
+          
+          if (keyLower.includes('status')) {
+            cardBg = 'bg-emerald-50/50 border-emerald-200';
+            labelColor = 'text-emerald-700';
+            valueColor = ''; // Managed by badge
+            badgeClass = 'inline-flex items-center rounded-full bg-emerald-100/80 px-2.5 py-0.5 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-300';
+          } else if (keyLower.includes('value') || keyLower.includes('budget') || keyLower.includes('price')) {
+            cardBg = 'bg-indigo-50/40 border-indigo-200';
+            labelColor = 'text-indigo-700';
+            valueColor = 'text-indigo-950 text-sm font-black tracking-tight'; 
+          } else if (keyLower.includes('deadline') || keyLower.includes('enddate') || keyLower.includes('closing') || keyLower.includes('urgency')) {
+            cardBg = 'bg-rose-50/50 border-rose-200';
+            labelColor = 'text-rose-700';
+            valueColor = 'text-rose-900 font-bold';
+          } else if (keyLower.includes('title') || keyLower.includes('subject') || keyLower.includes('category')) {
+            cardBg = 'bg-sky-50/40 border-sky-200';
+            labelColor = 'text-sky-700';
+            valueColor = 'text-sky-950 font-bold';
+          } else if (keyLower.includes('rfpnumber') || keyLower.includes('requirementnumber') || keyLower === 'id' || keyLower === 'uuid') {
+            cardBg = 'bg-slate-50 border-slate-300';
+            labelColor = 'text-slate-600';
+            valueColor = 'text-slate-800 font-mono font-bold text-[11px]';
+          }
+
+          const isComplex = typeof value === 'object' && value !== null;
+          return (
+            <div key={keyStr} className={cn(`group flex flex-col gap-1.5 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 ${cardBg}`, isComplex ? 'col-span-full' : '')}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${labelColor}`}>{Array.isArray(data) ? title : humanizeKey(keyStr)}</p>
+              <div className={`text-sm leading-relaxed ${valueColor}`}>
+                {badgeClass ? (
+                  <span className={badgeClass}>
+                    <DetailValue value={value} valueKey={keyStr} />
+                  </span>
+                ) : (
+                  <DetailValue value={value} valueKey={keyStr} />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        </div>
       </div>
     </div>
   );
 };
 
 const detailCardClass =
-  'rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50 transition-all duration-300 ease-out hover:border-slate-300 hover:shadow-md hover:shadow-slate-200/60';
+  'rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 transition-all duration-300 ease-out hover:border-slate-300 hover:shadow-md hover:shadow-slate-200/60 hover:-translate-y-1';
 
 const metricTileClass =
   'group min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md hover:shadow-slate-200/60';
@@ -422,7 +477,10 @@ export default function RfpDetailPage() {
 
   const reqObj = reqData?.requirement || reqData;
   const ownResponse = reqData?.ownResponse || null;
-  const hasSubmittedProposal = bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && (p.sellerId === user?.id || (user?.organizationId && p.seller?.organizationId === user?.organizationId))) || (ownResponse && ownResponse.status !== 'DRAFT');
+  const hasSubmittedProposal = 
+    reqObj?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && (p.sellerId === user?.id || (user?.organizationId && p.seller?.organizationId === user?.organizationId))) ||
+    bidData?.participations?.some((p: any) => p.submissionStatus === 'SUBMITTED' && (p.sellerId === user?.id || (user?.organizationId && p.seller?.organizationId === user?.organizationId))) || 
+    (ownResponse && (ownResponse.submissionStatus === 'SUBMITTED' || ownResponse.status === 'SUBMITTED'));
 
   // Map data from whichever source responded
   const rawBid: any = bidData;
@@ -897,6 +955,10 @@ export default function RfpDetailPage() {
     Object.fromEntries(Object.entries(payload).filter(([key]) => !knownPayloadKeys.has(key)))
   );
 
+  const activeProcurementMethod = String(payload?.fullProcurementMethod || payload?.type || rfpData?.procurementType || '').toUpperCase();
+  const activeBuyingType = String(payload?.buyingType || basics?.whatAreYouBuying || '').toUpperCase();
+  const isServiceType = activeProcurementMethod.includes('RFP') || activeProcurementMethod.includes('RFI') || activeBuyingType.includes('SERVICE');
+
   const procurementDetailSections = [
     {
       title: 'Procurement Record',
@@ -943,9 +1005,11 @@ export default function RfpDetailPage() {
       }),
     },
     {
-      title: 'Items / Line Items',
-      icon: Package,
-      data: payload.items || rfpData?.items,
+      title: isServiceType ? 'RFP Service Details' : 'Items / Line Items',
+      icon: isServiceType ? FileText : Package,
+      data: isServiceType 
+        ? (payload.serviceDetails || payload.items || rfpData?.items)
+        : (payload.items || rfpData?.items),
     },
     {
       title: 'BOQ Details',
@@ -959,7 +1023,7 @@ export default function RfpDetailPage() {
     {
       title: 'Service Details',
       icon: FileText,
-      data: payload.serviceDetails,
+      data: isServiceType ? undefined : payload.serviceDetails,
     },
     {
       title: 'Vendor / Supplier Selection',
@@ -1067,7 +1131,7 @@ export default function RfpDetailPage() {
 
   const InfoRow = ({ label, value, red }: { label: string; value: string; red?: boolean }) => (
     <div className="flex justify-between items-start gap-4 py-1.5 border-b border-slate-50 last:border-0">
-      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{label}</span>
       <span className={cn("text-xs font-semibold text-right", red ? "text-red-600" : "text-slate-800")}>{value}</span>
     </div>
   );
@@ -1158,67 +1222,115 @@ export default function RfpDetailPage() {
         </div>
       )}
 
-      {/* ── Page Header ── */}
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 animate-in fade-in slide-in-from-bottom-3 duration-500">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950">
+{/* ── Page Header ── */}
+      <section className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-md shadow-slate-200/40 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider', statusClass)}>
+                <div className="h-2 w-2 rounded-full bg-current animate-pulse"></div>
+                {statusLabel}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 uppercase tracking-wider">
+                <Building2 className="h-3.5 w-3.5" /> Buyer: {orgName}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 uppercase tracking-wider">
+                <Layers className="h-3.5 w-3.5" /> {evaluationMethodDisplay !== '—' ? evaluationMethodDisplay : 'Standard'}
+              </span>
+            </div>
+            
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-950 leading-tight">
               {subject}
             </h1>
-            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider', statusClass)}>
-              <ShieldCheck className="h-3.5 w-3.5" />
-              {statusLabel}
-            </span>
+            
+            <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
+              <div className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700 font-mono font-bold">
+                {rfpNumberString}
+              </div>
+              <span className="h-4 w-px bg-slate-300"></span>
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" /> Published {publishedDateFormatted}
+              </span>
+            </div>
           </div>
-          <p className="text-sm font-semibold text-slate-500">
-            <span className="font-mono font-bold text-slate-600">{rfpNumberString}</span>
-            <span className="mx-2">•</span>
-            Published on {publishedDateFormatted} by {orgName}
-          </p>
-        </div>
 
-        {/* Header Action Buttons */}
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-5">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleDownload}
-            className="h-10 rounded-lg border-slate-200 text-xs font-semibold uppercase text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm flex items-center gap-1.5"
-          >
-            <Download className="h-4 w-4" /> Download RFP
-          </Button>
-          {user && user.role === 'seller' && (
+          {/* Header Action Buttons */}
+          <div className="flex shrink-0 flex-wrap items-center gap-3 mt-4 lg:mt-0">
             <Button
               type="button"
-              onClick={handleSubmitProposal}
-              className="h-10 rounded-lg bg-slate-900 px-6 text-xs font-semibold uppercase text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md flex items-center gap-1.5"
+              variant="outline"
+              onClick={handleDownload}
+              className="h-11 rounded-xl border-slate-200 text-sm font-bold uppercase tracking-wider text-slate-700 transition-all duration-300 hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md hover:border-slate-300 flex items-center gap-2"
             >
-              {hasSubmittedProposal ? 'View Submitted Proposal' : 'Submit Proposal'} <ArrowRight className="h-4 w-4" />
+              <Download className="h-4 w-4" /> Download
             </Button>
-          )}
+            {user && user.role === 'seller' && (
+              <Button
+                type="button"
+                onClick={handleSubmitProposal}
+                className="h-11 rounded-xl bg-slate-900 px-6 text-sm font-bold uppercase tracking-wider text-white shadow-md transition-all duration-300 hover:-translate-y-1 hover:bg-slate-800 hover:shadow-lg flex items-center gap-2"
+              >
+                {hasSubmittedProposal ? 'View Proposal' : 'Submit Proposal'} <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Enterprise Highlight Strip */}
-        <div className="mt-6 flex flex-wrap gap-4 border-t border-slate-100 pt-6">
-          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><IndianRupee className="h-3 w-3 text-emerald-600" /> Estimated Value</span>
-            <span className="mt-2 text-lg font-bold text-emerald-800 block">{formatCurrency(estimatedValueVal)}</span>
+        {/* Enterprise KPI Strip */}
+        <div className="mt-8 grid grid-cols-2 lg:grid-cols-5 gap-4 border-t border-slate-100 pt-8">
+          <div className="group relative overflow-hidden rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-100">
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-100/50 transition-transform duration-500 group-hover:scale-150"></div>
+            <div className="relative z-10 flex flex-col gap-2">
+              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-200/50 text-emerald-700"><IndianRupee className="h-3.5 w-3.5" /></div>
+                Estimated Value
+              </span>
+              <span className="text-2xl font-black tracking-tight text-emerald-950">{formatCurrency(estimatedValueVal)}</span>
+            </div>
           </div>
-          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Clock className="h-3 w-3 text-rose-600" /> Closing Date</span>
-            <span className="mt-2 text-lg font-bold text-rose-700 block">{closesAtFormatted}</span>
+
+          <div className="group relative overflow-hidden rounded-2xl border border-rose-100 bg-rose-50/50 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-rose-100">
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-rose-100/50 transition-transform duration-500 group-hover:scale-150"></div>
+            <div className="relative z-10 flex flex-col gap-2">
+              <span className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-rose-200/50 text-rose-700"><Clock className="h-3.5 w-3.5" /></div>
+                Closing Date
+              </span>
+              <span className="text-xl font-bold tracking-tight text-rose-950 leading-tight">{closesAtFormatted}</span>
+            </div>
           </div>
-          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-slate-500" /> Technical Opening</span>
-            <span className="mt-2 text-lg font-bold text-slate-800 block">{technicalEvalDate}</span>
+
+          <div className="group relative overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/50 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-100">
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-blue-100/50 transition-transform duration-500 group-hover:scale-150"></div>
+            <div className="relative z-10 flex flex-col gap-2">
+              <span className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-200/50 text-blue-700"><Calendar className="h-3.5 w-3.5" /></div>
+                Tech Opening
+              </span>
+              <span className="text-xl font-bold tracking-tight text-blue-950 leading-tight">{technicalEvalDate}</span>
+            </div>
           </div>
-          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><IndianRupee className="h-3 w-3 text-rose-500" /> EMD Required</span>
-            <span className="mt-2 text-lg font-bold text-slate-800 block">{emdDisplay}</span>
+
+          <div className="group relative overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/50 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-amber-100">
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-100/50 transition-transform duration-500 group-hover:scale-150"></div>
+            <div className="relative z-10 flex flex-col gap-2">
+              <span className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-200/50 text-amber-700"><ShieldCheck className="h-3.5 w-3.5" /></div>
+                EMD Required
+              </span>
+              <span className="text-xl font-bold tracking-tight text-amber-950">{emdDisplay}</span>
+            </div>
           </div>
-          <div className="flex-1 min-w-[150px] rounded-2xl bg-slate-50/50 p-4 ring-1 ring-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><ClipboardCheck className="h-3 w-3 text-teal-600" /> Evaluation</span>
-            <span className="mt-2 text-lg font-bold text-slate-800 block">{evaluationMethodDisplay}</span>
+
+          <div className="group relative overflow-hidden rounded-2xl border border-violet-100 bg-violet-50/50 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-violet-100">
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-violet-100/50 transition-transform duration-500 group-hover:scale-150"></div>
+            <div className="relative z-10 flex flex-col gap-2">
+              <span className="text-xs font-bold text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-200/50 text-violet-700"><ClipboardCheck className="h-3.5 w-3.5" /></div>
+                Evaluation
+              </span>
+              <span className="text-xl font-bold tracking-tight text-violet-950">{evaluationMethodDisplay}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -1231,7 +1343,7 @@ export default function RfpDetailPage() {
               key={item.label}
               type="button"
               onClick={() => scrollToSection(item.ref)}
-              className="shrink-0 rounded-lg px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-all duration-200 hover:bg-slate-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition-all duration-200 hover:bg-slate-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
             >
               {item.label}
             </button>
@@ -1239,49 +1351,59 @@ export default function RfpDetailPage() {
         </div>
       </div>
 
-      <section ref={timelineRef} className={`${detailCardClass} scroll-mt-24 overflow-x-auto animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-        <div className="min-w-[1000px] flex items-start justify-between relative px-6 py-8">
+<section ref={timelineRef} className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 scroll-mt-24 overflow-x-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <h2 className="text-lg font-bold text-slate-950 pb-4 uppercase tracking-wider flex items-center gap-2">
+          <CalendarDays className="h-5 w-5 text-indigo-600" /> Procurement Timeline
+        </h2>
+        <div className="min-w-[1000px] flex items-start justify-between relative px-2 py-6">
           {timelineSteps.map((step, idx) => {
             const hasNext = idx < timelineSteps.length - 1;
             const nextStepCompleted = hasNext && timelineSteps[idx + 1].completed;
+            const isCurrent = step.completed && !nextStepCompleted; // The "active" bouncing step
+            const isCompleted = step.completed && !isCurrent;
+            const isPending = !step.completed;
             const stepNum = String(idx + 1).padStart(2, '0');
-            const isActive = step.completed;
 
             return (
-              <div key={idx} className="flex flex-col items-center relative flex-1 last:flex-none">
+              <div key={idx} className="flex flex-col items-center relative flex-1 last:flex-none group">
                 {/* Background line segment */}
                 {hasNext && (
-                  <div className="absolute top-8 left-[50%] w-full h-[1px] bg-slate-300 z-0" />
+                  <div className="absolute top-7 left-[50%] w-full h-1 rounded-full bg-slate-100 z-0" />
                 )}
                 {/* Active line segment */}
-                {hasNext && isActive && nextStepCompleted && (
-                  <div className="absolute top-8 left-[50%] w-full h-[1.5px] bg-slate-800 z-0 transition-all duration-500" />
+                {hasNext && step.completed && (
+                  <div className={cn("absolute top-7 left-[50%] h-1 rounded-full bg-indigo-600 z-0 transition-all duration-1000 ease-in-out", nextStepCompleted ? "w-full" : "w-0")} />
                 )}
 
                 {/* Circle Icon Node */}
-                <div className="flex h-16 w-16 items-center justify-center bg-white relative z-10 transition-all duration-300 hover:scale-105">
-                  {isActive ? (
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-300 p-[3px]">
-                      <div className="flex h-full w-full items-center justify-center rounded-full border-[1.5px] border-slate-800 bg-white">
-                         <span className="font-serif text-[17px] text-slate-900 tracking-tight">{stepNum}</span>
-                      </div>
+                <div className="flex h-14 w-14 items-center justify-center bg-white relative z-10 transition-transform duration-500 group-hover:scale-110">
+                  {isCompleted ? (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md shadow-indigo-200 transition-all duration-300">
+                      <Check className="h-5 w-5 stroke-[3]" />
+                    </div>
+                  ) : isCurrent ? (
+                    <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-white border-2 border-indigo-600 text-indigo-700 shadow-lg shadow-indigo-100">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-20"></span>
+                      <span className="font-bold text-lg tracking-tight">{stepNum}</span>
                     </div>
                   ) : (
-                    <span className="font-serif text-[22px] text-slate-400 opacity-70 tracking-tight">{stepNum}</span>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 border-2 border-slate-200 text-slate-400 transition-colors duration-300 group-hover:border-slate-300 group-hover:text-slate-500">
+                      <span className="font-bold text-lg tracking-tight">{stepNum}</span>
+                    </div>
                   )}
                 </div>
 
                 {/* Labels */}
-                <div className="mt-4 space-y-1 text-center w-32 px-1">
+                <div className="mt-5 space-y-1.5 text-center w-32 px-1">
                   <p className={cn(
-                    "text-[13px] tracking-wide",
-                    isActive ? "text-slate-900 font-bold" : "text-slate-500 font-semibold"
+                    "text-xs uppercase tracking-wider transition-colors duration-300",
+                    isCurrent ? "text-indigo-700 font-extrabold" : isCompleted ? "text-slate-900 font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {step.label}
                   </p>
                   <p className={cn(
-                    "text-[11px]",
-                    isActive ? "text-slate-500 font-medium" : "text-slate-400"
+                    "text-[11px] font-semibold transition-colors duration-300",
+                    isCurrent || isCompleted ? "text-slate-600" : "text-slate-400"
                   )}>
                     {step.date}
                   </p>
@@ -1293,7 +1415,7 @@ export default function RfpDetailPage() {
       </section>
 
       {/* ── RFP Overview / General Info ── */}
-      <section ref={overviewRef} className={`${detailCardClass} scroll-mt-24 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
+      <section ref={overviewRef} className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 scroll-mt-24 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
         <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
             <ClipboardList className="h-4 w-4" />
@@ -1303,36 +1425,50 @@ export default function RfpDetailPage() {
           </h2>
         </div>
         
-        <div className="grid grid-cols-1 gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Layers className="h-3 w-3" /> RFP Number</span>
-            <span className="text-sm font-mono font-semibold text-slate-900">{rfpNumberString}</span>
+        <div className="grid grid-cols-1 gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <Layers className="h-3.5 w-3.5" /> RFP Number
+            </span>
+            <span className="text-sm font-mono font-bold text-slate-900">{rfpNumberString}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Package className="h-3 w-3" /> Category</span>
-            <span className="text-sm font-semibold text-slate-900">{category}</span>
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <Package className="h-3.5 w-3.5" /> Category
+            </span>
+            <span className="text-sm font-bold text-slate-900">{category}</span>
           </div>
           {subCategory && (
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Package className="h-3 w-3" /> Sub Category</span>
-              <span className="text-sm font-semibold text-slate-900">{subCategory}</span>
+            <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+                <Package className="h-3.5 w-3.5" /> Sub Category
+              </span>
+              <span className="text-sm font-bold text-slate-900">{subCategory}</span>
             </div>
           )}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3" /> Published</span>
-            <span className="text-sm font-semibold text-slate-900">{publishedDateFormatted}</span>
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <Calendar className="h-3.5 w-3.5" /> Published
+            </span>
+            <span className="text-sm font-bold text-slate-900">{publishedDateFormatted}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Clock className="h-3 w-3" /> Duration</span>
-            <span className="text-sm font-semibold text-slate-900">{projectDurationDisplay}</span>
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <Clock className="h-3.5 w-3.5" /> Duration
+            </span>
+            <span className="text-sm font-bold text-slate-900">{projectDurationDisplay}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><MapPin className="h-3 w-3" /> Delivery Location</span>
-            <span className="text-sm font-semibold text-slate-900">{deliveryLocationDisplay}</span>
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <MapPin className="h-3.5 w-3.5" /> Delivery Location
+            </span>
+            <span className="text-sm font-bold text-slate-900">{deliveryLocationDisplay}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Info className="h-3 w-3" /> Payment Terms</span>
-            <span className="text-sm font-semibold text-slate-900">{paymentTermsDisplay}</span>
+          <div className="group flex flex-col gap-1.5 rounded-lg border border-transparent p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 transition-colors group-hover:text-indigo-600">
+              <Info className="h-3.5 w-3.5" /> Payment Terms
+            </span>
+            <span className="text-sm font-bold text-slate-900">{paymentTermsDisplay}</span>
           </div>
         </div>
       </section>
@@ -1343,82 +1479,118 @@ export default function RfpDetailPage() {
         {/* Left Column (spans 2) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Scope Card */}
-          <section className={`${detailCardClass} space-y-3.5 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-            <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+          <section className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
+            <h2 className="mb-4 flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-4">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                <FileText className="h-4 w-4" />
+              </span>
               RFP Scope
             </h2>
-            <p className="whitespace-pre-line text-xs font-semibold leading-relaxed text-slate-600">
-              {scopeText}
-            </p>
+            <div className="group rounded-xl bg-slate-50 border border-slate-100 p-5 transition-all duration-300 hover:bg-white hover:border-indigo-100 hover:shadow-sm">
+              <p className="whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-700 break-words transition-colors group-hover:text-slate-900">
+                {scopeText}
+              </p>
+            </div>
           </section>
 
-          {/* Key Dates Card */}
-          <section ref={keyDatesRef} className={`${detailCardClass} scroll-mt-24 space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-            <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
+          {/* Key Dates Vertical Timeline Card */}
+          <section ref={keyDatesRef} className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 scroll-mt-24 space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
+            <h2 className="mb-5 flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-4">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-50 border border-rose-100 text-rose-600">
+                <CalendarDays className="h-4 w-4" />
+              </span>
               Key Dates
             </h2>
-            <div className="space-y-3">
+            <div className="relative pl-3 space-y-6">
+              <div className="absolute left-[19px] top-3 bottom-3 w-px bg-slate-200 z-0"></div>
               {[
-                { label: 'Bid Published', value: publishedDateFormatted, active: publishedDateFormatted !== '—' },
-                { label: 'Pre-Bid Meeting', value: preBidMeetingDate, active: preBidMeetingDate !== '—' },
-                { label: 'Proposal Submission End', value: submissionEndDate, active: submissionEndDate !== '—' },
-                { label: 'Technical Opening', value: technicalEvalDate, active: technicalEvalDate !== '—' },
-                { label: 'Presentation', value: presentationDate, active: presentationDate !== '—' },
-                { label: 'Financial Opening', value: finalEvalDate, active: finalEvalDate !== '—' },
-                { label: 'Awarding Date', value: awardDate, active: awardDate !== '—' },
+                { label: 'Bid Published', value: publishedDateFormatted, active: publishedDateFormatted !== '—', color: 'emerald' },
+                { label: 'Pre-Bid Meeting', value: preBidMeetingDate, active: preBidMeetingDate !== '—', color: 'slate' },
+                { label: 'Proposal Submission End', value: submissionEndDate, active: submissionEndDate !== '—', color: 'rose', highlight: true },
+                { label: 'Technical Opening', value: technicalEvalDate, active: technicalEvalDate !== '—', color: 'blue' },
+                { label: 'Presentation', value: presentationDate, active: presentationDate !== '—', color: 'slate' },
+                { label: 'Financial Opening', value: finalEvalDate, active: finalEvalDate !== '—', color: 'blue' },
+                { label: 'Awarding Date', value: awardDate, active: awardDate !== '—', color: 'slate' },
               ].map((row, idx) => (
-                <div key={idx} className="flex justify-between items-center rounded-xl px-2 py-1.5 text-xs font-semibold transition-all duration-200 hover:bg-slate-50">
-                  <span className="flex items-center gap-2 text-slate-500">
-                    <span className={cn(
-                      "flex h-4 w-4 items-center justify-center rounded-full text-[9px]",
-                      row.active ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
-                    )}>
-                      {row.active ? <Check className="h-2.5 w-2.5 stroke-[3]" /> : <Clock className="h-2.5 w-2.5" />}
+                <div key={idx} className="relative z-10 flex items-start gap-4">
+                  <div className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full mt-1 border-[3px] bg-white ring-4 ring-white",
+                    row.active ? `border-${row.color}-500` : "border-slate-300"
+                  )}></div>
+                  <div className={cn(
+                    "flex flex-col flex-1 rounded-lg px-3 py-2 -mt-2 transition-all duration-300",
+                    row.highlight && row.active ? "bg-rose-50/50 border border-rose-100 shadow-sm" : "hover:bg-slate-50"
+                  )}>
+                    <span className={cn("text-xs uppercase tracking-wider", row.active ? "font-bold text-slate-700" : "font-semibold text-slate-400")}>
+                      {row.label}
                     </span>
-                    {row.label}
-                  </span>
-                  <span className={cn("font-bold", row.label.includes('End') ? "text-rose-700 font-semibold" : "text-slate-800")}>{row.value}</span>
+                    <span className={cn("text-sm mt-0.5 font-bold", row.active ? (row.highlight ? "text-rose-700" : "text-slate-900") : "text-slate-500")}>
+                      {row.value}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           </section>
         </div>
 
-        {/* ═══ COLUMN 3: Buyer Information ═══ */}
-        <section ref={buyerInfoRef} className={`${detailCardClass} scroll-mt-24 space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
-            Buyer Information
-          </h2>
+{/* ═══ COLUMN 3: Buyer Information Profile Card ═══ */}
+        <section ref={buyerInfoRef} className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 scroll-mt-24 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-700 shadow-sm">
+                <Building2 className="h-6 w-6" />
+             </div>
+             <div>
+                <h2 className="text-lg font-bold text-slate-950 uppercase tracking-wider leading-tight">
+                  Buyer Information
+                </h2>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider border border-emerald-200">
+                    <ShieldCheck className="h-3 w-3" /> Verified Account
+                  </span>
+                </div>
+             </div>
+          </div>
           
-          <div className="space-y-4 mt-2">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Organization</span>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs font-semibold text-slate-900">{orgName}</span>
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 border border-emerald-100">
-                  <ShieldCheck className="h-3 w-3 stroke-[2.5]" /> Verified Buyer
-                </span>
+          <div className="space-y-5 mt-2">
+            <div className="group flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-slate-50">
+              <div className="mt-0.5 text-slate-400 group-hover:text-indigo-600"><Building2 className="h-4 w-4" /></div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Organization</span>
+                <span className="text-sm font-bold text-slate-900 block mt-0.5">{orgName}</span>
               </div>
             </div>
 
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Person</span>
-              <span className="text-xs font-bold text-slate-800 block mt-0.5">{contactPerson}</span>
+            <div className="group flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-slate-50">
+              <div className="mt-0.5 text-slate-400 group-hover:text-indigo-600"><User className="h-4 w-4" /></div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Contact Person</span>
+                <span className="text-sm font-bold text-slate-900 block mt-0.5">{contactPerson}</span>
+              </div>
             </div>
 
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email</span>
-              <span className="text-xs font-mono font-bold text-slate-700 block mt-0.5 hover:underline cursor-pointer">{email}</span>
+            <div className="group flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-slate-50">
+              <div className="mt-0.5 text-slate-400 group-hover:text-indigo-600"><Mail className="h-4 w-4" /></div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Email</span>
+                <span className="text-sm font-mono font-bold text-indigo-700 block mt-0.5 hover:underline cursor-pointer">{email}</span>
+              </div>
             </div>
 
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone</span>
-              <span className="text-xs font-bold text-slate-800 block mt-0.5">{phone}</span>
+            <div className="group flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-slate-50">
+              <div className="mt-0.5 text-slate-400 group-hover:text-indigo-600"><Phone className="h-4 w-4" /></div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Phone</span>
+                <span className="text-sm font-bold text-slate-900 block mt-0.5">{phone}</span>
+              </div>
             </div>
 
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Address</span>
-              <span className="text-xs font-semibold leading-relaxed text-slate-600 block mt-0.5">{address}</span>
+            <div className="group flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-slate-50">
+              <div className="mt-0.5 text-slate-400 group-hover:text-indigo-600"><MapPin className="h-4 w-4" /></div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Address</span>
+                <span className="text-xs font-semibold leading-relaxed text-slate-600 block mt-1">{address}</span>
+              </div>
             </div>
           </div>
         </section>
@@ -1427,13 +1599,13 @@ export default function RfpDetailPage() {
       {/* ── Bottom Section: RFP Documents & Activity Snapshot ── */}
       <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
         
-        {/* RFP Documents Card */}
-        <section ref={documentsRef} className={`${detailCardClass} scroll-mt-24 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
-            RFP Documents
+{/* RFP Documents Card */}
+        <section ref={documentsRef} className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 scroll-mt-24 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
+          <h2 className="text-lg font-bold text-slate-950 pb-4 border-b border-slate-100 uppercase tracking-wider flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-indigo-600" /> RFP Documents
           </h2>
           
-          <div className="grid grid-cols-1 gap-3.5 pt-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 pt-5 sm:grid-cols-2 xl:grid-cols-3">
             {documents.length > 0 ? (
               documents.map((doc, idx) => (
                 <div 
@@ -1450,40 +1622,63 @@ export default function RfpDetailPage() {
                       });
                     }
                   }}
-                  className="group rounded-lg border border-slate-200 bg-slate-50/60 p-4 flex items-center gap-3.5 transition-all duration-300 ease-out cursor-pointer hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md hover:shadow-slate-200/60"
+                  className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-indigo-300 hover:bg-white hover:shadow-lg hover:shadow-indigo-100 cursor-pointer"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 transition-transform duration-300 group-hover:scale-105">
-                    <FileText className="h-5 w-5" />
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 transition-transform duration-300 group-hover:scale-110">
+                      <FileText className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[13px] font-bold text-slate-900 block leading-tight truncate group-hover:text-indigo-700 transition-colors">{doc.name}</span>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        {doc.meta?.toUpperCase() === 'REQUIRED' ? (
+                          <span className="inline-flex items-center rounded-md bg-rose-50 border border-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600">
+                            Required
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md bg-slate-200/50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
+                            {doc.meta || 'Document'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <span className="text-xs font-semibold text-slate-800 block leading-tight truncate">{doc.name}</span>
-                    <span className="text-[9px] font-bold text-slate-400 block mt-0.5 whitespace-nowrap">{doc.meta || 'Document'}</span>
+                  <div className="mt-4 flex items-center justify-end border-t border-slate-100 pt-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                    <span className="flex items-center gap-1 text-xs font-bold uppercase text-indigo-600">
+                      View File <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-xs font-bold text-slate-500 col-span-3 py-4 text-center border border-dashed border-slate-200 rounded-lg">
+              <p className="text-sm font-bold text-slate-500 col-span-full py-8 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
                 No documents uploaded for this RFP.
               </p>
             )}
           </div>
         </section>
 
-        {/* Activity Snapshot Section */}
-        <section className={`${detailCardClass} animate-in fade-in slide-in-from-bottom-3 duration-500`}>
-          <h2 className="text-base font-semibold text-slate-900 pb-3.5 border-b border-slate-100 uppercase tracking-wider">
-            Activity Snapshot
+{/* Activity Snapshot Section */}
+        <section className="rounded-xl border border-slate-200/60 bg-white p-6 shadow-sm shadow-slate-200/40 animate-in fade-in slide-in-from-bottom-4 duration-700 transition-all hover:shadow-md hover:-translate-y-1 hover:border-slate-300">
+          <h2 className="text-lg font-bold text-slate-950 pb-4 border-b border-slate-100 uppercase tracking-wider flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-emerald-600" /> Activity Snapshot
           </h2>
           
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <div className="border-r border-slate-100 pr-4">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Queries</span>
-              <span className="text-xl font-semibold text-slate-900 mt-1 block tabular-nums">{totalQueries}</span>
+          <div className="grid grid-cols-2 gap-4 mt-5">
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4 transition-all hover:border-slate-300 hover:shadow-sm">
+              <HelpCircle className="absolute -right-2 -top-2 h-16 w-16 text-slate-200/50" />
+              <div className="relative z-10">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Total Queries</span>
+                <span className="text-3xl font-black text-slate-900 mt-1 block tabular-nums">{totalQueries}</span>
+              </div>
             </div>
 
-            <div className="pl-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Responses</span>
-              <span className="text-xl font-semibold text-slate-900 mt-1 block tabular-nums">{totalResponses}</span>
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4 transition-all hover:border-slate-300 hover:shadow-sm">
+              <MessageSquare className="absolute -right-2 -top-2 h-16 w-16 text-slate-200/50" />
+              <div className="relative z-10">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Total Responses</span>
+                <span className="text-3xl font-black text-slate-900 mt-1 block tabular-nums">{totalResponses}</span>
+              </div>
             </div>
           </div>
         </section>
@@ -1492,7 +1687,7 @@ export default function RfpDetailPage() {
       {/* ── Procurement Details Structured Grids ── */}
       <section ref={detailsRef} className={`${detailCardClass} mt-8 scroll-mt-24 space-y-8 animate-in fade-in slide-in-from-bottom-3 duration-500`}>
         <div className="pb-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-950 uppercase tracking-wider flex items-center gap-2">
             <Layers className="h-5 w-5 text-violet-600" />
             Comprehensive Procurement Details
           </h2>
@@ -1501,23 +1696,39 @@ export default function RfpDetailPage() {
           </p>
         </div>
 
-        <div className="space-y-4">
-          {procurementDetailSections.length > 0 ? (
-            procurementDetailSections.map(section => (
-              <ProcurementDetailSection
-                key={section.title}
-                title={section.title}
-                icon={section.icon}
-                data={section.data}
-              />
-            ))
-          ) : (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-xs font-bold text-slate-500">
-              No additional procurement details were found for this RFP.
-            </p>
-          )}
-        </div>
-
+        {procurementDetailSections.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Left Column */}
+            <div className="space-y-6">
+              {procurementDetailSections.filter(s => ['Procurement Record', 'Procurement Intent & Method', 'Commercial Terms', 'Consignee & Delivery', 'Items / Line Items', 'RFP Service Details'].includes(s.title)).map(section => (
+                <ProcurementDetailSection
+                  key={section.title}
+                  title={section.title}
+                  icon={section.icon}
+                  data={section.data}
+                  defaultExpanded={['Procurement Record', 'Commercial Terms', 'Items / Line Items', 'RFP Service Details'].includes(section.title)}
+                />
+              ))}
+            </div>
+            
+            {/* Right Column */}
+            <div className="space-y-6">
+              {procurementDetailSections.filter(s => !['Procurement Record', 'Procurement Intent & Method', 'Commercial Terms', 'Consignee & Delivery', 'Items / Line Items', 'RFP Service Details'].includes(s.title)).map(section => (
+                <ProcurementDetailSection
+                  key={section.title}
+                  title={section.title}
+                  icon={section.icon}
+                  data={section.data}
+                  defaultExpanded={['Buyer Organization & Contact', 'Schedule, Tender & Rules'].includes(section.title)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-xs font-bold text-slate-500">
+            No additional procurement details were found for this RFP.
+          </p>
+        )}
       </section>
 
       {/* ── Seller Proposals (Buyer View) ── */}
@@ -1527,7 +1738,7 @@ export default function RfpDetailPage() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
               <User className="h-4 w-4" />
             </div>
-            <h2 className="text-base font-semibold text-slate-900 uppercase tracking-wider">
+            <h2 className="text-lg font-bold text-slate-950 uppercase tracking-wider">
               Seller Proposals
             </h2>
           </div>
@@ -1535,7 +1746,7 @@ export default function RfpDetailPage() {
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[700px] text-left text-sm">
               <thead className="bg-slate-50">
-                <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                <tr className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   <th className="px-4 py-3 border-b border-slate-100">Seller Name</th>
                   <th className="px-4 py-3 border-b border-slate-100">Submission Status</th>
                   <th className="px-4 py-3 border-b border-slate-100">Tech Eval</th>
@@ -1548,7 +1759,7 @@ export default function RfpDetailPage() {
                   <tr key={p.id} className="hover:bg-slate-50/50 transition">
                     <td className="px-4 py-3 text-slate-900">{p.seller?.sellerProfile?.organizationName || p.seller?.name || `Seller #${p.sellerId}`}</td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
                         {p.submissionStatus}
                       </span>
                     </td>
@@ -1558,7 +1769,7 @@ export default function RfpDetailPage() {
                       <Button
                         type="button"
                         onClick={() => router.push(`/bids/${rfpData.id}/results`)}
-                        className="h-8 rounded-lg bg-indigo-50 px-3 text-[10px] font-semibold uppercase text-indigo-600 hover:bg-indigo-100 flex items-center gap-1.5 ml-auto"
+                        className="h-8 rounded-lg bg-indigo-50 px-3 text-xs font-semibold uppercase text-indigo-600 hover:bg-indigo-100 flex items-center gap-1.5 ml-auto"
                       >
                         <Eye className="h-3.5 w-3.5" /> Review
                       </Button>

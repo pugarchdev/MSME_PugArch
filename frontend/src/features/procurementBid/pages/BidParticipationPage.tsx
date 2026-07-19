@@ -125,6 +125,7 @@ export default function BidParticipationPage() {
   const [starting, setStarting] = useState(false);
   const [uploadingTechnical, setUploadingTechnical] = useState(false);
   const [savingFinancial, setSavingFinancial] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [technicalFiles, setTechnicalFiles] = useState<PendingFile[]>([]);
   const [financialFile, setFinancialFile] = useState<PendingFile | null>(null);
@@ -416,6 +417,56 @@ export default function BidParticipationPage() {
     }
   };
 
+
+  const saveDraft = async () => {
+    if (!bid || !participation?.id) return;
+    setSavingDraft(true);
+    try {
+      let description = '';
+      if (bid.procurementType === 'RATE_CONTRACT') {
+        description = JSON.stringify({
+          rateContractValidityDate: rateContractData.validityDate,
+          rateContractNotes: rateContractData.notes,
+        });
+      } else if (bid.procurementType === 'RFQ' || bid.procurementType === 'RFP' || bid.procurementType === 'TENDER' || bid.procurementType === 'OPEN_TENDER' || bid.procurementType === 'LIMITED_TENDER') {
+        description = JSON.stringify({
+          makeBrand: technicalOffer.makeBrand,
+          model: technicalOffer.model,
+          offeredItemDescription: technicalOffer.offeredItemDescription,
+          complianceRemarks: technicalOffer.complianceRemarks,
+          deliveryTimeline: technicalOffer.deliveryTimeline,
+          warrantyDetails: technicalOffer.warrantyDetails,
+          serviceSupport: technicalOffer.serviceSupport,
+          deviation: technicalOffer.deviation,
+          rfqNotes: rfqData.notes,
+        });
+      } else {
+        description = technicalOffer.offeredItemDescription;
+      }
+
+      const data = await procurementBidApi.uploadFinancialQuote(
+        bid.id,
+        participation.id,
+        {
+          quotedAmount: quote.quotedAmount || '0',
+          gstPercentage: quote.gstPercentage || '18',
+          totalAmount: quote.totalAmount || '0',
+          offeredItemDescription: description
+        },
+        undefined,
+      );
+      setParticipation(prev => ({
+        ...(prev || participation),
+        ...(data?.participation || {})
+      }));
+      toast.success('Draft saved successfully.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save draft.');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const saveFinancial = async () => {
     if (!bid || !participation?.id) return;
     if (!quote.quotedAmount) {
@@ -673,9 +724,18 @@ export default function BidParticipationPage() {
                     canSave={canUpload}
                     saving={savingRfi}
                     onSave={saveRfiAnswers}
+                    onSaveDraft={saveDraft}
+                    savingDraft={savingDraft}
                   />
                 ) : (
-                  <TechnicalOfferStep value={technicalOffer} onChange={setTechnicalOffer} onNext={() => goToStep(3)} disabled={!canPrepare} />
+                  <TechnicalOfferStep 
+                    value={technicalOffer} 
+                    onChange={setTechnicalOffer} 
+                    onNext={() => goToStep(3)} 
+                    disabled={!canPrepare} 
+                    onSaveDraft={saveDraft}
+                    savingDraft={savingDraft}
+                  />
                 )
               )}
               {step === 3 && (
@@ -692,6 +752,8 @@ export default function BidParticipationPage() {
                   onUpload={uploadTechnical}
                   onNext={() => goToStep(bid?.procurementType === 'RFI' ? 5 : 4)}
                   onTag={(id, documentName) => setTechnicalFiles(prev => prev.map(item => item.id === id ? { ...item, documentName: documentName || undefined } : item))}
+                  onSaveDraft={saveDraft}
+                  savingDraft={savingDraft}
                 />
               )}
               {step === 4 && (
@@ -709,10 +771,13 @@ export default function BidParticipationPage() {
                   onSave={saveFinancial}
                   onNext={() => goToStep(5)}
                   bid={bid}
+                  participation={participation!}
                   rateContractData={rateContractData}
                   setRateContractData={setRateContractData}
                   rfqData={rfqData}
                   setRfqData={setRfqData}
+                  onSaveDraft={saveDraft}
+                  savingDraft={savingDraft}
                 />
               )}
               {step === 5 && (
@@ -725,6 +790,8 @@ export default function BidParticipationPage() {
                   setDeclaration={setDeclaration}
                   onNext={() => goToStep(6)}
                   disabled={isSubmitted}
+                  onSaveDraft={saveDraft}
+                  savingDraft={savingDraft}
                 />
               )}
               {step === 6 && (
@@ -742,9 +809,9 @@ export default function BidParticipationPage() {
 
 function Info({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {
   return (
-    <div className={`min-w-0 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-sm ${wide ? 'sm:col-span-2' : ''}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-xs font-semibold leading-relaxed text-slate-800">{value}</p>
+    <div className={`group min-w-0 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${wide ? 'sm:col-span-2' : ''}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 transition-colors group-hover:text-slate-700">{label}</p>
+      <div className="text-sm font-bold leading-relaxed text-slate-900">{value}</div>
     </div>
   );
 }
@@ -758,7 +825,7 @@ function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any; onChange: (next: any) => void; onNext: () => void; disabled: boolean }) {
+function TechnicalOfferStep({ value, onChange, onNext, onSaveDraft, savingDraft, disabled }: { value: any; onChange: (next: any) => void; onNext: () => void; onSaveDraft: () => void; savingDraft: boolean; disabled: boolean }) {
   const update = (key: string, next: string) => onChange({ ...value, [key]: next });
   return (
     <div>
@@ -773,7 +840,12 @@ function TechnicalOfferStep({ value, onChange, onNext, disabled }: { value: any;
         <Input label="Service support" value={value.serviceSupport} onChange={next => update('serviceSupport', next)} disabled={disabled} />
         <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
       </div>
-      <div className="sticky bottom-0 z-10 mt-6 flex justify-end border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+      <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+        {!disabled && (
+          <button type="button" onClick={onSaveDraft} disabled={savingDraft} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">
+            {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />} Save as Draft
+          </button>
+        )}
         <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
           Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
@@ -790,7 +862,9 @@ function RfiQuestionnaireForm({
   canEdit,
   canSave,
   saving,
-  onSave
+  onSave,
+  onSaveDraft,
+  savingDraft
 }: {
   questionnaire: Array<{ id: string; type: string; text: string; questionText?: string }>;
   answers: Record<string, string>;
@@ -800,6 +874,8 @@ function RfiQuestionnaireForm({
   canSave: boolean;
   saving: boolean;
   onSave: () => Promise<void>;
+  onSaveDraft: () => void;
+  savingDraft: boolean;
 }) {
   return (
     <div>
@@ -890,20 +966,7 @@ function RfiQuestionnaireForm({
   );
 }
 
-function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs, uploading, requiredDocuments, onAdd, onRemove, onPreview, onUpload, onNext, onTag }: {
-  canSelectFiles: boolean;
-  canUpload: boolean;
-  files: PendingFile[];
-  uploadedDocs: ParticipationDocument[];
-  uploading: boolean;
-  requiredDocuments?: string[];
-  onAdd: (files: FileList | File[]) => void;
-  onRemove: (id: string) => void;
-  onPreview: (item: PendingFile) => void;
-  onUpload: () => void;
-  onNext: () => void;
-  onTag?: (id: string, documentName: string) => void;
-}) {
+function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs, uploading, requiredDocuments, onAdd, onRemove, onPreview, onUpload, onNext, onTag, onSaveDraft, savingDraft }: { canSelectFiles: boolean; canUpload: boolean; files: PendingFile[]; uploadedDocs: ParticipationDocument[]; uploading: boolean; requiredDocuments: string[]; onAdd: (f: FileList | File[]) => void; onRemove: (id: string) => void; onPreview: (item: PendingFile) => void; onUpload: () => Promise<void>; onNext: () => void; onTag: (id: string, name: string) => void; onSaveDraft: () => void; savingDraft: boolean; }) {
   const required = requiredDocuments || [];
   const coveredNames = new Set([
     ...uploadedDocs.map(doc => String(doc.documentName || '').trim().toLowerCase()),
@@ -953,41 +1016,47 @@ function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs
 }
 
 function FinancialQuoteStep({
-  canEdit,
-  canSave,
+  bid,
+  participation,
   quote,
   setQuote,
   file,
   uploadedDocs,
-  saving,
   onFile,
   onRemoveFile,
   onPreview,
+  canEdit,
+  canSave,
+  saving,
   onSave,
   onNext,
-  bid,
   rateContractData,
   setRateContractData,
   rfqData,
-  setRfqData
+  setRfqData,
+  onSaveDraft,
+  savingDraft
 }: {
-  canEdit: boolean;
-  canSave: boolean;
+  bid: ProcurementBid;
+  participation: ParticipationState;
   quote: { quotedAmount: string; gstPercentage: string; totalAmount: string };
   setQuote: React.Dispatch<React.SetStateAction<{ quotedAmount: string; gstPercentage: string; totalAmount: string }>>;
   file: PendingFile | null;
   uploadedDocs: ParticipationDocument[];
-  saving: boolean;
   onFile: (file?: File) => void;
   onRemoveFile: () => void;
-  onPreview: (item: PendingFile | null) => void;
-  onSave: () => void;
+  onPreview: (item: PendingFile) => void;
+  canEdit: boolean;
+  canSave: boolean;
+  saving: boolean;
+  onSave: () => Promise<void>;
   onNext: () => void;
-  bid: ProcurementBid;
   rateContractData: { validityDate: string; notes: string };
   setRateContractData: React.Dispatch<React.SetStateAction<{ validityDate: string; notes: string }>>;
   rfqData: { notes: string };
   setRfqData: React.Dispatch<React.SetStateAction<{ notes: string }>>;
+  onSaveDraft: () => void;
+  savingDraft: boolean;
 }) {
   const isBoq = bid?.procurementType === 'BOQ_BASED_BID';
   const isRateContract = bid?.procurementType === 'RATE_CONTRACT';
@@ -1034,6 +1103,7 @@ function FinancialQuoteStep({
           onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))}
           disabled={!canEdit}
           required
+          prefix="₹"
         />
         <Input
           label="GST percentage"
@@ -1047,6 +1117,7 @@ function FinancialQuoteStep({
           value={quote.totalAmount}
           onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))}
           disabled={!canEdit}
+          prefix="₹"
         />
       </div>
 
@@ -1114,7 +1185,7 @@ function FinancialQuoteStep({
   );
 }
 
-function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, onNext, disabled }: {
+function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, onNext, disabled, onSaveDraft, savingDraft }: {
   bid: ProcurementBid;
   participation: ParticipationState | null;
   technicalDocs: ParticipationDocument[];
@@ -1123,6 +1194,8 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
   setDeclaration: (value: boolean) => void;
   onNext: () => void;
   disabled?: boolean;
+  onSaveDraft: () => void;
+  savingDraft: boolean;
 }) {
   return (
     <div>
@@ -1140,7 +1213,12 @@ function ReviewStep({ bid, participation, technicalDocs, financialDocs, declarat
         <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
         I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
       </label>
-      <div className="sticky bottom-0 z-10 mt-6 flex justify-end border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+      <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
+        {!disabled && (
+          <button type="button" onClick={onSaveDraft} disabled={savingDraft} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">
+            {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />} Save as Draft
+          </button>
+        )}
         <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
           Continue to submit <ArrowRight className="h-3.5 w-3.5" />
         </button>
@@ -1209,11 +1287,14 @@ function Panel({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function Input({ label, value, onChange, disabled, required }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {
+function Input({ label, value, onChange, disabled, required, prefix }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; required?: boolean; prefix?: string }) {
   return (
-    <label>
+    <label className="block">
       <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">{label} {required && <span className="text-red-500">*</span>}</span>
-      <input value={value} onChange={event => onChange(event.target.value)} disabled={disabled} className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400`} />
+      <div className="relative">
+        {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">{prefix}</span>}
+        <input value={value} onChange={event => onChange(event.target.value)} disabled={disabled} className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400 ${prefix ? 'pl-8' : ''}`} />
+      </div>
     </label>
   );
 }

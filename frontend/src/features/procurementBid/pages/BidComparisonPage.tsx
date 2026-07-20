@@ -17,7 +17,13 @@ import { procurementBidApi } from '../api';
 
 export default function BidComparisonPage() {
   const params = useParams();
-  const bidId = params?.bidId as string;
+  let bidId = params?.bidId as string;
+  
+  if (!bidId && typeof window !== 'undefined') {
+    const match = window.location.pathname.match(/^\/bids\/([^/]+)\/compare$/);
+    if (match) bidId = match[1];
+  }
+  
   const router = useRouter();
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
@@ -426,9 +432,9 @@ export default function BidComparisonPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {(bid.participations || []).map((p: any) => {
+                  {filteredAndSortedParticipations.map((p: any) => {
                     const tech = parseTechnicalOffer(p.offeredItemDescription);
-                    const isQualified = p.technicalStatus === 'QUALIFIED';
+                    const isQualified = String(p.technicalStatus || '').toUpperCase() === 'QUALIFIED';
                     
                     let rankLabel = '-';
                     let rankColorClass = 'text-slate-400 bg-slate-100 border-slate-200';

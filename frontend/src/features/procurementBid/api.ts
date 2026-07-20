@@ -120,6 +120,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
     }
 
     return {
+      ...p,
       participationId: p.id,
       sellerName: p.seller?.name || p.seller?.organization?.organizationName || `Seller ${index + 1}`,
       sellerType: p.seller?.role === 'seller' ? 'Verified Seller' : p.seller?.role || 'Verified Seller',

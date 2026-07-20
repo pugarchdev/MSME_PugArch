@@ -176,7 +176,11 @@ router.get('/procurement-bids/my', authenticate, requireAccountType('seller', 'b
 
 router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const actor = await optionalActor(req);
-  const token = req.params.bidId;
+  let token = req.params.bidId;
+  if (token.startsWith('RFQ-')) {
+    token = token.replace('RFQ-', 'REQ-');
+  }
+
   if (token.startsWith('TENDER-') || token.startsWith('TND-')) {
     const data = await service.resolveTenderBidActivity(token);
     return apiResponse.success(res, data, 200, 'Tender opportunity details fetched successfully');
@@ -187,8 +191,8 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
     bid = await service.resolveBid(token, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
   } catch (err: any) {
     // Fallback: if no ProcurementBid found, check if this is a Requirement ID or Reference Number
-    if (err?.code === 'BID_NOT_FOUND' && (/^\d+$/.test(token) || token.startsWith('REQ-'))) {
-      const parsedId = token.startsWith('REQ-') ? Number(token.replace('REQ-', '')) : Number(token);
+    if (err?.code === 'BID_NOT_FOUND' && (/^\d+$/.test(token) || token.startsWith('REQ-') || token.startsWith('RFQ-'))) {
+      const parsedId = (token.startsWith('REQ-') || token.startsWith('RFQ-')) ? Number(token.replace(/^(REQ-|RFQ-)/, '')) : Number(token);
       let requirement = null;
 
       if (Number.isFinite(parsedId) && parsedId !== 0) {
@@ -205,6 +209,8 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
           // Map to match the shape expected by the frontend
           requirement.organization = buyerReq.buyerOrganization;
           requirement.buyer = buyerReq.createdBy;
+          requirement.buyerId = buyerReq.createdById;
+          requirement.organizationId = buyerReq.buyerOrganizationId;
           requirement.requirementNumber = `REQ-${String(Math.abs(Number(buyerReq.id))).padStart(5, '0')}`;
           
           requirement.payload = {
@@ -235,8 +241,9 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
       }
 
       if (!requirement) {
+        const searchToken = token.startsWith('RFQ-') ? token.replace('RFQ-', 'REQ-') : token;
         requirement = await prisma.requirement.findFirst({
-          where: /^\d+$/.test(token) ? { id: Number(token) } : { requirementNumber: token },
+          where: /^\d+$/.test(searchToken) ? { id: Number(searchToken) } : { requirementNumber: searchToken },
           include: {
             items: true,
             organization: { select: { id: true, organizationName: true, organizationType: true, verificationStatus: true, city: true, district: true, state: true } },
@@ -248,18 +255,27 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
       if (requirement) {
         let participations: any[] = [];
         if (actor?.role === 'buyer' || actor?.role === 'admin' || actor?.role === 'master_admin') {
-            const shadowBuyerReq = await prisma.buyerRequirement.findFirst({
-                where: {
-                    title: requirement.title,
-                    description: requirement.description || requirement.title,
-                    createdById: requirement.buyerId,
-                    buyerOrganizationId: requirement.organizationId || requirement.buyer?.organizationId || null
-                }
-            });
+            let targetRequirementId = null;
 
-            if (shadowBuyerReq) {
+            if ('createdById' in requirement) {
+                targetRequirementId = requirement.id;
+            } else {
+                const shadowBuyerReq = await prisma.buyerRequirement.findFirst({
+                    where: {
+                        title: requirement.title,
+                        description: requirement.description || requirement.title,
+                        createdById: requirement.buyerId,
+                        buyerOrganizationId: requirement.organizationId || requirement.buyer?.organizationId || null
+                    }
+                });
+                if (shadowBuyerReq) {
+                    targetRequirementId = shadowBuyerReq.id;
+                }
+            }
+
+            if (targetRequirementId) {
                 const responses = await prisma.requirementResponse.findMany({
-                    where: { requirementId: shadowBuyerReq.id },
+                    where: { requirementId: targetRequirementId },
                     include: { 
                         sellerUser: { select: { id: true, name: true, role: true, organizationId: true } },
                         sellerOrganization: { select: { organizationName: true } }

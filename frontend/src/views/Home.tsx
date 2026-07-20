@@ -225,11 +225,11 @@ export default function Home() {
                 Browse active public procurement opportunities from verified buyers.
               </p>
             </div>
-            <a href={user ? (user.role === 'seller' ? '/seller/opportunities' : '/marketplace/requirements') : '/marketplace/requirements'}>
+            <Link href={user ? (user.role === 'seller' ? '/seller/opportunities' : '/marketplace/requirements') : '/marketplace/requirements'}>
               <Button variant="outline" size="sm" className="h-10 rounded-full border-slate-300 text-[10px] font-black uppercase tracking-wider">
                 View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
-            </a>
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -239,7 +239,7 @@ export default function Home() {
               const label = METHOD_LABELS[methodKey] || methodKey;
               const href = opportunityHref(opp);
               return (
-                <a key={`${opp.source}-${opp.id}`} href={href} className="block">
+                <Link key={`${opp.source}-${opp.id}`} href={href} className="block">
                   <Card className="group rounded-2xl border-0 bg-white shadow-sm ring-1 ring-slate-200/70 transition-all hover:shadow-md hover:-translate-y-0.5">
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between gap-3 mb-3">
@@ -283,7 +283,7 @@ export default function Home() {
                       </div>
                     </CardContent>
                   </Card>
-                </a>
+                </Link>
               );
             })}
           </div>

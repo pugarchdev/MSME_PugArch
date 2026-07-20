@@ -1,6 +1,5 @@
 import cors from 'cors';
 import express from 'express';
-import compression from 'compression';
 import { corsOptions, preflightCors } from './config/cors.js';
 import { applySecurityMiddleware } from './config/security.js';
 import apiRouter from './routes/index.js';
@@ -10,7 +9,6 @@ export const createApp = () => {
 
   app.use(preflightCors);
   app.use(cors(corsOptions));
-  app.use(compression());
   applySecurityMiddleware(app);
 
   // Serve inline transparent favicon to avoid browser 404s

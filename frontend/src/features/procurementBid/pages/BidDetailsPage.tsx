@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X, ArrowLeft, Building2, User2, PhoneCall, Calendar, Clock, Lock, Sparkles, HelpCircle, Eye } from 'lucide-react';
+import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X, ArrowLeft, Building2, User2, PhoneCall, Calendar, Clock, Lock, Sparkles, HelpCircle, Eye, Users } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { ClarificationButton, ResultsTable, StatusBadge } from '../components';
 import { formatDate, money } from '../data';
@@ -90,15 +90,16 @@ export default function BidDetailsPage() {
       .then(([bidData, timelineRes]) => {
         if (alive) {
           const type = String(bidData?.procurementType || bidData?.bidType || '').toUpperCase();
-          if (type === 'RFQ') {
+          const isSellerRole = user?.role === 'seller';
+          if (type === 'RFQ' && isSellerRole) {
             router.replace(`/seller/rfq?requestId=${bidData.id}`);
             return;
           }
-          if (type === 'RFP') {
+          if (type === 'RFP' && isSellerRole) {
             router.replace(`/seller/rfp?requestId=${bidData.id}`);
             return;
           }
-          if (type === 'OPEN_TENDER' || type === 'TENDER' || bidData?.sourceModel === 'TENDER') {
+          if ((type === 'OPEN_TENDER' || type === 'TENDER' || bidData?.sourceModel === 'TENDER') && isSellerRole) {
             router.replace(`/tenders?tender=${bidData.sourceId || bidData.id}`);
             return;
           }
@@ -115,7 +116,7 @@ export default function BidDetailsPage() {
       .finally(() => { if (alive) setLoading(false); });
       
     return () => { alive = false; };
-  }, [bidId, authHeaders]);
+  }, [bidId, authHeaders, user?.role, router]);
 
   useEffect(() => {
     return loadBid();
@@ -609,6 +610,64 @@ export default function BidDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* Seller Responses Section (Buyer Only) */}
+      {isOwner && bid.participations && bid.participations.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-8 shadow-sm">
+          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-black tracking-tight text-slate-900">
+                <Users className="h-5 w-5 text-indigo-600" /> Seller Responses
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold mt-1">Sellers who have submitted proposals for this procurement</p>
+            </div>
+            <div className="flex gap-2">
+              <Link 
+                href={`/bids/${bid.id}/compare`}
+                className="inline-flex h-9 items-center rounded-lg bg-indigo-50 border border-indigo-100 px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition"
+              >
+                <Eye className="mr-1.5 h-4 w-4" /> Compare Matrix
+              </Link>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200">
+                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Seller</th>
+                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Price</th>
+                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Submitted Date</th>
+                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {bid.participations.map((p: any) => {
+                  const techStatus = p.technicalStatus || p.submissionStatus;
+                  const sellerName = p.seller?.name || `Seller #${p.sellerId}`;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-slate-900">{sellerName}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-slate-900">{money(p.totalAmount || p.quotedAmount || 0)}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 font-semibold text-xs">
+                        {formatDate(p.submittedAt || p.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge label={techStatus} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

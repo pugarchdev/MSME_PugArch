@@ -167,7 +167,12 @@ export default function SupplierResponsesPage() {
     const buyerRequirements = (requirements || []).filter(
       (r: any) => r.buyerId === user?.id || r.buyerOrganization?.id === user?.organizationId
     );
-    const normalizedRequirements = buyerRequirements.map((req: any) => {
+    const bidTitles = new Set(bids.map((b: any) => (b.title || '').trim().toLowerCase()));
+    const uniqueRequirements = buyerRequirements.filter((req: any) => {
+      const title = (req.title || '').trim().toLowerCase();
+      return !bidTitles.has(title);
+    });
+    const normalizedRequirements = uniqueRequirements.map((req: any) => {
       const realId = req.sourceId || Math.abs(Number(req.id));
       return {
         id: `req-${realId}`,
@@ -207,7 +212,7 @@ export default function SupplierResponsesPage() {
         window.location.href = `/marketplace/requirements/${bid.requirementId}`;
       }
     } else {
-      window.location.href = `/bids/${bid.id}/compare`;
+      window.location.href = `/bids/${bid.id}`;
     }
   };
 

@@ -9,8 +9,7 @@ import { redisKeys } from '../../constants/redis-keys.js';
 import { getCache, setCache } from '../../services/cache.service.js';
 import { notificationService } from '../../services/notification.service.js';
 import { bankTransferProvider } from './bank-transfer.provider.js';
-import { cashfreeProvider } from './cashfree.provider.js';
-import { razorpayProvider } from './razorpay.provider.js';
+import { bandhanProvider } from './bandhan.provider.js';
 import type { PaymentGateway, PaymentProvider } from './payment.provider.js';
 import { paymentStatusEnumFor } from '../../services/workflow/status-transition.service.js';
 
@@ -22,8 +21,7 @@ type Actor = {
 };
 
 const providers: Record<PaymentGateway, PaymentProvider> = {
-  razorpay: razorpayProvider,
-  cashfree: cashfreeProvider,
+  bandhan: bandhanProvider,
   bank_transfer: bankTransferProvider
 };
 

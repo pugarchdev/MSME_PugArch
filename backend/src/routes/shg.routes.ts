@@ -6,6 +6,7 @@ import { authenticate, authorize, type AuthRequest } from '../middleware/auth.js
 import { apiResponse } from '../utils/apiResponse.js';
 import { createHashFingerprint, sha256 } from '../utils/crypto.js';
 import { hashPassword, validatePasswordStrength } from '../services/password.service.js';
+import { generateAlphanumericUserId } from '../utils/userId.js';
 import {
   assertEmailOtpVerified,
   assertOtpVerified,
@@ -328,12 +329,13 @@ router.post('/shg/registration/create-account', async (req, res) => {
   if (existing) return apiResponse.error(res, 400, 'Email, mobile, or User ID is already registered', 'DUPLICATE_REGISTRATION');
 
   const now = new Date();
+  const generatedId = await generateAlphanumericUserId();
   const user = await (prisma as any).$transaction(async (tx: any) => {
     const createdUser = await tx.user.create({
       data: {
         name: `${payload.representative.firstName} ${payload.representative.lastName || ''}`.trim(),
         email,
-        userId: payload.credentials.userId,
+        userId: payload.credentials.userId || generatedId,
         password: await hashPassword(payload.credentials.password),
         role: 'shg',
         mobile: payload.representative.mobile,

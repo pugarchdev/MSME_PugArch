@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const initiatePaymentSchema = z.object({
   invoiceId: z.coerce.number().int().positive(),
-  gateway: z.enum(['razorpay', 'cashfree', 'bank_transfer']).optional(),
+  gateway: z.enum(['bandhan', 'bank_transfer']).optional(),
   method: z.enum(['upi', 'card', 'netbanking', 'bank_transfer', 'wallet']).default('bank_transfer'),
   idempotencyKey: z.string().min(8).max(128).optional()
 });

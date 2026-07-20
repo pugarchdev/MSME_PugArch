@@ -19,7 +19,7 @@ export const bankTransferProvider: PaymentProvider = {
 
   verifyWebhook(rawBody, headers) {
     const payload = JSON.parse(rawBody.toString('utf8') || '{}');
-    const configuredSecret = env.CASHFREE_WEBHOOK_SECRET || env.RAZORPAY_WEBHOOK_SECRET || '';
+    const configuredSecret = env.BANDHAN_WEBHOOK_SECRET || '';
     const providedSecret = String(headers['x-bank-transfer-secret'] || '');
     const verified = Boolean(configuredSecret && providedSecret && providedSecret === configuredSecret);
 

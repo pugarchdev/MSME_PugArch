@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'http';
 
-export type PaymentGateway = 'razorpay' | 'cashfree' | 'bank_transfer';
+export type PaymentGateway = 'bandhan' | 'bank_transfer';
 
 export type CreatePaymentOrderInput = {
   paymentId: number;

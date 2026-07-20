@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { OrgRole, Role } from '@prisma/client';
 import prisma from '../lib/prisma.js';
 import { authenticate, requireAccountType } from '../middleware/auth.js';
+import { generateAlphanumericUserId } from '../utils/userId.js';
 import { requireOrgRole } from '../middleware/requireOrgRole.js';
 import { shortCache } from '../middleware/httpCache.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -1100,10 +1101,12 @@ router.post(
         const portalRole: Role = invite.invitedBy?.role === 'buyer' ? Role.buyer : Role.seller;
         const hashedPassword = await hashPassword(body.password);
         const now = new Date();
+        const generatedId = await generateAlphanumericUserId();
 
         const user = await prisma.$transaction(async (tx) => {
             const created = await tx.user.create({
                 data: {
+                    userId: generatedId,
                     name: body.name,
                     email: invite.email,
                     password: hashedPassword,

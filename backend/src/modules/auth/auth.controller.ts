@@ -6,6 +6,7 @@ import { sha256 } from '../../utils/crypto.js';
 import { isRedisReady, redis } from '../../config/redis.js';
 import { auditLog } from '../audit/audit.service.js';
 import { logger } from '../../config/logger.js';
+import { generateAlphanumericUserId } from '../../utils/userId.js';
 
 
 const localResetTokens = new Map<string, { userId: number | null; identifier: string; channel: 'email' | 'sms'; expiresAt: number }>();
@@ -540,12 +541,14 @@ export const authController = {
 
       const hashedPassword = await hashPassword(password);
 
+      const generatedId = await generateAlphanumericUserId();
+
       // If an incomplete ghost account exists, update it instead of creating a new one
       const user = ghostUser
         ? await prisma.user.update({
             where: { id: ghostUser.id },
             data: {
-              userId: email,
+              userId: generatedId,
               name, email, password: hashedPassword,
               mobile: normalizedMobile,
               dob: (dob && !isNaN(Date.parse(dob))) ? new Date(dob) : null,
@@ -562,7 +565,7 @@ export const authController = {
           })
         : await prisma.user.create({
             data: {
-              userId: email,
+              userId: generatedId,
               name, email, password: hashedPassword,
               role: role as Role,
               accountTypeId: role === 'seller' ? 2 : role === 'shg' ? 4 : role === 'buyer' ? 3 : role === 'admin' ? 1 : 3,

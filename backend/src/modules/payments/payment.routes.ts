@@ -153,7 +153,7 @@ const listPaymentsForActor = async (where: Record<string, unknown>, window: { sk
 const webhookHandler = async (req: any, res: any) => {
   try {
     const gateway = String(req.params.gateway || '');
-    if (!['razorpay', 'cashfree', 'bank_transfer'].includes(gateway)) {
+    if (!['bandhan', 'bank_transfer'].includes(gateway)) {
       throw new ApiError(400, 'Unsupported payment gateway', 'PAYMENT_GATEWAY_INVALID');
     }
     const rawBody = Buffer.isBuffer((req as any).rawBody)

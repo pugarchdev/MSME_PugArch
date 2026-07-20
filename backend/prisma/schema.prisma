@@ -3901,8 +3901,7 @@ enum Severity {
 }
 
 enum PaymentGateway {
-  RAZORPAY
-  CASHFREE
+  BANDHAN
   BANK_TRANSFER
   MANUAL
 }

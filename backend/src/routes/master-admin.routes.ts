@@ -7,6 +7,7 @@ import { getPagination } from '../utils/pagination.js';
 import { PERMISSIONS } from '../constants/permissions.js';
 import { hashPassword } from '../services/password.service.js';
 import { randomToken } from '../utils/crypto.js';
+import { generateAlphanumericUserId } from '../utils/userId.js';
 
 import { createOrUpdatePendingOrganization } from '../services/onboarding-organization.service.js';
 import { getDefaultCompanyId } from '../services/default-company.service.js';
@@ -1847,7 +1848,8 @@ router.post('/master-admin/users', ...masterOnly, requirePermission(PERMISSIONS.
     const data = await userPayload(req.body || {});
     const existing = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } });
     if (existing) return jsonError(res, 409, 'A user with this email already exists.', 'DUPLICATE_EMAIL');
-    const user = await prisma.user.create({ data: { ...data, userId: data.email }, select: userSelect });
+    const generatedId = await generateAlphanumericUserId();
+    const user = await prisma.user.create({ data: { ...data, userId: generatedId }, select: userSelect });
     await createAuditLog(req, { action: 'user.create', entityType: 'user', entityId: user.id, metadata: { email: user.email, role: user.role, reason } });
     jsonOk(res, user, 'User created successfully', 201);
   } catch (error: any) {

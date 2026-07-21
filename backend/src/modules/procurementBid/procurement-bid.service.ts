@@ -281,9 +281,24 @@ export const nextClarificationNumber = async (bidNumber: string) => {
 };
 
 export const resolveBid = async (bidIdOrNumber: string | number, include: any = bidInclude) => {
-  const token = String(bidIdOrNumber);
+  const token = String(bidIdOrNumber).trim();
+  const isNum = /^\d+$/.test(token);
+  const parsedNum = (token.startsWith('REQ-') || token.startsWith('RFQ-'))
+    ? Number(token.replace(/^(REQ-|RFQ-)/, ''))
+    : (isNum ? Number(token) : null);
+
+  const tokenVariants = [
+    token,
+    token.startsWith('RFQ-') ? token.replace('RFQ-', 'REQ-') : (token.startsWith('REQ-') ? token.replace('REQ-', 'RFQ-') : token)
+  ];
+
+  const whereConditions: any[] = tokenVariants.flatMap(t => [{ bidNumber: t }, { bidNumber: `RFQ-${t}` }, { bidNumber: `REQ-${t}` }]);
+  if (parsedNum && Number.isFinite(parsedNum) && parsedNum > 0) {
+    whereConditions.push({ id: parsedNum });
+  }
+
   const bid = await db.procurementBid.findFirst({
-    where: /^\d+$/.test(token) ? { OR: [{ id: Number(token) }, { bidNumber: token }] } : { bidNumber: token },
+    where: { OR: whereConditions },
     include
   });
   if (!bid) throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
@@ -327,13 +342,15 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
   const canSeeParticipants = options.includeParticipants || isAdmin || isBuyerOwner;
   const canSeeFinancial = options.includeFinancial || isAdmin || (isBuyerOwner && financialOpenStatuses.includes(bid.status));
 
-  // Buyer packet documents are part of the tender pack sellers must respond to.
-  // Newer rows are stored SELLER_AFTER_LOGIN; this list also unlocks legacy rows
-  // that were saved BUYER_ADMIN_ONLY before the visibility fix.
-  const sellerVisibleBuyerDocTypes = ['TECHNICAL_PACKET_DOCUMENT', 'FINANCIAL_PACKET_DOCUMENT', 'FINANCIAL_BOQ_PRICE_SCHEDULE'];
+  // Buyer packet & requirement documents are part of the tender pack sellers must respond to.
+  // Filter out only internal buyer approval documents (e.g. budget sanctions) for sellers.
+  const internalBuyerDocTypes = ['BUDGET_SANCTION', 'ADMINISTRATIVE_APPROVAL', 'PAC_CERTIFICATE', 'COMPETENT_AUTHORITY_APPROVAL', 'PRICE_REASONABILITY'];
   const publicDocuments = (bid.documents || []).filter((doc: any) => {
-    if (doc.visibility === 'PUBLIC') return true;
-    if (actor?.role === 'seller' && (doc.visibility === 'SELLER_AFTER_LOGIN' || sellerVisibleBuyerDocTypes.includes(doc.documentType))) return true;
+    if (doc.visibility === 'PUBLIC' || doc.visibility === 'SELLER_AFTER_LOGIN') return true;
+    if (actor?.role === 'seller') {
+      const isInternalApproval = internalBuyerDocTypes.includes(doc.documentType) && doc.visibility === 'BUYER_ADMIN_ONLY';
+      return !isInternalApproval;
+    }
     return isAdmin || isBuyerOwner;
   });
 
@@ -396,16 +413,23 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
       } : null
     } : null,
     buyerOrganization: bid.buyerOrganization,
-    documents: publicDocuments.map((doc: any) => ({
-      id: doc.id,
-      documentType: doc.documentType,
-      fileName: doc.fileName,
-      mimeType: doc.mimeType,
-      fileSize: doc.fileSize,
-      visibility: doc.visibility,
-      fileAssetId: doc.fileAssetId,
-      fileUrl: doc.fileUrl
-    })),
+    documents: publicDocuments.map((doc: any) => {
+      let fileAssetId = doc.fileAssetId;
+      if (!fileAssetId && doc.fileUrl) {
+        const match = String(doc.fileUrl).match(/\/api\/(?:public\/)?files\/(\d+)/);
+        if (match && match[1]) fileAssetId = Number(match[1]);
+      }
+      return {
+        id: doc.id,
+        documentType: doc.documentType,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        fileSize: doc.fileSize,
+        visibility: doc.visibility,
+        fileAssetId: fileAssetId || doc.id,
+        fileUrl: doc.fileUrl || (fileAssetId ? `/api/files/${fileAssetId}/view` : null)
+      };
+    }),
     participantsCount: bid.participations?.length || 0,
     participations: canSeeParticipants ? (bid.participations || []).map((p: any) => serializeParticipation(p, { canSeeFinancial, bid })) : undefined,
     clarifications: (isAdmin || isBuyerOwner)

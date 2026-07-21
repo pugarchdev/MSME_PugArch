@@ -186,30 +186,75 @@ const isPublicCatalogueAsset = async (fileAssetId: number) => {
   return Boolean(productImage || certification);
 };
 
+const canSellerViewBid = (sellerId: number, bid: any) => {
+  if (!bid) return false;
+  const isPrivate = bid.visibility === 'INVITE_ONLY' || bid.visibility === 'PRIVATE';
+  if (!isPrivate) return true;
+  const hasParticipation = (bid.participations || []).some((p: any) => p.sellerId === sellerId);
+  if (hasParticipation) return true;
+  const isInvited = (bid.invitations || []).some((i: any) => i.sellerId === sellerId);
+  if (isInvited) return true;
+  return false;
+};
+
 export const canAccessFileAsset = async (asset: any, user: { id: number; role: string }) => {
   if (user.role === 'admin' || user.role === 'master_admin') return true;
   if (asset.ownerId === user.id) return true;
   if (['catalogue', 'catalogue_product', 'catalogue_service'].includes(asset.entityType) || await isPublicCatalogueAsset(asset.id)) return true;
+
+  // Check if file asset is linked via ProcurementBidDocument (regardless of asset.entityId being null or set)
+  const procurementDoc = await prisma.procurementBidDocument.findFirst({
+    where: { fileAssetId: asset.id },
+    include: {
+      bid: {
+        include: {
+          invitations: true,
+          participations: true
+        }
+      }
+    }
+  });
+
+  if (procurementDoc) {
+    if (user.role === 'buyer' && procurementDoc.bid.buyerId === user.id) return true;
+    if (user.role === 'seller') {
+      const isInternalApprovalDoc = ['BUDGET_SANCTION', 'ADMINISTRATIVE_APPROVAL', 'PAC_CERTIFICATE', 'COMPETENT_AUTHORITY_APPROVAL', 'PRICE_REASONABILITY'].includes(procurementDoc.documentType) && procurementDoc.visibility === 'BUYER_ADMIN_ONLY';
+      if (!isInternalApprovalDoc && (procurementDoc.visibility === 'PUBLIC' || procurementDoc.visibility === 'SELLER_AFTER_LOGIN' || canSellerViewBid(user.id, procurementDoc.bid))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Direct entityType === 'procurement_bid' or 'procurement_draft' check
+  if (['procurement_bid', 'procurement_draft'].includes(asset.entityType) && asset.entityId) {
+    const bid = await prisma.procurementBid.findUnique({
+      where: { id: asset.entityId },
+      include: { invitations: true, participations: true }
+    });
+    if (bid) {
+      if (user.role === 'buyer' && bid.buyerId === user.id) return true;
+      if (user.role === 'seller' && canSellerViewBid(user.id, bid)) return true;
+    }
+  }
+
+  // Direct entityType === 'requirement' check
+  if (asset.entityType === 'requirement' && asset.entityId) {
+    const buyerReq = await prisma.buyerRequirement.findUnique({ where: { id: asset.entityId } }).catch(() => null);
+    const legacyReq = buyerReq ? null : await prisma.requirement.findUnique({ where: { id: asset.entityId } }).catch(() => null);
+    const req = buyerReq || legacyReq;
+    if (req) {
+      if (user.role === 'buyer' && (req.createdById === user.id || (req as any).buyerId === user.id)) return true;
+      if (user.role === 'seller') return true;
+    }
+  }
+
   if (!asset.entityId) return false;
 
   if (asset.entityType === 'tender') return checkOwnership('tender', asset.entityId, user);
   if (asset.entityType === 'bid') return checkOwnership('bid', asset.entityId, user);
   if (asset.entityType === 'quote') return checkOwnership('quote', asset.entityId, user);
   if (asset.entityType === 'procurement_checkout') return asset.ownerId === user.id;
-  if (asset.entityType === 'procurement_bid') {
-    const doc = await prisma.procurementBidDocument.findFirst({
-      where: { fileAssetId: asset.id },
-      include: { bid: true }
-    });
-    if (!doc) return false;
-    if (doc.visibility === 'PUBLIC') return true;
-    if (user.role === 'buyer' && doc.bid.buyerId === user.id) return true;
-    if (user.role === 'seller' && doc.visibility === 'SELLER_AFTER_LOGIN') return true;
-    // Buyer packet documents (templates/schedules the seller must fill) are part
-    // of the tender pack. Legacy rows predate the SELLER_AFTER_LOGIN visibility.
-    if (user.role === 'seller' && ['TECHNICAL_PACKET_DOCUMENT', 'FINANCIAL_PACKET_DOCUMENT', 'FINANCIAL_BOQ_PRICE_SCHEDULE'].includes(doc.documentType)) return true;
-    return false;
-  }
   if (['procurement_bid_participation', 'procurement_participation_document', 'procurement_financial_quote'].includes(asset.entityType)) {
     const doc = await prisma.procurementBidParticipationDocument.findFirst({
       where: { fileAssetId: asset.id },
@@ -343,7 +388,19 @@ export const uploadFile = async (
 };
 
 export const getSignedUrl = async (fileId: number, user: { id: number; role: string }, request?: { ipAddress?: string; userAgent?: string }) => {
-  const asset = await prisma.fileAsset.findUnique({ where: { id: fileId } });
+  let asset = await prisma.fileAsset.findUnique({ where: { id: fileId } });
+  if (!asset) {
+    const procDoc = await prisma.procurementBidDocument.findUnique({ where: { id: fileId } }).catch(() => null);
+    if (procDoc?.fileAssetId) {
+      asset = await prisma.fileAsset.findUnique({ where: { id: procDoc.fileAssetId } }).catch(() => null);
+    }
+  }
+  if (!asset) {
+    const partDoc = await prisma.procurementBidParticipationDocument.findUnique({ where: { id: fileId } }).catch(() => null);
+    if (partDoc?.fileAssetId) {
+      asset = await prisma.fileAsset.findUnique({ where: { id: partDoc.fileAssetId } }).catch(() => null);
+    }
+  }
   if (!asset || asset.status !== 'active') throw new ApiError(404, 'File not found', 'FILE_NOT_FOUND');
 
   if (!(await canAccessFileAsset(asset, user))) {

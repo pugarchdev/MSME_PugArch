@@ -994,12 +994,18 @@ export default function RfpDetailPage() {
   const rawDocs = (rfpData as any)?.documents || (reqData as any)?.documents || (bidData as any)?.bidDocuments || [];
   if (Array.isArray(rawDocs) && rawDocs.length > 0) {
     rawDocs.forEach((doc: any) => {
+      let fileAssetId = doc.fileAssetId;
+      const fileUrl = doc.fileUrl || doc.url;
+      if (!fileAssetId && fileUrl) {
+        const match = String(fileUrl).match(/\/api\/(?:public\/)?files\/(\d+)/);
+        if (match && match[1]) fileAssetId = Number(match[1]);
+      }
       documents.push({
         id: doc.id,
         name: doc.name || doc.title || doc.originalName || doc.fileName || doc.documentType || 'Bid document',
         meta: [doc.documentType, doc.mimeType].filter(Boolean).join(' - ') || 'Uploaded document',
-        fileAssetId: doc.fileAssetId,
-        url: doc.fileUrl || doc.url,
+        fileAssetId: fileAssetId,
+        url: fileUrl,
       });
     });
   }
@@ -1719,10 +1725,11 @@ export default function RfpDetailPage() {
                   onClick={() => {
                     if (doc.fileAssetId || doc.url) {
                       openFileAsset({
-                        id: doc.fileAssetId || doc.id,
                         fileAssetId: doc.fileAssetId,
+                        id: doc.fileAssetId || doc.id,
                         originalName: doc.name,
                         url: doc.url,
+                        fileUrl: doc.url,
                       }, doc.name).catch(err => {
                         toast.error(err instanceof Error ? err.message : 'Unable to open document');
                       });

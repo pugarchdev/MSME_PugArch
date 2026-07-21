@@ -184,10 +184,8 @@ router.get('/procurement-bids/my', authenticate, requireAccountType('seller', 'b
 
 router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const actor = await optionalActor(req);
-  let token = req.params.bidId;
-  if (token.startsWith('RFQ-')) {
-    token = token.replace('RFQ-', 'REQ-');
-  }
+  const originalToken = req.params.bidId;
+  let token = originalToken;
 
   if (token.startsWith('TENDER-') || token.startsWith('TND-')) {
     const data = await service.resolveTenderBidActivity(token);
@@ -196,7 +194,7 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
 
   let bid: any;
   try {
-    bid = await service.resolveBid(token, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
+    bid = await service.resolveBid(originalToken, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
 
     // MINIMAL FIX: Load legacy responses if native participations are empty
     if (bid && bid.participations && bid.participations.length === 0 && bid.bidNumber && bid.bidNumber.startsWith('REQ-')) {
@@ -365,6 +363,29 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
         payload.terms = terms;
         payload.internal = internal;
         
+        let reqDocuments: any[] = [];
+        if (requirement?.id) {
+          const fileAssets = await (prisma as any).fileAsset.findMany({
+            where: {
+              OR: [
+                { entityType: 'requirement', entityId: Number(requirement.id) },
+                { entityType: 'procurement_bid', entityId: Number(requirement.id) }
+              ],
+              status: 'active'
+            }
+          }).catch(() => []);
+          reqDocuments = (fileAssets || []).map((asset: any) => ({
+            id: asset.id,
+            documentType: 'REQUIRED_DOCUMENT',
+            fileName: asset.originalName,
+            mimeType: asset.mimeType,
+            fileSize: asset.size,
+            visibility: 'PUBLIC',
+            fileAssetId: asset.id,
+            fileUrl: asset.url || `/api/files/${asset.id}/view`
+          }));
+        }
+
         const synthesized = {
           id: requirement.id,
           bidNumber: requirement.requirementNumber || `REQ-${requirement.id}`,
@@ -406,7 +427,7 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
           updatedAt: requirement.updatedAt,
           buyerOrganization: requirement.organization,
           buyer: requirement.buyer,
-          documents: [],
+          documents: reqDocuments,
           participations: participations,
           clarifications: [],
           evaluations: [],

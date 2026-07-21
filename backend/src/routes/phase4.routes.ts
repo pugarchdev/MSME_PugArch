@@ -2496,6 +2496,12 @@ const getPublicFileActor = async (fileId: number): Promise<{ id: number; role: s
   const publicDoc = await getPublicTenderDocument(fileId);
   if (publicDoc) return { id: publicDoc.tender.buyerId, role: 'buyer' };
 
+  const procurementDoc = await db.procurementBidDocument.findFirst({
+    where: { fileAssetId: fileId, visibility: 'PUBLIC' },
+    include: { bid: { select: { buyerId: true } } }
+  }).catch(() => null);
+  if (procurementDoc?.bid?.buyerId) return { id: Number(procurementDoc.bid.buyerId), role: 'buyer' };
+
   const directCatalogueAsset = await db.fileAsset.findFirst({
     where: {
       id: fileId,

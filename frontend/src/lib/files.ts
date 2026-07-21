@@ -124,14 +124,17 @@ export const openFileAsset = async (fileAsset: any, label = 'Document') => {
     ? fileAsset
     : (typeof fileAsset === 'string' && /^\d+$/.test(fileAsset))
       ? Number(fileAsset)
-      : Number(fileAsset?.id || fileAsset?.fileAssetId || fileAsset?.fileId);
-  const fallbackUrl = typeof fileAsset === 'object' ? (fileAsset?.url || fileAsset?.signedUrl) : null;
+      : Number(fileAsset?.fileAssetId || fileAsset?.fileId || fileAsset?.id);
+  const fallbackUrl = typeof fileAsset === 'object' ? (fileAsset?.url || fileAsset?.fileUrl || fileAsset?.signedUrl) : null;
   const absoluteFallbackUrl = fallbackUrl ? getAbsoluteApiUrl(fallbackUrl) : '';
 
-  if (!fileId && fallbackUrl) {
-    const match = String(fallbackUrl).match(/\/api\/files\/(\d+)/);
-    if (match) {
-      fileId = Number(match[1]);
+  if (fallbackUrl) {
+    const match = String(fallbackUrl).match(/\/api\/(?:public\/)?files\/(\d+)/);
+    if (match && match[1]) {
+      const urlFileId = Number(match[1]);
+      if (Number.isFinite(urlFileId) && urlFileId > 0) {
+        fileId = urlFileId;
+      }
     }
   }
 

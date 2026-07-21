@@ -22,6 +22,7 @@ import { cn } from '../../../lib/utils';
 
 interface OpportunityData {
     id: number;
+    sourceKey: string;
     displayId: string;
     title: string;
     description: string;
@@ -106,6 +107,7 @@ function mapTender(t: MarketplaceTender): OpportunityData {
     const days = Math.max(0, Math.ceil((new Date(t.closesAt || '').getTime() - Date.now()) / 86400000));
     return {
         id: t.id,
+        sourceKey: `tender-${t.id}`,
         displayId: t.tenderId,
         title: t.title,
         description: getFormattedDescription(t.description),
@@ -132,6 +134,7 @@ function mapBid(b: MarketplaceBid): OpportunityData {
     const isTenderActivity = b.sourceModel === 'TENDER';
     return {
         id: b.id,
+        sourceKey: `bid-${b.sourceModel || 'PROCUREMENT_BID'}-${b.id}`,
         displayId: b.bidNumber,
         title: b.title,
         description: getFormattedDescription(b.description),
@@ -451,6 +454,7 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
 
             return {
                 id: r.id,
+                sourceKey: `requirement-${r.sourceModel || 'BUYER_REQUIREMENT'}-${sourceId}-${r.id}`,
                 displayId: r.bidNumber || r.requirementNumber || `REQ-${sourceId}`,
                 title: r.title,
                 description: getFormattedDescription(r.description),
@@ -560,7 +564,7 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {activeOpportunities.slice(0, 8).map((item, index) => (
                             <OpportunityCard 
-                                key={`${item.isTender ? 'tender' : 'bid'}-${item.id}`} 
+                                key={item.sourceKey}
                                 item={item} 
                                 index={index} 
                                 visible={visible} 
@@ -587,7 +591,7 @@ export function LatestBids({ requirements = [], tenders = [], bids = [], loading
                             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                                 {activeOpportunities.slice(0, 8).map((item, index) => (
                                     <OpportunityListRow 
-                                        key={`${item.isTender ? 'tender' : 'bid'}-${item.id}`} 
+                                        key={item.sourceKey}
                                         item={item} 
                                         srNo={index + 1} 
                                     />

@@ -467,7 +467,17 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     id: p.id,
     bidId: p.bidId,
     sellerId: p.sellerId,
-    seller: p.seller ? { id: p.seller.id, name: p.seller.name, role: p.seller.role, organizationId: p.seller.organizationId } : undefined,
+    seller: p.seller ? {
+      id: p.seller.id,
+      name: p.seller.name,
+      email: p.seller.email,
+      mobile: p.seller.mobile,
+      role: p.seller.role,
+      onboardingStatus: p.seller.onboardingStatus,
+      organizationId: p.seller.organizationId,
+      organization: p.seller.organization
+    } : undefined,
+    sellerName: p.sellerName,
     participationNumber: p.participationNumber,
     technicalStatus: p.technicalStatus,
     financialStatus: p.financialStatus,
@@ -485,6 +495,8 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     submittedAt: p.submittedAt,
     technicalSubmittedAt: p.technicalSubmittedAt,
     financialSubmittedAt: p.financialSubmittedAt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
     isWithdrawn: p.isWithdrawn,
     rejectionReason: p.rejectionReason,
     documents: (p.documents || [])

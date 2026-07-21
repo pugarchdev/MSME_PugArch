@@ -32,6 +32,7 @@ import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
 import { useAuth } from '../../../hooks/useAuth';
+import { api } from '../../../lib/api';
 import { procurementBidApi } from '../../procurementBid/api';
 import { marketplaceApi } from '../../marketplace/api';
 import { formatDate } from '../../shared/format';
@@ -156,41 +157,10 @@ export default function SupplierResponsesPage() {
   }, [searchTerm]);
 
   const fetchBids = async () => {
-    const [bidsData, reqsData] = await Promise.allSettled([
-      procurementBidApi.getBuyerBids(),
-      marketplaceApi.getRequirements({ pageSize: 50 })
-    ]);
-    const bids = bidsData.status === 'fulfilled' ? bidsData.value : [];
-    const requirements = reqsData.status === 'fulfilled'
-      ? reqsData.value?.requirements || reqsData.value?.items || reqsData.value || []
-      : [];
-    const buyerRequirements = (requirements || []).filter(
-      (r: any) => r.buyerId === user?.id || r.buyerOrganization?.id === user?.organizationId
-    );
-    const bidTitles = new Set(bids.map((b: any) => (b.title || '').trim().toLowerCase()));
-    const uniqueRequirements = buyerRequirements.filter((req: any) => {
-      const title = (req.title || '').trim().toLowerCase();
-      return !bidTitles.has(title);
-    });
-    const normalizedRequirements = uniqueRequirements.map((req: any) => {
-      const realId = req.sourceId || Math.abs(Number(req.id));
-      return {
-        id: `req-${realId}`,
-        title: req.title || 'Marketplace Requirement',
-        itemName: req.title || 'Marketplace Requirement',
-        buyerName: req.buyerOrganization?.organizationName || 'You',
-        estimatedValue: req.budgetMax || req.budgetMin,
-        status: req.status === 'PUBLISHED' ? 'Open' : req.status === 'CLOSED' ? 'Closed' : req.status === 'AWARDED' ? 'Awarded' : 'Open',
-        participantsCount: req._count?.responses || req.responsesCount || 0,
-        endDate: req.lastDate,
-        startDate: req.approvedAt || req.createdAt,
-        procurementType: req.canonicalMethod || req.procurementMethod || 'RFQ',
-        bidType: 'Product',
-        isMarketplaceRequirement: true,
-        requirementId: realId,
-      };
-    });
-    return [...bids, ...normalizedRequirements];
+    api.invalidate('/api/buyer/procurement-bids');
+    api.invalidate('/api/marketplace/requirements');
+    const bids = await procurementBidApi.getBuyerBids().catch(() => []);
+    return bids || [];
   };
 
   const { data: bids = [], isLoading: loading, isError, error: queryError, refetch, isFetching } = useQuery<any[]>({
@@ -288,7 +258,7 @@ export default function SupplierResponsesPage() {
             <p className="mt-1 text-sm font-semibold text-slate-500">Track bids, quotes, and proposals received from suppliers across your procurements.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-lg text-xs font-black uppercase shadow-sm bg-white hover:bg-slate-50 border-slate-200">
+            <Button variant="outline" onClick={() => { api.invalidate('/api/buyer/procurement-bids'); api.invalidate('/api/marketplace/requirements'); refetch(); }} className="h-10 rounded-lg text-xs font-black uppercase shadow-sm bg-white hover:bg-slate-50 border-slate-200">
               <RefreshCw className={cn("mr-2 h-4 w-4 text-[#12335f]", refreshing && "animate-spin")} />Refresh
             </Button>
           </div>

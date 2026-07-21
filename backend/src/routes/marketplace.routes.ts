@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { getOrSetCache } from '../services/cache.service.js';
+import { deleteCache, getOrSetCache } from '../services/cache.service.js';
 import { redisKeys } from '../constants/redis-keys.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { authenticate, type AuthRequest } from '../middleware/authenticate.js';
@@ -132,6 +132,8 @@ const publicRequirementListSelect = {
     title: true,
     requirementType: true,
     categoryId: true,
+    createdById: true,
+    buyerOrganizationId: true,
     description: true,
     quantity: true,
     unit: true,
@@ -319,6 +321,8 @@ const decorateRequirement = (requirement: any) => {
     const state = computeRequirementState(requirement);
     return {
         ...requirement,
+        buyerId: requirement.buyerId || requirement.createdById,
+        buyerOrganizationId: requirement.buyerOrganizationId || requirement.buyerOrganization?.id,
         requirementNumber: requirement.requirementNumber || `REQ-${String(Math.abs(Number(requirement.id))).padStart(5, '0')}`,
         bidStatus: state.code,
         computedStatus: state.code,
@@ -352,6 +356,8 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
 
     return decorateRequirement({
         id: -Number(requirement.id),
+        buyerId: requirement.buyerId || requirement.buyer?.id,
+        buyerOrganizationId: requirement.organizationId || requirement.organization?.id || requirement.buyer?.organizationId,
         sourceModel: 'REQUIREMENT',
         sourceId: requirement.id,
         title: requirement.title,
@@ -373,7 +379,7 @@ const mapLegacyRequirementToPublic = (requirement: any) => {
         updatedAt: requirement.updatedAt,
         category: requirement.category,
         buyerOrganization: organization,
-        _count: { responses: requirement._count?.tenders || 0 },
+        _count: { responses: (requirement._count?.tenders || 0) },
         requirementNumber: requirement.requirementNumber,
         procurementMethod: requirement.procurementMethod,
         procurementMethodLabel: procurementMethod || null,
@@ -2572,6 +2578,22 @@ router.post('/marketplace/requirements/:id/responses', authenticate, authorize('
                 });
             }
         });
+
+        // Invalidate dashboard summary cache for the seller so bid count updates immediately
+        if (req.user?.id) {
+            await deleteCache(redisKeys.cacheDashboardSummary(req.user.id));
+        }
+
+        // Try to invalidate buyer's cache if we have the requirement's creator
+        if (response && (response as any).requirementId) {
+             const reqData = await db.buyerRequirement.findUnique({
+                 where: { id: (response as any).requirementId },
+                 select: { createdById: true }
+             });
+             if (reqData && reqData.createdById) {
+                 await deleteCache(redisKeys.cacheDashboardSummary(reqData.createdById));
+             }
+        }
 
         return ok(res, response);
     } catch (error) {

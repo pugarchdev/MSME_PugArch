@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X, ArrowLeft, Building2, User2, PhoneCall, Calendar, Clock, Lock, Sparkles, HelpCircle, Eye, Users } from 'lucide-react';
+import { CalendarDays, Download, FileText, MapPin, MessageSquareText, X, ArrowLeft, Building2, User2, PhoneCall, Calendar, Clock, Lock, Sparkles, HelpCircle, Eye, Users, Tag } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { ClarificationButton, ResultsTable, StatusBadge } from '../components';
 import { formatDate, money } from '../data';
@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cn } from '../../../lib/utils';
 import { openFileAsset } from '../../../lib/files';
 import { Button } from '../../../components/ui/button';
+import { formatDateTime } from '../../shared/format';
 
 const stages = [
   { key: 'PUBLISHED', label: 'Published' },
@@ -73,16 +74,50 @@ export default function BidDetailsPage() {
     return headers;
   }, [token]);
 
+  const [activeTab, setActiveTab] = useState<'responses' | 'overview'>('responses');
+  const [selectedParticipation, setSelectedParticipation] = useState<any | null>(null);
+
+  const isOwner = useMemo(() => {
+    if (!bid || !user) return false;
+    return user.role === 'buyer' && Number(bid.buyerId) === Number(user.id);
+  }, [bid, user]);
+
   const myParticipation = useMemo(() => {
     if (!bid || !user) return null;
     return bid.participations?.find((p: any) => Number(p.sellerId) === Number(user.id));
   }, [bid, user]);
 
+  const submittedParticipations = useMemo(() => {
+    if (!bid || !bid.participations) return [];
+
+    const uniqueSellersMap = new Map<number, any>();
+
+    bid.participations.forEach((p: any) => {
+      if (p.submissionStatus === 'SUBMITTED' && !p.isWithdrawn) {
+        const sellerId = p.sellerId || p.seller?.id;
+        if (sellerId) {
+          if (!uniqueSellersMap.has(sellerId)) {
+            uniqueSellersMap.set(sellerId, p);
+          } else {
+            const existing = uniqueSellersMap.get(sellerId);
+            const existingTime = new Date(existing.submittedAt || existing.createdAt || 0).getTime();
+            const pTime = new Date(p.submittedAt || p.createdAt || 0).getTime();
+            if (pTime > existingTime) {
+              uniqueSellersMap.set(sellerId, p);
+            }
+          }
+        }
+      }
+    });
+
+    return Array.from(uniqueSellersMap.values());
+  }, [bid]);
+
   const loadBid = React.useCallback(() => {
     let alive = true;
     setLoading(true);
     setError('');
-    
+
     Promise.all([
       procurementBidApi.detail(bidId),
       api.fetch(`/api/bids/${bidId}/timeline`, { headers: authHeaders }).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] }))
@@ -152,7 +187,7 @@ export default function BidDetailsPage() {
     );
   }
 
-  const isOwner = user?.role === 'buyer' && Number(bid.buyerId) === Number(user.id);
+
 
   const isSubmitted = myParticipation?.submissionStatus === 'SUBMITTED';
   const isRequiresResubmission = myParticipation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION');
@@ -355,219 +390,552 @@ export default function BidDetailsPage() {
         </div>
       )}
 
-      {/* Main Grid Content */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
-        
-        {/* Left Panel */}
-        <div className="space-y-6">
-          
-          {/* CONSIGNEE DELIVERY SPECS Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                <MapPin className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Consignee Delivery Specs</h2>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Shipping requirements, contact information, and delivery parameters.</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <SpecRow icon={Building2} label="Buyer Company" value={bid.buyerName || 'Global Solutions Inc.'} />
-              <SpecRow icon={MapPin} label="Shipping Address" value={bid.deliveryLocation || bid.location || '123 Business Ave, New York, NY 10001, USA'} />
-              <SpecRow icon={User2} label="Delivery Contact" value={bid.consigneeDetails?.consigneeName || 'Sarah Chen'} />
-              <SpecRow icon={PhoneCall} label="Contact Number" value={bid.consigneeDetails?.consigneeMobile || '+1 212-555-1234'} />
-              <SpecRow icon={Calendar} label="Required Delivery Date" value={bid.endDate ? formatDate(bid.endDate) : 'Oct 15, 2023'} />
-              <SpecRow icon={Clock} label="Receiving Hours" value="8:00 AM - 4:00 PM EST" />
-              <SpecRow icon={HelpCircle} label="Site Access Info" value={bid.consigneeDetails?.acceptanceCriteria || '-'} />
-              <SpecRow icon={HelpCircle} label="Special Handling Requirements" value="-" />
-            </div>
-          </div>
-
-          {/* Description & Eligibility Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-            <div>
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Project Scope & Specifications</h3>
-              <p className="mt-2 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{bid.description || 'No detailed description provided.'}</p>
-            </div>
-            
-            {bid.eligibility && bid.eligibility.length > 0 && (
-              <div className="border-t border-slate-100 pt-4">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Eligibility Criteria</h3>
-                <ul className="list-disc pl-4 space-y-1 text-xs text-slate-600 font-semibold">
-                  {bid.eligibility.map((el, index) => (
-                    <li key={index}>{el}</li>
-                  ))}
-                </ul>
-              </div>
+      {/* Tab Navigation (only for Owner) */}
+      {isOwner && (
+        <div className="flex border-b border-slate-200 mb-6 bg-white p-1 rounded-xl shadow-sm border">
+          <button
+            onClick={() => setActiveTab('responses')}
+            className={cn(
+              "flex-1 md:flex-initial px-6 py-2.5 text-xs font-extrabold rounded-lg transition-all duration-200 flex items-center justify-center gap-2",
+              activeTab === 'responses'
+                ? "bg-[#0b2447] text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
             )}
-          </div>
-
-          {/* Clarifications Section Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Clarification Stream</h2>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Log of query resolutions and regulatory checklists.</p>
-              </div>
-              <ClarificationButton onClick={() => setShowClarifications(true)} />
-            </div>
-            
-            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              Have questions regarding standard specifications, quality checklist, or payment terms? Click request clarification to send an inquiry directly to the buyer's procurement team.
-            </p>
-          </div>
-
-          {/* Bid Result Table Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Bid Evaluation Results</h2>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time status updates of bid commercial comparisons.</p>
-              </div>
-              <Link href={`/bids/${bid.id}/results`} className="text-xs font-black text-indigo-600 hover:text-indigo-700 underline underline-offset-4">
-                Open Full Sheet
-              </Link>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <ResultsTable rows={bid.results} />
-            </div>
-          </div>
-
+          >
+            <Users className="h-4 w-4" />
+            Seller Responses ({submittedParticipations.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={cn(
+              "flex-1 md:flex-initial px-6 py-2.5 text-xs font-extrabold rounded-lg transition-all duration-200 flex items-center justify-center gap-2",
+              activeTab === 'overview'
+                ? "bg-[#0b2447] text-white shadow-sm"
+                : "text-slate-650 hover:bg-slate-50 hover:text-slate-800"
+            )}
+          >
+            <FileText className="h-4 w-4" />
+            Procurement Overview
+          </button>
         </div>
+      )}
 
-        {/* Right Panel */}
-        <div className="space-y-6">
-          
-          {/* Tender Overview Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
-                <FileText className="h-5 w-5" />
-              </span>
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Tender Overview</h2>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <OverviewField label="Estimated Value" value={money(bid.estimatedValue) || '$750,000 USD'} />
-              <OverviewField label="Quantity" value={bid.quantity ? `${bid.quantity}` : '5,000 Units'} />
-              <OverviewField label="Evaluation Method" value={bid.evaluationMethod || 'Techno-Commercial Evaluation, Yes - Technical & Financial'} className="col-span-2" />
-              <OverviewField label="RFQ Reference" value={bid.id || 'RFQ-2023-GlobalProcure'} />
-              <OverviewField label="Category" value={bid.category || 'IT Infrastructure & Services'} />
-              <OverviewField label="Closing Date" value={bid.endDate ? formatDate(bid.endDate) : 'Sep 15, 2023 5:00 PM EST'} className="col-span-2" />
-            </div>
+      {isOwner && activeTab === 'responses' ? (
+        // Seller Responses View Tab
+        submittedParticipations.length === 0 ? (
+          <div className="text-center py-16 rounded-2xl border border-dashed border-slate-200 bg-white p-8">
+            <Users className="mx-auto h-12 w-12 text-slate-350 stroke-[1.5]" />
+            <h3 className="mt-4 text-base font-black text-slate-900">No seller responses received yet.</h3>
+            <p className="mt-1 text-xs text-slate-500 font-semibold">We will show participating sellers here once they submit their bids.</p>
           </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {submittedParticipations.map((p: any) => {
+              const techStatus = p.technicalStatus || p.submissionStatus;
+              const sellerName = p.seller?.organization?.organizationName || p.sellerName || p.seller?.name || `Seller #${p.sellerId}`;
+              const contactPerson = p.seller?.name;
+              const isQualified = techStatus === 'QUALIFIED' || techStatus === 'Qualified';
 
-          {/* Key Compliance Documents Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                <Download className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Key Compliance Documents</h2>
-                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Review guidelines and required forms.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {(() => {
-                const defaultDocs = [
-                  { name: 'RFQ Document', meta: 'PDF • 2.4 MB • Uploaded: 24 Aug 2023' },
-                  { name: 'Technical Specifications', meta: 'PDF • 4.1 MB • Uploaded: 24 Aug 2023' },
-                  { name: 'Compliance Checklist', meta: 'DOCX • 1.2 MB • Uploaded: 25 Aug 2023' },
-                  { name: 'Terms & Conditions', meta: 'PDF • 1.8 MB • Uploaded: 24 Aug 2023' },
-                  { name: 'Non-Disclosure Agreement', meta: 'PDF • 950 KB • Uploaded: 25 Aug 2023' },
-                  { name: 'Quality Certification', meta: 'PDF • 3.2 MB • Uploaded: 26 Aug 2023' }
-                ];
-                const docsToRender = bid.bidDocuments?.length ? bid.bidDocuments : defaultDocs;
-                return docsToRender.map((doc: any) => (
-                  <div key={doc.name} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-slate-50/80 transition duration-200">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
-                        doc.name.includes('Checklist') || doc.name.endsWith('.docx') ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"
-                      )}>
-                        <FileText className="h-4.5 w-4.5" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-extrabold text-slate-800 truncate">{doc.name}</p>
-                        <p className="text-[9px] font-bold text-slate-400 mt-0.5 truncate">{doc.meta || 'PDF • 1.5 MB'}</p>
-                      </div>
+              return (
+                <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-950 line-clamp-1">{sellerName}</h3>
+                      {contactPerson && contactPerson !== sellerName && (
+                        <p className="text-xs font-bold text-slate-550 mt-1 flex items-center gap-1.5">
+                          <User2 className="h-3.5 w-3.5 text-slate-400" />
+                          <span className="text-slate-400">Contact:</span> {contactPerson}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (!doc.fileAssetId) {
-                            toast.info("Mock document. No file is uploaded on server.");
-                            return;
-                          }
-                          openFileAsset({
-                            id: doc.fileAssetId,
-                            fileAssetId: doc.fileAssetId,
-                            originalName: doc.name,
-                            url: doc.url,
-                          }, doc.name).catch(err => {
-                            toast.error(err instanceof Error ? err.message : 'Unable to open document');
-                          });
-                        }}
-                        className="h-7 px-2 text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50"
-                      >
-                        <Eye className="mr-1 h-3.5 w-3.5" /> View
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (!doc.fileAssetId) {
-                            toast.info("Mock document. No file is uploaded on server.");
-                            return;
-                          }
-                          openFileAsset({
-                            id: doc.fileAssetId,
-                            fileAssetId: doc.fileAssetId,
-                            originalName: doc.name,
-                            url: doc.url,
-                          }, doc.name).catch(err => {
-                            toast.error(err instanceof Error ? err.message : 'Unable to open document');
-                          });
-                        }}
-                        className="h-7 px-2 text-slate-400 hover:bg-slate-100"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
+
+                    <div className="space-y-2 text-xs font-semibold text-slate-600">
+                      <p className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-slate-450" />
+                        <span className="text-slate-400">Submitted:</span> {formatDateTime(p.submittedAt || p.createdAt)}
+                      </p>
+                      <p className="flex items-center gap-1.5">
+                        <Tag className="h-3.5 w-3.5 text-slate-450" />
+                        <span className="text-slate-400">Amount:</span>{' '}
+                        {p.financialSealed ? (
+                          <span className="font-extrabold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-[10px]">🔒 Sealed</span>
+                        ) : (
+                          <span className="font-extrabold text-slate-950">{money(p.totalAmount || p.quotedAmount || 0)}</span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="pt-2">
+                      <StatusBadge label={techStatus} />
                     </div>
                   </div>
-                ));
-              })()}
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex gap-2">
+                    <button
+                      onClick={() => setSelectedParticipation(p)}
+                      className="flex-1 inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 hover:bg-slate-50 transition shadow-sm"
+                    >
+                      <Eye className="mr-1.5 h-3.5 w-3.5" /> View Details
+                    </button>
+                    {isQualified && (
+                      <button
+                        onClick={async () => {
+                          const confirmAccept = window.confirm(`Accept proposal from ${sellerName} and create Purchase Order?`);
+                          if (!confirmAccept) return;
+                          try {
+                            setLoading(true);
+                            await procurementBidApi.recommendAward(bid.id, {
+                              participationId: p.id,
+                              remarks: 'Accepted via BidDetailsPage Responses Tab'
+                            });
+                            toast.success('Proposal accepted! Purchase Order creation initiated.');
+                            loadBid();
+                          } catch (err: any) {
+                            toast.error(err.message || 'Failed to accept proposal');
+                            setLoading(false);
+                          }
+                        }}
+                        className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-4 text-xs font-black text-white hover:bg-emerald-700 transition shadow-sm"
+                      >
+                        Accept
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        // Standard Grid Layout (Procurement Overview)
+        <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
+
+          {/* Left Panel */}
+          <div className="space-y-6">
+
+            {/* CONSIGNEE DELIVERY SPECS Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <MapPin className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Consignee Delivery Specs</h2>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Shipping requirements, contact information, and delivery parameters.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SpecRow icon={Building2} label="Buyer Company" value={bid.buyerName || 'Global Solutions Inc.'} />
+                <SpecRow icon={MapPin} label="Shipping Address" value={bid.deliveryLocation || bid.location || bid.consigneeDetails?.deliveryAddress || '123 Business Ave, New York, NY 10001, USA'} />
+                <SpecRow icon={User2} label="Delivery Contact" value={bid.consigneeDetails?.consigneeName || 'Sarah Chen'} />
+                <SpecRow icon={PhoneCall} label="Contact Number" value={bid.consigneeDetails?.consigneeMobile || '+1 212-555-1234'} />
+                <SpecRow icon={Calendar} label="Required Delivery Date" value={bid.endDate ? formatDate(bid.endDate) : 'Oct 15, 2023'} />
+                <SpecRow icon={Clock} label="Receiving Hours" value={bid.consigneeDetails?.receivingHours || '8:00 AM - 4:00 PM EST'} />
+                <SpecRow icon={HelpCircle} label="Site Access Info" value={bid.consigneeDetails?.siteAccessInfo || bid.consigneeDetails?.acceptanceCriteria || '-'} />
+                <SpecRow icon={HelpCircle} label="Special Handling Requirements" value={bid.consigneeDetails?.specialHandlingRequirements || '-'} />
+              </div>
             </div>
+
+            {/* Description & Eligibility Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Project Scope & Specifications</h3>
+                <p className="mt-2 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{bid.description || 'No detailed description provided.'}</p>
+              </div>
+
+              {bid.eligibility && bid.eligibility.length > 0 && (
+                <div className="border-t border-slate-100 pt-4">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Eligibility Criteria</h3>
+                  <ul className="list-disc pl-4 space-y-1 text-xs text-slate-600 font-semibold">
+                    {bid.eligibility.map((el, index) => (
+                      <li key={index}>{el}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Clarifications Section Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Clarification Stream</h2>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Log of query resolutions and regulatory checklists.</p>
+                </div>
+                <ClarificationButton onClick={() => setShowClarifications(true)} />
+              </div>
+
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                Have questions regarding standard specifications, quality checklist, or payment terms? Click request clarification to send an inquiry directly to the buyer's procurement team.
+              </p>
+            </div>
+
+            {/* Bid Result Table Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Bid Evaluation Results</h2>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time status updates of bid commercial comparisons.</p>
+                </div>
+                <Link href={`/bids/${bid.id}/results`} className="text-xs font-black text-indigo-600 hover:text-indigo-700 underline underline-offset-4">
+                  Open Full Sheet
+                </Link>
+              </div>
+
+              <div className="overflow-x-auto">
+                <ResultsTable rows={bid.results} />
+              </div>
+            </div>
+
           </div>
 
-          {/* Action Box Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            {isPendingApproval ? (
-              <button disabled className="flex h-11 w-full items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-400 cursor-not-allowed border border-slate-200">
-                Pending Approval
-              </button>
-            ) : (
-              <Link href={participateHref} className="flex h-11 items-center justify-center rounded-lg bg-indigo-600 text-xs font-black text-white hover:bg-indigo-700 transition shadow-sm shadow-indigo-600/10">
-                Submit Bid Participation
+          {/* Right Panel */}
+          <div className="space-y-6">
+
+            {/* Tender Overview Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
+                  <FileText className="h-5 w-5" />
+                </span>
+                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Tender Overview</h2>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <OverviewField label="Estimated Value" value={money(bid.estimatedValue) || '$750,000 USD'} />
+                <OverviewField label="Quantity" value={bid.quantity ? `${bid.quantity}` : '5,000 Units'} />
+                <OverviewField label="Evaluation Method" value={bid.evaluationMethod || 'Techno-Commercial Evaluation, Yes - Technical & Financial'} className="col-span-2" />
+                <OverviewField label="RFQ Reference" value={bid.id || 'RFQ-2023-GlobalProcure'} />
+                <OverviewField label="Category" value={bid.category || 'IT Infrastructure & Services'} />
+                <OverviewField label="Closing Date" value={bid.endDate ? formatDate(bid.endDate) : 'Sep 15, 2023 5:00 PM EST'} className="col-span-2" />
+              </div>
+            </div>
+
+            {/* Key Compliance Documents Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <Download className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900">Key Compliance Documents</h2>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Review guidelines and required forms.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {(() => {
+                  const defaultDocs = [
+                    { name: 'RFQ Document', meta: 'PDF • 2.4 MB • Uploaded: 24 Aug 2023' },
+                    { name: 'Technical Specifications', meta: 'PDF • 4.1 MB • Uploaded: 24 Aug 2023' },
+                    { name: 'Compliance Checklist', meta: 'DOCX • 1.2 MB • Uploaded: 25 Aug 2023' },
+                    { name: 'Terms & Conditions', meta: 'PDF • 1.8 MB • Uploaded: 24 Aug 2023' },
+                    { name: 'Non-Disclosure Agreement', meta: 'PDF • 950 KB • Uploaded: 25 Aug 2023' },
+                    { name: 'Quality Certification', meta: 'PDF • 3.2 MB • Uploaded: 26 Aug 2023' }
+                  ];
+                  const docsToRender = bid.bidDocuments?.length ? bid.bidDocuments : defaultDocs;
+                  return docsToRender.map((doc: any) => (
+                    <div key={doc.name} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-slate-50/80 transition duration-200">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
+                          doc.name.includes('Checklist') || doc.name.endsWith('.docx') ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"
+                        )}>
+                          <FileText className="h-4.5 w-4.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-extrabold text-slate-800 truncate">{doc.name}</p>
+                          <p className="text-[9px] font-bold text-slate-400 mt-0.5 truncate">{doc.meta || 'PDF • 1.5 MB'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (!doc.fileAssetId) {
+                              toast.info("Mock document. No file is uploaded on server.");
+                              return;
+                            }
+                            openFileAsset({
+                              id: doc.fileAssetId,
+                              fileAssetId: doc.fileAssetId,
+                              originalName: doc.name,
+                              url: doc.url,
+                            }, doc.name).catch(err => {
+                              toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                            });
+                          }}
+                          className="h-7 px-2 text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50"
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" /> View
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (!doc.fileAssetId) {
+                              toast.info("Mock document. No file is uploaded on server.");
+                              return;
+                            }
+                            openFileAsset({
+                              id: doc.fileAssetId,
+                              fileAssetId: doc.fileAssetId,
+                              originalName: doc.name,
+                              url: doc.url,
+                            }, doc.name).catch(err => {
+                              toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                            });
+                          }}
+                          className="h-7 px-2 text-slate-400 hover:bg-slate-100"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Action Box Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+              {isPendingApproval ? (
+                <button disabled className="flex h-11 w-full items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-400 cursor-not-allowed border border-slate-200">
+                  Pending Approval
+                </button>
+              ) : (
+                <Link href={participateHref} className="flex h-11 items-center justify-center rounded-lg bg-indigo-600 text-xs font-black text-white hover:bg-indigo-700 transition shadow-sm shadow-indigo-600/10">
+                  Submit Bid Participation
+                </Link>
+              )}
+              <Link href="/bids" className="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 hover:bg-slate-50 transition">
+                Back to Dashboard
               </Link>
-            )}
-            <Link href="/bids" className="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 hover:bg-slate-50 transition">
-              Back to Dashboard
-            </Link>
+            </div>
+
           </div>
 
         </div>
+      )}
 
-      </div>
+      {/* Participation Details Modal */}
+      {selectedParticipation && (() => {
+        const p = selectedParticipation;
+        const sellerName = p.seller?.organization?.organizationName || p.sellerName || p.seller?.name || `Seller #${p.sellerId}`;
+        const contactPerson = p.seller?.name;
+        const email = p.seller?.email;
+        const mobile = p.seller?.mobile;
+        const techStatus = p.technicalStatus || p.submissionStatus;
+        const isQualified = techStatus === 'QUALIFIED' || techStatus === 'Qualified';
+
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4 transition-all duration-300 animate-in fade-in">
+            <div className="max-h-[90dvh] w-full max-w-3xl overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl flex flex-col animate-in slide-in-from-bottom-8 duration-300">
+              <div className="flex items-center justify-between border-b border-slate-100 p-5">
+                <div>
+                  <h2 className="text-base font-black text-slate-900">Bid Response Details</h2>
+                  <p className="text-xs text-slate-400 font-bold mt-0.5">Participation Ref: {p.participationNumber || `PRT-${p.id}`}</p>
+                </div>
+                <button onClick={() => setSelectedParticipation(null)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="overflow-auto p-6 space-y-6 max-h-[70dvh]">
+                {/* Company & Contact Section */}
+                <div className="bg-slate-50/50 rounded-2xl border border-slate-150 p-5 grid gap-4 sm:grid-cols-2 font-semibold">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Seller / Company</span>
+                    <h3 className="text-sm font-black text-slate-900 mt-1">{sellerName}</h3>
+                  </div>
+                  {contactPerson && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Contact Person</span>
+                      <p className="text-sm font-bold text-slate-800 mt-1">{contactPerson}</p>
+                    </div>
+                  )}
+                  {email && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Email Address</span>
+                      <p className="text-xs font-bold text-slate-700 mt-1">{email}</p>
+                    </div>
+                  )}
+                  {mobile && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Mobile Number</span>
+                      <p className="text-xs font-bold text-slate-700 mt-1">{mobile}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bid Details (Price & Status) */}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-150 p-4 bg-white shadow-sm border">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 leading-none">Financial Quote</span>
+                    <p className="mt-2 text-sm font-black text-[#0b2447]">
+                      {p.financialSealed ? (
+                        <span className="text-slate-500">🔒 Sealed</span>
+                      ) : (
+                        money(p.totalAmount || p.quotedAmount || 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-150 p-4 bg-white shadow-sm border">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 leading-none">Submitted At</span>
+                    <p className="mt-2 text-xs font-bold text-slate-800">{formatDateTime(p.submittedAt || p.createdAt)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-150 p-4 bg-white shadow-sm border">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 leading-none">Technical Status</span>
+                    <div className="mt-2">
+                      <StatusBadge label={techStatus} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Make & Brand */}
+                {(p.makeBrand || p.model || p.offeredItemDescription) && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Offered Product/Service Specs</h4>
+                    <div className="rounded-xl border border-slate-150 bg-slate-50/20 p-4 space-y-3 border">
+                      <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                        {p.makeBrand && (
+                          <div>
+                            <span className="text-slate-400 font-semibold">Make/Brand:</span>
+                            <span className="ml-1.5 font-bold text-slate-800">{p.makeBrand}</span>
+                          </div>
+                        )}
+                        {p.model && (
+                          <div>
+                            <span className="text-slate-400 font-semibold">Model:</span>
+                            <span className="ml-1.5 font-bold text-slate-800">{p.model}</span>
+                          </div>
+                        )}
+                      </div>
+                      {p.offeredItemDescription && (
+                        <div className="text-xs pt-2 border-t border-slate-100">
+                          <span className="text-slate-400 font-semibold block mb-1.5">Description / Technical Specifications:</span>
+                          <p className="font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed bg-white p-3 rounded-lg border border-slate-100">{p.offeredItemDescription}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Documents Submitted */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Submitted Documents</h4>
+                  {p.documents && p.documents.length > 0 ? (
+                    <div className="space-y-2">
+                      {p.documents.map((doc: any) => (
+                        <div key={doc.id || doc.name} className="flex items-center justify-between rounded-xl border border-slate-150 p-3 bg-white hover:bg-slate-50/80 transition border shadow-sm">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 text-xs font-bold">
+                              <FileText className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-slate-800 truncate">{doc.documentName || doc.fileName || 'Bid Document'}</p>
+                              <p className="text-[9px] font-bold text-slate-400 mt-0.5 uppercase">{doc.documentCategory || 'Technical Proposal'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!doc.fileAssetId) {
+                                  toast.info("Mock document. No file is uploaded on server.");
+                                  return;
+                                }
+                                openFileAsset({
+                                  id: doc.fileAssetId,
+                                  fileAssetId: doc.fileAssetId,
+                                  originalName: doc.documentName || doc.fileName,
+                                  url: doc.fileUrl || doc.url,
+                                }, doc.documentName || doc.fileName).catch(err => {
+                                  toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                                });
+                              }}
+                              className="h-7 px-2 text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50"
+                            >
+                              <Eye className="mr-1 h-3.5 w-3.5" /> View
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!doc.fileAssetId) {
+                                  toast.info("Mock document. No file is uploaded on server.");
+                                  return;
+                                }
+                                openFileAsset({
+                                  id: doc.fileAssetId,
+                                  fileAssetId: doc.fileAssetId,
+                                  originalName: doc.documentName || doc.fileName,
+                                  url: doc.fileUrl || doc.url,
+                                }, doc.documentName || doc.fileName).catch(err => {
+                                  toast.error(err instanceof Error ? err.message : 'Unable to open document');
+                                });
+                              }}
+                              className="h-7 px-2 text-slate-400 hover:bg-slate-100"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                      <FileText className="mx-auto h-8 w-8 text-slate-350 stroke-[1.5]" />
+                      <p className="mt-2 text-xs font-bold text-slate-500">No documents submitted</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="border-t border-slate-100 p-4 bg-slate-50 flex justify-end gap-2.5">
+                <button
+                  onClick={() => setSelectedParticipation(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 hover:bg-slate-50 transition shadow-sm"
+                >
+                  Close
+                </button>
+                {isQualified && (
+                  <button
+                    onClick={async () => {
+                      const confirmAccept = window.confirm(`Accept proposal from ${sellerName} and create Purchase Order?`);
+                      if (!confirmAccept) return;
+                      try {
+                        setLoading(true);
+                        await procurementBidApi.recommendAward(bid.id, {
+                          participationId: p.id,
+                          remarks: 'Accepted via BidDetailsPage Response Modal'
+                        });
+                        toast.success('Proposal accepted! Purchase Order creation initiated.');
+                        setSelectedParticipation(null);
+                        loadBid();
+                      } catch (err: any) {
+                        toast.error(err.message || 'Failed to accept proposal');
+                        setLoading(false);
+                      }
+                    }}
+                    className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-650 px-4 text-xs font-black text-white hover:bg-emerald-700 transition shadow-sm"
+                  >
+                    Accept & Award
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Clarifications Drawer Modal */}
       {showClarifications && (
@@ -583,7 +951,7 @@ export default function BidDetailsPage() {
               </button>
             </div>
             <div className="overflow-auto p-5 space-y-4 max-h-[70dvh]">
-              {bid.clarifications && bid.clarifications.length > 0 ? bid.clarifications.map((item, idx) => (
+              {bid.clarifications && bid.clarifications.length > 0 ? bid.clarifications.map((item: any, idx: number) => (
                 <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge label={item.status} />
@@ -607,63 +975,6 @@ export default function BidDetailsPage() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Seller Responses Section (Buyer Only) */}
-      {isOwner && bid.participations && bid.participations.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-8 shadow-sm">
-          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-black tracking-tight text-slate-900">
-                <Users className="h-5 w-5 text-indigo-600" /> Seller Responses
-              </h2>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Sellers who have submitted proposals for this procurement</p>
-            </div>
-            <div className="flex gap-2">
-              <Link 
-                href={`/bids/${bid.id}/compare`}
-                className="inline-flex h-9 items-center rounded-lg bg-indigo-50 border border-indigo-100 px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition"
-              >
-                <Eye className="mr-1.5 h-4 w-4" /> Compare Matrix
-              </Link>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200">
-                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Seller</th>
-                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Price</th>
-                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Submitted Date</th>
-                  <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-wider text-[10px]">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {bid.participations.map((p: any) => {
-                  const techStatus = p.technicalStatus || p.submissionStatus;
-                  const sellerName = p.seller?.name || `Seller #${p.sellerId}`;
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3">
-                        <span className="font-bold text-slate-900">{sellerName}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-bold text-slate-900">{money(p.totalAmount || p.quotedAmount || 0)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 font-semibold text-xs">
-                        {formatDate(p.submittedAt || p.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge label={techStatus} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

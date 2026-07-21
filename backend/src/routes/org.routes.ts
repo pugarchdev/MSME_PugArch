@@ -461,7 +461,9 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 sellerLegacyRequirements,
                 sellerActiveAuctions,
                 buyerProcurementActiveBids,
-                buyerProcurementTotalSpent
+                buyerProcurementTotalSpent,
+                // Marketplace quotation (RequirementResponse) submissions by this seller
+                sellerMarketplaceResponses
             ] = await Promise.all([
                     // cart item count
                     orgId
@@ -525,7 +527,23 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                         }).catch(() => 0)
                         : Promise.resolve(0),
                     isBuyer
-                        ? prisma.quoteRequest.count({ where: { ...buyerRecordWhere, status: { in: activeQuoteRequestStatuses } } }).catch(() => 0)
+                        ? Promise.all([
+                            prisma.quoteRequest.count({ where: { ...buyerRecordWhere, status: { in: activeQuoteRequestStatuses } } }).catch(() => 0),
+                            // Also count marketplace RequirementResponse bids received on buyer's requirements
+                            orgId
+                                ? (prisma as any).requirementResponse.count({
+                                    where: {
+                                        requirement: { buyerOrganizationId: orgId },
+                                        status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED'] }
+                                    }
+                                }).catch(() => 0)
+                                : (prisma as any).requirementResponse.count({
+                                    where: {
+                                        requirement: { createdById: userIdNum },
+                                        status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED'] }
+                                    }
+                                }).catch(() => 0)
+                        ]).then(([q, r]) => q + r)
                         : Promise.resolve(0),
                     // ─── Seller baseline counts ───
                     isSeller
@@ -616,6 +634,15 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                             where: { ...buyerRecordWhere, sourceType: 'procurement_bid_award', status: { not: 'cancelled' } },
                             _sum: { amount: true }
                         }).then(r => Number(r._sum.amount || 0)).catch(() => 0)
+                        : Promise.resolve(0),
+                    // Marketplace RequirementResponse quotations submitted by this seller
+                    isSeller
+                        ? (prisma as any).requirementResponse.count({
+                            where: {
+                                sellerUserId: userIdNum,
+                                status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED'] }
+                            }
+                        }).catch(() => 0)
                         : Promise.resolve(0)
             ]);
 
@@ -798,7 +825,8 @@ router.get('/dashboard/summary', authenticate, shortCache(15), asyncRoute(async 
                 sellerActivePOsCount: sellerActivePOs,
                 sellerCatalogueItemsCount: sellerCatalogueItems,
                 sellerPendingInvoicesCount: sellerPendingInvoices,
-                sellerQuotationsCount: sellerTenderQuotations + sellerReceivedRfqs,
+                // Include marketplace RequirementResponse quotations in the seller bids/quotations count
+                sellerQuotationsCount: sellerTenderQuotations + sellerReceivedRfqs + sellerMarketplaceResponses,
                 sellerOpportunitiesCount: sellerLiveProcurementBids + sellerReceivedRfqs + sellerBuyerRequirements + sellerLegacyRequirements + sellerActiveAuctions,
                 orgRole
             };

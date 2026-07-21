@@ -196,6 +196,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
 
   return {
     id: raw.bidNumber || String(raw.id || ''),
+    buyerId: raw.buyerId,
     sourceModel: raw.sourceModel || 'PROCUREMENT_BID',
     sourceId: raw.sourceId || raw.id,
     title: title || 'Untitled procurement bid',

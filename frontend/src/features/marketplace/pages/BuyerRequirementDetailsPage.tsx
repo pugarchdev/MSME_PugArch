@@ -371,7 +371,7 @@ const BuyerRequirementDetailsPage = () => {
                     </span>
                   } />
                 )}
-                <DetailRow icon={Users} label="Responses Received" value={`${requirement._count?.responses ?? 0}`} />
+                <DetailRow icon={Users} label="Responses Received" value={`${requirement._count?.responses ?? requirement._count?.requirementResponses ?? 0}`} />
                 <DetailRow icon={Calendar} label="Published" value={formatDate(requirement.approvedAt || requirement.createdAt)} />
               </div>
             </div>

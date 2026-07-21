@@ -188,11 +188,26 @@ export default function RfqDetailPage() {
     enabled: !!requirementId,
   });
 
+  // When page is accessed via requestId (procurement bid path), bidData doesn't include ownResponse.
+  // After bidData resolves and gives us a numeric sourceId, fetch the marketplace requirement
+  // to get the seller's own quotation status (ownResponse) for the Submit button state.
+  const bidSourceId = bidData?.sourceId || null;
+  const { data: bidReqData } = useQuery({
+    queryKey: ['marketplace-requirement-rfq-ownresponse', bidSourceId],
+    queryFn: async () => {
+      const data = await getApi<any>(`/api/marketplace/requirements/${bidSourceId}`);
+      return data;
+    },
+    enabled: !!requestId && !!bidSourceId && user?.role === 'seller',
+    staleTime: 30_000,
+  });
+
   const isLoading = (!!requestId && bidLoading) || (!!requirementId && reqLoading);
   const error = (!!requestId && bidError) || (!!requirementId && reqError);
 
   const reqObj = reqData?.requirement || reqData;
-  const ownResponse = reqData?.ownResponse || null;
+  // Combine ownResponse from whichever path was used to reach this page
+  const ownResponse = reqData?.ownResponse || bidReqData?.ownResponse || null;
 
   // Map data from whichever source responded
   const rfqData: any = bidData ? {

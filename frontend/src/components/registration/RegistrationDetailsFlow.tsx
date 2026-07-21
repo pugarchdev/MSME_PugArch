@@ -24,6 +24,7 @@ import {
 import { Loader2 } from '../ui/loader';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { cn } from '../../lib/utils';
 import { indiaStates, indiaStatesDistricts } from '../../data/indiaStatesDistricts';
 import { aadhaarKycApi, type AadhaarKycStatus } from '../../features/kyc/aadhaarKycApi';
@@ -2294,7 +2295,10 @@ export default function RegistrationDetailsFlow({ businessType, shgType = '', on
                           <p className="mt-1 text-xs font-semibold text-red-500">Enter a valid 10 digit mobile number starting with 6, 7, 8, or 9.</p>
                         )}
                         {mobileAlreadyRegistered && (
-                          <p className="mt-1 text-xs font-semibold text-red-500">This mobile number is already registered.</p>
+                          <p className="mt-1 text-xs font-semibold text-red-500">
+                            This mobile number is already registered.{' '}
+                            <Link href="/login" className="underline hover:text-red-700">Login instead</Link>
+                          </p>
                         )}
                         {!isMobileOtpVerified && (
                           <p className="mt-1 text-xs font-semibold text-red-500">Mobile OTP verification is required to proceed.</p>

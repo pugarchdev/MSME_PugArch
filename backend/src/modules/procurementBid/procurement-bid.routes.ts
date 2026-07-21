@@ -9,6 +9,7 @@ import { validate } from '../../middleware/validate.js';
 import * as service from './procurement-bid.service.js';
 import * as orderService from './procurement-order.service.js';
 import { verifyAccessToken } from '../../services/token.service.js';
+import { getAccessTokenFromRequest } from '../../services/auth-cookie.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 
 const router = Router();
@@ -16,8 +17,15 @@ const router = Router();
 
 const optionalActor = async (req: AuthRequest) => {
   const authHeader = req.headers.authorization || '';
-  const [scheme, token] = authHeader.split(' ');
-  if (scheme !== 'Bearer' || !token) return null;
+  const [scheme, headerToken] = authHeader.split(' ');
+  const canUseHeaderToken = scheme === 'Bearer' && headerToken && !['null', 'undefined', 'cookie-session'].includes(headerToken);
+  const token = canUseHeaderToken
+    ? headerToken
+    : (req.query.token && typeof req.query.token === 'string')
+      ? req.query.token
+      : getAccessTokenFromRequest(req);
+
+  if (!token) return null;
   try {
     const decoded = verifyAccessToken(token);
     const user = await prisma.user.findUnique({
@@ -189,6 +197,35 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
   let bid: any;
   try {
     bid = await service.resolveBid(token, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
+
+    // MINIMAL FIX: Load legacy responses if native participations are empty
+    if (bid && bid.participations && bid.participations.length === 0 && bid.bidNumber && bid.bidNumber.startsWith('REQ-')) {
+      const legacyReq = await prisma.requirement.findFirst({ where: { requirementNumber: bid.bidNumber } });
+      if (legacyReq) {
+        const legacyResponses = await prisma.requirementResponse.findMany({
+          where: { requirementId: legacyReq.id },
+          include: {
+            sellerUser: { select: { id: true, name: true, role: true, organizationId: true } },
+            sellerOrganization: { select: { organizationName: true } }
+          }
+        });
+        bid.participations = legacyResponses.map((r: any) => ({
+          id: r.id,
+          bidId: bid.id,
+          sellerId: r.sellerUserId,
+          seller: { ...r.sellerUser, organization: r.sellerOrganization },
+          participationNumber: `PRT-${r.id}`,
+          technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
+          financialStatus: r.status === 'ACCEPTED' ? 'OPENED' : 'SEALED',
+          finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+          submissionStatus: 'SUBMITTED',
+          quotedAmount: r.offeredPrice,
+          offeredItemDescription: r.message || '',
+          createdAt: r.createdAt,
+          submittedAt: r.createdAt,
+        }));
+      }
+    }
   } catch (err: any) {
     // Fallback: if no ProcurementBid found, check if this is a Requirement ID or Reference Number
     if (err?.code === 'BID_NOT_FOUND' && (/^\d+$/.test(token) || token.startsWith('REQ-') || token.startsWith('RFQ-'))) {

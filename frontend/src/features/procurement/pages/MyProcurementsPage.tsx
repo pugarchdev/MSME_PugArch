@@ -1285,6 +1285,22 @@ function ProcurementDetailView({
               <p className="mt-1.5 text-xs font-bold text-slate-800 leading-relaxed">{p.paymentTerms}</p>
             </div>
           )}
+
+          {/* Consignee Delivery Details */}
+          {(p.deliveryLocation || p.organizationName || p.detailSections) && (
+            <div className="mt-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 p-4 text-left">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Delivery Information</span>
+              <div className="mt-2 space-y-1.5">
+                {p.organizationName && <p className="text-xs font-bold text-slate-800"><span className="text-slate-500">Buyer:</span> {p.organizationName}</p>}
+                {p.deliveryLocation && <p className="text-xs font-bold text-slate-800"><span className="text-slate-500">Location:</span> {p.deliveryLocation}</p>}
+                {p.detailSections?.find((s: any) => s.title?.includes('Consignee') || s.title?.includes('Delivery'))?.fields?.map((field: any, fIdx: number) => (
+                  <p key={fIdx} className="text-xs font-bold text-slate-800">
+                    <span className="text-slate-500">{field.label}:</span> {field.value || '-'}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* ═══ COLUMN 2: Scope & Items ═══ */}

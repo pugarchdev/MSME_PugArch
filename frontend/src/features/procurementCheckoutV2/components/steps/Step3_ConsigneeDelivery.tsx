@@ -66,6 +66,22 @@ export default function Step3_ConsigneeDelivery({
             onChange={v => onDeliveryChange('inspectionType', v)}
           />
         </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-bold">Site Access Info</label>
+          <Input
+            value={String(delivery.siteAccessInfo || '')}
+            onChange={e => onDeliveryChange('siteAccessInfo', e.target.value)}
+            placeholder="Enter site access information, gate pass requirements, etc."
+          />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-bold">Special Handling Requirements</label>
+          <Input
+            value={String(delivery.specialHandlingRequirements || '')}
+            onChange={e => onDeliveryChange('specialHandlingRequirements', e.target.value)}
+            placeholder="Enter special handling requirements (e.g., fragile items, hazardous materials, etc.)"
+          />
+        </div>
       </div>
     </div>
   );

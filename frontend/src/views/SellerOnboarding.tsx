@@ -934,7 +934,7 @@ export default function SellerOnboarding() {
     const gstDetails = regDetails.gstDetails || {};
     setOfficeForm({
       name: org.organizationName || regDetails.businessName || '',
-      type: 'Registered Office',
+      type: 'Registered',
       pincode: org.pincode || gstDetails.pincode || '',
       state: org.state || gstDetails.state || regDetails.state || '',
       city: org.city || gstDetails.city || regDetails.district || '',
@@ -1716,7 +1716,7 @@ export default function SellerOnboarding() {
                                     <td colSpan={5} className="py-6 px-0 text-gray-500">
                                       <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6">
                                         <span className="text-xs sm:text-sm">No offices added.</span>
-                                        <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW OFFICE</button>
+                                        <button onClick={() => { setOfficeTab('add'); resetOfficeForm(); }} className="text-[#12335f] font-bold hover:underline uppercase text-[10px] sm:text-xs">ADD NEW OFFICE</button>
                                       </div>
                                     </td>
                                   </tr>
@@ -1744,7 +1744,7 @@ export default function SellerOnboarding() {
                             {formData.offices.length > 0 && (
                               <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-t border-gray-200">
                                 <span className="text-sm text-gray-600">{formData.offices.length} of {formData.offices.length} Office Location displayed.</span>
-                                <button onClick={() => setOfficeTab('add')} className="text-[#12335f] font-bold hover:underline uppercase text-xs">ADD NEW OFFICE</button>
+                                <button onClick={() => { setOfficeTab('add'); resetOfficeForm(); }} className="text-[#12335f] font-bold hover:underline uppercase text-xs">ADD NEW OFFICE</button>
                               </div>
                             )}
                           </div>

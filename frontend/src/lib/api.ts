@@ -274,8 +274,14 @@ const invalidatePrefixFor = (endpoint: string) => {
     prefixesToInvalidate.add('/api/dashboard/summary');
     prefixesToInvalidate.add('/api/purchase-orders');
   }
-  if (cleanPrefix.startsWith('/api/bids')) {
-    prefixesToInvalidate.add('/api/purchase-orders');
+  if (
+    cleanPrefix.startsWith('/api/marketplace/requirements') ||
+    cleanPrefix.startsWith('/api/buyer/procurement-bids') ||
+    cleanPrefix.startsWith('/api/procurement-bids')
+  ) {
+    prefixesToInvalidate.add('/api/marketplace/requirements');
+    prefixesToInvalidate.add('/api/buyer/procurement-bids');
+    prefixesToInvalidate.add('/api/procurement-bids');
     prefixesToInvalidate.add('/api/dashboard/summary');
   }
 

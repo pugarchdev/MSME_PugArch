@@ -194,7 +194,7 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
 
   let bid: any;
   try {
-    bid = await service.resolveBid(originalToken, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } } } } });
+    bid = await service.resolveBid(originalToken, { ...service.bidInclude, participations: { include: { seller: { include: { organization: true } }, documents: true } } });
 
     // MINIMAL FIX: Load legacy responses if native participations are empty
     if (bid && bid.participations && bid.participations.length === 0 && bid.bidNumber && bid.bidNumber.startsWith('REQ-')) {
@@ -203,25 +203,65 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
         const legacyResponses = await prisma.requirementResponse.findMany({
           where: { requirementId: legacyReq.id },
           include: {
-            sellerUser: { select: { id: true, name: true, role: true, organizationId: true } },
+            sellerUser: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
             sellerOrganization: { select: { organizationName: true } }
           }
         });
-        bid.participations = legacyResponses.map((r: any) => ({
-          id: r.id,
-          bidId: bid.id,
-          sellerId: r.sellerUserId,
-          seller: { ...r.sellerUser, organization: r.sellerOrganization },
-          participationNumber: `PRT-${r.id}`,
-          technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
-          financialStatus: r.status === 'ACCEPTED' ? 'OPENED' : 'SEALED',
-          finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
-          submissionStatus: 'SUBMITTED',
-          quotedAmount: r.offeredPrice,
-          offeredItemDescription: r.message || '',
-          createdAt: r.createdAt,
-          submittedAt: r.createdAt,
-        }));
+        bid.participations = legacyResponses.map((r: any) => {
+          const respData = typeof r.responseData === 'string' ? JSON.parse(r.responseData) : (r.responseData || {});
+          const rawDocs: any[] = Array.isArray(respData.documents) ? respData.documents : [];
+          const docs = rawDocs.map((d: any, idx: number) => ({
+            id: d.id || `rdoc-${r.id}-${idx}`,
+            documentName: d.documentName || d.name || d.fileName || 'Document',
+            fileName: d.fileName || d.name || 'file.pdf',
+            fileUrl: d.fileUrl || d.url || null,
+            fileKey: d.fileKey || null,
+            fileAssetId: d.fileAssetId || null,
+            documentCategory: d.documentCategory || d.category || 'TECHNICAL_PROPOSAL',
+            mimeType: d.mimeType || 'application/pdf',
+            documentStatus: d.documentStatus || 'UPLOADED',
+            uploadedAt: d.uploadedAt || r.createdAt,
+          }));
+          if (r.attachmentUrl && !docs.some((d: any) => d.fileUrl === r.attachmentUrl || d.url === r.attachmentUrl)) {
+            docs.unshift({
+              id: `att-${r.id}`,
+              documentName: 'Uploaded Quote Attachment',
+              fileName: 'Quotation_Attachment.pdf',
+              fileUrl: r.attachmentUrl,
+              fileKey: null,
+              fileAssetId: null,
+              documentCategory: 'TECHNICAL_PROPOSAL',
+              mimeType: 'application/pdf',
+              documentStatus: 'UPLOADED',
+              uploadedAt: r.createdAt,
+            });
+          }
+          return {
+            id: r.id,
+            bidId: bid.id,
+            sellerId: r.sellerUserId,
+            seller: { ...r.sellerUser, organization: r.sellerOrganization },
+            participationNumber: `PRT-${r.id}`,
+            technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
+            financialStatus: 'OPENED',
+            financialSealed: false,
+            finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+            submissionStatus: 'SUBMITTED',
+            quotedAmount: r.offeredPrice,
+            totalAmount: r.offeredPrice,
+            offeredQuantity: r.offeredQuantity,
+            deliveryTimeline: r.deliveryTimeline || respData.deliveryTimeline,
+            terms: r.terms || respData.terms,
+            makeBrand: respData.makeBrand || r.makeBrand,
+            model: respData.model || r.model,
+            offeredItemDescription: r.message || '',
+            responseData: respData,
+            lineItems: Array.isArray(respData.lineItems) ? respData.lineItems : [],
+            documents: docs,
+            createdAt: r.createdAt,
+            submittedAt: r.createdAt,
+          };
+        });
       }
     }
   } catch (err: any) {
@@ -312,27 +352,68 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
                 const responses = await prisma.requirementResponse.findMany({
                     where: { requirementId: targetRequirementId },
                     include: { 
-                        sellerUser: { select: { id: true, name: true, role: true, organizationId: true } },
+                        sellerUser: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
                         sellerOrganization: { select: { organizationName: true } }
                     }
                 });
-                participations = responses.map((r: any) => ({
-                    id: r.id,
-                    bidId: requirement.id,
-                    sellerId: r.sellerUserId,
-                    seller: {
-                        ...r.sellerUser,
-                        organization: r.sellerOrganization
-                    },
-                    participationNumber: `PRT-${r.id}`,
-                technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
-                financialStatus: r.status === 'ACCEPTED' ? 'OPENED' : 'SEALED',
-                finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
-                submissionStatus: 'SUBMITTED',
-                quotedAmount: r.offeredPrice,
-                offeredItemDescription: r.message || '',
-                createdAt: r.createdAt,
-            }));
+                participations = responses.map((r: any) => {
+                    const respData = typeof r.responseData === 'string' ? JSON.parse(r.responseData) : (r.responseData || {});
+                    const rawDocs: any[] = Array.isArray(respData.documents) ? respData.documents : [];
+                    const docs = rawDocs.map((d: any, idx: number) => ({
+                        id: d.id || `rdoc-${r.id}-${idx}`,
+                        documentName: d.documentName || d.name || d.fileName || 'Document',
+                        fileName: d.fileName || d.name || 'file.pdf',
+                        fileUrl: d.fileUrl || d.url || null,
+                        fileKey: d.fileKey || null,
+                        fileAssetId: d.fileAssetId || null,
+                        documentCategory: d.documentCategory || d.category || 'TECHNICAL_PROPOSAL',
+                        mimeType: d.mimeType || 'application/pdf',
+                        documentStatus: d.documentStatus || 'UPLOADED',
+                        uploadedAt: d.uploadedAt || r.createdAt,
+                    }));
+                    if (r.attachmentUrl && !docs.some((d: any) => d.fileUrl === r.attachmentUrl || d.url === r.attachmentUrl)) {
+                        docs.unshift({
+                            id: `att-${r.id}`,
+                            documentName: 'Uploaded Quote Attachment',
+                            fileName: 'Quotation_Attachment.pdf',
+                            fileUrl: r.attachmentUrl,
+                            fileKey: null,
+                            fileAssetId: null,
+                            documentCategory: 'TECHNICAL_PROPOSAL',
+                            mimeType: 'application/pdf',
+                            documentStatus: 'UPLOADED',
+                            uploadedAt: r.createdAt,
+                        });
+                    }
+                    return {
+                        id: r.id,
+                        bidId: requirement.id,
+                        sellerId: r.sellerUserId,
+                        seller: {
+                            ...r.sellerUser,
+                            organization: r.sellerOrganization
+                        },
+                        participationNumber: `PRT-${r.id}`,
+                        technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
+                        financialStatus: 'OPENED',
+                        financialSealed: false,
+                        finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+                        submissionStatus: 'SUBMITTED',
+                        quotedAmount: r.offeredPrice,
+                        totalAmount: r.offeredPrice,
+                        offeredQuantity: r.offeredQuantity,
+                        deliveryTimeline: r.deliveryTimeline || respData.deliveryTimeline,
+                        terms: r.terms || respData.terms,
+                        makeBrand: respData.makeBrand || r.makeBrand,
+                        model: respData.model || r.model,
+                        offeredItemDescription: r.message || '',
+                        responseData: respData,
+                        lineItems: Array.isArray(respData.lineItems) ? respData.lineItems : [],
+                        documents: docs,
+                        createdAt: r.createdAt,
+                        submittedAt: r.createdAt,
+                    };
+                });
             }
         }
 

@@ -476,7 +476,7 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
 };
 
 export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean; bid?: any; ownView?: boolean } = {}) => {
-  let allowed = options.canSeeFinancial;
+  let allowed = options.canSeeFinancial || p.financialSealed === false;
   const bid = options.bid || p.bid;
   // Two-packet bids keep each seller's financial quote sealed until that seller
   // clears technical evaluation, regardless of the bid-level status gate.
@@ -512,9 +512,14 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     totalAmount: allowed ? moneyNumber(p.totalAmount) : maskedQuote.totalAmount,
     financialSealed: !allowed,
     financialMessage: allowed ? undefined : maskedQuote.message,
-    makeBrand: p.makeBrand,
-    model: p.model,
+    makeBrand: p.makeBrand || p.responseData?.makeBrand,
+    model: p.model || p.responseData?.model,
     offeredItemDescription: p.offeredItemDescription,
+    responseData: p.responseData || p.acknowledgement,
+    lineItems: p.lineItems || p.responseData?.lineItems || [],
+    deliveryTimeline: p.deliveryTimeline || p.responseData?.deliveryTimeline,
+    terms: p.terms || p.responseData?.terms,
+    offeredQuantity: p.offeredQuantity || p.responseData?.offeredQuantity,
     submissionStatus: p.submissionStatus,
     submittedAt: p.submittedAt,
     technicalSubmittedAt: p.technicalSubmittedAt,
@@ -531,6 +536,8 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
         documentCategory: doc.documentCategory,
         documentName: doc.documentName,
         fileName: doc.fileName,
+        fileUrl: doc.fileUrl || doc.url || null,
+        fileKey: doc.fileKey || null,
         mimeType: doc.mimeType,
         fileSize: doc.fileSize,
         documentStatus: doc.documentStatus,

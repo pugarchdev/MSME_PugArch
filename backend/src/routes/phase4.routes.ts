@@ -2548,7 +2548,7 @@ router.get('/public/files/:id/view', asyncRoute(async (req: AuthRequest, res) =>
     ipAddress: req.ip,
     userAgent: req.headers['user-agent']
   });
-  const filename = encodeURIComponent(file.asset.originalName || 'document');
+  const filename = encodeURIComponent((file.asset as any).originalName || (file.asset as any).key || 'document');
 
   res.setHeader('Content-Type', file.contentType);
   res.setHeader('Content-Length', file.buffer.length);
@@ -2572,9 +2572,9 @@ router.get('/public/files/:id/signed-url', asyncRoute(async (req: AuthRequest, r
     expiresInSeconds: file.expiresInSeconds,
     file: {
       id: file.asset.id,
-      originalName: file.asset.originalName,
+      originalName: (file.asset as any).originalName || (file.asset as any).key,
       mimeType: file.asset.mimeType,
-      size: file.asset.size
+      size: (file.asset as any).size
     }
   });
 }));
@@ -2587,7 +2587,7 @@ router.get('/files/:id/view', authenticate, asyncRoute(async (req: AuthRequest, 
     ipAddress: req.ip,
     userAgent: req.headers['user-agent']
   });
-  const filename = encodeURIComponent(file.asset.originalName || 'document');
+  const filename = encodeURIComponent((file.asset as any).originalName || (file.asset as any).key || 'document');
 
   res.setHeader('Content-Type', file.contentType);
   res.setHeader('Content-Length', file.buffer.length);
@@ -2610,9 +2610,9 @@ router.get('/files/:id/signed-url', authenticate, asyncRoute(async (req: AuthReq
     expiresInSeconds: file.expiresInSeconds,
     file: {
       id: file.asset.id,
-      originalName: file.asset.originalName,
+      originalName: (file.asset as any).originalName || (file.asset as any).key,
       mimeType: file.asset.mimeType,
-      size: file.asset.size
+      size: (file.asset as any).size
     }
   });
 }));
@@ -6600,7 +6600,28 @@ router.post('/purchase-orders/:id/repeat', authenticate, authorize('buyer'), pay
 
 router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
   const query = parse(paginationQuery, req.query);
-  const where: any = isAdmin(req) ? {} : req.user?.role === 'buyer' ? { buyerId: userId(req) } : { sellerId: userId(req) };
+  let where: any = {};
+  if (isAdmin(req)) {
+    where = {};
+  } else if (req.user?.role === 'buyer') {
+    where = { buyerId: userId(req) };
+  } else {
+    const sellerIds = [userId(req)];
+    if (req.user?.organizationId || (req.user as any)?.companyId) {
+      const orgUsers = await db.user.findMany({
+        where: {
+          OR: [
+            ...(req.user.organizationId ? [{ organizationId: req.user.organizationId }] : []),
+            ...((req.user as any)?.companyId ? [{ companyId: (req.user as any).companyId }] : [])
+          ]
+        },
+        select: { id: true }
+      });
+      orgUsers.forEach((u: any) => sellerIds.push(u.id));
+    }
+    where = { sellerId: { in: Array.from(new Set(sellerIds)) } };
+  }
+
   if (query.status) where.status = query.status;
   if (query.q) where.OR = [
     { poNumber: { contains: query.q, mode: 'insensitive' } },
@@ -6630,7 +6651,30 @@ router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
 router.get('/purchase-orders/:id', authenticate, asyncRoute(async (req, res) => {
   const { id } = parse(idParams, req.params);
   const po = await db.purchaseOrder.findUnique({ where: { id }, include: { items: { include: { product: { select: { name: true, unitOfMeasure: true } } } }, invoices: true, deliveryTrackings: true, inspectionReports: true } });
-  if (!po || (!isAdmin(req) && po.buyerId !== userId(req) && po.sellerId !== userId(req))) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
+  
+  let isAllowed = false;
+  if (po) {
+    if (isAdmin(req)) isAllowed = true;
+    else if (po.buyerId === userId(req)) isAllowed = true;
+    else {
+      const sellerIds = [userId(req)];
+      if (req.user?.organizationId || (req.user as any)?.companyId) {
+        const orgUsers = await db.user.findMany({
+          where: {
+            OR: [
+              ...(req.user.organizationId ? [{ organizationId: req.user.organizationId }] : []),
+              ...((req.user as any)?.companyId ? [{ companyId: (req.user as any).companyId }] : [])
+            ]
+          },
+          select: { id: true }
+        });
+        orgUsers.forEach((u: any) => sellerIds.push(u.id));
+      }
+      if (sellerIds.includes(po.sellerId)) isAllowed = true;
+    }
+  }
+
+  if (!po || !isAllowed) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
   ok(res, po);
 }));
 
@@ -6642,7 +6686,28 @@ for (const [path, action, roles] of [
     const { id } = parse(idParams, req.params);
     await assertBuyerProcurementApproved(req);
     const po = await db.purchaseOrder.findUnique({ where: { id } });
-    if (!po || (!isAdmin(req) && po.buyerId !== userId(req) && po.sellerId !== userId(req))) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
+    let isAllowed = false;
+    if (po) {
+      if (isAdmin(req)) isAllowed = true;
+      else if (action === 'purchase_order.cancelled' && po.buyerId === userId(req)) isAllowed = true;
+      else if (action === 'purchase_order.acknowledged') {
+        const sellerIds = [userId(req)];
+        if (req.user?.organizationId || (req.user as any)?.companyId) {
+          const orgUsers = await db.user.findMany({
+            where: {
+              OR: [
+                ...(req.user.organizationId ? [{ organizationId: req.user.organizationId }] : []),
+                ...((req.user as any)?.companyId ? [{ companyId: (req.user as any).companyId }] : [])
+              ]
+            },
+            select: { id: true }
+          });
+          orgUsers.forEach((u: any) => sellerIds.push(u.id));
+        }
+        if (sellerIds.includes(po.sellerId)) isAllowed = true;
+      }
+    }
+    if (!po || !isAllowed) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
     const updated = action === 'purchase_order.acknowledged'
       ? await fulfillmentWorkflow.acknowledgePO(actorFrom(req), id)
       : await fulfillmentWorkflow.cancelPO(actorFrom(req), id);

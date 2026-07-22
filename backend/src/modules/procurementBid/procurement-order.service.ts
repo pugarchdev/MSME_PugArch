@@ -75,12 +75,38 @@ const poInclude = {
   payments: { orderBy: { createdAt: 'desc' }, include: { escrowAccount: true, ledgerEntries: true, paymentSettlements: true } }
 };
 
-export const canAccessProcurementOrder = (actor: AuthenticatedUser, po: any) =>
-  isAdmin(actor) || po.buyerId === actor.id || po.sellerId === actor.id;
+export const getSellerUserIdsForActor = async (actor: AuthenticatedUser) => {
+  const ids = [Number(actor.id)];
+  const user = await db.user.findUnique({ where: { id: Number(actor.id) }, select: { organizationId: true, companyId: true } });
+  if (user?.organizationId || (user as any)?.companyId) {
+    const orgUsers = await db.user.findMany({
+      where: {
+        OR: [
+          ...(user.organizationId ? [{ organizationId: user.organizationId }] : []),
+          ...((user as any)?.companyId ? [{ companyId: (user as any).companyId }] : [])
+        ]
+      },
+      select: { id: true }
+    });
+    orgUsers.forEach((u: any) => ids.push(u.id));
+  }
+  return Array.from(new Set(ids));
+};
+
+export const canAccessProcurementOrder = async (actor: AuthenticatedUser, po: any) => {
+  if (isAdmin(actor)) return true;
+  if (actor.role === 'buyer') return Number(po.buyerId) === Number(actor.id);
+  if (actor.role === 'seller') {
+    const sellerIds = await getSellerUserIdsForActor(actor);
+    return sellerIds.includes(Number(po.sellerId));
+  }
+  return false;
+};
 
 export const loadProcurementOrder = async (actor: AuthenticatedUser, orderId: number) => {
   const po = await db.purchaseOrder.findUnique({ where: { id: orderId }, include: poInclude });
-  if (!po || po.sourceType !== 'procurement_bid_award' || !canAccessProcurementOrder(actor, po)) {
+  const isAllowed = po && (await canAccessProcurementOrder(actor, po));
+  if (!po || !isAllowed) {
     throw new ApiError(404, 'Procurement order not found', 'PROCUREMENT_ORDER_NOT_FOUND');
   }
   return po;
@@ -89,9 +115,14 @@ export const loadProcurementOrder = async (actor: AuthenticatedUser, orderId: nu
 export const listProcurementOrders = async (actor: AuthenticatedUser, query: any = {}) => {
   const where: any = { sourceType: 'procurement_bid_award' };
   if (!isAdmin(actor)) {
-    if (actor.role === 'buyer') where.buyerId = actor.id;
-    else if (actor.role === 'seller') where.sellerId = actor.id;
-    else throw new ApiError(403, 'Access denied', 'FORBIDDEN_ROLE');
+    if (actor.role === 'buyer') {
+      where.buyerId = Number(actor.id);
+    } else if (actor.role === 'seller') {
+      const sellerIds = await getSellerUserIdsForActor(actor);
+      where.sellerId = { in: sellerIds };
+    } else {
+      throw new ApiError(403, 'Access denied', 'FORBIDDEN_ROLE');
+    }
   }
   if (query.status) where.status = String(query.status);
   const take = Math.min(100, Math.max(1, Number(query.pageSize || query.take || 50)));

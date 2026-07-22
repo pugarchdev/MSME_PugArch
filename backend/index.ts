@@ -2787,7 +2787,7 @@ app.get('/api/files/:id/view', authenticate, async (req: AuthRequest, res: any) 
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
-    const filename = encodeURIComponent(file.asset.originalName || 'document');
+    const filename = encodeURIComponent((file.asset as any).originalName || (file.asset as any).key || 'document');
 
     res.setHeader('Content-Type', file.contentType);
     res.setHeader('Content-Length', file.buffer.length);

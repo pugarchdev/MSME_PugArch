@@ -10,8 +10,21 @@ import {
 
 const assertPOAccess = async (actor: WorkflowActor, purchaseOrderId: number) => {
   const po = await db.purchaseOrder.findUnique({ where: { id: purchaseOrderId }, include: { items: true } });
-  if (!po || (actor.role !== 'admin' && po.buyerId !== actor.id && po.sellerId !== actor.id)) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
-  return po;
+  if (!po) throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
+  if (actor.role === 'admin' || actor.role === 'master_admin') return po;
+
+  if (actor.role === 'buyer' && Number(po.buyerId) === Number(actor.id)) return po;
+
+  if (actor.role === 'seller') {
+    if (Number(po.sellerId) === Number(actor.id)) return po;
+    const actorUser = await db.user.findUnique({ where: { id: Number(actor.id) }, select: { organizationId: true } });
+    const sellerUser = await db.user.findUnique({ where: { id: Number(po.sellerId) }, select: { organizationId: true } });
+    if (actorUser?.organizationId && sellerUser?.organizationId && actorUser.organizationId === sellerUser.organizationId) {
+      return po;
+    }
+  }
+
+  throw new ApiError(404, 'Purchase order not found', 'PO_NOT_FOUND');
 };
 
 const taxBreakup = (amount: number, options?: { gstRate?: number; tdsRate?: number; interstate?: boolean; otherTaxRate?: number }) => {
@@ -39,7 +52,7 @@ const taxBreakup = (amount: number, options?: { gstRate?: number; tdsRate?: numb
 export const fulfillmentWorkflow = {
   async acknowledgePO(actor: WorkflowActor, purchaseOrderId: number) {
     const po = await assertPOAccess(actor, purchaseOrderId);
-    if (actor.role !== 'admin' && po.sellerId !== actor.id) throw new ApiError(403, 'Seller access required', 'SELLER_REQUIRED');
+    if (actor.role !== 'admin' && actor.role !== 'master_admin' && actor.role !== 'seller') throw new ApiError(403, 'Seller access required', 'SELLER_REQUIRED');
     statusTransitions.purchaseOrder(po.status, 'accepted');
     const updated = await db.purchaseOrder.update({
       where: { id: purchaseOrderId },

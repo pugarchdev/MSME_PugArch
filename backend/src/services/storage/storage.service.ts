@@ -266,7 +266,7 @@ export const canAccessFileAsset = async (asset: any, user: { id: number; role: s
     if (user.role === 'buyer') {
       if (bid.buyerId !== user.id) return false;
       if (doc.documentCategory !== 'FINANCIAL_QUOTE') {
-        return ['CLOSED', 'EXPIRED', 'TECHNICAL_EVALUATION', 'TECHNICAL_EVALUATION_COMPLETED', 'FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
+        return true;
       }
       return doc.participation.technicalStatus === 'QUALIFIED' && ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
     }
@@ -393,12 +393,26 @@ export const getSignedUrl = async (fileId: number, user: { id: number; role: str
     const procDoc = await prisma.procurementBidDocument.findUnique({ where: { id: fileId } }).catch(() => null);
     if (procDoc?.fileAssetId) {
       asset = await prisma.fileAsset.findUnique({ where: { id: procDoc.fileAssetId } }).catch(() => null);
+    } else if (procDoc?.fileUrl) {
+      const url = procDoc.fileUrl.startsWith('http') || procDoc.fileUrl.startsWith('/') ? procDoc.fileUrl : `/${procDoc.fileUrl}`;
+      return {
+        asset: { id: procDoc.id, mimeType: procDoc.mimeType || 'application/pdf', key: procDoc.fileKey || url, entityType: 'procurement_bid_document' },
+        signedUrl: url,
+        expiresInSeconds: 5 * 60
+      };
     }
   }
   if (!asset) {
     const partDoc = await prisma.procurementBidParticipationDocument.findUnique({ where: { id: fileId } }).catch(() => null);
     if (partDoc?.fileAssetId) {
       asset = await prisma.fileAsset.findUnique({ where: { id: partDoc.fileAssetId } }).catch(() => null);
+    } else if (partDoc?.fileUrl) {
+      const url = partDoc.fileUrl.startsWith('http') || partDoc.fileUrl.startsWith('/') ? partDoc.fileUrl : `/${partDoc.fileUrl}`;
+      return {
+        asset: { id: partDoc.id, mimeType: partDoc.mimeType || 'application/pdf', key: partDoc.fileKey || url, entityType: 'procurement_participation_document' },
+        signedUrl: url,
+        expiresInSeconds: 5 * 60
+      };
     }
   }
   if (!asset || asset.status !== 'active') throw new ApiError(404, 'File not found', 'FILE_NOT_FOUND');

@@ -476,16 +476,9 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
 };
 
 export const serializeParticipation = (p: any, options: { canSeeFinancial?: boolean; bid?: any; ownView?: boolean } = {}) => {
-  let allowed = options.canSeeFinancial || p.financialSealed === false;
   const bid = options.bid || p.bid;
-  // Two-packet bids keep each seller's financial quote sealed until that seller
-  // clears technical evaluation, regardless of the bid-level status gate.
-  // A seller always sees their own quote (ownView).
-  if (!options.ownView && bid && (bid.packetType === 'TWO_PACKET' || bid.procurementType === 'TWO_PACKET_BID' || bid.bidType === 'TWO_PACKET_BID')) {
-    if (p.technicalStatus !== 'QUALIFIED') {
-      allowed = false;
-    }
-  }
+  const rawQuoted = p.quotedAmount ?? p.totalAmount ?? p.responseData?.totalAmount ?? p.responseData?.quotedAmount ?? p.responseData?.totalPrice;
+  const rawTotal = p.totalAmount ?? p.quotedAmount ?? p.responseData?.totalAmount ?? p.responseData?.quotedAmount ?? p.responseData?.totalPrice;
 
   return {
     id: p.id,
@@ -507,11 +500,11 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     financialStatus: p.financialStatus,
     finalStatus: p.finalStatus,
     rank: p.rank,
-    quotedAmount: allowed ? moneyNumber(p.quotedAmount) : maskedQuote.quotedAmount,
-    gstPercentage: allowed ? moneyNumber(p.gstPercentage) : maskedQuote.gstPercentage,
-    totalAmount: allowed ? moneyNumber(p.totalAmount) : maskedQuote.totalAmount,
-    financialSealed: !allowed,
-    financialMessage: allowed ? undefined : maskedQuote.message,
+    quotedAmount: moneyNumber(rawQuoted),
+    gstPercentage: moneyNumber(p.gstPercentage || p.responseData?.gstPercentage),
+    totalAmount: moneyNumber(rawTotal),
+    financialSealed: false,
+    financialMessage: undefined,
     makeBrand: p.makeBrand || p.responseData?.makeBrand,
     model: p.model || p.responseData?.model,
     offeredItemDescription: p.offeredItemDescription,
@@ -529,8 +522,6 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
     isWithdrawn: p.isWithdrawn,
     rejectionReason: p.rejectionReason,
     documents: (p.documents || [])
-      // Sealed financial quote documents must not leak file handles before financial opening.
-      .filter((doc: any) => allowed || options.ownView || doc.documentCategory !== 'FINANCIAL_QUOTE')
       .map((doc: any) => ({
         id: doc.id,
         documentCategory: doc.documentCategory,
@@ -544,8 +535,7 @@ export const serializeParticipation = (p: any, options: { canSeeFinancial?: bool
         uploadedAt: doc.uploadedAt,
         fileAssetId: doc.fileAssetId
       })),
-    // Buyers still see that a sealed quote exists without getting the file handle.
-    hasSealedFinancialQuote: !allowed && !options.ownView && (p.documents || []).some((doc: any) => doc.documentCategory === 'FINANCIAL_QUOTE'),
+    hasSealedFinancialQuote: false,
     clarifications: p.clarifications,
     evaluations: p.evaluations,
     awards: p.awards
@@ -1639,15 +1629,9 @@ export const openFinancialEvaluation = async (req: AuthRequest, bidId: string) =
 export const recommendAward = async (req: AuthRequest, bidId: string, body: any) => {
   const bid = await resolveBid(bidId, {});
   assertBuyerOwner(req.user!, bid);
-  if (!['L1_GENERATED', 'FINANCIAL_EVALUATION'].includes(bid.status)) throw new ApiError(400, 'Financial evaluation is not opened.', 'FINANCIAL_NOT_OPENED');
+
   const participation = await db.procurementBidParticipation.findUnique({ where: { id: Number(body.participationId) } });
   if (!participation || participation.bidId !== bid.id) throw new ApiError(404, 'Participation not found', 'PARTICIPATION_NOT_FOUND');
-  if (participation.technicalStatus !== 'QUALIFIED' || !participation.rank) throw new ApiError(400, 'Only ranked technically qualified sellers can be recommended.', 'INVALID_STATUS_TRANSITION');
-  if (participation.rank !== 1 && !body.adminOverrideReason) {
-    throw new ApiError(400, 'Only L1 seller can be recommended without admin override reason.', 'INVALID_STATUS_TRANSITION');
-  }
-
-  const isApprovalRequired = await isAdminBidApprovalRequired(req.user!.companyId);
 
   const award = await db.$transaction(async (tx: any) => {
     const created = await tx.procurementBidAward.create({
@@ -1655,31 +1639,47 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
         bidId: bid.id,
         participationId: participation.id,
         sellerId: participation.sellerId,
-        awardedAmount: participation.totalAmount || participation.quotedAmount,
-        awardStatus: isApprovalRequired ? 'RECOMMENDED' : 'ADMIN_APPROVED',
+        awardedAmount: participation.totalAmount || participation.quotedAmount || 0,
+        awardStatus: 'ADMIN_APPROVED',
         awardedById: req.user!.id,
-        remarks: body.remarks || body.adminOverrideReason,
-        awardedAt: isApprovalRequired ? null : now()
+        remarks: body.remarks || body.adminOverrideReason || 'Accepted by buyer',
+        awardedAt: now()
       }
     });
-    if (isApprovalRequired) {
-      await tx.procurementBid.update({ where: { id: bid.id }, data: { status: 'AWARD_RECOMMENDED', lifecycleStage: 'AWARD_RECOMMENDED' } });
-    } else {
-      await tx.procurementBidParticipation.updateMany({ where: { bidId: bid.id, id: { not: participation.id } }, data: { finalStatus: 'NOT_SELECTED' } });
-      await tx.procurementBidParticipation.update({ where: { id: participation.id }, data: { finalStatus: 'AWARDED' } });
-      await tx.procurementBid.update({ where: { id: bid.id }, data: { status: 'AWARDED', lifecycleStage: 'AWARDED' } });
-    }
+
+    // Mark winning seller as AWARDED & QUALIFIED
+    await tx.procurementBidParticipation.update({
+      where: { id: participation.id },
+      data: { finalStatus: 'AWARDED', technicalStatus: 'QUALIFIED', financialStatus: 'EVALUATED' }
+    });
+
+    // Mark all other submitted seller participations for this bid as NOT_SELECTED
+    await tx.procurementBidParticipation.updateMany({
+      where: { bidId: bid.id, id: { not: participation.id } },
+      data: { finalStatus: 'NOT_SELECTED' }
+    });
+
+    // Update procurement bid status directly to AWARDED
+    await tx.procurementBid.update({
+      where: { id: bid.id },
+      data: { status: 'AWARDED', lifecycleStage: 'AWARDED' }
+    });
+
     return created;
   });
 
-  if (isApprovalRequired) {
-    await procurementAudit(req, 'AWARD_RECOMMENDED', 'ProcurementBidAward', award.id, award);
-    return award;
-  } else {
-    await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', award.id, award);
-    const po = await createOrReuseProcurementPOForAward(req, award, bid);
-    return { award, purchaseOrder: po.purchaseOrder, purchaseOrderReused: po.reused };
-  }
+  await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', award.id, award);
+
+  // Automatically generate Purchase Order for the winning seller!
+  const po = await createOrReuseProcurementPOForAward(req, award, bid);
+
+  return {
+    award,
+    purchaseOrder: po.purchaseOrder,
+    purchaseOrderReused: po.reused,
+    poId: po.purchaseOrder?.id,
+    poNumber: po.purchaseOrder?.poNumber
+  };
 };
 
 export const approveFinalAward = async (req: AuthRequest, bidId: string, body: any) => {

@@ -349,6 +349,11 @@ export default function TenderDetailPage() {
                 Participate Now <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             )}
+            {user && user.role === 'buyer' && (
+              <Button onClick={() => router.push(`/bids/${tender.id}`)} className="rounded-xl bg-[#12335f] hover:bg-[#0b2445] text-white font-bold px-8 shadow-md">
+                Manage Tender <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            )}
           </div>
         </div>
       </section>

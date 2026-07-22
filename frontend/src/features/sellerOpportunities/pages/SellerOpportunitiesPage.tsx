@@ -17,6 +17,7 @@ import { Pagination } from '../../shared/Pagination';
 import ProcurementLifecycleTracker from '../../procurementLifecycle/components/ProcurementLifecycleTracker';
 import type { ProcurementLifecycleEvent } from '../../procurementLifecycle/statusMapper';
 import { useAuth } from '../../../hooks/useAuth';
+import { getSellerOpportunityAdapter } from '../adapters';
 
 type OpportunityType = 'RFQ' | 'RFP' | 'Open Tender' | 'Limited Tender' | 'Reverse Auction' | 'Direct Purchase' | 'Rate Contract' | 'Repeat Order';
 

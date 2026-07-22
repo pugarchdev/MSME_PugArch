@@ -55,6 +55,7 @@ import {
   type BuyerType
 } from '../procurementMethodsConfig';
 import { normalizeProcurementMethod } from '../procurementMethodHelpers';
+import { getWizardConfig } from '../modules';
 
 // Import Reusable Sourcing components from Loop 3
 import {

@@ -9,7 +9,9 @@ export const CANONICAL_PROCUREMENT_METHODS = [
 ] as const;
 
 export type CanonicalProcurementMethod = typeof CANONICAL_PROCUREMENT_METHODS[number];
-export type BroadProcurementMethod = 'RFQ' | 'TENDER' | 'REVERSE_AUCTION' | 'RATE_CONTRACT';
+export type BroadProcurementMethod = 'RFQ' | 'TENDER' | 'REVERSE_AUCTION' | 'RATE_CONTRACT' | 'DIRECT_PURCHASE';
+
+export type IsolatedProcurementType = 'RFQ' | 'RFP' | 'OPEN_TENDER' | 'LIMITED_TENDER' | 'REVERSE_AUCTION' | 'RATE_CONTRACT';
 
 const canonicalSet = new Set<string>(CANONICAL_PROCUREMENT_METHODS);
 
@@ -57,6 +59,21 @@ export const broadMethodForCanonical = (value: unknown): BroadProcurementMethod 
     case 'LIMITED_TENDER':
     default:
       return 'TENDER';
+  }
+};
+
+export const getIsolatedProcurementType = (value: unknown): IsolatedProcurementType => {
+  const canonical = normalizeCanonicalMethod(value);
+  switch (canonical) {
+    case 'RFQ':
+    case 'REPEAT_ORDER':
+      return 'RFQ';
+    case 'RFP':
+      return 'RFP';
+    case 'OPEN_TENDER':
+    case 'LIMITED_TENDER':
+    default:
+      return 'OPEN_TENDER';
   }
 };
 

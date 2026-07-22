@@ -50,6 +50,7 @@ import { openFileAsset } from '../../../lib/files';
 import { formatDate } from '../../shared/format';
 import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
+import { getBuyerRegisterAdapter } from '../adapters';
 
 /* ═══════════════════════════════════════════════
    TYPES

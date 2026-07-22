@@ -681,7 +681,7 @@ const assertTenderAccess = async (req: AuthRequest, tenderId: number) => {
     include: {
       buyer: { include: { buyerProfile: true } },
       tenderItems: true,
-      tenderDocuments: { include: { fileAsset: true } }
+        tenderDocuments: { include: { fileAsset: true } }
     }
   });
 
@@ -689,73 +689,110 @@ const assertTenderAccess = async (req: AuthRequest, tenderId: number) => {
     const bid = await db.procurementBid.findUnique({
       where: { id: tenderId },
       include: {
-        buyer: { include: { buyerProfile: true } }
+        buyer: { include: { buyerProfile: true } },
+        documents: { include: { fileAsset: true } }
       }
     });
 
     if (bid) {
       tender = {
+        ...bid,
         id: bid.id,
-        tenderId: bid.bidNumber || `OT-2026-00124`,
-        title: bid.title || 'Construction of Warehousing Facility',
-        category: bid.category || 'Civil Works',
-        subCategory: 'Warehouse Construction',
-        budget: Number(bid.estimatedValue || 125000000),
-        description: bid.description || 'Public competitive open tender.',
-        status: 'published',
-        statusEnum: 'PUBLISHED',
-        publishedAt: bid.startDate || new Date(),
-        closesAt: bid.endDate || new Date(),
-        createdAt: bid.createdAt || new Date(),
-        updatedAt: bid.updatedAt || new Date(),
-        paymentTerms: 'Milestone Based',
-        deliveryType: bid.unit || 'Days',
-        itemCondition: bid.deliveryLocation || 'Nagpur, Maharashtra',
-        bidValidityDays: 180,
-        emdAmount: 200000,
-        evaluationMethod: 'QCBS',
+        tenderId: bid.bidNumber,
+        title: bid.title,
+        category: bid.category,
+        subCategory: bid.subCategory,
+        budget: Number(bid.estimatedValue || 0),
+        description: bid.description,
+        status: bid.status === 'PUBLISHED' ? 'published' : bid.status.toLowerCase(),
+        statusEnum: bid.status,
+        publishedAt: bid.startDate,
+        closesAt: bid.endDate,
+        createdAt: bid.createdAt,
+        updatedAt: bid.updatedAt,
+        paymentTerms: bid.packetType,
+        deliveryType: bid.unit,
+        itemCondition: bid.deliveryLocation,
+        bidValidityDays: bid.bidValidityDate ? undefined : 90,
+        bidValidityDate: bid.bidValidityDate,
+        emdAmount: bid.emdAmount ? Number(bid.emdAmount) : 0,
+        isEmdRequired: bid.isEmdRequired,
+        evaluationMethod: bid.evaluationMethod,
+        technicalOpeningDate: bid.technicalOpeningDate,
+        financialOpeningDate: bid.financialOpeningDate,
+        allowReverseAuction: bid.allowReverseAuction,
+        allowBoq: bid.allowBoq,
+        allowClarification: bid.allowClarification,
+        packetType: bid.packetType,
         buyerId: bid.buyerId,
         buyer: {
           id: bid.buyer?.id || bid.buyerId,
-          name: bid.buyer?.name || bid.buyerOrganizationName || 'Govt. Buyer Org',
-          email: bid.buyer?.email || 'procurement@mrc.in',
+          name: bid.buyer?.name || bid.buyerOrganizationName,
+          email: bid.buyer?.email,
           buyerProfile: {
             id: bid.buyer?.buyerProfile?.id || 1,
-            organizationName: bid.buyer?.buyerProfile?.organizationName || bid.buyerOrganizationName || 'Govt. Buyer Org',
-            department: 'Procurement Department',
-            contactPerson: bid.buyer?.buyerProfile?.contactPerson || 'Rakesh Sharma',
-            email: bid.buyer?.email || 'procurement@gov.in',
-            phone: bid.buyer?.mobile || '+91 98765 43210',
-            address: bid.deliveryLocation || 'Nagpur, Maharashtra'
+            organizationName: bid.buyer?.buyerProfile?.organizationName || bid.buyerOrganizationName,
+            department: bid.buyer?.buyerProfile?.department,
+            contactPerson: bid.buyer?.buyerProfile?.contactPerson || bid.buyer?.name,
+            email: bid.buyer?.email,
+            phone: bid.buyer?.mobile,
+            address: bid.deliveryLocation
           }
         },
-        tenderItems: [
-          {
-            id: 1,
-            itemName: bid.title || 'Construction Sourcing Items',
-            quantity: Number(bid.quantity || 1),
-            unitOfMeasure: bid.unit || 'Nos',
-            description: bid.description || 'Tender Items'
-          }
-        ],
-        tenderDocuments: [
-          {
-            id: 1,
-            documentType: 'Tender Specifications',
-            title: 'Tender Document',
-            fileAsset: {
-              id: 1001,
-              originalName: 'Tender_Document_OT_2026_00124.pdf'
-            }
-          }
-        ],
+        tenderItems: [],
+        tenderDocuments: (bid as any).documents?.map((d: any) => ({
+          id: d.id,
+          documentType: d.documentType || d.documentCategory || 'Tender Document',
+          title: d.fileName,
+          fileAsset: d.fileAsset,
+          fileAssetId: d.fileAssetId,
+          url: `/api/files/${d.fileAssetId}/view`
+        })) || [],
         activitySnapshot: {
-          totalQueries: 12,
-          totalResponses: 12,
-          totalViews: 156,
-          interestedSuppliers: 28
-        }
+          totalQueries: 0,
+          totalResponses: 0,
+          totalViews: 0,
+          interestedSuppliers: 0
+        },
+        technicalPacket: bid.technicalPacket,
+        financialPacket: bid.financialPacket,
+        termsAndConditions: bid.termsAndConditions,
+        eligibilityCriteria: bid.eligibilityCriteria,
+        requiredDocuments: bid.requiredDocuments
       } as any;
+      
+      if (bid.technicalPacket && typeof bid.technicalPacket === 'object') {
+        const packet = bid.technicalPacket as any;
+        if (Array.isArray(packet.items)) {
+          tender.tenderItems = packet.items.map((it: any, idx: number) => ({
+            id: it.id || idx + 1,
+            itemName: it.itemName || it.title || bid.title,
+            quantity: Number(it.quantity || 1),
+            unitOfMeasure: it.unit || it.unitOfMeasure || 'Nos',
+            description: it.description || it.specifications || '',
+            estimatedUnitPrice: it.estimatedUnitPrice,
+            estimatedTotal: it.estimatedTotal || (it.estimatedUnitPrice ? it.estimatedUnitPrice * Number(it.quantity || 1) : null),
+            brand: it.brand,
+            make: it.make,
+            model: it.model,
+            hsn: it.hsn,
+            sac: it.sac,
+            warranty: it.warranty,
+            deliverySchedule: it.deliverySchedule,
+            technicalSpecification: it.technicalSpecification
+          }));
+        }
+      }
+      
+      if (!tender.tenderItems.length && bid.quantity) {
+        tender.tenderItems = [{
+          id: 1,
+          itemName: bid.title,
+          quantity: Number(bid.quantity),
+          unitOfMeasure: bid.unit || 'Nos',
+          description: bid.description
+        }];
+      }
     }
   }
 

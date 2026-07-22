@@ -72,7 +72,7 @@ export const getFileAssetPreview = async (fileAsset: any, label = 'Document'): P
     };
   }
 
-  const hasSession = Boolean(getCookieValue('csrfToken'));
+  const hasSession = Boolean((typeof window !== 'undefined' && localStorage.getItem('token')) || getCookieValue('csrfToken'));
   const signedUrlEndpoint = hasSession ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
   const viewEndpoint = hasSession ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
 
@@ -175,7 +175,7 @@ export const openFileAsset = async (fileAsset: any, label = 'Document') => {
       return;
     }
 
-    const hasSession = Boolean(getCookieValue('csrfToken'));
+    const hasSession = Boolean((typeof window !== 'undefined' && localStorage.getItem('token')) || getCookieValue('csrfToken'));
     const signedUrlEndpoint = hasSession ? `/api/files/${fileId}/signed-url` : `/api/public/files/${fileId}/signed-url`;
     const viewEndpoint = hasSession ? `/api/files/${fileId}/view` : `/api/public/files/${fileId}/view`;
 

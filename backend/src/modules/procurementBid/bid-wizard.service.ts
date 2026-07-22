@@ -374,6 +374,60 @@ const transformDraftToProcurementBidPayload = async (draft: any, buyerId: number
     step8.rateContractRequired ? 'Rate contract required' : 'Rate contract not required'
   ];
 
+  let items: any[] = [];
+  if (bidType === 'BOQ_BID' && Array.isArray(step4.lineItems)) {
+    items = step4.lineItems.map((item: any, idx: number) => ({
+      id: idx + 1,
+      itemName: item.itemName || item.name || item.title || item.itemDescription || `BOQ Item ${idx + 1}`,
+      description: item.description || item.specifications || '',
+      quantity: Number(item.quantity) || 1,
+      unitOfMeasure: item.unit || item.unitOfMeasure || item.uom || 'Nos',
+      estimatedUnitPrice: positiveNumberOrUndefined(item.estimatedUnitPrice || item.unitPrice || item.rate),
+      estimatedTotal: positiveNumberOrUndefined(item.estimatedTotal || item.totalPrice || item.amount),
+      technicalSpecification: item.technicalSpecification || item.specifications,
+      brand: item.brand,
+      make: item.make,
+      model: item.model,
+      hsn: item.hsn,
+      sac: item.sac,
+      warranty: item.warranty,
+      deliverySchedule: item.deliverySchedule
+    }));
+  } else if (bidType === 'PRODUCT_BID') {
+    items = [{
+      id: 1,
+      itemName: step4.productName || 'Product',
+      description: step4.productDescription || step4.technicalSpecification || '',
+      quantity: Number(step4.quantity) || 1,
+      unitOfMeasure: step4.unitOfMeasurement || 'Nos',
+      technicalSpecification: step4.technicalSpecification,
+      brand: step4.brand,
+      make: step4.make,
+      model: step4.model,
+      hsn: step4.hsnCode || step4.hsn,
+      warranty: step4.warranty,
+      deliverySchedule: step4.deliverySchedule
+    }];
+  } else if (bidType === 'SERVICE_BID') {
+    items = [{
+      id: 1,
+      itemName: step4.serviceCategory || 'Service',
+      description: step4.scopeOfWork || '',
+      quantity: Number(step4.numberOfPersonnel) || 1,
+      unitOfMeasure: 'Months/Persons',
+      sac: step4.sacCode || step4.sac,
+      deliverySchedule: step4.deliverySchedule
+    }];
+  } else {
+    items = [{
+      id: 1,
+      itemName: step3.title || 'Sourcing Item',
+      description: step4.detailedScopeOfWork || step4.proprietaryJustification || step3.shortDescription || '',
+      quantity: Number(step4.quantity) || 1,
+      unitOfMeasure: step4.unitOfMeasurement || 'Lot'
+    }];
+  }
+
   return {
     title: step3.title,
     description: step3.shortDescription,
@@ -405,7 +459,16 @@ const transformDraftToProcurementBidPayload = async (draft: any, buyerId: number
     packetType,
     technicalPacket: {
       ...(packetType === 'TWO_PACKET' ? (step6.technicalPacket || {}) : {}),
+      items,
       wizardData: {
+        procurementMethod: step1.procurementMethod,
+        bidType: BID_TYPE_LABELS[bidType] || bidType,
+        packetType: packetType,
+        preBidMeetingRequired: step8.preBidMeetingRequired,
+        preBidMeetingDate: step8.preBidMeetingDate || step3.preBidDate || null,
+        preBidMode: step3.preBidMode || null,
+        preBidVenue: step3.preBidVenue || null,
+        siteVisitRequired: step8.siteVisitRequired,
         consigneeType: step5.consigneeType || null,
         consigneeName: step5.consigneeName || null,
         consigneeDesignation: step5.consigneeDesignation || null,
@@ -418,10 +481,51 @@ const transformDraftToProcurementBidPayload = async (draft: any, buyerId: number
         inspectionOfficer: step5.inspectionOfficer || null,
         penaltyDetails: step5.penaltyDetails || null,
         acceptanceCriteria: step5.acceptanceCriteria || null,
+        deliveryPeriod: step5.deliveryPeriod || null,
         cancellationAllowedBeforeClosing: step8.cancellationAllowedBeforeClosing ?? false,
         sellerQueryAllowed: step8.sellerQueryAllowed ?? false,
         documentResubmissionAllowed: step8.documentResubmissionAllowed ?? false,
         multipleAwardAllowed: step8.multipleAwardAllowed ?? false,
+        raTriggerStage: step4.raTriggerStage || null,
+        raDuration: step4.raDuration || null,
+        minimumDecrementValue: step4.minimumDecrementValue || null,
+        raStartPrice: step4.raStartPrice || null,
+        eligibleSellersForRa: step4.eligibleSellersForRa || null,
+        raWinnerRule: step4.raWinnerRule || null,
+        makeInIndiaPreference: step6.makeInIndiaPreference ?? false,
+        msePreference: step6.msePreference ?? false,
+        blacklistingDeclarationRequired: step6.blacklistingDeclarationRequired ?? true,
+        conflictOfInterestDeclarationRequired: step6.conflictOfInterestDeclarationRequired ?? true,
+        pbgRequired: step6.pbgRequired ?? false,
+        pbgPercentage: step6.pbgPercentage || null,
+        paymentTerms: step7.paymentTerms || null,
+        gstInvoiceRequired: step7.gstInvoiceRequired ?? true,
+        advancePaymentAllowed: step7.advancePaymentAllowed ?? false,
+        partPaymentAllowed: step7.partPaymentAllowed ?? false,
+        ewayBillRequired: step7.ewayBillRequired ?? false,
+        invoiceRequired: step7.invoiceRequired ?? false,
+        clarificationWindowRequired: step8.clarificationWindowRequired ?? false,
+        corrigendumAllowed: step8.corrigendumAllowed ?? false,
+        rateContractRequired: step8.rateContractRequired ?? false,
+        splittingQuantityAllowed: step8.splittingQuantityAllowed ?? false,
+        experienceRequired: step6.experienceRequired,
+        turnoverRequired: step6.turnoverRequired,
+        similarWorkRequired: step6.similarWorkRequired,
+        buyerName: step2.buyerName || null,
+        buyerDesignation: step2.designation || null,
+        buyerEmail: step2.email || null,
+        buyerMobile: step2.mobile || null,
+        buyerAddress: step2.officeAddress || null,
+        taluka: step2.taluka || null,
+        villageOrCity: step2.villageOrCity || null,
+        financialYear: step2.financialYear || null,
+        departmentFileNumber: step2.departmentFileNumber || null,
+        departmentReferenceNumber: step2.departmentReferenceNumber || null,
+        competentAuthorityName: step2.competentAuthorityName || null,
+        competentAuthorityDesignation: step2.competentAuthorityDesignation || null,
+        budgetHead: step3.budgetHead || null,
+        procurementPurpose: step3.procurementPurpose || null,
+        priority: step3.priority || null,
       }
     },
     financialPacket: packetType === 'TWO_PACKET' ? step7.financialPacket || null : null,

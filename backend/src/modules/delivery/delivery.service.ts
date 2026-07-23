@@ -42,6 +42,7 @@ const TX_OPTIONS = { timeout: 20_000, maxWait: 8_000 } as const;
 export type DeliveryActor = {
   id: number;
   role: string;
+  organizationId?: number;
   ipAddress?: string;
   userAgent?: string;
 };

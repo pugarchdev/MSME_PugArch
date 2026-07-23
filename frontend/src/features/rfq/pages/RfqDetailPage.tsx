@@ -27,6 +27,11 @@ import {
   ClipboardCheck,
   Clock,
   CheckCircle,
+  Users,
+  Award,
+  Wrench,
+  Gavel,
+  TrendingUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApi } from '../../shared/apiClient';
@@ -42,9 +47,10 @@ import { procurementBidApi } from '../../procurementBid/api';
    ═══════════════════════════════════════════════ */
 
 const isPresentValue = (value: any): boolean => {
-  if (value === null || value === undefined || value === '') return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
+  if (value === null || value === undefined || value === '' || value === '—' || value === '-') return false;
+  if (typeof value === 'number' && value === 0) return false;
+  if (Array.isArray(value)) return value.length > 0 && value.some(isPresentValue);
+  if (typeof value === 'object') return Object.values(value).some(isPresentValue);
   return true;
 };
 
@@ -62,7 +68,7 @@ const formatDetailValue = (value: any): string => {
     return value
       .map(item => {
         if (item && typeof item === 'object') {
-          return String(item.name || item.label || item.supplierName || item.itemName || item.fileName || item.location || item.id || JSON.stringify(item));
+          return String(item.name || item.title || item.label || item.supplierName || item.itemName || item.fileName || item.location || item.id || JSON.stringify(item));
         }
         return String(item);
       })
@@ -73,7 +79,7 @@ const formatDetailValue = (value: any): string => {
     return Object.entries(value)
       .filter(([, v]) => isPresentValue(v))
       .map(([k, v]) => `${humanizeKey(k)}: ${formatDetailValue(v)}`)
-      .join('; ');
+      .join(' • ');
   }
   return String(value);
 };
@@ -121,17 +127,36 @@ const formatDateString = (dateStr?: string | Date, includeTime = false) => {
 };
 
 const formatDisplayValue = (val: string, label?: string) => {
-  if (!val) return '—';
-  if (val.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) || val.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    return formatDateString(val);
+  if (!val || val === '—' || val === '-') return '—';
+
+  // Currency formatting for price / value / amount / budget / cost fields
+  if (label) {
+    const l = label.toLowerCase();
+    if (l.includes('price') || l.includes('value') || l.includes('budget') || l.includes('amount') || l.includes('cost')) {
+      const cleanVal = String(val).replace(/[^0-9.]/g, '');
+      const num = Number(cleanVal);
+      if (!isNaN(num) && num > 0) {
+        return `₹${num.toLocaleString('en-IN')}`;
+      }
+    }
   }
-  if (val.match(/^[A-Z][A-Z0-9_]*$/)) {
+
+  // Date / ISO String formatting (e.g. 2026-07-25T18:55 or 2026-07-25)
+  if (typeof val === 'string') {
+    if (val.match(/^\d{4}-\d{2}-\d{2}/)) {
+      return formatDateString(val, val.includes('T') || val.includes(':'));
+    }
+  }
+
+  // Capitalized CONSTANT_CASE strings
+  if (typeof val === 'string' && val.match(/^[A-Z][A-Z0-9_]*$/)) {
     return val
       .split('_')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(' ');
   }
-  return val;
+
+  return String(val);
 };
 
 const parseDescription = (desc?: string) => {
@@ -171,6 +196,31 @@ export default function RfqDetailPage() {
   const requirementId = searchParams?.get('requirementId') || '';
 
   const [activeSection, setActiveSection] = useState<number | null>(0);
+
+  // Auto-update activeSection based on manual page scroll position
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScroll = () => {
+      const elements = document.querySelectorAll('[id^="sec-content-"]');
+      if (!elements || elements.length === 0) return;
+
+      const scrollPosition = window.scrollY + 160;
+      for (let i = elements.length - 1; i >= 0; i--) {
+        const el = elements[i] as HTMLElement;
+        if (el) {
+          const top = el.offsetTop;
+          if (scrollPosition >= top) {
+            setActiveSection(i);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
@@ -630,7 +680,7 @@ export default function RfqDetailPage() {
      ═══════════════════════════════════════════════ */
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 md:px-8 pb-12 font-sans text-slate-800">
+    <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 md:px-8 pb-16 font-sans text-slate-800 scroll-smooth animate-in fade-in zoom-in-95 duration-300">
 
       {/* ── Breadcrumb Navigation ── */}
       <nav className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500 bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-full px-4 py-2 w-fit shadow-2xs">
@@ -676,7 +726,7 @@ export default function RfqDetailPage() {
       )}
 
       {/* ── Page Header ── */}
-      <section className="relative overflow-hidden border border-slate-200/80 rounded-2xl bg-white p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-md">
+      <section className="relative overflow-hidden border border-slate-200/80 rounded-2xl bg-white p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-3 duration-500">
         {/* Subtle top accent border line */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#12335f] via-indigo-600 to-blue-500" />
         
@@ -721,7 +771,7 @@ export default function RfqDetailPage() {
               type="button"
               variant="outline"
               onClick={() => router.back()}
-              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-1.5"
+              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-1.5 hover:-translate-y-0.5"
             >
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
@@ -729,7 +779,7 @@ export default function RfqDetailPage() {
               type="button"
               variant="outline"
               onClick={handleDownload}
-              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-2"
+              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-2 hover:-translate-y-0.5"
             >
               <Download className="h-4 w-4 text-blue-600" /> <span className="hidden sm:inline">Download</span> RFQ
             </Button>
@@ -737,7 +787,7 @@ export default function RfqDetailPage() {
               <Button
                 type="button"
                 onClick={handleSubmitQuotation}
-                className="h-10 rounded-xl bg-gradient-to-r from-[#12335f] to-[#1a447c] hover:from-[#0b2447] hover:to-[#12335f] px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-blue-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
+                className="h-10 rounded-xl bg-gradient-to-r from-[#12335f] to-[#1a447c] hover:from-[#0b2447] hover:to-[#12335f] px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-blue-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99] hover:-translate-y-0.5"
               >
                 {ownResponse && ownResponse.status !== 'DRAFT' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
               </Button>
@@ -747,19 +797,19 @@ export default function RfqDetailPage() {
       </section>
 
       {/* ── Sticky Quick Navigation Bar ── */}
-      <div className="sticky top-4 z-40 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-md transition-all duration-300">
+      <div className="sticky top-4 z-40 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-md transition-all duration-300 animate-in fade-in slide-in-from-top-2 duration-400">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => scrollToSection('overview')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95 hover:-translate-y-0.5"
           >
             <ClipboardList className="h-3.5 w-3.5 text-blue-600" /> Overview
           </button>
           <button
             type="button"
             onClick={() => scrollToSection('scope-items')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95 hover:-translate-y-0.5"
           >
             <FileText className="h-3.5 w-3.5 text-purple-600" /> Scope & Description
           </button>
@@ -767,7 +817,7 @@ export default function RfqDetailPage() {
             <button
               type="button"
               onClick={() => scrollToSection('line-items')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95 hover:-translate-y-0.5"
             >
               <Package className="h-3.5 w-3.5 text-amber-600" /> Items & Specifications
             </button>
@@ -775,7 +825,7 @@ export default function RfqDetailPage() {
           <button
             type="button"
             onClick={() => scrollToSection('buyer-info')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95 hover:-translate-y-0.5"
           >
             <Building2 className="h-3.5 w-3.5 text-emerald-600" /> Buyer Details
           </button>
@@ -783,7 +833,7 @@ export default function RfqDetailPage() {
             <button
               type="button"
               onClick={() => scrollToSection('additional-metadata')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95 hover:-translate-y-0.5"
             >
               <Layers className="h-3.5 w-3.5 text-indigo-600" /> Specifications & Metadata ({detailSections.length})
             </button>
@@ -792,7 +842,7 @@ export default function RfqDetailPage() {
       </div>
 
       {/* ── Lifecycle Stepper / Progress Bar Section ── */}
-      <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm overflow-x-auto">
+      <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm overflow-x-auto animate-in fade-in slide-in-from-bottom-3 duration-500">
         <div className="min-w-[720px] flex items-center justify-between relative px-8 py-2">
           {/* Horizontal Connection Line */}
           <div className="absolute top-[38px] left-[60px] right-[60px] h-[3px] bg-slate-100 -z-0 rounded-full" />
@@ -976,142 +1026,184 @@ export default function RfqDetailPage() {
 
           {/* Scope / Description */}
           <section id="scope-items" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-5 transition-all duration-300 hover:shadow-md">
-            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-[#12335f]" /> Scope & Description
-            </h2>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#12335f]/10 text-[#12335f] border border-[#12335f]/20">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <span>RFQ Scope</span>
+              </h2>
+            </div>
             {(() => {
               const parsed = parseDescription(rfqData?.description);
+              const urgencyVal = basics.urgency || payload.urgency || 'Normal';
+              const summaryLine = `Sourcing Method: ${formatDisplayValue(String(methodLabel))} | Value: ${formatCurrency(estimatedValueVal)} | Urgency: ${urgencyVal}`;
 
               return (
                 <div className="space-y-4">
-                  {parsed.text ? (
-                    <div className="space-y-1.5 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Description / Scope of Work</span>
-                      <p className="text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
+                  <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200/70 text-xs font-bold text-slate-800">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Procurement Summary</p>
+                    <p className="text-slate-900 font-extrabold">{summaryLine}</p>
+                    {parsed.text && (
+                      <p className="mt-2.5 text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap break-words border-t border-slate-200/60 pt-2">
                         {parsed.text}
                       </p>
-                    </div>
-                  ) : rfqData?.description ? (
-                    <div className="space-y-1.5 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Description / Scope of Work</span>
-                      <p className="text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
-                        {rfqData.description}
-                      </p>
-                    </div>
-                  ) : null}
+                    )}
+                  </div>
                 </div>
               );
             })()}
+          </section>
 
-            {/* Color stat cards */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div className="rounded-xl bg-purple-50/50 border border-purple-100/90 p-4 text-left shadow-2xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700">Documents</span>
-                <p className="mt-1 text-xl font-black text-purple-950 tabular-nums">{documents.length}</p>
-              </div>
-              <div className="rounded-xl bg-amber-50/50 border border-amber-100/90 p-4 text-left shadow-2xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Line Items</span>
-                <p className="mt-1 text-xl font-black text-amber-950 tabular-nums">{itemsList.length}</p>
-              </div>
+          {/* Key Dates Vertical Timeline (Matching UI Mockup) */}
+          <section id="key-dates" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-600 border border-rose-200">
+                  <CalendarDays className="h-4 w-4" />
+                </span>
+                <span>Key Dates</span>
+              </h2>
             </div>
 
-            {/* Documents & Bidder Checklist */}
-            {documents.length > 0 && (
-              <div className="border-t border-slate-100 pt-5 space-y-3">
-                <h4 className="text-[11px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-2">
-                  <Paperclip className="h-4 w-4 text-[#12335f]" /> Documents & Required Checklist
-                </h4>
-                <div className="space-y-2.5">
+            <div className="space-y-3 pt-1">
+              {/* Bid Published */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Bid Published</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">{publishedDateFormatted}</p>
+                </div>
+              </div>
+
+              {/* Clarification Deadline */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-slate-300 ring-4 ring-slate-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Clarification Deadline</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">{clarificationDeadlineStr}</p>
+                </div>
+              </div>
+
+              {/* Proposal Submission End (Highlighted Red Alert Box) */}
+              <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-rose-50/70 border border-rose-200/90 text-rose-950 shadow-2xs">
+                <span className="h-3.5 w-3.5 rounded-full bg-rose-500 ring-4 ring-rose-200 mt-1 shrink-0 animate-pulse" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-rose-700">Proposal / Quotation Submission End</p>
+                  <p className="text-xs font-black text-rose-900 mt-0.5">{closesAtFormatted}</p>
+                </div>
+              </div>
+
+              {/* Technical Opening */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-blue-500 ring-4 ring-blue-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Technical Opening</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">{closesAtFormatted !== '—' ? closesAtFormatted : 'Pending'}</p>
+                </div>
+              </div>
+
+              {/* Presentation */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-slate-300 ring-4 ring-slate-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Presentation</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">—</p>
+                </div>
+              </div>
+
+              {/* Financial Opening */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-blue-500 ring-4 ring-blue-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Financial Opening</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">{closesAtFormatted !== '—' ? closesAtFormatted : 'Pending'}</p>
+                </div>
+              </div>
+
+              {/* Awarding Date */}
+              <div className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-slate-50/80 transition-colors">
+                <span className="h-3.5 w-3.5 rounded-full bg-slate-300 ring-4 ring-slate-100 mt-1 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Awarding Date</p>
+                  <p className="text-xs font-black text-slate-900 mt-0.5">—</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Documents & Activity Snapshot Row ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            {/* Left: RFP DOCUMENTS (7 cols) */}
+            <section id="documents" className="lg:col-span-7 scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+                    <Paperclip className="h-4 w-4" />
+                  </span>
+                  <span>RFP DOCUMENTS</span>
+                </h2>
+              </div>
+
+              {documents.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {documents.map((doc, idx) => {
                     const isUploaded = doc.fileAssetId !== null && doc.fileAssetId !== undefined;
-                    const isMandatory = doc.required || doc.documentType?.toLowerCase() === 'mandatory';
-
                     return (
                       <div
                         key={idx}
-                        className={cn(
-                          "flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border transition-all text-left gap-3",
-                          isMandatory
-                            ? "bg-rose-50/20 border-rose-100 hover:border-rose-200"
-                            : "bg-slate-50/40 border-slate-200/80 hover:border-slate-300"
-                        )}
+                        onClick={() => {
+                          if (isUploaded && doc.fileAssetId) {
+                            openFileAsset({ id: doc.fileAssetId, fileAssetId: doc.fileAssetId, originalName: doc.fileName }, doc.fileName);
+                          }
+                        }}
+                        className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-white hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group"
                       >
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className={cn(
-                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-2xs",
-                            isUploaded ? "bg-blue-50 border-blue-200 text-[#12335f]" : "bg-slate-100 border-slate-200 text-slate-500"
-                          )}>
-                            <FileText className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-xs font-black text-slate-900 break-words">{doc.fileName}</p>
-                              <span className={cn(
-                                "rounded-full px-2 py-0.5 text-[9px] font-black uppercase border tracking-wider shrink-0",
-                                isMandatory
-                                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                                  : "border-slate-200 bg-slate-100 text-slate-600"
-                              )}>
-                                {isMandatory ? 'Mandatory' : 'Optional'}
-                              </span>
-                              {isUploaded && (
-                                <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase border border-blue-200 bg-blue-50 text-blue-700 shrink-0">
-                                  Attachment Available
-                                </span>
-                              )}
-                            </div>
-                            {doc.instructions && (
-                              <p className="text-[11px] font-medium text-slate-500 leading-relaxed whitespace-pre-wrap break-words">{doc.instructions}</p>
-                            )}
-                          </div>
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-200 text-[#12335f] group-hover:scale-105 transition-transform">
+                          <FileText className="h-5 w-5" />
                         </div>
-                        
-                        {isUploaded && doc.fileAssetId ? (
-                          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center ml-auto sm:ml-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                openFileAsset({ id: doc.fileAssetId!, fileAssetId: doc.fileAssetId!, originalName: doc.fileName }, doc.fileName).catch(err => {
-                                  toast.error(err instanceof Error ? err.message : 'Unable to open document');
-                                });
-                              }}
-                              className="h-8 px-3 text-[10px] font-black uppercase text-[#12335f] border-blue-200 bg-blue-50/50 hover:bg-blue-100/80 shadow-2xs"
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                openFileAsset({ id: doc.fileAssetId!, fileAssetId: doc.fileAssetId!, originalName: doc.fileName }, doc.fileName).catch(err => {
-                                  toast.error(err instanceof Error ? err.message : 'Unable to open document');
-                                });
-                              }}
-                              className="h-8 px-3 text-slate-700 border-slate-200 bg-white hover:bg-slate-50 shadow-2xs"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-slate-900 truncate" title={doc.fileName}>{doc.fileName}</p>
+                          <span className="inline-block mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {isUploaded ? 'Uploaded Document' : 'Required'}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {/* Empty documents fallback */}
-            {documents.length === 0 && (
-              <div className="border-t border-slate-100 pt-4">
-                <p className="text-xs font-bold text-slate-500 py-4 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/30">
-                  No documents uploaded for this RFQ.
+              ) : (
+                <p className="text-xs font-bold text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/30">
+                  No documents attached for this RFQ.
                 </p>
+              )}
+            </section>
+
+            {/* Right: ACTIVITY SNAPSHOT (5 cols) */}
+            <section className="lg:col-span-5 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
+                    <TrendingUp className="h-4 w-4" />
+                  </span>
+                  <span>ACTIVITY SNAPSHOT</span>
+                </h2>
               </div>
-            )}
-          </section>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Queries</span>
+                  <span className="text-2xl font-black text-slate-900">{rfqData?.clarifications?.length || 0}</span>
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Responses</span>
+                  <span className="text-2xl font-black text-slate-900">{rfqData?.participations?.length || 0}</span>
+                </div>
+              </div>
+            </section>
+          </div>
 
           {/* Items & Specifications Table */}
           {itemsList.length > 0 && (
@@ -1386,88 +1478,237 @@ export default function RfqDetailPage() {
         />
       )}
 
-      {/* ── Full-width: Additional Details Accordion ── */}
-      {detailSections.length > 0 && (
-        <section id="additional-metadata" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
-          <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-[#12335f]" /> Additional Specifications & Metadata
-            </span>
-            <span className="text-[10px] font-black uppercase bg-[#12335f]/5 text-[#12335f] px-3 py-1 rounded-full border border-[#12335f]/10">
-              {detailSections.length} {detailSections.length === 1 ? 'Section' : 'Sections'}
-            </span>
-          </h2>
-          <div className="space-y-3">
-            {detailSections.map((section, idx) => {
-              const isOpen = activeSection === idx;
-              const getSectionIcon = (title: string) => {
-                const t = title.toLowerCase();
-                if (t.includes('intent') || t.includes('scope')) return ClipboardList;
-                if (t.includes('buyer') || t.includes('user') || t.includes('contact') || t.includes('org')) return Info;
-                if (t.includes('item') || t.includes('qty')) return Package;
-                if (t.includes('date') || t.includes('time') || t.includes('schedule')) return CalendarDays;
-                if (t.includes('price') || t.includes('budget') || t.includes('cost') || t.includes('value')) return IndianRupee;
-                if (t.includes('terms') || t.includes('eligibility') || t.includes('criteria') || t.includes('rule')) return ClipboardCheck;
-                return Layers;
-              };
-              const SectionIcon = getSectionIcon(section.title);
-              return (
-                <div 
-                  key={`${section.title}-${idx}`} 
-                  className={cn(
-                    "rounded-xl border transition-all duration-300 overflow-hidden",
-                    isOpen 
-                      ? "border-[#12335f]/30 bg-slate-50/40 shadow-2xs border-l-4 border-l-[#12335f]" 
-                      : "border-slate-200/80 hover:border-slate-300 bg-white border-l-4 border-l-transparent"
-                  )}
-                >
-                  {/* Accordion Header */}
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection(isOpen ? null : idx)}
-                    className="group w-full flex items-center justify-between p-4 text-left font-black text-xs uppercase tracking-wider text-[#12335f] hover:bg-slate-50/60 transition-colors"
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-xl text-xs transition-colors font-black shadow-2xs",
-                        isOpen ? "bg-[#12335f] text-white" : "bg-[#12335f]/10 text-[#12335f]"
-                      )}>
-                        <SectionIcon className="h-4 w-4" />
-                      </span>
-                      <span className="transition-transform duration-200 group-hover:translate-x-0.5">
-                        {section.title}
-                      </span>
-                    </span>
-                    <ChevronRight className={cn(
-                      "h-4 w-4 text-slate-400 transition-transform duration-300 group-hover:scale-110",
-                      isOpen && "rotate-90 text-[#12335f]"
-                    )} />
-                  </button>
+      {/* ── Left-Side Vertical Navigation Panel + Right Detailed Content ── */}
+      {detailSections.length > 0 && (() => {
+        const getSectionIcon = (title: string) => {
+          const t = title.toLowerCase();
+          if (t.includes('intent') || t.includes('scope')) return ClipboardList;
+          if (t.includes('consignee') || t.includes('location') || t.includes('address')) return MapPin;
+          if (t.includes('vendor') || t.includes('supplier') || t.includes('seller')) return Users;
+          if (t.includes('timeline') || t.includes('schedule') || t.includes('date') || t.includes('rule')) return CalendarDays;
+          if (t.includes('commercial') || t.includes('payment') || t.includes('price') || t.includes('budget')) return IndianRupee;
+          if (t.includes('evaluation') || t.includes('basis') || t.includes('score')) return Award;
+          if (t.includes('approval') || t.includes('notes')) return ShieldCheck;
+          if (t.includes('service')) return Wrench;
+          if (t.includes('rate') || t.includes('contract')) return FileText;
+          if (t.includes('auction')) return Gavel;
+          return Layers;
+        };
 
-                  {/* Accordion Body */}
-                  <div className={cn(
-                    "grid transition-all duration-300 ease-in-out border-t border-slate-100 bg-white",
-                    isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
-                  )}>
-                    <div className="overflow-hidden">
-                      <div className="px-6 pb-6 pt-4">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                          {section.fields.map((field, fieldIdx) => (
-                            <div key={`${field.label}-${fieldIdx}`} className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 hover:bg-slate-50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xs">
-                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{field.label}</p>
-                              <p className="mt-1.5 text-xs font-bold leading-relaxed text-slate-800 break-words whitespace-pre-wrap">{formatDisplayValue(field.value, field.label)}</p>
-                            </div>
-                          ))}
+        const getSectionStatus = (sec: { title: string; fields: Array<{ label: string; value: string }> }) => {
+          if (!sec.fields || sec.fields.length === 0) {
+            return { label: 'Optional', badgeClass: 'bg-slate-100 text-slate-600 border-slate-200' };
+          }
+          const filledCount = sec.fields.filter(f => {
+            const val = String(f.value || '').trim();
+            return val && val !== '—' && val !== '-' && val !== 'N/A' && val !== 'None';
+          }).length;
+
+          if (filledCount === sec.fields.length && filledCount > 0) {
+            return { label: 'Completed', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80' };
+          } else if (filledCount > 0) {
+            return { label: `${filledCount}/${sec.fields.length} Filled`, badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/80' };
+          } else {
+            return { label: 'Optional', badgeClass: 'bg-slate-100 text-slate-600 border-slate-200' };
+          }
+        };
+
+        return (
+          <section id="additional-metadata" className="scroll-mt-24 space-y-4">
+            {/* Header Banner */}
+            <div className="border border-slate-200/80 rounded-2xl bg-white p-5 shadow-xs flex items-center justify-between transition-all duration-300 hover:shadow-md">
+              <div className="flex items-center gap-3.5">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs">
+                  <Layers className="h-5.5 w-5.5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-black tracking-tight text-[#12335f] uppercase flex items-center gap-2.5">
+                    <span>COMPREHENSIVE PROCUREMENT DETAILS</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Specifications, terms, and requirements for this RFQ.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile Navigation Dropdown (< lg screens) */}
+            <div className="block lg:hidden bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select Section to View</label>
+                <span className="text-[10px] font-bold text-slate-400">{detailSections.length} Sections</span>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 scroll-smooth custom-scrollbar">
+                {detailSections.map((sec, idx) => {
+                  const isActive = (activeSection === null && idx === 0) || activeSection === idx;
+                  const SectionIcon = getSectionIcon(sec.title);
+                  return (
+                    <button
+                      key={`mob-${sec.title}-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveSection(idx);
+                        const el = document.getElementById(`sec-content-${idx}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 shrink-0 border shadow-2xs",
+                        isActive
+                          ? "bg-[#12335f] text-white border-[#12335f] shadow-sm"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      <SectionIcon className="h-3.5 w-3.5" />
+                      <span>{sec.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Master-Detail Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* Sticky Left Vertical Navigation Sidebar */}
+              <div className="hidden lg:block lg:col-span-4 xl:col-span-3 sticky top-24 space-y-2">
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs space-y-1.5 transition-all duration-300 hover:shadow-md">
+                  <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+                    <span>Navigation Panel</span>
+                    <span className="text-slate-400 font-semibold">{detailSections.length} Items</span>
+                  </div>
+
+                  {detailSections.map((sec, idx) => {
+                    const isActive = (activeSection === null && idx === 0) || activeSection === idx;
+                    const SectionIcon = getSectionIcon(sec.title);
+                    const status = getSectionStatus(sec);
+
+                    return (
+                      <button
+                        key={`nav-${sec.title}-${idx}`}
+                        type="button"
+                        onClick={() => {
+                          setActiveSection(idx);
+                          const el = document.getElementById(`sec-content-${idx}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between p-3 rounded-xl text-left transition-all duration-200 group border text-xs font-bold",
+                          isActive
+                            ? "bg-[#12335f] text-white border-[#12335f] shadow-md border-l-4 border-l-amber-400 scale-[1.01]"
+                            : "bg-slate-50/50 hover:bg-slate-100/80 text-slate-700 border-slate-200/80 hover:border-slate-300 border-l-4 border-l-transparent"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 truncate pr-1">
+                          <span className={cn(
+                            "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors shrink-0 font-bold",
+                            isActive ? "bg-white/20 text-white" : "bg-[#12335f]/10 text-[#12335f] group-hover:bg-[#12335f] group-hover:text-white"
+                          )}>
+                            <SectionIcon className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="truncate font-extrabold">{sec.title}</span>
                         </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-md text-[9px] font-black uppercase border tracking-wider",
+                            isActive ? "bg-white/20 text-white border-white/30" : status.badgeClass
+                          )}>
+                            {status.label}
+                          </span>
+                          <ChevronRight className={cn(
+                            "h-3.5 w-3.5 transition-transform duration-200",
+                            isActive ? "text-amber-400 translate-x-0.5" : "text-slate-400 group-hover:translate-x-0.5"
+                          )} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right-Side Detailed Content Cards */}
+              <div className="lg:col-span-8 xl:col-span-9 space-y-6">
+                {detailSections.map((sec, idx) => {
+                  const SectionIcon = getSectionIcon(sec.title);
+                  const status = getSectionStatus(sec);
+                  const isActive = (activeSection === null && idx === 0) || activeSection === idx;
+
+                  return (
+                    <div
+                      key={`content-${sec.title}-${idx}`}
+                      id={`sec-content-${idx}`}
+                      className={cn(
+                        "scroll-mt-28 rounded-2xl border bg-white p-6 shadow-xs transition-all duration-300 space-y-5",
+                        isActive
+                          ? "border-[#12335f]/40 shadow-md ring-2 ring-[#12335f]/10 border-l-4 border-l-[#12335f]"
+                          : "border-slate-200/80 hover:border-slate-300"
+                      )}
+                    >
+                      {/* Content Header */}
+                      <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#12335f]/10 text-[#12335f] border border-[#12335f]/20 shadow-2xs font-bold">
+                            <SectionIcon className="h-4.5 w-4.5" />
+                          </span>
+                          <div>
+                            <h3 className="text-sm font-black uppercase tracking-wider text-slate-900">{sec.title}</h3>
+                            <p className="text-[11px] text-slate-400 font-semibold">{sec.fields.length} {sec.fields.length === 1 ? 'parameter' : 'parameters'} defined</p>
+                          </div>
+                        </div>
+
+                        <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase border tracking-wider shadow-2xs", status.badgeClass)}>
+                          {status.label}
+                        </span>
+                      </div>
+
+                      {/* Fields Grid */}
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {sec.fields.map((field, fieldIdx) => {
+                          const formattedVal = formatDisplayValue(field.value, field.label);
+                          const strVal = String(field.value).trim().toLowerCase();
+                          const isYes = strVal === 'yes' || strVal === 'true';
+                          const isNo = strVal === 'no' || strVal === 'false';
+
+                          return (
+                            <div
+                              key={`${field.label}-${fieldIdx}`}
+                              className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-slate-50/20 to-white p-4 hover:bg-white transition-all duration-200 hover:-translate-y-1 hover:border-[#12335f]/30 hover:shadow-md group cursor-default"
+                            >
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 group-hover:text-[#12335f] transition-colors">
+                                {field.label}
+                              </p>
+                              <div className="mt-1.5">
+                                {isYes ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 border border-emerald-200/80 uppercase shadow-2xs">
+                                    ✓ Yes
+                                  </span>
+                                ) : isNo ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600 border border-slate-200 uppercase shadow-2xs">
+                                    No
+                                  </span>
+                                ) : (
+                                  <p className="text-xs font-black leading-relaxed text-slate-900 break-words whitespace-pre-wrap">
+                                    {formattedVal}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                  );
+                })}
+              </div>
+
+            </div>
+          </section>
+        );
+      })()}
 
     </div>
   );

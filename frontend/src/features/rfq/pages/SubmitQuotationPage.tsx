@@ -137,7 +137,7 @@ export default function SubmitQuotationPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const requirementIdParam = searchParams?.get('requirementId');
+  const requirementIdParam = searchParams?.get('requirementId') || searchParams?.get('id') || searchParams?.get('requestId');
   const requirementId = requirementIdParam ? (isNaN(Number(requirementIdParam)) ? requirementIdParam : Number(requirementIdParam)) : 0;
 
   const [offeredPrice, setOfferedPrice] = useState('');
@@ -168,8 +168,39 @@ export default function SubmitQuotationPage() {
   const { data: queryData, isLoading, error } = useQuery({
     queryKey: ['marketplace-requirement-quotation', requirementId],
     queryFn: async () => {
-      const data = await getApi<any>(`/api/marketplace/requirements/${requirementId}`);
-      return data;
+      try {
+        const data = await getApi<any>(`/api/marketplace/requirements/${requirementId}`);
+        if (data && (data.requirement || data.id)) return data;
+      } catch (err) {
+        // Fallback to procurement bid endpoint if marketplace requirement route fails
+      }
+      try {
+        const bidData = await getApi<any>(`/api/procurement-bids/detail/${requirementId}`);
+        if (bidData) {
+          return {
+            requirement: {
+              id: bidData.id,
+              title: bidData.title,
+              requirementNumber: bidData.bidNumber || bidData.id,
+              buyerOrganization: bidData.buyerOrganization || { organizationName: bidData.buyerName },
+              lastDate: bidData.endDate,
+              items: bidData.technicalPacket?.boq || bidData.items || [],
+              documents: bidData.documents || [],
+              payload: bidData.technicalPacket,
+              requiredDocuments: bidData.requiredDocuments,
+              estimatedValue: bidData.estimatedValue,
+              quantity: bidData.quantity,
+              unit: bidData.unit,
+              status: bidData.status,
+              description: bidData.description,
+            },
+            ownResponse: (bidData.participations || []).find((p: any) => p.sellerId === Number(user?.id))?.responseData || null,
+          };
+        }
+      } catch (e) {
+        // Ignore fallback error
+      }
+      return null;
     },
     enabled: !!requirementId,
   });

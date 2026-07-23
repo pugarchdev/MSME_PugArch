@@ -795,20 +795,23 @@ const assertTenderAccess = async (req: AuthRequest, rawTenderId: number | string
         if (Array.isArray(packet.items)) {
           tender.tenderItems = packet.items.map((it: any, idx: number) => ({
             id: it.id || idx + 1,
-            itemName: it.itemName || it.title || bid.title,
+            itemName: it.itemName || it.name || it.title || bid.title,
             quantity: Number(it.quantity || 1),
             unitOfMeasure: it.unit || it.unitOfMeasure || 'Nos',
-            description: it.description || it.specifications || '',
-            estimatedUnitPrice: it.estimatedUnitPrice,
-            estimatedTotal: it.estimatedTotal || (it.estimatedUnitPrice ? it.estimatedUnitPrice * Number(it.quantity || 1) : null),
-            brand: it.brand,
+            description: it.description || it.specification || it.specifications || '',
+            estimatedUnitPrice: it.estimatedUnitPrice || it.unitPrice,
+            estimatedTotal: it.estimatedTotal || ((it.estimatedUnitPrice || it.unitPrice) ? (it.estimatedUnitPrice || it.unitPrice) * Number(it.quantity || 1) : null),
+            brand: it.brand || it.brand_preference,
             make: it.make,
             model: it.model,
-            hsn: it.hsn,
+            hsn: it.hsn || it.hsn_sac_code || (it.specifications && it.specifications.hsn_sac_code),
             sac: it.sac,
             warranty: it.warranty,
             deliverySchedule: it.deliverySchedule,
-            technicalSpecification: it.technicalSpecification
+            technicalSpecification: it.technicalSpecification || it.specification || '',
+            gst: it.gst || (it.specifications && it.specifications.gst),
+            alternateBrandAllowed: it.alternateBrandAllowed ?? (it.brand_flexible === 'Yes' || (it.specifications && it.specifications.brand_flexible === 'Yes')),
+            uploadedSpecificationFiles: it.uploadedSpecificationFiles || it.specificationFileName || (it.specifications && it.specifications.specificationFileName)
           }));
         }
       }

@@ -391,7 +391,10 @@ const transformDraftToProcurementBidPayload = async (draft: any, buyerId: number
       hsn: item.hsn,
       sac: item.sac,
       warranty: item.warranty,
-      deliverySchedule: item.deliverySchedule
+      deliverySchedule: item.deliverySchedule,
+      gst: positiveNumberOrUndefined(item.gst || item.gstPercentage),
+      alternateBrandAllowed: Boolean(item.alternateBrandAllowed),
+      uploadedSpecificationFiles: item.uploadedSpecificationFiles
     }));
   } else if (bidType === 'PRODUCT_BID') {
     items = [{

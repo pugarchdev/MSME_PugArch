@@ -79,6 +79,9 @@ interface TenderDetail {
     sac?: string;
     warranty?: string;
     deliverySchedule?: string;
+    gst?: number;
+    alternateBrandAllowed?: boolean;
+    uploadedSpecificationFiles?: any;
   }>;
   tenderDocuments?: Array<{
     id: number;
@@ -280,7 +283,17 @@ export default function TenderDetailPage() {
     </h2>
   );
 
-  const wizardData = tender.technicalPacket?.wizardData || {};
+  const draft = tender.technicalPacket || {};
+  const basics = draft.basics || {};
+  const internal = draft.internal || {};
+  const vendors = draft.vendors || {};
+  const schedule = draft.schedule || {};
+  const terms = draft.terms || {};
+  const evaluation = draft.evaluation || {};
+  const approval = draft.approval || {};
+  const serviceDetails = draft.serviceDetails || {};
+  const consigneeDetails = draft.consigneeDetails || [];
+  const auctionConfig = draft.auctionConfig || {};
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-8 md:px-8 bg-slate-50 min-h-screen">
@@ -360,7 +373,7 @@ export default function TenderDetailPage() {
 
       {/* TWO COLUMN LAYOUT FOR DETAILS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 2. BASIC INFORMATION */}
+        {/* 2. BASIC INFORMATION & PROCUREMENT INTENT */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <SectionHeading title="Basic Information" />
           <div className="space-y-1">
@@ -368,64 +381,92 @@ export default function TenderDetailPage() {
             <InfoRow label="Reference Number" value={tender.tenderId || 'N/A'} />
             <InfoRow label="Category" value={tender.category || 'N/A'} />
             <InfoRow label="Sub Category" value={tender.subCategory || 'N/A'} />
-            <InfoRow label="Bid Type" value={wizardData.bidType || 'N/A'} />
-            <InfoRow label="Procurement Method" value={wizardData.procurementMethod || 'N/A'} />
-            <InfoRow label="Packet Type" value={wizardData.packetType || tender.packetType || 'N/A'} />
+            <InfoRow label="Bid Type" value={basics.whatAreYouBuying || 'N/A'} />
+            <InfoRow label="Procurement Method" value={draft.type || 'N/A'} />
+            <InfoRow label="Packet Type" value={schedule.packetType || tender.packetType || 'N/A'} />
             <InfoRow label="Tender Visibility" value={tender.visibility || 'Public'} />
             <InfoRow label="Estimated Value" value={tender.budget ? formatCurrency(tender.budget) : 'Not Disclosed'} />
-            <InfoRow label="Evaluation Method" value={tender.evaluationMethod || 'N/A'} />
+            <InfoRow label="Evaluation Method" value={evaluation.method || tender.evaluationMethod || 'N/A'} />
             <InfoRow label="Bid Validity" value={tender.bidValidityDate ? formatDateString(tender.bidValidityDate) : (tender.bidValidityDays ? `${tender.bidValidityDays} Days` : 'N/A')} />
             <InfoRow label="Reverse Auction" value={tender.allowReverseAuction ? 'Enabled' : 'Disabled'} />
-            <InfoRow label="Priority" value={wizardData.priority} />
-            <InfoRow label="Budget Head" value={wizardData.budgetHead} />
-            <InfoRow label="Financial Year" value={wizardData.financialYear} />
-            <InfoRow label="Pre-Bid Meeting" value={wizardData.preBidMeetingRequired && wizardData.preBidMeetingDate ? `${formatDateString(wizardData.preBidMeetingDate, true)} [${wizardData.preBidMode || 'Offline'}] at ${wizardData.preBidVenue || 'Designated Venue'}` : undefined} />
+            <InfoRow label="Priority" value={basics.priority} />
+            <InfoRow label="Required By Date" value={formatDateString(basics.requiredByDate)} />
+            <InfoRow label="Catalogue Available" value={basics.isCatalogueAvailable ? 'Yes' : 'No'} />
+            <InfoRow label="Single Vendor Allowed" value={basics.isOnlyOneVendor ? 'Yes' : 'No'} />
+            <InfoRow label="Tech Eval Needed" value={basics.isTechnicalEvaluationNeeded ? 'Yes' : 'No'} />
+            <InfoRow label="Repeated Supply" value={basics.isRepeatedSupply ? 'Yes' : 'No'} />
+            <InfoRow label="Market Research" value={basics.marketResearchOnly ? 'Yes' : 'No'} />
+            <InfoRow label="Specifications Clear" value={basics.isSpecClear ? 'Yes' : 'No'} />
+            <InfoRow label="Procurement Justification" value={basics.justification} />
+            <InfoRow label="Pre-Bid Meeting" value={schedule.preBidMeeting && schedule.preBidDate ? formatDateString(schedule.preBidDate, true) : undefined} />
           </div>
         </section>
 
-        {/* 3. BUYER INFORMATION */}
+        {/* 3. BUYER INFORMATION & INTERNAL DETAILS */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <SectionHeading title="Buyer Information" />
           <div className="space-y-1">
             <InfoRow label="Organization" value={
               <div className="flex items-center gap-2">
-                <span>{orgName}</span>
+                <span>{internal.orgName || orgName}</span>
                 <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-600 border border-emerald-100 uppercase">
                   <ShieldCheck className="h-3 w-3 stroke-[2.5]" /> Verified
                 </span>
               </div>
             } />
-            <InfoRow label="Department" value={tender.buyer?.buyerProfile?.department || 'N/A'} />
-            <InfoRow label="Contact Person" value={wizardData.buyerName || tender.buyer?.buyerProfile?.contactPerson || 'N/A'} />
-            <InfoRow label="Designation" value={wizardData.buyerDesignation} />
+            <InfoRow label="Department" value={internal.department || tender.buyer?.buyerProfile?.department || 'N/A'} />
+            <InfoRow label="Contact Person" value={internal.contactPerson || tender.buyer?.buyerProfile?.contactPerson || 'N/A'} />
             <InfoRow label="Email" value={
-              <span className="text-blue-600 hover:underline cursor-pointer">{wizardData.buyerEmail || tender.buyer?.buyerProfile?.email || tender.buyer?.email || 'N/A'}</span>
+              <span className="text-blue-600 hover:underline cursor-pointer">{internal.email || tender.buyer?.buyerProfile?.email || tender.buyer?.email || 'N/A'}</span>
             } />
-            <InfoRow label="Phone" value={wizardData.buyerMobile || tender.buyer?.buyerProfile?.phone || 'N/A'} />
-            <InfoRow label="State" value={tender.buyer?.buyerProfile?.state || 'N/A'} />
-            <InfoRow label="District" value={tender.buyer?.buyerProfile?.district || 'N/A'} />
-            <InfoRow label="Taluka" value={wizardData.taluka} />
-            <InfoRow label="Village / City" value={wizardData.villageOrCity} />
-            <InfoRow label="Office Address" value={wizardData.buyerAddress || tender.buyer?.buyerProfile?.address || 'N/A'} />
-            <InfoRow label="Dept File No" value={wizardData.departmentFileNumber} />
-            <InfoRow label="Dept Ref No" value={wizardData.departmentReferenceNumber} />
-            <InfoRow label="Competent Authority" value={wizardData.competentAuthorityName ? `${wizardData.competentAuthorityName} (${wizardData.competentAuthorityDesignation || ''})` : undefined} />
+            <InfoRow label="Phone" value={internal.mobile || tender.buyer?.buyerProfile?.phone || 'N/A'} />
+            <InfoRow label="Cost Center" value={internal.costCenter} />
+            <InfoRow label="Budget Head" value={internal.budgetHead} />
+            <InfoRow label="Project Code" value={internal.projectCode} />
+            <InfoRow label="Budget Confirmed" value={internal.budgetConfirmed ? 'Yes' : 'No'} />
+            <InfoRow label="Internal File No" value={internal.internalFileNumber} />
+            <InfoRow label="Internal Justification" value={internal.justification} />
+            <InfoRow label="Competent Authority" value={internal.competentAuthority} />
+            <InfoRow label="Approval Authority" value={internal.approvalAuthority} />
           </div>
         </section>
       </div>
+
+      {/* 3B. SERVICE DETAILS (IF APPLICABLE) */}
+      {basics.whatAreYouBuying === 'Service' && (
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mt-6">
+          <SectionHeading title="Service Requirements" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1">
+              <InfoRow label="Experience Req." value={serviceDetails.experienceRequired ? `${serviceDetails.experienceRequired} Years` : undefined} />
+              <InfoRow label="Manpower Req." value={serviceDetails.manpowerRequired} />
+              <InfoRow label="Duration" value={serviceDetails.serviceDuration ? `${serviceDetails.serviceDuration} Months` : undefined} />
+              <InfoRow label="Response Time" value={serviceDetails.slaResponseTime} />
+              <InfoRow label="Service Location" value={serviceDetails.location} />
+            </div>
+            <div className="space-y-1">
+              <InfoRow label="Scope of Work" value={serviceDetails.scopeOfWork} />
+              <InfoRow label="Deliverables" value={serviceDetails.deliverables} />
+              <InfoRow label="Inclusions" value={serviceDetails.inclusions} />
+              <InfoRow label="Exclusions" value={serviceDetails.exclusions} />
+              <InfoRow label="Milestones" value={serviceDetails.milestones} />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* 4. TENDER TIMELINE */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 overflow-x-auto">
         <SectionHeading title="Tender Timeline" />
         <div className="min-w-[800px] grid grid-cols-7 gap-4 pt-2">
           {[
-            { label: 'Publishing Date', value: formatDateString(tender.publishedAt) },
-            { label: 'Bid Submission Start', value: formatDateString(tender.publishedAt) },
-            { label: 'Clarification Start', value: formatDateString(tender.publishedAt) },
-            { label: 'Clarification End', value: formatDateString(tender.publishedAt) },
-            { label: 'Bid Submission End', value: closesAtFormatted, red: true },
-            { label: 'Technical Opening', value: tender.technicalOpeningDate ? formatDateString(tender.technicalOpeningDate, true) : 'To be notified' },
-            { label: 'Financial Opening', value: tender.financialOpeningDate ? formatDateString(tender.financialOpeningDate, true) : 'To be notified' },
+            { label: 'Publishing Date', value: formatDateString(schedule.publishDate || tender.publishedAt) },
+            { label: 'Bid Submission Start', value: formatDateString(schedule.submissionStartDate || tender.publishedAt) },
+            { label: 'Clarification Start', value: formatDateString(schedule.publishDate || tender.publishedAt) },
+            { label: 'Clarification End', value: formatDateString(schedule.clarificationDeadline || tender.publishedAt) },
+            { label: 'Bid Submission End', value: schedule.submissionDate ? formatDateString(schedule.submissionDate, true) : closesAtFormatted, red: true },
+            { label: 'Technical Opening', value: schedule.technicalOpeningDate || tender.technicalOpeningDate ? formatDateString(schedule.technicalOpeningDate || tender.technicalOpeningDate, true) : 'To be notified' },
+            { label: 'Financial Opening', value: schedule.financialOpeningDate || tender.financialOpeningDate ? formatDateString(schedule.financialOpeningDate || tender.financialOpeningDate, true) : 'To be notified' },
           ].map((timeline, idx) => (
             <div key={idx} className="flex flex-col gap-1 border-l-2 border-slate-200 pl-3 relative">
               <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-slate-300" />
@@ -445,9 +486,9 @@ export default function TenderDetailPage() {
               <tr className="bg-slate-100 border-y border-slate-200">
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs">S.No</th>
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs w-[250px]">Item Name / Description</th>
-                <th className="p-3 font-bold text-slate-600 uppercase text-xs">Technical Specs</th>
+                <th className="p-3 font-bold text-slate-600 uppercase text-xs">Technical Specs & Files</th>
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs">Brand/Make/Model</th>
-                <th className="p-3 font-bold text-slate-600 uppercase text-xs">HSN/SAC</th>
+                <th className="p-3 font-bold text-slate-600 uppercase text-xs">HSN/SAC/GST</th>
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs">Qty & Unit</th>
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs text-right">Unit Price</th>
                 <th className="p-3 font-bold text-slate-600 uppercase text-xs text-right">Total Price</th>
@@ -459,30 +500,53 @@ export default function TenderDetailPage() {
                 <tr key={item.id} className="hover:bg-slate-50/50">
                   <td className="p-3 font-semibold text-slate-600 align-top">{idx + 1}</td>
                   <td className="p-3 align-top">
-                    <p className="font-black text-slate-900">{item.itemName}</p>
-                    {item.description && <p className="text-xs text-slate-500 mt-1 line-clamp-3">{item.description}</p>}
+                    <p className="font-black text-slate-900">{item.itemName || '-'}</p>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-3">{item.description || '-'}</p>
                   </td>
                   <td className="p-3 align-top text-xs text-slate-700 whitespace-pre-wrap max-w-[200px]">
-                    {item.technicalSpecification}
+                    <div className="mb-2">{item.technicalSpecification || '-'}</div>
+                    <div className="font-semibold text-slate-500">
+                      Files: 
+                      {Array.isArray(item.uploadedSpecificationFiles) && item.uploadedSpecificationFiles.length > 0 ? (
+                        <div className="mt-1 flex flex-col gap-1">
+                          {item.uploadedSpecificationFiles.map((f: any, i: number) => (
+                            <button
+                              key={i}
+                              onClick={() => handlePreviewDoc({ fileAsset: { id: f.fileAssetId || f.id }, id: f.id })}
+                              className="text-blue-600 hover:underline cursor-pointer flex items-center gap-1 text-left"
+                            >
+                              <FileText className="h-3 w-3" />
+                              {f.fileName || f.name || 'Document'}
+                            </button>
+                          ))}
+                        </div>
+                      ) : typeof item.uploadedSpecificationFiles === 'string' ? (
+                        <span className="ml-1 text-slate-700">{item.uploadedSpecificationFiles}</span>
+                      ) : (
+                        <span className="ml-1">-</span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-3 align-top text-xs text-slate-700">
-                    {item.brand && <div><span className="font-semibold">Brand:</span> {item.brand}</div>}
-                    {item.make && <div><span className="font-semibold">Make:</span> {item.make}</div>}
-                    {item.model && <div><span className="font-semibold">Model:</span> {item.model}</div>}
+                    <div><span className="font-semibold text-slate-500">Brand:</span> {item.brand || '-'}</div>
+                    <div><span className="font-semibold text-slate-500">Make:</span> {item.make || '-'}</div>
+                    <div><span className="font-semibold text-slate-500">Model:</span> {item.model || '-'}</div>
+                    <div><span className="font-semibold text-slate-500">Alt Allowed:</span> {item.alternateBrandAllowed ? 'Yes' : 'No'}</div>
                   </td>
                   <td className="p-3 align-top text-xs text-slate-700">
-                    {item.hsn && <div><span className="font-semibold">HSN:</span> {item.hsn}</div>}
-                    {item.sac && <div><span className="font-semibold">SAC:</span> {item.sac}</div>}
+                    <div><span className="font-semibold text-slate-500">HSN:</span> {item.hsn || '-'}</div>
+                    <div><span className="font-semibold text-slate-500">SAC:</span> {item.sac || '-'}</div>
+                    <div><span className="font-semibold text-slate-500">GST:</span> {item.gst != null ? `${item.gst}%` : '-'}</div>
                   </td>
                   <td className="p-3 align-top">
-                    <div className="font-black text-slate-900">{item.quantity}</div>
-                    <div className="text-xs font-semibold text-slate-500">{item.unitOfMeasure}</div>
+                    <div className="font-black text-slate-900">{item.quantity != null ? item.quantity : '-'}</div>
+                    <div className="text-xs font-semibold text-slate-500">{item.unitOfMeasure || '-'}</div>
                   </td>
-                  <td className="p-3 align-top text-right font-bold text-slate-800">{item.estimatedUnitPrice ? formatCurrency(item.estimatedUnitPrice) : ''}</td>
-                  <td className="p-3 align-top text-right font-black text-slate-900">{item.estimatedTotal ? formatCurrency(item.estimatedTotal) : ''}</td>
+                  <td className="p-3 align-top text-right font-bold text-slate-800">{item.estimatedUnitPrice ? formatCurrency(item.estimatedUnitPrice) : '-'}</td>
+                  <td className="p-3 align-top text-right font-black text-slate-900">{item.estimatedTotal ? formatCurrency(item.estimatedTotal) : '-'}</td>
                   <td className="p-3 align-top text-xs text-center text-slate-700">
-                    {item.deliverySchedule && <div><span className="font-semibold block">Delivery:</span> {item.deliverySchedule}</div>}
-                    {item.warranty && <div className="mt-1"><span className="font-semibold block">Warranty:</span> {item.warranty}</div>}
+                    <div><span className="font-semibold block text-slate-500">Delivery:</span> {item.deliverySchedule || '-'}</div>
+                    <div className="mt-1"><span className="font-semibold block text-slate-500">Warranty:</span> {item.warranty || '-'}</div>
                   </td>
                 </tr>
               ))}
@@ -498,19 +562,14 @@ export default function TenderDetailPage() {
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <SectionHeading title="Delivery & Consignee" />
           <div className="space-y-1">
-            <InfoRow label="Delivery District" value={tender.itemCondition || tender.buyer?.buyerProfile?.district} />
+            <InfoRow label="Delivery Location" value={basics.deliveryLocation || tender.itemCondition || tender.buyer?.buyerProfile?.district} />
             <InfoRow label="State" value={tender.buyer?.buyerProfile?.state} />
-            <InfoRow label="Pincode" value={wizardData.pincode || tender.buyer?.buyerProfile?.pincode} />
-            <InfoRow label="Delivery Period" value={wizardData.deliveryPeriod} />
-            <InfoRow label="Consignee Name" value={wizardData.consigneeName} />
-            <InfoRow label="Designation" value={wizardData.consigneeDesignation} />
-            <InfoRow label="Contact" value={wizardData.consigneeEmail || wizardData.consigneeMobile ? `${wizardData.consigneeEmail || ''} ${wizardData.consigneeEmail && wizardData.consigneeMobile ? '/' : ''} ${wizardData.consigneeMobile || ''}` : ''} />
-            <InfoRow label="Installation Address" value={wizardData.installationAddress} />
-            <InfoRow label="Inspection Officer" value={wizardData.inspectionOfficer} />
-            <InfoRow label="Acceptance Criteria" value={wizardData.acceptanceCriteria} />
-            <InfoRow label="Delay Penalty" value={wizardData.delayPenaltyApplicable ? (wizardData.penaltyDetails || 'Applicable') : 'Not Applicable'} />
+            <InfoRow label="Delivery Period" value={formatDateString(basics.requiredByDate)} />
+            <InfoRow label="Consignee Name" value={consigneeDetails[0]?.name} />
+            <InfoRow label="Total Quantity" value={consigneeDetails[0]?.quantity} />
+            <InfoRow label="Installation Address" value={consigneeDetails[0]?.location} />
           </div>
-          {wizardData.multipleConsignees && wizardData.multipleConsignees.length > 0 && (
+          {consigneeDetails && consigneeDetails.length > 1 && (
             <div className="mt-4 pt-4 border-t border-slate-100">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Multiple Delivery Locations</h3>
               <table className="w-full text-left text-xs border border-slate-200">
@@ -522,11 +581,11 @@ export default function TenderDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {wizardData.multipleConsignees.map((c: any, i: number) => (
+                  {consigneeDetails.map((c: any, i: number) => (
                     <tr key={i}>
-                      <td className="p-2 font-semibold">{c.name || c.consigneeName}</td>
+                      <td className="p-2 font-semibold">{c.name || 'Default Consignee'}</td>
                       <td className="p-2">{c.quantity}</td>
-                      <td className="p-2">{c.deliveryAddress || c.address}</td>
+                      <td className="p-2">{c.location || c.address}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -535,18 +594,16 @@ export default function TenderDetailPage() {
           )}
         </section>
 
-        {/* 7. ELIGIBILITY CRITERIA */}
+        {/* 7. SUPPLIER CONFIG & ELIGIBILITY */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <SectionHeading title="Eligibility Criteria" />
+          <SectionHeading title="Supplier Configuration & Eligibility" />
           <div className="space-y-1">
-            <InfoRow label="Experience Req." value={wizardData.experienceRequired} />
-            <InfoRow label="Turnover Req." value={wizardData.turnoverRequired} />
-            {wizardData.similarWorkRequired && <InfoRow label="Similar Work Req." value="Required" />}
-            <InfoRow label="Startup Preference" value={wizardData.startupPreference ? 'Yes' : undefined} />
-            <InfoRow label="MSE Preference" value={wizardData.msePreference ? 'Yes' : undefined} />
-            <InfoRow label="Make In India" value={wizardData.makeInIndiaPreference ? 'Yes' : undefined} />
-            <InfoRow label="Blacklisting Decl." value={wizardData.blacklistingDeclarationRequired ? 'Required' : undefined} />
-            <InfoRow label="Conflict of Interest" value={wizardData.conflictOfInterestDeclarationRequired ? 'Required' : undefined} />
+            <InfoRow label="Vendor Selection" value={vendors.selection} />
+            {vendors.inviteCount && <InfoRow label="Invite Count" value={vendors.inviteCount} />}
+            <InfoRow label="Startup/MSME Pref." value={vendors.msmePreference ? 'Yes' : undefined} />
+            <InfoRow label="Local Vendor Pref." value={vendors.localVendorPreference ? 'Yes' : undefined} />
+            <InfoRow label="Exclude Blacklisted" value={vendors.excludeBlacklisted ? 'Yes' : undefined} />
+            <InfoRow label="Experience Req." value={serviceDetails.experienceRequired} />
           </div>
           {tender.eligibilityCriteria && tender.eligibilityCriteria.length > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-100">
@@ -563,15 +620,32 @@ export default function TenderDetailPage() {
           )}
         </section>
 
-        {/* 8. TECHNICAL REQUIREMENTS */}
+        {/* 8. EVALUATION & TECHNICAL REQUIREMENTS */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <SectionHeading title="Technical Requirements" />
+          <SectionHeading title="Evaluation Basis" />
           <div className="space-y-1">
-            <InfoRow label="Evaluation Method" value={tender.evaluationMethod} />
-            {wizardData.inspectionOfficer && <InfoRow label="Inspection Req." value="Required" />}
-            <InfoRow label="Acceptance Rules" value={wizardData.acceptanceCriteria} />
+            <InfoRow label="Evaluation Method" value={evaluation.method || tender.evaluationMethod} />
+            <InfoRow label="Technical Weight" value={evaluation.techWeight ? `${evaluation.techWeight}%` : undefined} />
+            <InfoRow label="Commercial Weight" value={evaluation.commWeight ? `${evaluation.commWeight}%` : undefined} />
+            <InfoRow label="Min Qual Marks" value={evaluation.minQualifyingMarks} />
             {tender.tenderItems?.some(i => i.technicalSpecification) && <InfoRow label="Tech Specs" value="Refer to BOQ Details or Uploaded Documents" />}
           </div>
+          {evaluation.technicalCriteria && evaluation.technicalCriteria.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Technical Criteria</h3>
+              <ul className="space-y-2 text-sm text-slate-700">
+                {evaluation.technicalCriteria.map((crit: any, idx: number) => (
+                  <li key={idx} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      {crit.name} ({crit.weight}%)
+                    </div>
+                    <div className="pl-3.5 text-xs text-slate-500">{crit.description}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
 
         {/* 9. FINANCIAL REQUIREMENTS */}
@@ -580,14 +654,14 @@ export default function TenderDetailPage() {
           <div className="space-y-1">
             <InfoRow label="Estimated Value" value={tender.budget ? formatCurrency(tender.budget) : undefined} />
             <InfoRow label="EMD Amount" value={tender.isEmdRequired === false ? 'Exempted' : (tender.emdAmount ? formatCurrency(tender.emdAmount) : undefined)} />
-            <InfoRow label="PBG Percentage" value={wizardData.pbgRequired && wizardData.pbgPercentage ? `${wizardData.pbgPercentage}%` : undefined} />
-            <InfoRow label="Document Fee" value={tender.documentFee ? formatCurrency(tender.documentFee) : undefined} />
-            <InfoRow label="Payment Terms" value={wizardData.paymentTerms || tender.paymentTerms} />
-            {wizardData.advancePaymentAllowed && <InfoRow label="Advance Payment" value="Allowed" />}
-            {wizardData.partPaymentAllowed && <InfoRow label="Part Payment" value="Allowed" />}
-            <InfoRow label="GST Invoice Req." value={wizardData.gstInvoiceRequired !== false ? 'Yes' : 'No'} />
-            {wizardData.invoiceRequired && <InfoRow label="Invoice Required" value="Yes" />}
-            {wizardData.ewayBillRequired && <InfoRow label="E-Way Bill Required" value="Yes" />}
+            <InfoRow label="PBG Percentage" value={terms.pbgRequired ? `${terms.pbgAmount || 0}%` : undefined} />
+            <InfoRow label="Document Fee" value={terms.documentFee ? formatCurrency(terms.documentFee) : undefined} />
+            <InfoRow label="Payment Terms" value={terms.paymentTerms || tender.paymentTerms} />
+            <InfoRow label="Advance Payment" value={terms.advanceAllowed ? 'Allowed' : 'Not Allowed'} />
+            <InfoRow label="Retention Amount" value={terms.retentionAmount ? `${terms.retentionAmount}%` : undefined} />
+            <InfoRow label="Security Deposit" value={terms.securityDeposit ? `${terms.securityDeposit}%` : undefined} />
+            <InfoRow label="GST Included" value={terms.gstIncluded ? 'Yes' : 'No'} />
+            <InfoRow label="Freight Included" value={terms.freightIncluded ? 'Yes' : 'No'} />
           </div>
         </section>
 
@@ -612,13 +686,15 @@ export default function TenderDetailPage() {
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <SectionHeading title="Terms & Conditions" />
           <div className="space-y-1 mb-4">
-            <InfoRow label="Cancellation Rules" value={wizardData.cancellationAllowedBeforeClosing ? 'Allowed Before Closing' : 'Strict / No Cancellation'} />
-            {wizardData.corrigendumAllowed && <InfoRow label="Corrigendum" value="Allowed" />}
-            {(tender.allowClarification || wizardData.sellerQueryAllowed || wizardData.clarificationWindowRequired) && <InfoRow label="Seller Queries" value="Allowed" />}
-            {wizardData.rateContractRequired && <InfoRow label="Rate Contract" value="Required" />}
-            {wizardData.multipleAwardAllowed && <InfoRow label="Multiple Award" value="Allowed" />}
-            {wizardData.splittingQuantityAllowed && <InfoRow label="Splitting Quantity" value="Allowed" />}
-            <InfoRow label="Delivery Terms" value={tender.deliveryType} />
+            <InfoRow label="Withdrawal" value={schedule.allowWithdrawal ? 'Allowed' : 'Not Allowed'} />
+            <InfoRow label="Revision" value={schedule.allowRevision ? 'Allowed' : 'Not Allowed'} />
+            <InfoRow label="Seller Queries" value={schedule.clarificationAllowed ? 'Allowed' : 'Not Allowed'} />
+            <InfoRow label="Rate Contract" value={draft.type === 'RATE_CONTRACT' ? 'Yes' : undefined} />
+            <InfoRow label="Multiple Award" value={draft.type === 'RATE_CONTRACT' && draft.rateContractConfig?.supplierSelectionStrategy !== 'SINGLE_SUPPLIER' ? 'Yes' : undefined} />
+            <InfoRow label="Splitting Quantity" value={draft.type === 'RATE_CONTRACT' && draft.rateContractConfig?.supplierSelectionStrategy !== 'SINGLE_SUPPLIER' ? 'Yes' : undefined} />
+            <InfoRow label="Delivery Terms" value={terms.deliveryTerms || tender.deliveryType} />
+            <InfoRow label="Warranty Terms" value={terms.warrantyTerms} />
+            <InfoRow label="Penalty Clause" value={terms.penaltyClause} />
           </div>
           {tender.termsAndConditions && tender.termsAndConditions.length > 0 && (
             <div className="pt-4 border-t border-slate-100">
@@ -636,20 +712,30 @@ export default function TenderDetailPage() {
         </section>
 
         {/* 13. REVERSE AUCTION */}
-        {tender.allowReverseAuction && (
+        {tender.allowReverseAuction && auctionConfig && (
           <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <SectionHeading title="Reverse Auction Rules" />
             <div className="space-y-1">
               <InfoRow label="Status" value={<span className="text-emerald-600 font-bold">Enabled</span>} />
-              <InfoRow label="Trigger Stage" value={wizardData.raTriggerStage} />
-              <InfoRow label="Duration" value={wizardData.raDuration} />
-              <InfoRow label="Min Decrement" value={wizardData.minimumDecrementValue ? formatCurrency(wizardData.minimumDecrementValue) : undefined} />
-              <InfoRow label="Starting Price" value={wizardData.raStartPrice ? formatCurrency(wizardData.raStartPrice) : undefined} />
-              <InfoRow label="Eligible Sellers" value={wizardData.eligibleSellersForRa} />
-              <InfoRow label="Winner Rule" value={wizardData.raWinnerRule} />
+              <InfoRow label="Trigger Stage" value={auctionConfig.triggerConfiguration?.trigger} />
+              <InfoRow label="Duration" value={`${auctionConfig.durationMinutes || 0} Minutes`} />
+              <InfoRow label="Min Decrement" value={auctionConfig.minimumBidDecrement ? formatCurrency(auctionConfig.minimumBidDecrement) : undefined} />
+              <InfoRow label="Starting Price" value={auctionConfig.startingBidPrice ? formatCurrency(auctionConfig.startingBidPrice) : undefined} />
+              <InfoRow label="Eligible Sellers" value={auctionConfig.minimumQualifiedBidders} />
+              <InfoRow label="Winner Rule" value={auctionConfig.auctionType} />
             </div>
           </section>
         )}
+
+        {/* 13B. APPROVAL */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <SectionHeading title="Approval & Workflow" />
+          <div className="space-y-1">
+            <InfoRow label="Workflow" value={approval.workflow} />
+            <InfoRow label="Approver" value={approval.approver} />
+            <InfoRow label="Notes" value={approval.notes} />
+          </div>
+        </section>
 
         {/* 14. ACTIVITY */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">

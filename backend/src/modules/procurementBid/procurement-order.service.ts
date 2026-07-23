@@ -8,6 +8,7 @@ import { deliveryService, type DeliveryActor } from '../delivery/delivery.servic
 import { initiatePayment } from '../payments/payment.service.js';
 import { auditLog } from '../audit/audit.service.js';
 import { getProcurementModeSettings } from '../procurementMode/procurement-mode.service.js';
+import { logger } from '../../config/logger.js';
 
 const db = prisma as any;
 
@@ -135,19 +136,35 @@ export const listProcurementOrders = async (actor: AuthenticatedUser, query: any
 };
 
 export const createOrReuseProcurementPOForAward = async (req: AuthRequest, award: any, bid: any) => {
+  logger.info({ awardId: award?.id, bidId: bid?.id }, '[CREATE_PO] Starting PO creation for award');
+
   const existing = await db.purchaseOrder.findFirst({
     where: { sourceType: 'procurement_bid_award', sourceId: award.id },
     include: poInclude
   });
-  if (existing) return { purchaseOrder: existing, reused: true };
+  if (existing) {
+    logger.info({ poId: existing.id, poNumber: existing.poNumber }, '[CREATE_PO] Existing PO found, reusing');
+    return { purchaseOrder: existing, reused: true };
+  }
 
   const participation = await db.procurementBidParticipation.findUnique({
     where: { id: award.participationId },
     include: { seller: { include: { organization: true } }, documents: true }
   });
-  if (!participation) throw new ApiError(404, 'Awarded participation not found', 'PARTICIPATION_NOT_FOUND');
+  if (!participation) {
+    logger.error({ awardId: award.id, participationId: award.participationId }, '[CREATE_PO] Awarded participation not found');
+    throw new ApiError(404, 'Awarded participation not found', 'PARTICIPATION_NOT_FOUND');
+  }
 
-  const buyer = await db.user.findUnique({ where: { id: bid.buyerId }, include: { organization: true } });
+  let finalBuyerId = bid.buyerId || req.user?.id || award.awardedById;
+  let buyer = finalBuyerId ? await db.user.findUnique({ where: { id: Number(finalBuyerId) }, include: { organization: true } }) : null;
+  if (!buyer && req.user?.id) {
+    finalBuyerId = req.user.id;
+    buyer = await db.user.findUnique({ where: { id: Number(finalBuyerId) }, include: { organization: true } });
+  }
+
+  logger.info({ finalBuyerId, sellerId: participation.sellerId }, '[CREATE_PO] Resolved buyer and seller for PO');
+
   const awardedAmount = money(award.awardedAmount || participation.totalAmount || participation.quotedAmount || 0);
   const gstRate = money(participation.gstPercentage || 0);
   const baseAmount = money(participation.quotedAmount || awardedAmount);
@@ -157,9 +174,9 @@ export const createOrReuseProcurementPOForAward = async (req: AuthRequest, award
     const po = await tx.purchaseOrder.create({
       data: {
         poNumber: numberSeries(bid.bidType === 'Service' ? 'WO-PB' : 'PO-PB'),
-        buyerId: bid.buyerId,
-        sellerId: participation.sellerId,
-        title: bid.title,
+        buyerId: Number(finalBuyerId),
+        sellerId: Number(participation.sellerId),
+        title: bid.title || 'Procurement Order',
         amount: awardedAmount,
         totalValue: awardedAmount,
         status: 'issued',

@@ -323,6 +323,8 @@ export const nextClarificationNumber = async (bidNumber: string) => {
 
 export const resolveBid = async (bidIdOrNumber: string | number, include: any = bidInclude) => {
   const token = String(bidIdOrNumber).trim();
+  logger.info({ token }, '[RESOLVE_BID] Resolving bid for token');
+
   const isNum = /^\d+$/.test(token);
   const parsedNum = (token.startsWith('REQ-') || token.startsWith('RFQ-'))
     ? Number(token.replace(/^(REQ-|RFQ-)/, ''))
@@ -338,11 +340,102 @@ export const resolveBid = async (bidIdOrNumber: string | number, include: any = 
     whereConditions.push({ id: parsedNum });
   }
 
-  const bid = await db.procurementBid.findFirst({
+  let bid = await db.procurementBid.findFirst({
     where: { OR: whereConditions },
     include
   });
-  if (!bid) throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
+
+  if (bid) {
+    logger.info({ token, bidId: bid.id, bidNumber: bid.bidNumber }, '[RESOLVE_BID] Found existing procurementBid in database');
+  } else {
+    logger.info({ token }, '[RESOLVE_BID] Not found in procurementBid table, searching requirement tables...');
+    const searchToken = token.startsWith('RFQ-') ? token.replace('RFQ-', 'REQ-') : token;
+    const reqWhere = [
+      { requirementNumber: token },
+      { requirementNumber: searchToken },
+      { requirementNumber: `REQ-${token}` },
+      { requirementNumber: `RFQ-${token}` },
+      ...(parsedNum && Number.isFinite(parsedNum) && parsedNum > 0 ? [{ id: parsedNum }] : [])
+    ];
+
+    let buyerReq: any = await db.buyerRequirement.findFirst({
+      where: { OR: reqWhere },
+      include: { buyerOrganization: true, createdBy: true }
+    }).catch(err => {
+      logger.warn({ err }, '[RESOLVE_BID] Error querying buyerRequirement');
+      return null;
+    });
+
+    if (!buyerReq) {
+      buyerReq = await db.requirement.findFirst({
+        where: { OR: reqWhere },
+        include: { organization: true, buyer: true }
+      }).catch(err => {
+        logger.warn({ err }, '[RESOLVE_BID] Error querying requirement');
+        return null;
+      });
+    }
+
+    if (buyerReq) {
+      const reqId = buyerReq.id;
+      const reqNumber = buyerReq.requirementNumber || token;
+      const rawBuyerId = buyerReq.createdById || buyerReq.buyerId;
+      const buyerOrgName = buyerReq.buyerOrganization?.organizationName || buyerReq.organization?.organizationName || '';
+
+      logger.info({ reqId, reqNumber, rawBuyerId }, '[RESOLVE_BID] Found requirement record in DB');
+
+      bid = await db.procurementBid.findFirst({
+        where: {
+          OR: [
+            { bidNumber: reqNumber },
+            { sourceModel: 'REQUIREMENT', sourceId: reqId }
+          ]
+        },
+        include
+      });
+
+      if (!bid) {
+        let validBuyerId = rawBuyerId;
+        if (validBuyerId) {
+          const userExists = await db.user.findUnique({ where: { id: Number(validBuyerId) } });
+          if (!userExists) validBuyerId = null;
+        }
+        if (!validBuyerId) {
+          const fallbackUser = await db.user.findFirst({ where: { role: { in: ['buyer', 'admin', 'master_admin'] } } });
+          validBuyerId = fallbackUser?.id;
+        }
+
+        logger.info({ reqNumber, reqId, validBuyerId }, '[RESOLVE_BID] Creating shadow procurementBid record in DB...');
+        bid = await db.procurementBid.create({
+          data: {
+            bidNumber: reqNumber,
+            title: buyerReq.title || 'Requirement Procurement',
+            description: buyerReq.description || buyerReq.title || 'Procurement requirement',
+            category: buyerReq.category?.name || buyerReq.category || 'General',
+            buyerType: buyerReq.buyerType || buyerReq.buyerOrganization?.organizationType || 'Private Enterprise',
+            procurementType: buyerReq.procurementMethod || 'RFQ',
+            bidType: buyerReq.bidType || 'Product',
+            buyerId: Number(validBuyerId),
+            buyerOrganizationName: buyerOrgName || 'Buyer Organization',
+            status: buyerReq.status === 'APPROVED' ? 'OPEN' : (buyerReq.status || 'OPEN'),
+            lifecycleStage: 'SELLER_PARTICIPATION',
+            sourceModel: 'REQUIREMENT',
+            sourceId: reqId,
+            deliveryLocation: buyerReq.location || buyerReq.deliveryLocation || [buyerReq.buyerOrganization?.district, buyerReq.buyerOrganization?.state].filter(Boolean).join(', ') || 'India',
+            startDate: buyerReq.createdAt || new Date(),
+            endDate: buyerReq.lastDate || buyerReq.requiredBy || new Date(Date.now() + 30 * 86400000)
+          },
+          include
+        });
+        logger.info({ newBidId: bid.id }, '[RESOLVE_BID] Created shadow procurementBid successfully');
+      }
+    }
+  }
+
+  if (!bid) {
+    logger.warn({ token }, '[RESOLVE_BID] Bid not found');
+    throw new ApiError(404, 'Bid not found', 'BID_NOT_FOUND');
+  }
   return refreshBidStatus(bid);
 };
 
@@ -745,7 +838,7 @@ export const assertBuyerOwner = (actor: Actor, bid: any) => {
   if (actor.role !== 'buyer' && actor.role !== 'admin' && actor.role !== 'master_admin') {
     throw new ApiError(403, 'Buyer access required', 'FORBIDDEN_ROLE');
   }
-  if (actor.role === 'buyer' && bid.buyerId !== Number(actor.id)) {
+  if (actor.role === 'buyer' && bid.buyerId && Number(bid.buyerId) !== Number(actor.id) && (!actor.organizationId || bid.buyerOrganizationId !== actor.organizationId)) {
     throw new ApiError(403, 'You cannot access another buyer bid.', 'FORBIDDEN_ROLE');
   }
 };
@@ -1311,11 +1404,23 @@ export const startParticipation = async (req: AuthRequest, bidId: string) => {
 
 export const assertOwnParticipation = async (req: AuthRequest, bidId: string, participationId: number) => {
   const bid = await resolveBid(bidId, {});
-  const participation = await db.procurementBidParticipation.findUnique({
+  let participation = await db.procurementBidParticipation.findUnique({
     where: { id: participationId },
     include: { bid: true, documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true }
   });
-  if (!participation || participation.bidId !== bid.id) throw new ApiError(404, 'Participation not found', 'PARTICIPATION_NOT_FOUND');
+  if (participation && participation.bidId !== bid.id) {
+    const partBid = await db.procurementBid.findUnique({ where: { id: participation.bidId } });
+    if (!partBid || (partBid.id !== bid.id && partBid.bidNumber !== bid.bidNumber && (!bid.sourceId || partBid.sourceId !== bid.sourceId))) {
+      participation = null;
+    }
+  }
+  if (!participation) {
+    participation = await db.procurementBidParticipation.findFirst({
+      where: { bidId: bid.id, OR: [{ id: participationId }, { sellerId: participationId }] },
+      include: { bid: true, documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true }
+    });
+  }
+  if (!participation) throw new ApiError(404, 'Participation not found', 'PARTICIPATION_NOT_FOUND');
   if (req.user!.role !== 'admin' && req.user!.role !== 'master_admin' && participation.sellerId !== req.user!.id && bid.buyerId !== req.user!.id) {
     throw new ApiError(403, 'You cannot access this participation.', 'FORBIDDEN_ROLE');
   }
@@ -1676,39 +1781,155 @@ export const openFinancialEvaluation = async (req: AuthRequest, bidId: string) =
 };
 
 export const recommendAward = async (req: AuthRequest, bidId: string, body: any) => {
+  logger.info({ bidId, user: req.user?.id, body }, '[RECOMMEND_AWARD] Starting award recommendation');
+
   const bid = await resolveBid(bidId, {});
+  logger.info({ bidId: bid.id, bidNumber: bid.bidNumber, buyerId: bid.buyerId }, '[RECOMMEND_AWARD] Resolved bid');
+
   assertBuyerOwner(req.user!, bid);
+  logger.info({ user: req.user?.id }, '[RECOMMEND_AWARD] Buyer ownership verified');
 
-  const participation = await db.procurementBidParticipation.findUnique({ where: { id: Number(body.participationId) } });
-  if (!participation || participation.bidId !== bid.id) throw new ApiError(404, 'Participation not found', 'PARTICIPATION_NOT_FOUND');
+  const partIdNum = Number(body.participationId);
+  let participation: any = null;
 
-  const award = await db.$transaction(async (tx: any) => {
-    const created = await tx.procurementBidAward.create({
-      data: {
+  if (partIdNum && !isNaN(partIdNum)) {
+    participation = await db.procurementBidParticipation.findUnique({
+      where: { id: partIdNum },
+      include: { seller: { include: { organization: true } } }
+    });
+  }
+
+  if (participation && participation.bidId !== bid.id) {
+    const partBid = await db.procurementBid.findUnique({ where: { id: participation.bidId } });
+    if (!partBid || (partBid.id !== bid.id && partBid.bidNumber !== bid.bidNumber && (!bid.sourceId || partBid.sourceId !== bid.sourceId))) {
+      participation = null;
+    }
+  }
+
+  if (!participation && partIdNum && !isNaN(partIdNum)) {
+    participation = await db.procurementBidParticipation.findFirst({
+      where: {
         bidId: bid.id,
-        participationId: participation.id,
-        sellerId: participation.sellerId,
-        awardedAmount: participation.totalAmount || participation.quotedAmount || 0,
-        awardStatus: 'ADMIN_APPROVED',
-        awardedById: req.user!.id,
-        remarks: body.remarks || body.adminOverrideReason || 'Accepted by buyer',
-        awardedAt: now()
+        OR: [
+          { id: partIdNum },
+          { sellerId: partIdNum }
+        ]
+      },
+      include: { seller: { include: { organization: true } } }
+    });
+  }
+
+  if (!participation && partIdNum && !isNaN(partIdNum)) {
+    logger.info({ partIdNum }, '[RECOMMEND_AWARD] Searching requirementResponse table for participation ID...');
+    const reqResp = await db.requirementResponse.findUnique({
+      where: { id: partIdNum },
+      include: {
+        sellerUser: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+        sellerOrganization: { select: { organizationName: true } },
+        requirement: true
       }
     });
 
-    // Mark winning seller as AWARDED & QUALIFIED
+    if (reqResp) {
+      logger.info({ reqRespId: reqResp.id, sellerUserId: reqResp.sellerUserId }, '[RECOMMEND_AWARD] Found requirementResponse');
+      let shadowPart = await db.procurementBidParticipation.findFirst({
+        where: {
+          bidId: bid.id,
+          sellerId: reqResp.sellerUserId
+        },
+        include: { seller: { include: { organization: true } } }
+      });
+
+      if (!shadowPart) {
+        const uniquePartNumber = `PRT-REQ-${bid.id}-${reqResp.id}-${Date.now().toString(36).slice(-4)}`;
+        let responseDataObj: any = {};
+        if (reqResp.responseData) {
+          if (typeof reqResp.responseData === 'object') {
+            responseDataObj = reqResp.responseData;
+          } else if (typeof reqResp.responseData === 'string') {
+            try { responseDataObj = JSON.parse(reqResp.responseData); } catch {}
+          }
+        }
+
+        logger.info({ uniquePartNumber, bidId: bid.id, sellerId: reqResp.sellerUserId }, '[RECOMMEND_AWARD] Creating shadow participation');
+        shadowPart = await db.procurementBidParticipation.create({
+          data: {
+            bidId: bid.id,
+            sellerId: reqResp.sellerUserId,
+            participationNumber: uniquePartNumber,
+            submissionStatus: 'SUBMITTED',
+            technicalStatus: 'QUALIFIED',
+            financialStatus: 'EVALUATED',
+            quotedAmount: reqResp.offeredPrice || 0,
+            totalAmount: reqResp.offeredPrice || 0,
+            submittedAt: reqResp.createdAt,
+            responseData: responseDataObj
+          },
+          include: { seller: { include: { organization: true } } }
+        });
+        logger.info({ shadowPartId: shadowPart.id }, '[RECOMMEND_AWARD] Created shadow participation successfully');
+      }
+      participation = shadowPart;
+
+      await db.requirementResponse.update({
+        where: { id: reqResp.id },
+        data: { status: 'ACCEPTED' }
+      }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating requirementResponse status to ACCEPTED'));
+
+      await db.requirementResponse.updateMany({
+        where: { requirementId: reqResp.requirementId, id: { not: reqResp.id } },
+        data: { status: 'REJECTED' }
+      }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating requirementResponse status to REJECTED'));
+
+      if (reqResp.requirementId) {
+        await db.buyerRequirement.update({
+          where: { id: reqResp.requirementId },
+          data: { status: 'AWARDED' }
+        }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating buyerRequirement status to AWARDED'));
+      }
+    }
+  }
+
+  if (!participation) {
+    logger.error({ partIdNum, bidId: bid.id }, '[RECOMMEND_AWARD] Failed to locate participation record');
+    throw new ApiError(404, 'Participation not found', 'PARTICIPATION_NOT_FOUND');
+  }
+
+  logger.info({ participationId: participation.id, sellerId: participation.sellerId }, '[RECOMMEND_AWARD] Resolved participation, executing transaction...');
+
+  const award = await db.$transaction(async (tx: any) => {
+    let created = await tx.procurementBidAward.findFirst({
+      where: {
+        bidId: bid.id,
+        participationId: participation.id
+      }
+    });
+
+    if (!created) {
+      created = await tx.procurementBidAward.create({
+        data: {
+          bidId: bid.id,
+          participationId: participation.id,
+          sellerId: participation.sellerId,
+          awardedAmount: participation.totalAmount || participation.quotedAmount || 0,
+          awardStatus: 'ADMIN_APPROVED',
+          awardedById: req.user!.id,
+          remarks: body.remarks || body.adminOverrideReason || 'Accepted by buyer',
+          awardedAt: now()
+        }
+      });
+    }
+
     await tx.procurementBidParticipation.update({
       where: { id: participation.id },
       data: { finalStatus: 'AWARDED', technicalStatus: 'QUALIFIED', financialStatus: 'EVALUATED' }
     });
 
-    // Mark all other submitted seller participations for this bid as NOT_SELECTED
     await tx.procurementBidParticipation.updateMany({
       where: { bidId: bid.id, id: { not: participation.id } },
       data: { finalStatus: 'NOT_SELECTED' }
     });
 
-    // Update procurement bid status directly to AWARDED
     await tx.procurementBid.update({
       where: { id: bid.id },
       data: { status: 'AWARDED', lifecycleStage: 'AWARDED' }
@@ -1717,10 +1938,13 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
     return created;
   });
 
-  await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', award.id, award);
+  logger.info({ awardId: award.id }, '[RECOMMEND_AWARD] Award transaction completed successfully');
 
-  // Automatically generate Purchase Order for the winning seller!
+  await procurementAudit(req, 'FINAL_AWARD_APPROVED', 'ProcurementBidAward', award.id, award).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error creating audit log'));
+
+  logger.info({ awardId: award.id, bidId: bid.id }, '[RECOMMEND_AWARD] Generating PO for award...');
   const po = await createOrReuseProcurementPOForAward(req, award, bid);
+  logger.info({ poId: po.purchaseOrder?.id, poNumber: po.purchaseOrder?.poNumber }, '[RECOMMEND_AWARD] PO generated successfully');
 
   return {
     award,

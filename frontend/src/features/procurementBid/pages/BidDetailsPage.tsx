@@ -194,8 +194,9 @@ export default function BidDetailsPage() {
     try {
       setAccepting(true);
       const sellerName = p.seller?.organization?.organizationName || p.sellerName || p.seller?.name || `Seller #${p.sellerId}`;
+      const targetPartId = Number(p.id || p.participationId);
       const res = await procurementBidApi.recommendAward(bid.id, {
-        participationId: p.id,
+        participationId: targetPartId,
         remarks: `Accepted quotation from ${sellerName}`
       });
       setAcceptModalParticipation(null);

@@ -11,9 +11,9 @@ import * as orderService from './procurement-order.service.js';
 import { verifyAccessToken } from '../../services/token.service.js';
 import { getAccessTokenFromRequest } from '../../services/auth-cookie.service.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { logger } from '../../config/logger.js';
 
 const router = Router();
-
 
 const optionalActor = async (req: AuthRequest) => {
   const authHeader = req.headers.authorization || '';
@@ -44,7 +44,22 @@ const asyncRoute = (handler: (req: AuthRequest & { file?: Express.Multer.File },
     try {
       await handler(req, res);
     } catch (err: any) {
-      return apiResponse.error(res, err?.statusCode || 500, err?.statusCode && err.statusCode < 500 ? err.message : 'Unable to complete procurement request', err?.code || 'REQUEST_FAILED', err?.details);
+      logger.error({
+        err,
+        message: err?.message,
+        stack: err?.stack,
+        code: err?.code,
+        path: req.originalUrl || req.path,
+        method: req.method,
+        body: req.body,
+        params: req.params,
+        user: req.user
+      }, '[PROCUREMENT_ROUTE_ERROR] Route execution exception');
+
+      if (err instanceof ApiError) {
+        return apiResponse.error(res, err.statusCode, err.message, err.code, err.details);
+      }
+      return apiResponse.error(res, err?.statusCode || 500, err?.message || 'Unable to complete procurement request', err?.code || 'REQUEST_FAILED', err?.stack);
     }
   };
 

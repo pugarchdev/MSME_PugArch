@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npx tsc -p tsconfig.json && node dist/index.js",
+    "dev": "tsx watch index.ts",
     "postinstall": "npx prisma generate",
     "db:migrate": "npx prisma migrate deploy",
     "vercel-build": "npx prisma generate && tsc",

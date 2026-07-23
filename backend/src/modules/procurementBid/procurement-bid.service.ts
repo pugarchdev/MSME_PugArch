@@ -338,7 +338,7 @@ export const refreshBidStatus = async (bid: any) => {
 export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolean; includeParticipants?: boolean; includeFinancial?: boolean; sellerRatings?: Record<number, any> } = {}) => {
   const actor = options.actor;
   const isAdmin = actor?.role === 'admin' || actor?.role === 'master_admin';
-  const isBuyerOwner = actor?.role === 'buyer' && bid.buyerId === Number(actor.id);
+  const isBuyerOwner = actor?.role === 'buyer' && Number(bid.buyerId) === Number(actor.id);
   const canSeeParticipants = options.includeParticipants || isAdmin || isBuyerOwner;
   const canSeeFinancial = options.includeFinancial || isAdmin || (isBuyerOwner && financialOpenStatuses.includes(bid.status));
 

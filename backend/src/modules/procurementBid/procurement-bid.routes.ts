@@ -513,7 +513,7 @@ router.get('/procurement-bids/:bidId', validate({ params: idParamSchema }), asyn
           clarifications: [],
           evaluations: [],
           awards: [],
-          participantsCount: 0,
+          participantsCount: participations.length,
           sourceModel: 'REQUIREMENT',
           sourceId: requirement.id,
           consigneeDetails: payload.consigneeDetails || null,
@@ -617,13 +617,151 @@ router.post('/buyer/procurement-bids/:bidId/submit-for-approval', authenticate, 
   return apiResponse.success(res, bid, 200, 'Bid submitted for admin approval');
 }));
 
+const enrichBidsWithResponses = async (bids: any[], buyerId?: number) => {
+  if (!bids || !bids.length) return bids;
+
+  try {
+    const normalizeStr = (str: any) => String(str || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Fetch all non-draft RequirementResponses from DB
+    const allReqResponses = await prisma.requirementResponse.findMany({
+      where: {
+        status: { not: 'DRAFT' }
+      },
+      include: {
+        sellerUser: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+        sellerOrganization: { select: { organizationName: true } },
+        requirement: { select: { id: true, title: true, createdById: true, buyerOrganizationId: true } }
+      }
+    }).catch(() => []);
+
+    // Fetch all BuyerRequirements, legacy Requirements, and QuoteResponses
+    const [buyerReqs, legacyReqs, quoteRequests, quoteResponses] = await Promise.all([
+      prisma.buyerRequirement.findMany({
+        select: { id: true, title: true, createdById: true }
+      }).catch(() => []),
+      prisma.requirement.findMany({
+        select: { id: true, title: true, requirementNumber: true, buyerId: true }
+      }).catch(() => []),
+      prisma.quoteRequest.findMany({
+        select: { id: true, subject: true, buyerId: true }
+      }).catch(() => []),
+      prisma.quoteResponse.findMany({
+        where: { status: { not: 'DRAFT' } },
+        include: {
+          seller: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+          quoteRequest: { select: { id: true, subject: true, buyerId: true } }
+        }
+      }).catch(() => [])
+    ]);
+
+    for (const bid of bids) {
+      if (!Array.isArray(bid.participations)) {
+        bid.participations = [];
+      }
+
+      const existingSellerIds = new Set(bid.participations.map((p: any) => p.sellerId).filter(Boolean));
+      const bidIdNum = Number(bid.id);
+      const bidSourceIdNum = Number(bid.sourceId);
+      const bidTitleNorm = normalizeStr(bid.title);
+      const bidNumberNorm = normalizeStr(bid.bidNumber);
+
+      // Match RequirementResponses
+      for (const r of allReqResponses) {
+        const reqId = Number(r.requirementId);
+        const reqTitleNorm = normalizeStr(r.requirement?.title);
+
+        const isDirectIdMatch = (bidIdNum > 0 && reqId === bidIdNum) || (bidSourceIdNum > 0 && reqId === bidSourceIdNum);
+        const isTitleMatch = Boolean(bidTitleNorm && reqTitleNorm && bidTitleNorm === reqTitleNorm);
+
+        // Check if reqId belongs to a buyerReq/legacyReq with matching title/number
+        const matchedBuyerReq = buyerReqs.find(br => br.id === reqId && normalizeStr(br.title) === bidTitleNorm);
+        const matchedLegacyReq = legacyReqs.find(lr => lr.id === reqId && (normalizeStr(lr.title) === bidTitleNorm || (bidNumberNorm && normalizeStr(lr.requirementNumber) === bidNumberNorm)));
+
+        if (isDirectIdMatch || isTitleMatch || matchedBuyerReq || matchedLegacyReq) {
+          const sellerId = r.sellerUserId || r.sellerId;
+          if (sellerId && !existingSellerIds.has(sellerId)) {
+            existingSellerIds.add(sellerId);
+            const respData = typeof r.responseData === 'string' ? JSON.parse(r.responseData) : (r.responseData || {});
+            bid.participations.push({
+              id: r.id,
+              bidId: bid.id,
+              sellerId: sellerId,
+              seller: {
+                ...r.sellerUser,
+                organization: r.sellerOrganization
+              },
+              participationNumber: `PRT-REQ-${r.id}`,
+              technicalStatus: r.status === 'SHORTLISTED' || r.status === 'ACCEPTED' ? 'QUALIFIED' : (r.status === 'REJECTED' ? 'DISQUALIFIED' : 'PENDING'),
+              financialStatus: 'OPENED',
+              financialSealed: false,
+              finalStatus: r.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+              submissionStatus: 'SUBMITTED',
+              quotedAmount: Number(r.offeredPrice || 0),
+              totalAmount: Number(r.offeredPrice || 0),
+              offeredQuantity: r.offeredQuantity,
+              deliveryTimeline: r.deliveryTimeline || respData.deliveryTimeline,
+              terms: r.terms || respData.terms,
+              makeBrand: respData.makeBrand || r.makeBrand,
+              model: respData.model || r.model,
+              offeredItemDescription: r.message || '',
+              responseData: respData,
+              lineItems: Array.isArray(respData.lineItems) ? respData.lineItems : [],
+              documents: [],
+              createdAt: r.createdAt,
+              submittedAt: r.createdAt,
+            });
+          }
+        }
+      }
+
+      // Match QuoteResponses
+      for (const qr of quoteResponses) {
+        const qReqId = Number(qr.quoteRequestId);
+        const qSubjectNorm = normalizeStr(qr.quoteRequest?.subject);
+        const isQuoteIdMatch = bidSourceIdNum > 0 && qReqId === bidSourceIdNum;
+        const isQuoteSubjectMatch = Boolean(bidTitleNorm && qSubjectNorm && bidTitleNorm === qSubjectNorm);
+
+        if (isQuoteIdMatch || isQuoteSubjectMatch) {
+          const sellerId = qr.sellerId;
+          if (sellerId && !existingSellerIds.has(sellerId)) {
+            existingSellerIds.add(sellerId);
+            bid.participations.push({
+              id: qr.id,
+              bidId: bid.id,
+              sellerId: sellerId,
+              seller: qr.seller,
+              participationNumber: `PRT-QR-${qr.id}`,
+              technicalStatus: 'QUALIFIED',
+              financialStatus: 'OPENED',
+              financialSealed: false,
+              finalStatus: qr.status === 'ACCEPTED' ? 'AWARDED' : 'PENDING',
+              submissionStatus: 'SUBMITTED',
+              quotedAmount: Number(qr.totalAmount || 0),
+              totalAmount: Number(qr.totalAmount || 0),
+              offeredItemDescription: qr.notes || '',
+              documents: [],
+              createdAt: qr.createdAt,
+              submittedAt: qr.createdAt,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error enriching bids with responses:', err);
+  }
+
+  return bids;
+};
+
 router.get('/buyer/procurement-bids', authenticate, requireAccountType('buyer'), asyncRoute(async (req, res) => {
   const bids = await (prisma as any).procurementBid.findMany({
     where: { buyerId: req.user!.id },
     include: {
       documents: true,
       participations: {
-        where: { submissionStatus: 'SUBMITTED', isWithdrawn: false },
+        where: { submissionStatus: { not: 'DRAFT' }, isWithdrawn: false },
         include: {
           seller: { select: { id: true, name: true, email: true, role: true, onboardingStatus: true } },
           documents: true,
@@ -649,12 +787,14 @@ router.get('/buyer/procurement-bids', authenticate, requireAccountType('buyer'),
     },
     orderBy: { createdAt: 'desc' }
   });
+  await enrichBidsWithResponses(bids, req.user!.id);
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeFinancial: true })), 200, 'Buyer bids fetched');
 }));
 
 router.get('/buyer/procurement-bids/:bidId/participants', authenticate, requireAccountType('buyer', 'admin'), requirePermission('tender.view'), validate({ params: idParamSchema }), asyncRoute(async (req, res) => {
   const bid = await service.resolveBid(req.params.bidId);
   service.assertBuyerOwner(req.user!, bid);
+  await enrichBidsWithResponses([bid], req.user!.role === 'buyer' ? req.user!.id : undefined);
   const canSeeFinancial = ['FINANCIAL_EVALUATION', 'L1_GENERATED', 'AWARD_RECOMMENDED', 'AWARDED'].includes(bid.status);
   return apiResponse.success(res, (bid.participations || []).map((p: any) => service.serializeParticipation(p, { canSeeFinancial, bid })), 200, 'Participants fetched');
 }));
@@ -706,6 +846,7 @@ router.get('/admin/procurement-bids', authenticate, requireAccountType('admin'),
     },
     orderBy: { createdAt: 'desc' }
   });
+  await enrichBidsWithResponses(bids);
   return apiResponse.success(res, bids.map((bid: any) => service.serializeBid(bid, { actor: req.user, includeParticipants: true, includeFinancial: true })), 200, 'Admin bids fetched');
 }));
 

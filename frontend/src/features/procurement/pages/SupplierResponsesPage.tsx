@@ -76,7 +76,7 @@ const getConsolidatedType = (b: any): string => {
     return 'Draft';
   }
   // 2. RFQ
-  if (pt.includes('rfq') || bt.includes('rfq') || rawType.includes('rfq') || rawMethod.includes('rfq')) {
+  if (pt.includes('rfq') || pt.includes('efq') || bt.includes('rfq') || bt.includes('efq') || rawType.includes('rfq') || rawType.includes('efq') || rawMethod.includes('rfq') || rawMethod.includes('efq')) {
     return 'RFQ';
   }
   // 3. RFP

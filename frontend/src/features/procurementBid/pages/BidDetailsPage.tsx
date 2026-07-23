@@ -943,7 +943,7 @@ export default function BidDetailsPage() {
         )}
       </div>
 
-      {/* Side-by-Side Quotation Comparison Modal */}
+      {/* Side-by-Side Commercial Quotation Comparison Modal */}
       {showCompareModal && selectedForCompare.length >= 2 && (() => {
         const selectedParticipationsList = submittedParticipations.filter((p: any) => selectedForCompare.includes(p.id));
 
@@ -960,14 +960,32 @@ export default function BidDetailsPage() {
             ? p.lineItems
             : (Array.isArray(responseData.lineItems) ? responseData.lineItems : []);
 
-          const calculatedTotal = rawLineItems.reduce((acc: number, item: any) => {
-            const qty = Number(item.quantity || 1);
-            const price = Number(item.unitPrice || item.price || item.unitRate || 0);
-            const tax = Number(item.gstPercent || item.taxPercent || 0);
-            const lineVal = qty * price;
-            const lineTax = lineVal * (tax / 100);
-            return acc + lineVal + lineTax;
-          }, 0);
+          const parsedLineItems = rawLineItems.map((item: any, i: number) => {
+            const description = String(item.itemName || item.itemDescription || item.title || item.name || `Item ${i + 1}`).trim();
+            const quantity = Number(item.quantity || item.qty || 1);
+            const unit = String(item.unit || item.uom || 'Unit');
+            const unitPrice = Number(item.unitPrice || item.price || item.unitRate || 0);
+            const gstPercent = Number(item.gstPercent || item.taxPercent || item.gst || 0);
+            const lineVal = quantity * unitPrice;
+            const taxAmount = lineVal * (gstPercent / 100);
+            const totalLineAmount = Number(item.totalAmount || item.totalPrice || (lineVal + taxAmount));
+            const makeBrand = String(item.makeBrand || item.brand || responseData.makeBrand || p.makeBrand || '-');
+            const model = String(item.model || responseData.model || p.model || '-');
+            return {
+              id: item.id || `item-${i}`,
+              description,
+              quantity,
+              unit,
+              unitPrice,
+              gstPercent,
+              taxAmount,
+              totalLineAmount,
+              makeBrand,
+              model,
+            };
+          });
+
+          const calculatedTotal = parsedLineItems.reduce((acc: number, item: any) => acc + item.totalLineAmount, 0);
 
           const displayTotalAmount = p.totalAmount || p.quotedAmount || (calculatedTotal > 0 ? calculatedTotal : 0);
           const deliveryTimeline = p.deliveryTimeline || responseData.deliveryTimeline || p.deliverySchedule || '-';
@@ -1026,6 +1044,7 @@ export default function BidDetailsPage() {
             displayMakeBrand,
             displayModel,
             docs,
+            parsedLineItems,
             offeredItemDescription: parsedTech.fields.find(f => f.key === 'offeredItemDescription')?.value || (parsedTech.isJson ? '-' : (parsedTech.rawText || '-')),
             complianceRemarks: getTechField('complianceRemarks'),
             warrantyDetails: getTechField('warrantyDetails'),
@@ -1034,19 +1053,116 @@ export default function BidDetailsPage() {
           };
         };
 
-        const sellersData = selectedParticipationsList.map(getParticipationNormalized);
+        const rawSellersData = selectedParticipationsList.map(getParticipationNormalized);
+
+        // Rank sellers ascending by total quoted amount (L1, L2, L3...)
+        const sellersData = [...rawSellersData].sort((a, b) => {
+          const valA = Number(a.displayTotalAmount) || Infinity;
+          const valB = Number(b.displayTotalAmount) || Infinity;
+          return valA - valB;
+        });
+
+        const lowestQuotedTotal = sellersData.length > 0 ? (Number(sellersData[0].displayTotalAmount) || 0) : 0;
+        const secondLowestQuotedTotal = sellersData.length > 1 ? (Number(sellersData[1].displayTotalAmount) || 0) : lowestQuotedTotal;
+        const l1SavingsVal = Math.max(0, secondLowestQuotedTotal - lowestQuotedTotal);
+        const l1SavingsPct = secondLowestQuotedTotal > 0 ? ((l1SavingsVal / secondLowestQuotedTotal) * 100).toFixed(1) : '0';
+
+        sellersData.forEach((s: any, idx: number) => {
+          s.rankIndex = idx + 1;
+          s.rankBadge = `L${idx + 1}`;
+          s.isL1 = idx === 0;
+          const currAmount = Number(s.displayTotalAmount) || 0;
+          if (s.isL1) {
+            s.diffVsL1Amount = 0;
+            s.diffVsL1Pct = 0;
+            s.diffVsL1Text = 'Base L1 (Lowest Bid)';
+          } else {
+            s.diffVsL1Amount = currAmount - lowestQuotedTotal;
+            s.diffVsL1Pct = lowestQuotedTotal > 0 ? (((currAmount - lowestQuotedTotal) / lowestQuotedTotal) * 100).toFixed(1) : 0;
+            s.diffVsL1Text = `+${money(s.diffVsL1Amount)} (+${s.diffVsL1Pct}%)`;
+          }
+        });
+
+        // Extract unified line items across all sellers & requirement items
+        const unifiedItemNames: string[] = [];
+        sellersData.forEach(s => {
+          s.parsedLineItems.forEach((li: any) => {
+            if (li.description && !unifiedItemNames.includes(li.description)) {
+              unifiedItemNames.push(li.description);
+            }
+          });
+        });
+        if (unifiedItemNames.length === 0 && Array.isArray((bid as any)?.items) && (bid as any).items.length > 0) {
+          (bid as any).items.forEach((it: any) => {
+            const name = String(it.title || it.itemName || it.description || 'Quoted Item').trim();
+            if (name && !unifiedItemNames.includes(name)) unifiedItemNames.push(name);
+          });
+        }
+
+        const normalizeStr = (str: any) => String(str || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const sections = [
           {
-            section: 'General & Commercial Details',
+            section: 'Commercial Overview & L1 Ranking',
             items: [
+              {
+                key: 'rankBadge',
+                label: 'Commercial Rank',
+                getValue: (s: any) => s.rankBadge,
+                renderCustom: (s: any) => (
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide border shadow-2xs",
+                      s.isL1 ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-400/30" :
+                      s.rankIndex === 2 ? "bg-blue-100 text-blue-800 border-blue-300" :
+                      s.rankIndex === 3 ? "bg-indigo-100 text-indigo-800 border-indigo-300" :
+                      "bg-slate-100 text-slate-700 border-slate-300"
+                    )}>
+                      {s.isL1 ? '🥇 L1 (Lowest Bidder)' : s.rankIndex === 2 ? '🥈 L2' : s.rankIndex === 3 ? '🥉 L3' : `L${s.rankIndex}`}
+                    </span>
+                  </div>
+                )
+              },
               { key: 'sellerName', label: 'Organization Name', getValue: (s: any) => s.sellerName },
               { key: 'contactPerson', label: 'Contact Person', getValue: (s: any) => s.contactPerson },
               { key: 'email', label: 'Email Address', getValue: (s: any) => s.email },
               { key: 'mobile', label: 'Mobile Number', getValue: (s: any) => s.mobile },
-              { key: 'quotedAmount', label: 'Quoted Total Amount', getValue: (s: any) => s.displayTotalAmount ? money(s.displayTotalAmount) : 'N/A' },
-              { key: 'deliveryTimeline', label: 'Delivery Timeline', getValue: (s: any) => s.deliveryTimeline },
-              { key: 'submittedAt', label: 'Submission Date', getValue: (s: any) => formatDateTime(s.submittedAt) },
+              {
+                key: 'quotedAmount',
+                label: 'Quoted Total Amount',
+                getValue: (s: any) => s.displayTotalAmount ? money(s.displayTotalAmount) : 'N/A',
+                renderCustom: (s: any) => (
+                  <div className="space-y-1">
+                    <div className="text-sm font-black text-slate-900">
+                      {s.displayTotalAmount ? money(s.displayTotalAmount) : 'N/A'}
+                    </div>
+                    {s.isL1 ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-black text-emerald-800 uppercase">
+                        ✓ Lowest Quote (L1)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                        {s.diffVsL1Text}
+                      </span>
+                    )}
+                  </div>
+                )
+              },
+              {
+                key: 'priceDiffVsL1',
+                label: 'Price Variance vs L1',
+                getValue: (s: any) => s.diffVsL1Text,
+                renderCustom: (s: any) => (
+                  <span className={cn(
+                    "text-xs font-bold",
+                    s.isL1 ? "text-emerald-700 font-extrabold" : "text-amber-700"
+                  )}>
+                    {s.diffVsL1Text}
+                  </span>
+                )
+              },
+              { key: 'deliveryTimeline', label: 'Delivery Schedule', getValue: (s: any) => s.deliveryTimeline },
+              { key: 'submittedAt', label: 'Quotation Submission Date', getValue: (s: any) => formatDateTime(s.submittedAt) },
               {
                 key: 'techStatus',
                 label: 'Technical Status',
@@ -1055,21 +1171,87 @@ export default function BidDetailsPage() {
               },
             ]
           },
+          ...(unifiedItemNames.length > 0 ? [
+            {
+              section: 'Item-Wise Commercial Breakdown',
+              items: unifiedItemNames.flatMap((itemName, idx) => {
+                const unitPrices = sellersData.map(s => {
+                  const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                  return line && line.unitPrice > 0 ? line.unitPrice : null;
+                }).filter((p): p is number => p !== null);
+                const minUnitPrice = unitPrices.length > 0 ? Math.min(...unitPrices) : null;
+
+                return [
+                  {
+                    key: `item_unit_price_${idx}`,
+                    label: `${itemName} — Unit Price (Excl. Tax)`,
+                    getValue: (s: any) => {
+                      const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                      return line && line.unitPrice > 0 ? money(line.unitPrice) : '-';
+                    },
+                    renderCustom: (s: any) => {
+                      const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                      if (!line || !line.unitPrice) return <span className="text-slate-400">-</span>;
+                      const isLowest = minUnitPrice !== null && line.unitPrice === minUnitPrice;
+                      return (
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-900">{money(line.unitPrice)}</span>
+                          {isLowest && sellersData.length > 1 && (
+                            <span className="ml-2 inline-flex items-center rounded bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 text-[9px] font-black text-emerald-800 uppercase">
+                              L1 Rate
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                  },
+                  {
+                    key: `item_qty_tax_${idx}`,
+                    label: `${itemName} — Quoted Qty & GST %`,
+                    getValue: (s: any) => {
+                      const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                      if (!line) return '-';
+                      return `${line.quantity} ${line.unit} (GST: ${line.gstPercent}%)`;
+                    }
+                  },
+                  {
+                    key: `item_line_total_${idx}`,
+                    label: `${itemName} — Total Line Item Amount`,
+                    getValue: (s: any) => {
+                      const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                      return line && line.totalLineAmount > 0 ? money(line.totalLineAmount) : '-';
+                    },
+                    renderCustom: (s: any) => {
+                      const line = s.parsedLineItems.find((li: any) => normalizeStr(li.description) === normalizeStr(itemName));
+                      if (!line || !line.totalLineAmount) return <span className="text-slate-400">-</span>;
+                      return <span className="font-extrabold text-slate-950">{money(line.totalLineAmount)}</span>;
+                    }
+                  }
+                ];
+              })
+            }
+          ] : []),
           {
-            section: 'Technical Specifications & Compliance',
+            section: 'Commercial & Payment Terms',
+            items: [
+              { key: 'deliveryTimeline', label: 'Delivery Schedule / Timeline', getValue: (s: any) => s.deliveryTimeline },
+              { key: 'terms', label: 'Payment Terms & Conditions', getValue: (s: any) => s.terms },
+              { key: 'warrantyDetails', label: 'Warranty & Service Support Terms', getValue: (s: any) => s.warrantyDetails },
+            ]
+          },
+          {
+            section: 'Technical Specifications & Product Compliance',
             items: [
               { key: 'makeBrand', label: 'Make / Brand', getValue: (s: any) => s.displayMakeBrand },
               { key: 'model', label: 'Model Number', getValue: (s: any) => s.displayModel },
               { key: 'offeredItemDescription', label: 'Offered Item Description', getValue: (s: any) => s.offeredItemDescription },
               { key: 'complianceRemarks', label: 'Compliance Remarks', getValue: (s: any) => s.complianceRemarks },
-              { key: 'warrantyDetails', label: 'Warranty Details', getValue: (s: any) => s.warrantyDetails },
-              { key: 'serviceSupport', label: 'Service Support', getValue: (s: any) => s.serviceSupport },
-              { key: 'deviations', label: 'Deviations', getValue: (s: any) => s.deviations },
-              { key: 'terms', label: 'Payment Terms / Conditions', getValue: (s: any) => s.terms },
+              { key: 'serviceSupport', label: 'Service Support Details', getValue: (s: any) => s.serviceSupport },
+              { key: 'deviations', label: 'Technical Deviations', getValue: (s: any) => s.deviations },
             ]
           },
           {
-            section: 'Documents & Attachments',
+            section: 'Submitted Documents & Attachments',
             items: [
               {
                 key: 'documents',
@@ -1107,6 +1289,18 @@ export default function BidDetailsPage() {
           }
         ];
 
+        const isRowEmpty = (getValueFn: (s: any) => any) => {
+          return sellersData.every(s => {
+            const val = String(getValueFn(s) || '').trim();
+            return !val || val === '-' || val === 'N/A' || val === '0 docs' || val === 'None';
+          });
+        };
+
+        const activeSections = sections.map(sec => ({
+          ...sec,
+          items: sec.items.filter(item => !isRowEmpty(item.getValue))
+        })).filter(sec => sec.items.length > 0);
+
         const isRowDifferent = (getValueFn: (s: any) => any) => {
           if (sellersData.length <= 1) return false;
           const firstVal = String(getValueFn(sellersData[0]) || '').trim().toLowerCase();
@@ -1114,19 +1308,24 @@ export default function BidDetailsPage() {
         };
 
         return (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 transition-all duration-300 animate-in fade-in">
-            <div className="max-h-[92dvh] w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-bottom-8 duration-300">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-2 sm:p-4 transition-all duration-300 animate-in fade-in">
+            <div className="max-h-[94dvh] w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col animate-in zoom-in-95 duration-300 border border-slate-200/80">
               
-              {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-slate-150 bg-gradient-to-r from-slate-900 via-[#0b2447] to-indigo-950 px-6 py-4 text-white">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-indigo-300 border border-white/10 shadow-inner">
+              {/* Light Executive Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-200/80 bg-white px-6 py-4">
+                <div className="flex items-center gap-3.5">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 shadow-2xs">
                     <Columns3 className="h-5 w-5" />
                   </span>
                   <div>
-                    <h2 className="text-base font-extrabold tracking-tight text-white">Seller Quotation Side-by-Side Comparison</h2>
-                    <p className="text-xs text-indigo-200 font-medium">
-                      Comparing {sellersData.length} seller responses side-by-side. Differing values are highlighted in amber.
+                    <h2 className="text-lg font-black tracking-tight text-slate-900 flex items-center gap-2.5">
+                      <span>Commercial Quotation & L1 Ranking Comparison</span>
+                      <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 uppercase tracking-wider shadow-2xs">
+                        L1 Evaluated
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                      Comparing {sellersData.length} seller quotations sorted by total quoted amount (L1 lowest bidder).
                     </p>
                   </div>
                 </div>
@@ -1135,39 +1334,87 @@ export default function BidDetailsPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedForCompare([])}
-                    className="rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/20 transition"
+                    className="rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 active:scale-95 shadow-2xs"
                   >
-                    Clear All
+                    Clear Selection
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowCompareModal(false)}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 active:scale-95 shadow-2xs"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
 
-              {/* Modal Matrix Body */}
-              <div className="overflow-auto p-4 sm:p-6 flex-1 bg-slate-50/40">
-                <div className="min-w-[700px] border border-slate-200 rounded-2xl bg-white shadow-xs overflow-hidden">
+              {/* Modal Matrix Body with Smooth Scroll */}
+              <div className="overflow-auto p-4 sm:p-6 flex-1 bg-slate-50/60 scroll-smooth custom-scrollbar">
+                
+                {/* Clean Light Executive KPI Summary Cards Bar with Hover Lift */}
+                <div className="mb-5 grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                  
+                  {/* Card 1: L1 Lowest Bidder */}
+                  <div className="p-4 bg-gradient-to-br from-emerald-50/90 via-emerald-50/40 to-white rounded-xl border border-emerald-200/80 shadow-xs hover:-translate-y-1 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 ease-out cursor-default">
+                    <div className="text-[10px] font-black uppercase text-emerald-700 tracking-wider flex items-center gap-1.5">
+                      <span>🥇 L1 Lowest Bidder</span>
+                    </div>
+                    <div className="text-sm font-black text-slate-900 truncate mt-1">{sellersData[0]?.sellerName || 'N/A'}</div>
+                    <div className="text-xs font-black text-emerald-700 mt-0.5">{sellersData[0]?.displayTotalAmount ? money(sellersData[0].displayTotalAmount) : 'N/A'}</div>
+                  </div>
+
+                  {/* Card 2: L1 Savings */}
+                  <div className="p-4 bg-gradient-to-br from-emerald-50/60 via-emerald-50/20 to-white rounded-xl border border-emerald-150 shadow-xs hover:-translate-y-1 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 ease-out cursor-default">
+                    <div className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">💰 L1 Commercial Savings</div>
+                    <div className="text-sm font-black text-emerald-800 mt-1">{l1SavingsVal > 0 ? money(l1SavingsVal) : '₹0'}</div>
+                    <div className="text-[11px] font-bold text-emerald-600 mt-0.5">{l1SavingsVal > 0 ? `${l1SavingsPct}% lower than L2` : 'Base quote'}</div>
+                  </div>
+
+                  {/* Card 3: Price Spread */}
+                  <div className="p-4 bg-gradient-to-br from-indigo-50/60 via-indigo-50/20 to-white rounded-xl border border-indigo-150 shadow-xs hover:-translate-y-1 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 ease-out cursor-default">
+                    <div className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">📊 Quoted Price Spread</div>
+                    <div className="text-xs font-extrabold text-slate-900 mt-1">{money(lowestQuotedTotal)} – {money(sellersData[sellersData.length - 1]?.displayTotalAmount || lowestQuotedTotal)}</div>
+                    <div className="text-[11px] font-bold text-indigo-600 mt-0.5">{sellersData.length} Quotations Ranked</div>
+                  </div>
+
+                  {/* Card 4: Evaluation Status */}
+                  <div className="p-4 bg-gradient-to-br from-amber-50/60 via-amber-50/20 to-white rounded-xl border border-amber-150 shadow-xs hover:-translate-y-1 hover:shadow-lg hover:border-amber-300 transition-all duration-300 ease-out cursor-default">
+                    <div className="text-[10px] font-black uppercase text-amber-700 tracking-wider">⚡ Commercial Evaluation</div>
+                    <div className="text-xs font-extrabold text-slate-900 mt-1">L1 Evaluated & Ranked</div>
+                    <div className="text-[11px] font-bold text-amber-700 mt-0.5">Lowest Total Quoted Amount</div>
+                  </div>
+                </div>
+
+                {/* Table Container with Smooth Horizontal & Vertical Scroll */}
+                <div className="min-w-[750px] border border-slate-200/80 rounded-2xl bg-white shadow-xs overflow-x-auto scroll-smooth custom-scrollbar">
                   <table className="w-full border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-100/80 border-b border-slate-200">
+                      <tr className="bg-slate-50 border-b border-slate-200">
                         {/* Sticky Left Field Header */}
-                        <th className="sticky left-0 bg-slate-100/95 z-20 w-56 min-w-[220px] p-4 text-left font-black uppercase tracking-wider text-slate-700 border-r border-slate-200">
-                          Comparison Field
+                        <th className="sticky left-0 bg-slate-50 z-20 w-64 min-w-[240px] p-4 text-left font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 shadow-2xs backdrop-blur-md">
+                          Commercial & Technical Field
                         </th>
 
                         {/* Seller Columns */}
                         {sellersData.map((s: any) => {
                           const isThisAwarded = s.p.finalStatus === 'AWARDED' || s.p.award || ((bid as any)?.awardedParticipationId && Number((bid as any).awardedParticipationId) === Number(s.id));
                           return (
-                            <th key={s.id} className="p-4 text-left min-w-[260px] border-r border-slate-200 last:border-r-0 bg-white/50">
-                              <div className="flex items-center justify-between gap-2 border-b border-slate-150 pb-2 mb-2">
-                                <span className="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700 uppercase">
-                                  {s.p.participationNumber || `PRT-${s.id}`}
+                            <th
+                              key={s.id}
+                              className={cn(
+                                "p-4 text-left min-w-[280px] border-r border-slate-200 last:border-r-0 transition-all duration-200 hover:bg-slate-100/60",
+                                s.isL1 ? "bg-emerald-50/70 border-t-4 border-t-emerald-600" : "bg-white/80"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 pb-2 mb-2">
+                                <span className={cn(
+                                  "rounded-md px-2.5 py-1 text-[11px] font-black uppercase tracking-wider border shadow-2xs transition-all duration-200",
+                                  s.isL1 ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-400/30" :
+                                  s.rankIndex === 2 ? "bg-blue-50 text-blue-800 border-blue-200" :
+                                  s.rankIndex === 3 ? "bg-indigo-50 text-indigo-800 border-indigo-200" :
+                                  "bg-slate-100 text-slate-700 border-slate-300"
+                                )}>
+                                  {s.isL1 ? '🥇 L1 (LOWEST BIDDER)' : s.rankIndex === 2 ? `🥈 L2 (${s.diffVsL1Text})` : `L${s.rankIndex}`}
                                 </span>
                                 <button
                                   type="button"
@@ -1179,21 +1426,21 @@ export default function BidDetailsPage() {
                                       toast.info('Comparison closed: at least 2 sellers required.');
                                     }
                                   }}
-                                  className="h-6 w-6 rounded-full bg-slate-100 hover:bg-red-50 text-slate-400 hover:text-red-600 flex items-center justify-center transition"
+                                  className="h-6 w-6 rounded-full bg-slate-100 hover:bg-red-50 text-slate-400 hover:text-red-600 flex items-center justify-center transition-all duration-200 active:scale-90"
                                   title="Remove from comparison"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
                               </div>
                               <h3 className="text-sm font-black text-slate-950 line-clamp-1">{s.sellerName}</h3>
-                              <p className="text-[11px] font-extrabold text-slate-500 mt-0.5 flex items-center gap-1">
+                              <p className="text-[11px] font-bold text-slate-500 mt-0.5 flex items-center gap-1">
                                 <User2 className="h-3 w-3 text-indigo-600" />
                                 <span>{s.contactPerson}</span>
                               </p>
-                              <div className="pt-2">
+                              <div className="pt-2.5">
                                 {isThisAwarded ? (
-                                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-black text-white shadow-2xs">
-                                    🏆 Awarded
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-black text-white shadow-2xs">
+                                    🏆 Awarded Quotation
                                   </span>
                                 ) : isBidAwarded ? (
                                   <span className="inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-400">
@@ -1203,7 +1450,10 @@ export default function BidDetailsPage() {
                                   <button
                                     type="button"
                                     onClick={() => setAcceptModalParticipation(s.p)}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-black text-white hover:bg-emerald-700 transition shadow-2xs"
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-lg px-3.5 py-1.5 text-xs font-black text-white transition-all duration-200 active:scale-95 shadow-2xs hover:shadow-md",
+                                      s.isL1 ? "bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-400/30 hover:scale-[1.03]" : "bg-indigo-600 hover:bg-indigo-700 hover:scale-[1.03]"
+                                    )}
                                   >
                                     Accept Quotation
                                   </button>
@@ -1214,16 +1464,16 @@ export default function BidDetailsPage() {
                         })}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {sections.map((sec) => (
+                    <tbody className="divide-y divide-slate-200/80">
+                      {activeSections.map((sec) => (
                         <React.Fragment key={sec.section}>
                           {/* Section Header Row */}
-                          <tr className="bg-slate-100/90 border-t border-b border-slate-200">
+                          <tr className="bg-slate-100/80 border-t border-b border-slate-200">
                             <td
                               colSpan={sellersData.length + 1}
-                              className="px-4 py-2 text-[11px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90"
+                              className="px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 flex items-center gap-2"
                             >
-                              {sec.section}
+                              <span>{sec.section}</span>
                             </td>
                           </tr>
 
@@ -1234,16 +1484,16 @@ export default function BidDetailsPage() {
                               <tr
                                 key={item.key}
                                 className={cn(
-                                  "transition-colors duration-150",
-                                  isDiff ? "bg-amber-50/30 hover:bg-amber-50/50" : "hover:bg-slate-50/50"
+                                  "transition-all duration-200 ease-in-out group",
+                                  isDiff ? "bg-amber-50/20 hover:bg-amber-50/40" : "hover:bg-indigo-50/30"
                                 )}
                               >
                                 {/* Left Field Label */}
-                                <td className="sticky left-0 bg-white z-10 p-3.5 font-extrabold text-slate-700 border-r border-slate-200 align-top">
-                                  <div className="flex items-center gap-1.5">
+                                <td className="sticky left-0 bg-white group-hover:bg-indigo-50/40 z-10 p-3.5 font-extrabold text-slate-700 border-r border-slate-200 align-top shadow-2xs transition-colors duration-200">
+                                  <div className="flex items-center gap-2">
                                     <span>{item.label}</span>
                                     {isDiff && (
-                                      <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 shrink-0">
+                                      <span className="text-[9px] font-black uppercase text-amber-900 bg-gradient-to-r from-amber-100 to-amber-50 px-2 py-0.5 rounded-full border border-amber-300/80 shadow-2xs shrink-0 tracking-wider">
                                         Differs
                                       </span>
                                     )}
@@ -1257,8 +1507,9 @@ export default function BidDetailsPage() {
                                     <td
                                       key={s.id}
                                       className={cn(
-                                        "p-3.5 text-xs text-slate-800 border-r border-slate-200 last:border-r-0 align-top leading-relaxed whitespace-pre-wrap",
-                                        isDiff ? "bg-amber-50/30 font-semibold" : ""
+                                        "p-3.5 text-xs text-slate-800 border-r border-slate-200 last:border-r-0 align-top leading-relaxed whitespace-pre-wrap transition-colors duration-200",
+                                        s.isL1 ? "bg-emerald-50/15" : "",
+                                        isDiff ? "bg-amber-50/20 font-semibold" : ""
                                       )}
                                     >
                                       {item.renderCustom ? (
@@ -1279,29 +1530,28 @@ export default function BidDetailsPage() {
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="border-t border-slate-150 p-4 bg-white flex justify-between items-center">
+              {/* Light Executive Modal Footer */}
+              <div className="border-t border-slate-200/80 p-4 bg-white flex justify-between items-center">
                 <p className="text-xs font-bold text-slate-500">
-                  Select 2 to 4 sellers to compare their exact specifications and terms side-by-side.
+                  Select 2 to 4 seller quotations to evaluate detailed line-item rates, commercial terms, and L1 savings.
                 </p>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedForCompare([])}
-                    className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                    className="px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-700 hover:bg-slate-100 transition-all duration-200 active:scale-95 shadow-2xs"
                   >
                     Clear Selection
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowCompareModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-900 text-xs font-black text-white hover:bg-slate-800 transition shadow-2xs"
+                    className="px-4 py-2 rounded-xl bg-slate-900 text-xs font-black text-white hover:bg-slate-800 transition-all duration-200 active:scale-95 shadow-2xs"
                   >
                     Close Comparison
                   </button>
                 </div>
               </div>
-
             </div>
           </div>
         );

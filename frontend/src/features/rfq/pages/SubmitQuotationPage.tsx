@@ -170,13 +170,38 @@ export default function SubmitQuotationPage() {
     queryFn: async () => {
       try {
         const data = await getApi<any>(`/api/marketplace/requirements/${requirementId}`);
-        if (data && (data.requirement || data.id)) return data;
+        if (data && (data.requirement || data.id)) {
+          return {
+            requirement: data.requirement || data,
+            ownResponse: data.ownResponse || data.myResponse || data.response || null,
+          };
+        }
       } catch (err) {
         // Fallback to procurement bid endpoint if marketplace requirement route fails
       }
       try {
         const bidData = await getApi<any>(`/api/procurement-bids/detail/${requirementId}`);
         if (bidData) {
+          const userParticipation = (bidData.participations || []).find((p: any) => 
+            String(p.sellerId || p.seller?.id) === String(user?.id) || 
+            (user?.organizationId && (p.organizationId === user.organizationId || p.seller?.organizationId === user.organizationId))
+          );
+
+          const ownResponseData = userParticipation ? {
+            status: userParticipation.status || 'SUBMITTED',
+            offeredPrice: userParticipation.offeredPrice ?? userParticipation.responseData?.offeredPrice,
+            offeredQuantity: userParticipation.offeredQuantity ?? userParticipation.responseData?.offeredQuantity,
+            deliveryTimeline: userParticipation.deliveryTimeline || userParticipation.responseData?.deliveryTimeline,
+            terms: userParticipation.terms || userParticipation.responseData?.terms,
+            message: userParticipation.message || userParticipation.responseData?.message || userParticipation.coverNote,
+            attachmentUrl: userParticipation.attachmentUrl || userParticipation.responseData?.attachmentUrl,
+            createdAt: userParticipation.createdAt,
+            updatedAt: userParticipation.updatedAt || userParticipation.createdAt,
+            responseData: userParticipation.responseData || userParticipation,
+            documents: userParticipation.documents || userParticipation.responseData?.documents || [],
+            lineItems: userParticipation.lineItems || userParticipation.responseData?.lineItems || userParticipation.responseData?.lineQuotes || [],
+          } : null;
+
           return {
             requirement: {
               id: bidData.id,
@@ -194,7 +219,7 @@ export default function SubmitQuotationPage() {
               status: bidData.status,
               description: bidData.description,
             },
-            ownResponse: (bidData.participations || []).find((p: any) => p.sellerId === Number(user?.id))?.responseData || null,
+            ownResponse: ownResponseData,
           };
         }
       } catch (e) {
@@ -226,34 +251,43 @@ export default function SubmitQuotationPage() {
 
   const ownResponse = queryData?.ownResponse;
 
-  // Restore draft details from ownResponse on load
+  // Restore quotation details from ownResponse on load (whether DRAFT or SUBMITTED)
   const restoredRef = useRef(false);
   React.useEffect(() => {
     if (!ownResponse || restoredRef.current) return;
+    
+    const targetPrice = ownResponse.offeredPrice ?? ownResponse.responseData?.offeredPrice;
+    const targetQty = ownResponse.offeredQuantity ?? ownResponse.responseData?.offeredQuantity;
+    const targetTimeline = ownResponse.deliveryTimeline || ownResponse.responseData?.deliveryTimeline;
+    const targetTerms = ownResponse.terms || ownResponse.responseData?.terms;
+    const targetMessage = ownResponse.message || ownResponse.responseData?.message || ownResponse.coverNote || ownResponse.responseData?.coverNote;
+    const targetAttachment = ownResponse.attachmentUrl || ownResponse.responseData?.attachmentUrl;
+
+    if (targetPrice != null && targetPrice !== '') setOfferedPrice(String(targetPrice));
+    if (targetQty != null && targetQty !== '') setOfferedQuantity(String(targetQty));
+    if (targetTimeline) setDeliveryTimeline(String(targetTimeline));
+    if (targetTerms) setTerms(String(targetTerms));
+    if (targetMessage) setMessage(String(targetMessage));
+    if (targetAttachment) {
+      const urlParts = String(targetAttachment).split('/');
+      const name = decodeURIComponent(urlParts[urlParts.length - 1] || 'Attachment');
+      setUploadState({
+        fileName: name,
+        progress: 100,
+        status: 'done',
+        url: targetAttachment
+      });
+    }
+    
+    const savedTime = new Date(ownResponse.updatedAt || ownResponse.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    setLastSaved(savedTime);
+    restoredRef.current = true;
+
     if (ownResponse.status === 'DRAFT') {
-      if (ownResponse.offeredPrice) setOfferedPrice(String(ownResponse.offeredPrice));
-      if (ownResponse.offeredQuantity) setOfferedQuantity(String(ownResponse.offeredQuantity));
-      if (ownResponse.deliveryTimeline) setDeliveryTimeline(ownResponse.deliveryTimeline);
-      if (ownResponse.terms) setTerms(ownResponse.terms);
-      if (ownResponse.message) setMessage(ownResponse.message);
-      if (ownResponse.attachmentUrl) {
-        const urlParts = ownResponse.attachmentUrl.split('/');
-        const name = decodeURIComponent(urlParts[urlParts.length - 1] || 'Attachment');
-        setUploadState({
-          fileName: name,
-          progress: 100,
-          status: 'done',
-          url: ownResponse.attachmentUrl
-        });
-      }
-      
-      const savedTime = new Date(ownResponse.updatedAt || ownResponse.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-      setLastSaved(savedTime);
-      restoredRef.current = true;
       toast.info('Restored your draft quotation from the server.');
-    } else if (ownResponse.status !== 'DRAFT') {
-      setSubmitted(true);
-      restoredRef.current = true;
+    } else {
+      setDeclared(true);
+      toast.info('Loaded your submitted quotation from the server.');
     }
   }, [ownResponse]);
 
@@ -292,7 +326,8 @@ export default function SubmitQuotationPage() {
   }, [resolvedId, offeredPrice, offeredQuantity, deliveryTimeline, terms, message, uploadState, docUploads, lineQuotes]);
 
   const isClosed = ['AWARDED', 'CLOSED', 'CANCELLED'].includes(rfqData?.status);
-  const isReadOnly = submitted || isClosed;
+  const isDeadlinePassed = !!rfqData?.deadlineDate && new Date(rfqData.deadlineDate).getTime() < Date.now();
+  const isReadOnly = isClosed || isDeadlinePassed;
 
   // Auto-save on field changes (debounced at 5 seconds)
   React.useEffect(() => {
@@ -359,27 +394,27 @@ export default function SubmitQuotationPage() {
   React.useEffect(() => {
     if (dynInitRef.current || !rfqData) return;
     dynInitRef.current = true;
-    const saved = ownResponse?.responseData || {};
-    const savedDocs: any[] = Array.isArray(saved.documents) ? saved.documents : [];
-    const savedLines: any[] = Array.isArray(saved.lineItems) ? saved.lineItems : [];
-    const restoreDrafts = ownResponse?.status === 'DRAFT';
+    const saved = ownResponse?.responseData || ownResponse || {};
+    const savedDocs: any[] = Array.isArray(saved.documents) ? saved.documents : (Array.isArray(ownResponse?.documents) ? ownResponse.documents : []);
+    const savedLines: any[] = Array.isArray(saved.lineItems) ? saved.lineItems : (Array.isArray(saved.lineQuotes) ? saved.lineQuotes : (Array.isArray(ownResponse?.lineItems) ? ownResponse.lineItems : []));
+    const restoreSaved = !!ownResponse;
 
     setDocUploads(requestedDocs.map(doc => {
-      const match = restoreDrafts ? savedDocs.find(d => String(d?.name || '').toLowerCase() === doc.name.toLowerCase()) : null;
-      return match?.fileAssetId || match?.fileUrl
-        ? { ...doc, fileAssetId: match.fileAssetId, fileName: match.fileName || '', fileUrl: match.fileUrl || '', status: 'done', progress: 100 }
+      const match = restoreSaved ? savedDocs.find(d => String(d?.name || d?.documentType || '').toLowerCase() === doc.name.toLowerCase()) : null;
+      return match?.fileAssetId || match?.fileUrl || match?.url
+        ? { ...doc, fileAssetId: match.fileAssetId || match.id, fileName: match.fileName || match.name || doc.name, fileUrl: match.fileUrl || match.url || '', status: 'done', progress: 100 }
         : { ...doc, status: 'empty', progress: 0 };
     }));
 
     setLineQuotes(itemsList.map(item => {
-      const match = restoreDrafts ? savedLines.find(l => String(l?.itemName || '').toLowerCase() === String(item.itemName).toLowerCase()) : null;
+      const match = restoreSaved ? savedLines.find(l => String(l?.itemName || l?.name || '').toLowerCase() === String(item.itemName).toLowerCase()) : null;
       return {
         itemName: item.itemName,
         quantity: Number(item.quantity) || 0,
         unitOfMeasure: item.unitOfMeasure || 'Nos',
         unitPrice: match?.unitPrice != null ? String(match.unitPrice) : '',
         gstPercent: match?.gstPercent != null ? String(match.gstPercent) : '',
-        makeBrand: match?.makeBrand || '',
+        makeBrand: match?.makeBrand || match?.brand || '',
         remarks: match?.remarks || ''
       };
     }));
@@ -1200,7 +1235,7 @@ export default function SubmitQuotationPage() {
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="h-4 w-4" /> Submit Quotation
+                    <ShieldCheck className="h-4 w-4" /> {ownResponse && ownResponse.status !== 'DRAFT' ? 'Revise & Update Quotation' : 'Submit Quotation'}
                   </>
                 )}
               </Button>

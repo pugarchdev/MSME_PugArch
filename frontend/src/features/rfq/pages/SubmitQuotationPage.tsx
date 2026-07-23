@@ -156,6 +156,15 @@ export default function SubmitQuotationPage() {
   const [draftSaved, setDraftSaved] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
 
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      const yOffset = -90;
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  };
+
   const { data: queryData, isLoading, error } = useQuery({
     queryKey: ['marketplace-requirement-quotation', requirementId],
     queryFn: async () => {
@@ -611,30 +620,32 @@ export default function SubmitQuotationPage() {
       </nav>
 
       {/* Header Card */}
-      <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="relative overflow-hidden border border-slate-200/80 rounded-2xl bg-white p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-md">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#12335f] via-indigo-600 to-blue-500" />
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between pt-1">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">
                 Submit Quotation
               </h1>
-              <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-extrabold tracking-wide text-[#12335f] border border-blue-200">
+              <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-black tracking-wider text-indigo-700 border border-indigo-200/80 shadow-2xs">
                 RFQ
               </span>
             </div>
-            <p className="text-sm font-semibold text-slate-500">
-              <span className="font-mono font-bold text-slate-600">{rfqNumber}</span>
-              <span className="mx-2">•</span>
-              {subject}
+            <p className="text-xs md:text-sm font-medium text-slate-500 flex flex-wrap items-center gap-2">
+              <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">{rfqNumber}</span>
+              <span className="text-slate-300">•</span>
+              <span className="font-bold text-slate-800">{subject}</span>
             </p>
-            <div className="flex flex-wrap items-center gap-4 mt-1">
-              <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <div className="flex flex-wrap items-center gap-4 pt-1">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
                 <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-bold">{orgName}</span>
+                <span className="font-bold text-slate-800">{orgName}</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
                 <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-bold">Deadline: {deadline}</span>
+                <span className="font-bold text-slate-800">Deadline: {deadline}</span>
               </div>
             </div>
           </div>
@@ -642,18 +653,63 @@ export default function SubmitQuotationPage() {
             type="button"
             variant="outline"
             onClick={handleBackToRfq}
-            className="h-10 rounded-xl border-slate-200 text-xs font-black uppercase text-slate-700 hover:bg-slate-50 shrink-0"
+            className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-1.5 shrink-0"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to RFQ
+            <ArrowLeft className="h-4 w-4" /> Back to RFQ
           </Button>
         </div>
       </section>
+
+      {/* ── Sticky Quick Navigation Bar ── */}
+      <div className="sticky top-4 z-40 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-md transition-all duration-300">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => scrollToSection('quotation-details')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <IndianRupee className="h-3.5 w-3.5 text-emerald-600" /> Quotation Details
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToSection('message-documents')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <FileText className="h-3.5 w-3.5 text-blue-600" /> Message & Documents
+          </button>
+          {lineQuotes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => scrollToSection('item-wise-pricing')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            >
+              <Package className="h-3.5 w-3.5 text-amber-600" /> Item-Wise Quotation
+            </button>
+          )}
+          {docUploads.length > 0 && (
+            <button
+              type="button"
+              onClick={() => scrollToSection('requested-documents')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            >
+              <Paperclip className="h-3.5 w-3.5 text-purple-600" /> Requested Documents
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => scrollToSection('submit-action')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" /> Declaration & Submit
+          </button>
+        </div>
+      </div>
 
       {/* Main Two-Column Form */}
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
 
         {/* Left Column — Quotation Details */}
-        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-6">
+        <section id="quotation-details" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-6 transition-all duration-300 hover:shadow-md">
           <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
             Quotation Details
           </h2>
@@ -760,7 +816,7 @@ export default function SubmitQuotationPage() {
         </section>
 
         {/* Right Column — Message & Documents */}
-        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-6">
+        <section id="message-documents" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-6 transition-all duration-300 hover:shadow-md">
           <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
             Message & Documents
           </h2>
@@ -899,7 +955,7 @@ export default function SubmitQuotationPage() {
 
       {/* Per-line-item quote — seller prices each buyer line; totals feed the headline offer */}
       {lineQuotes.length > 0 && (
-        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm overflow-hidden">
+        <section id="item-wise-pricing" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <h2 className="text-base font-black text-slate-900">Item-Wise Quotation</h2>
             <p className="text-[11px] font-semibold text-slate-500">
@@ -995,7 +1051,7 @@ export default function SubmitQuotationPage() {
 
       {/* Buyer-requested documents — one upload slot per document the buyer asked for */}
       {docUploads.length > 0 && (
-        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
+        <section id="requested-documents" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <h2 className="text-base font-black text-slate-900">Documents Requested By Buyer</h2>
             <p className="text-[11px] font-semibold text-slate-500">
@@ -1081,7 +1137,7 @@ export default function SubmitQuotationPage() {
       )}
 
       {/* Declaration & Submit */}
-      <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-4">
+      <section id="submit-action" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
         <div className="flex items-start gap-3">
           <input
             type="checkbox"

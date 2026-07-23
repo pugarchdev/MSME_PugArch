@@ -29,19 +29,22 @@ const logServerRouteError = (err: any, fallback: string) => {
 };
 
 export const safeRouteMessage = (err: any, fallback = 'Unable to complete request'): string => {
-  const statusCode = err?.statusCode || 500;
-  if (statusCode < 500) return err?.message || fallback;
+  const statusCode = err?.statusCode || err?.status || (err?.code === 'P2025' ? 404 : 500);
+  if (statusCode < 500) {
+    if (err?.code === 'P2025') return 'The requested record was not found.';
+    return err?.message || fallback;
+  }
 
   const message = String(err?.message || '');
   if (isDatabaseUnavailableError(err)) {
     return 'Database is temporarily unavailable. Please try again in a few minutes.';
   }
   if (
-    ['P2021', 'P2022', 'P2023', 'P2025'].includes(String(err?.code || '')) ||
-    message.includes('does not exist') ||
-    message.includes('Unknown field') ||
-    message.includes('relation') ||
-    message.includes('column')
+    ['P2021', 'P2022', 'P2023'].includes(String(err?.code || '')) ||
+    (message.includes('table') && message.includes('does not exist')) ||
+    (message.includes('column') && message.includes('does not exist')) ||
+    message.includes('Unknown field in') ||
+    message.includes('Unknown column')
   ) {
     return 'Database schema is not up to date. Run Prisma migrations and redeploy the backend.';
   }
@@ -55,7 +58,10 @@ const routeStatusCode = (err: any) => {
   if (isDatabaseUnavailableError(err)) {
     return 503;
   }
-  return err?.statusCode || 500;
+  if (err?.code === 'P2025') {
+    return 404;
+  }
+  return err?.statusCode || err?.status || 500;
 };
 
 const routeErrorCode = (err: any, fallbackCode: string) => {

@@ -137,15 +137,16 @@ const formatDisplayValue = (val: string, label?: string) => {
 const parseDescription = (desc?: string) => {
   if (!desc) return { method: '', value: '', urgency: '', text: '' };
   const cleanedDesc = desc.replace(/\r/g, '');
-  const methodMatch = cleanedDesc.match(/Sourcing Method:\s*(.*?)(?=(?:Value:|Urgency:|$))/i);
-  const valueMatch = cleanedDesc.match(/Value:\s*(.*?)(?=(?:Urgency:|$))/i);
-  const urgencyMatch = cleanedDesc.match(/Urgency:\s*(.*?)(?=$)/i);
+  const methodMatch = cleanedDesc.match(/Sourcing Method:\s*([^V\n]*?)(?=(?:Value:|Urgency:|$))/i);
+  const valueMatch = cleanedDesc.match(/Value:\s*([^U\n]*?)(?=(?:Urgency:|$))/i);
+  const urgencyMatch = cleanedDesc.match(/Urgency:\s*(.*?)(?=\n|$)/i);
+  
   let cleanText = cleanedDesc;
   if (methodMatch || valueMatch || urgencyMatch) {
     cleanText = cleanedDesc
-      .replace(/Sourcing Method:[^\n]*/gi, '')
-      .replace(/Value:[^\n]*/gi, '')
-      .replace(/Urgency:[^\n]*/gi, '')
+      .replace(/Sourcing Method:\s*.*?(?=(?:Value:|Urgency:|$))/gi, '')
+      .replace(/Value:\s*.*?(?=(?:Urgency:|$))/gi, '')
+      .replace(/Urgency:\s*.*?(?=\n|$)/gi, '')
       .replace(/\n+/g, '\n')
       .trim();
   }
@@ -170,6 +171,15 @@ export default function RfqDetailPage() {
   const requirementId = searchParams?.get('requirementId') || '';
 
   const [activeSection, setActiveSection] = useState<number | null>(0);
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      const yOffset = -90;
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  };
 
   // Fetch ProcurementBid data when requestId is provided (numeric ID or REQ-* reference ID)
   const { data: bidData, isLoading: bidLoading, error: bidError } = useQuery({
@@ -620,39 +630,45 @@ export default function RfqDetailPage() {
      ═══════════════════════════════════════════════ */
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 md:px-8 pb-8">
+    <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 md:px-8 pb-12 font-sans text-slate-800">
 
       {/* ── Breadcrumb Navigation ── */}
-      <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+      <nav className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500 bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-full px-4 py-2 w-fit shadow-2xs">
         {pathname.startsWith('/buyer') ? (
           <>
-            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/buyer/my-procurements')}>My Procurements</span>
-            <ChevronRight className="h-3 w-3" />
+            <span className="hover:text-[#12335f] transition-colors cursor-pointer" onClick={() => router.push('/buyer/my-procurements')}>My Procurements</span>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
           </>
         ) : (
           <>
-            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities')}>Opportunities</span>
-            <ChevronRight className="h-3 w-3" />
-            <span className="hover:text-slate-800 cursor-pointer" onClick={() => router.push('/seller/opportunities/rfqs')}>RFQs</span>
-            <ChevronRight className="h-3 w-3" />
+            <span className="hover:text-[#12335f] transition-colors cursor-pointer flex items-center gap-1" onClick={() => router.push('/seller/opportunities')}>
+              <Building2 className="h-3.5 w-3.5 text-slate-400" /> Opportunities
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+            <span className="hover:text-[#12335f] transition-colors cursor-pointer" onClick={() => router.push('/seller/opportunities/rfqs')}>RFQs</span>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
           </>
         )}
-        <span className="hover:text-slate-800 cursor-pointer">{rfqNumberString}</span>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-[#12335f]">Details</span>
+        <span className="font-mono font-bold text-slate-700 hover:text-[#12335f] cursor-pointer">{rfqNumberString}</span>
+        <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+        <span className="text-[#12335f] font-black uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded text-[10px] border border-blue-100">Details</span>
       </nav>
 
       {/* Guest login banner */}
       {!user && (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 shadow-sm">
-          <Info className="h-5 w-5 text-blue-600 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-bold text-blue-800">Want to participate in this procurement?</p>
-            <p className="text-xs text-blue-600 mt-0.5">Please login or register as a seller to submit your quotation/proposal.</p>
+        <div className="mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-white px-6 py-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#12335f] text-white shadow-sm">
+              <Info className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">Want to participate in this procurement?</p>
+              <p className="text-xs font-medium text-slate-600 mt-0.5">Please login or register as a seller to submit your quotation/proposal.</p>
+            </div>
           </div>
           <a
             href={`/login?redirect=${encodeURIComponent(pathname + (requestId ? `?requestId=${requestId}` : (requirementId ? `?requirementId=${requirementId}` : '')))}`}
-            className="whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+            className="whitespace-nowrap rounded-xl bg-[#12335f] px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-[#0b2447] transition-all hover:shadow-md"
           >
             Login to Participate
           </a>
@@ -660,99 +676,173 @@ export default function RfqDetailPage() {
       )}
 
       {/* ── Page Header ── */}
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">
-              {subject}
-            </h1>
-            <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-extrabold tracking-wide text-[#12335f] border border-blue-200">
-              RFQ
-            </span>
-            <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold tracking-wide text-emerald-700 border border-emerald-200">
-              {rfqData?.status || 'Open'}
-            </span>
+      <section className="relative overflow-hidden border border-slate-200/80 rounded-2xl bg-white p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-md">
+        {/* Subtle top accent border line */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#12335f] via-indigo-600 to-blue-500" />
+        
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between pt-1">
+          <div className="space-y-3 max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 leading-tight">
+                {subject}
+              </h1>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-black tracking-wider text-indigo-700 border border-indigo-200/80 shadow-2xs">
+                  RFQ
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1 text-xs font-black tracking-wider text-emerald-700 border border-emerald-200/80 shadow-2xs">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {rfqData?.status || 'Open'}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs md:text-sm font-medium text-slate-500 flex flex-wrap items-center gap-2">
+              <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">{rfqNumberString}</span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                Published on <strong className="text-slate-700 font-bold">{publishedDateFormatted}</strong>
+              </span>
+              {orgName !== '—' && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                    <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                    by <strong className="text-slate-900 font-bold">{orgName}</strong>
+                  </span>
+                </>
+              )}
+            </p>
           </div>
-          <p className="text-sm font-semibold text-slate-500">
-            <span className="font-mono font-bold text-slate-600">{rfqNumberString}</span>
-            <span className="mx-2">•</span>
-            Published on {publishedDateFormatted}
-            {orgName !== '—' && <> by {orgName}</>}
-          </p>
-        </div>
 
-        {/* Header Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.back()}
-            className="h-10 rounded-xl border-slate-200 text-xs font-black uppercase text-slate-700 hover:bg-slate-50"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleDownload}
-            className="h-10 rounded-xl border-slate-200 text-xs font-black uppercase text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
-          >
-            <Download className="h-4 w-4" /> <span className="hidden sm:inline">Download</span> RFQ
-          </Button>
-          {user && user.role === 'seller' && (
+          {/* Header Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0 border-t lg:border-t-0 border-slate-100 pt-4 lg:pt-0">
             <Button
               type="button"
-              onClick={handleSubmitQuotation}
-              className="h-10 rounded-xl bg-[#12335f] px-6 text-xs font-black uppercase text-white hover:bg-[#0b2447] shadow-sm transition-colors flex items-center gap-1.5"
+              variant="outline"
+              onClick={() => router.back()}
+              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-1.5"
             >
-              {ownResponse && ownResponse.status !== 'DRAFT' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-          )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDownload}
+              className="h-10 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-all flex items-center gap-2"
+            >
+              <Download className="h-4 w-4 text-blue-600" /> <span className="hidden sm:inline">Download</span> RFQ
+            </Button>
+            {user && user.role === 'seller' && (
+              <Button
+                type="button"
+                onClick={handleSubmitQuotation}
+                className="h-10 rounded-xl bg-gradient-to-r from-[#12335f] to-[#1a447c] hover:from-[#0b2447] hover:to-[#12335f] px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-blue-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
+              >
+                {ownResponse && ownResponse.status !== 'DRAFT' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* ── Timeline Section ── */}
-      <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm overflow-x-auto">
-        <div className="min-w-[700px] flex items-center justify-between relative px-6 py-4">
+      {/* ── Sticky Quick Navigation Bar ── */}
+      <div className="sticky top-4 z-40 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-md transition-all duration-300">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => scrollToSection('overview')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <ClipboardList className="h-3.5 w-3.5 text-blue-600" /> Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToSection('scope-items')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <FileText className="h-3.5 w-3.5 text-purple-600" /> Scope & Description
+          </button>
+          {itemsList.length > 0 && (
+            <button
+              type="button"
+              onClick={() => scrollToSection('line-items')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            >
+              <Package className="h-3.5 w-3.5 text-amber-600" /> Items & Specifications
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => scrollToSection('buyer-info')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+          >
+            <Building2 className="h-3.5 w-3.5 text-emerald-600" /> Buyer Details
+          </button>
+          {detailSections.length > 0 && (
+            <button
+              type="button"
+              onClick={() => scrollToSection('additional-metadata')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-[#12335f] hover:bg-slate-100 transition-all whitespace-nowrap active:scale-95"
+            >
+              <Layers className="h-3.5 w-3.5 text-indigo-600" /> Specifications & Metadata ({detailSections.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Lifecycle Stepper / Progress Bar Section ── */}
+      <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm overflow-x-auto">
+        <div className="min-w-[720px] flex items-center justify-between relative px-8 py-2">
           {/* Horizontal Connection Line */}
-          <div className="absolute top-[38px] left-[50px] right-[50px] h-[3px] bg-slate-100 -z-0" />
+          <div className="absolute top-[38px] left-[60px] right-[60px] h-[3px] bg-slate-100 -z-0 rounded-full" />
+          {/* Active progress bar indicator */}
+          <div 
+            className="absolute top-[38px] left-[60px] h-[3px] bg-gradient-to-r from-[#12335f] to-indigo-600 -z-0 rounded-full transition-all duration-500" 
+            style={{ width: `${Math.min(100, Math.max(0, (timelineSteps.filter(s => s.active).length - 1) / Math.max(1, timelineSteps.length - 1) * 100))}%` }} 
+          />
 
           {timelineSteps.map((step, idx) => (
-            <div key={idx} className="flex flex-col items-center gap-3 relative z-10 w-28 text-center">
+            <div key={idx} className="flex flex-col items-center gap-2.5 relative z-10 w-32 text-center group">
               <div
                 className={cn(
-                  'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-300',
+                  'flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300',
                   step.active
-                    ? 'bg-[#12335f] border-[#12335f] text-white shadow-md shadow-blue-100'
-                    : 'bg-white border-slate-200 text-slate-400'
+                    ? 'bg-[#12335f] border-[#12335f] text-white shadow-md shadow-blue-900/20 scale-105'
+                    : 'bg-white border-slate-300 text-slate-400 group-hover:border-slate-400'
                 )}
               >
                 {step.active ? (
                   <Check className="h-4 w-4 stroke-[3]" />
                 ) : (
-                  <div className="h-2 w-2 rounded-full bg-slate-200" />
+                  <span className="text-xs font-extrabold text-slate-400">{idx + 1}</span>
                 )}
               </div>
-              <div className="space-y-1">
-                <p className={cn('text-xs font-black tracking-tight', step.active ? 'text-[#12335f]' : 'text-slate-800')}>
+              <div className="space-y-0.5">
+                <p className={cn('text-xs font-black tracking-tight', step.active ? 'text-[#12335f]' : 'text-slate-700')}>
                   {step.label}
                 </p>
-                <p className="text-[10px] font-semibold text-slate-500">{step.date}</p>
+                <p className="text-[11px] font-bold text-slate-400">{step.date}</p>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Procurement Overview ── */}
-      <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md animate-fade-in">
-        <div className="flex items-center gap-2 pb-3.5 border-b border-slate-100">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-            <ClipboardList className="h-4 w-4" />
+      {/* ── Procurement Overview Grid ── */}
+      <section id="overview" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-[#12335f] border border-blue-100">
+              <ClipboardList className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                Procurement Overview
+              </h2>
+              <p className="text-[11px] font-medium text-slate-500">Key specs, schedule & terms for this RFQ</p>
+            </div>
           </div>
-          <h2 className="text-base font-black text-slate-900 uppercase tracking-wider">
-            Procurement Overview
-          </h2>
         </div>
         
         {(() => {
@@ -760,117 +850,119 @@ export default function RfqDetailPage() {
           const displayUrgency = parsed.urgency ? formatDisplayValue(parsed.urgency) : urgency ? formatDisplayValue(urgency) : 'Normal';
 
           return (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6 pt-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-5">
+              
               {/* Estimated Value */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <IndianRupee className="h-3 w-3 text-emerald-600" /> Estimated Value
+              <div className="space-y-1.5 p-4 rounded-xl bg-emerald-50/40 border border-emerald-100/90 hover:border-emerald-300 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <IndianRupee className="h-3.5 w-3.5 text-emerald-600" /> Estimated Value
                 </span>
-                <span className="text-sm font-black text-emerald-800 block">{formatCurrency(estimatedValueVal)}</span>
+                <span className="text-base font-black text-emerald-900 block tabular-nums">{formatCurrency(estimatedValueVal)}</span>
               </div>
 
               {/* RFQ Number */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Layers className="h-3 w-3 text-blue-600" /> RFQ Number
+              <div className="space-y-1.5 p-4 rounded-xl bg-slate-50/80 border border-slate-200/70 hover:border-slate-300 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-slate-500" /> RFQ Number
                 </span>
-                <span className="text-sm font-mono font-black text-slate-800 block">{rfqNumberString}</span>
+                <span className="text-sm font-mono font-bold text-slate-900 block truncate" title={rfqNumberString}>{rfqNumberString}</span>
               </div>
 
               {/* Sourcing Method */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <ClipboardCheck className="h-3 w-3 text-purple-600" /> Method
+              <div className="space-y-1.5 p-4 rounded-xl bg-indigo-50/40 border border-indigo-100/80 hover:border-indigo-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <ClipboardCheck className="h-3.5 w-3.5 text-indigo-600" /> Sourcing Method
                 </span>
-                <span className="text-sm font-black text-slate-800 block">RFQ ({formatDisplayValue(String(methodLabel))})</span>
+                <span className="text-sm font-extrabold text-indigo-950 block">RFQ ({formatDisplayValue(String(methodLabel))})</span>
               </div>
 
               {/* Category */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer min-w-0">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Package className="h-3 w-3 text-amber-600" /> Category
+              <div className="space-y-1.5 p-4 rounded-xl bg-amber-50/40 border border-amber-100/80 hover:border-amber-200 transition-all duration-200 hover:shadow-2xs min-w-0">
+                <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5 text-amber-600" /> Category
                 </span>
-                <span className="text-sm font-black text-slate-800 block truncate" title={category}>{category}</span>
+                <span className="text-sm font-bold text-amber-950 block truncate" title={category}>{category}</span>
               </div>
 
               {/* Delivery Location */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer min-w-0">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="h-3 w-3 text-red-500" /> Delivery Location
+              <div className="space-y-1.5 p-4 rounded-xl bg-sky-50/40 border border-sky-100/80 hover:border-sky-200 transition-all duration-200 hover:shadow-2xs min-w-0">
+                <span className="text-[10px] font-extrabold text-sky-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-sky-600" /> Delivery Location
                 </span>
-                <span className="text-sm font-black text-slate-800 block truncate" title={rfqData?.location || address}>{rfqData?.location || address}</span>
+                <span className="text-sm font-bold text-slate-900 block truncate" title={rfqData?.location || address}>{rfqData?.location || address}</span>
               </div>
 
               {/* Quantity */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3 text-teal-600" /> Quantity
+              <div className="space-y-1.5 p-4 rounded-xl bg-teal-50/40 border border-teal-100/80 hover:border-teal-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-teal-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <CheckCircle className="h-3.5 w-3.5 text-teal-600" /> Quantity
                 </span>
-                <span className="text-sm font-black text-slate-800 block">
+                <span className="text-sm font-extrabold text-slate-900 block">
                   {rfqData?.quantity ? (rfqData.unit ? `${rfqData.quantity} ${rfqData.unit}` : rfqData.quantity) : '2 Nos'}
                 </span>
               </div>
 
               {/* Published Date */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar className="h-3 w-3 text-blue-500" /> Published Date
+              <div className="space-y-1.5 p-4 rounded-xl bg-blue-50/40 border border-blue-100/80 hover:border-blue-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-blue-600" /> Published Date
                 </span>
-                <span className="text-sm font-black text-slate-800 block">{publishedDateFormatted}</span>
+                <span className="text-sm font-bold text-slate-900 block">{publishedDateFormatted}</span>
               </div>
 
               {/* Closing Date */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Clock className="h-3 w-3 text-red-600" /> Closing Date
+              <div className="space-y-1.5 p-4 rounded-xl bg-rose-50/60 border border-rose-200/80 hover:border-rose-300 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-rose-600" /> Closing Date
                 </span>
-                <span className="text-sm font-black text-red-600 block">{closesAtFormatted}</span>
+                <span className="text-sm font-black text-rose-600 block">{closesAtFormatted}</span>
               </div>
 
               {/* Payment Terms */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Info className="h-3 w-3 text-sky-600" /> Payment Terms
+              <div className="space-y-1.5 p-4 rounded-xl bg-purple-50/40 border border-purple-100/80 hover:border-purple-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-purple-600" /> Payment Terms
                 </span>
-                <span className="text-sm font-black text-slate-800 block truncate" title={rfqData?.paymentTerms || terms.paymentTerms}>
+                <span className="text-xs font-bold text-slate-900 block truncate" title={rfqData?.paymentTerms || terms.paymentTerms}>
                   {rfqData?.paymentTerms || terms.paymentTerms || '—'}
                 </span>
               </div>
 
               {/* Delivery Terms */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Info className="h-3 w-3 text-orange-600" /> Delivery Terms
+              <div className="space-y-1.5 p-4 rounded-xl bg-orange-50/40 border border-orange-100/80 hover:border-orange-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-orange-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-orange-600" /> Delivery Terms
                 </span>
-                <span className="text-sm font-black text-slate-800 block truncate" title={rfqData?.deliveryTerms || terms.deliveryTerms}>
+                <span className="text-xs font-bold text-slate-900 block truncate" title={rfqData?.deliveryTerms || terms.deliveryTerms}>
                   {rfqData?.deliveryTerms || terms.deliveryTerms || '—'}
                 </span>
               </div>
 
               {/* GST */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Info className="h-3 w-3 text-indigo-600" /> GST
+              <div className="space-y-1.5 p-4 rounded-xl bg-violet-50/40 border border-violet-100/80 hover:border-violet-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-violet-600" /> GST Rate
                 </span>
-                <span className="text-sm font-black text-slate-800 block">{terms.gstInclusion || 'Exclusive'}</span>
+                <span className="text-sm font-bold text-slate-900 block">{terms.gstInclusion || 'Exclusive'}</span>
               </div>
 
               {/* Urgency / Priority */}
-              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-all duration-200 hover:scale-[1.02] cursor-pointer">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <AlertTriangle className={cn("h-3 w-3", displayUrgency.toLowerCase().includes('high') || displayUrgency.toLowerCase().includes('urgent') ? "text-rose-500" : "text-amber-500")} /> Urgency
+              <div className="space-y-1.5 p-4 rounded-xl bg-amber-50/40 border border-amber-100/80 hover:border-amber-200 transition-all duration-200 hover:shadow-2xs">
+                <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <AlertTriangle className={cn("h-3.5 w-3.5", displayUrgency.toLowerCase().includes('high') || displayUrgency.toLowerCase().includes('urgent') ? "text-rose-600" : "text-amber-600")} /> Urgency
                 </span>
                 <div>
                   <span className={cn(
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black uppercase border",
+                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider border shadow-2xs",
                     displayUrgency.toLowerCase().includes('high') || displayUrgency.toLowerCase().includes('urgent')
                       ? "bg-rose-50 border-rose-200 text-rose-700"
-                      : "bg-amber-50 border-amber-200 text-amber-700"
+                      : "bg-amber-50 border-amber-200 text-amber-800"
                   )}>
                     {displayUrgency}
                   </span>
                 </div>
               </div>
+
             </div>
           );
         })()}
@@ -879,13 +971,13 @@ export default function RfqDetailPage() {
       {/* ── Main Details Grid (2 columns layout) ── */}
       <div className="grid gap-6 lg:grid-cols-3">
 
-        {/* ═══ COLUMN 1: Scope & Items (Spans 2 cols) ═══ */}
+        {/* ═══ COLUMN 1 & 2: Scope & Items (Spans 2 cols) ═══ */}
         <div className="lg:col-span-2 space-y-6 flex flex-col">
 
           {/* Scope / Description */}
-          <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-4">
-            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-              Scope & Description
+          <section id="scope-items" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-5 transition-all duration-300 hover:shadow-md">
+            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-[#12335f]" /> Scope & Description
             </h2>
             {(() => {
               const parsed = parseDescription(rfqData?.description);
@@ -893,16 +985,16 @@ export default function RfqDetailPage() {
               return (
                 <div className="space-y-4">
                   {parsed.text ? (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Description / Scope of Work</span>
-                      <p className="text-xs font-semibold leading-relaxed text-slate-600 whitespace-pre-wrap break-words">
+                    <div className="space-y-1.5 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Description / Scope of Work</span>
+                      <p className="text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
                         {parsed.text}
                       </p>
                     </div>
                   ) : rfqData?.description ? (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Description / Scope of Work</span>
-                      <p className="text-xs font-semibold leading-relaxed text-slate-600 whitespace-pre-wrap break-words">
+                    <div className="space-y-1.5 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Description / Scope of Work</span>
+                      <p className="text-xs font-semibold leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
                         {rfqData.description}
                       </p>
                     </div>
@@ -912,24 +1004,24 @@ export default function RfqDetailPage() {
             })()}
 
             {/* Color stat cards */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="rounded-2xl bg-purple-50/40 border border-purple-100 p-4 text-left">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700">Documents</span>
-                <p className="mt-1.5 text-lg font-black text-purple-900 tabular-nums">{documents.length}</p>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="rounded-xl bg-purple-50/50 border border-purple-100/90 p-4 text-left shadow-2xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700">Documents</span>
+                <p className="mt-1 text-xl font-black text-purple-950 tabular-nums">{documents.length}</p>
               </div>
-              <div className="rounded-2xl bg-amber-50/40 border border-amber-100 p-4 text-left">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Line Items</span>
-                <p className="mt-1.5 text-lg font-black text-amber-900 tabular-nums">{itemsList.length}</p>
+              <div className="rounded-xl bg-amber-50/50 border border-amber-100/90 p-4 text-left shadow-2xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Line Items</span>
+                <p className="mt-1 text-xl font-black text-amber-950 tabular-nums">{itemsList.length}</p>
               </div>
             </div>
 
             {/* Documents & Bidder Checklist */}
             {documents.length > 0 && (
-              <div className="border-t border-slate-100 pt-4 space-y-3">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5 text-[#12335f]" /> Documents & Bidder Checklist
+              <div className="border-t border-slate-100 pt-5 space-y-3">
+                <h4 className="text-[11px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                  <Paperclip className="h-4 w-4 text-[#12335f]" /> Documents & Required Checklist
                 </h4>
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {documents.map((doc, idx) => {
                     const isUploaded = doc.fileAssetId !== null && doc.fileAssetId !== undefined;
                     const isMandatory = doc.required || doc.documentType?.toLowerCase() === 'mandatory';
@@ -938,67 +1030,67 @@ export default function RfqDetailPage() {
                       <div
                         key={idx}
                         className={cn(
-                          "flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl border transition-all text-left gap-3",
+                          "flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border transition-all text-left gap-3",
                           isMandatory
-                            ? "bg-rose-50/10 border-rose-100/50 hover:bg-rose-50/20"
-                            : "bg-slate-50/20 border-slate-100 hover:bg-slate-50/40"
+                            ? "bg-rose-50/20 border-rose-100 hover:border-rose-200"
+                            : "bg-slate-50/40 border-slate-200/80 hover:border-slate-300"
                         )}
                       >
-                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
                           <div className={cn(
-                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                            isUploaded ? "bg-blue-50 text-[#12335f]" : "bg-slate-100 text-slate-500"
+                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-2xs",
+                            isUploaded ? "bg-blue-50 border-blue-200 text-[#12335f]" : "bg-slate-100 border-slate-200 text-slate-500"
                           )}>
                             <FileText className="h-4 w-4" />
                           </div>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-xs font-bold text-slate-800 break-words">{doc.fileName}</p>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-black text-slate-900 break-words">{doc.fileName}</p>
                               <span className={cn(
-                                "rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase border shrink-0",
+                                "rounded-full px-2 py-0.5 text-[9px] font-black uppercase border tracking-wider shrink-0",
                                 isMandatory
                                   ? "border-rose-200 bg-rose-50 text-rose-700"
-                                  : "border-slate-200 bg-slate-50 text-slate-500"
+                                  : "border-slate-200 bg-slate-100 text-slate-600"
                               )}>
                                 {isMandatory ? 'Mandatory' : 'Optional'}
                               </span>
                               {isUploaded && (
-                                <span className="rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase border border-blue-200 bg-blue-50 text-blue-700 shrink-0">
-                                  Attachment
+                                <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase border border-blue-200 bg-blue-50 text-blue-700 shrink-0">
+                                  Attachment Available
                                 </span>
                               )}
                             </div>
                             {doc.instructions && (
-                              <p className="text-[10px] font-semibold text-slate-500 leading-normal whitespace-pre-wrap break-words">{doc.instructions}</p>
+                              <p className="text-[11px] font-medium text-slate-500 leading-relaxed whitespace-pre-wrap break-words">{doc.instructions}</p>
                             )}
                           </div>
                         </div>
                         
                         {isUploaded && doc.fileAssetId ? (
-                          <div className="flex items-center gap-1 shrink-0 self-end sm:self-center ml-auto sm:ml-2">
+                          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center ml-auto sm:ml-2">
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={() => {
                                 openFileAsset({ id: doc.fileAssetId!, fileAssetId: doc.fileAssetId!, originalName: doc.fileName }, doc.fileName).catch(err => {
                                   toast.error(err instanceof Error ? err.message : 'Unable to open document');
                                 });
                               }}
-                              className="h-7 px-2 text-[10px] font-black uppercase text-[#12335f] hover:bg-[#12335f]/10"
+                              className="h-8 px-3 text-[10px] font-black uppercase text-[#12335f] border-blue-200 bg-blue-50/50 hover:bg-blue-100/80 shadow-2xs"
                             >
-                              <Eye className="mr-1 h-3.5 w-3.5" /> View
+                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
                             </Button>
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={() => {
                                 openFileAsset({ id: doc.fileAssetId!, fileAssetId: doc.fileAssetId!, originalName: doc.fileName }, doc.fileName).catch(err => {
                                   toast.error(err instanceof Error ? err.message : 'Unable to open document');
                                 });
                               }}
-                              className="h-7 px-2 text-slate-500 hover:bg-slate-200"
+                              className="h-8 px-3 text-slate-700 border-slate-200 bg-white hover:bg-slate-50 shadow-2xs"
                             >
                               <Download className="h-3.5 w-3.5" />
                             </Button>
@@ -1014,7 +1106,7 @@ export default function RfqDetailPage() {
             {/* Empty documents fallback */}
             {documents.length === 0 && (
               <div className="border-t border-slate-100 pt-4">
-                <p className="text-xs font-bold text-slate-500 py-4 text-center border border-dashed border-slate-200 rounded-2xl">
+                <p className="text-xs font-bold text-slate-500 py-4 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/30">
                   No documents uploaded for this RFQ.
                 </p>
               </div>
@@ -1023,20 +1115,25 @@ export default function RfqDetailPage() {
 
           {/* Items & Specifications Table */}
           {itemsList.length > 0 && (
-            <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm overflow-hidden">
-              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-                Items & Specifications
-              </h2>
-              <div className="mt-4 overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm">
+            <section id="line-items" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
+              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Package className="h-4 w-4 text-[#12335f]" /> Items & Line Specifications
+                </h2>
+                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                  {itemsList.length} {itemsList.length === 1 ? 'Item' : 'Items'}
+                </span>
+              </div>
+              <div className="mt-4 overflow-x-auto border border-slate-200/80 rounded-xl bg-white shadow-2xs">
                 <table className="min-w-[800px] w-full text-left border-collapse table-fixed">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-slate-100/80 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[250px]">Item Details</th>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[100px] text-right">Qty / Unit</th>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[120px] text-right">Est. Unit Price</th>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[80px] text-center">GST</th>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[200px]">Specifications & Brands</th>
-                      <th className="px-4 py-2.5 text-[10px] font-black uppercase text-slate-500 w-[150px] text-center">Attachments</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[250px]">Item Details</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[100px] text-right">Qty / Unit</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[120px] text-right">Est. Unit Price</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[80px] text-center">GST Rate</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[200px]">Specifications & Brands</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-600 tracking-wider w-[150px] text-center">Attachments</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1052,63 +1149,67 @@ export default function RfqDetailPage() {
                       const fileName = spec.specificationFileName || (item as any).specificationFileName;
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/30 transition-colors align-top">
+                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors align-top">
                           {/* Item Details */}
-                          <td className="px-4 py-3 space-y-1">
+                          <td className="px-4 py-3.5 space-y-1">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-xs font-black text-slate-900 break-words">{item.itemName}</span>
                               {itemType && (
                                 <span className={cn(
-                                  "rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase border shrink-0",
+                                  "rounded-full px-2 py-0.5 text-[8px] font-black uppercase border shrink-0",
                                   itemType.toLowerCase() === 'service' 
-                                    ? "border-purple-100 bg-purple-50 text-purple-700" 
-                                    : "border-blue-100 bg-blue-50 text-blue-700"
+                                    ? "border-purple-200 bg-purple-50 text-purple-700" 
+                                    : "border-blue-200 bg-blue-50 text-blue-700"
                                 )}>
                                   {itemType}
                                 </span>
                               )}
                             </div>
                             {item.description && (
-                              <p className="text-[11px] font-semibold text-slate-500 leading-normal break-words whitespace-pre-wrap">{item.description}</p>
+                              <p className="text-[11px] font-semibold text-slate-600 leading-normal break-words whitespace-pre-wrap">{item.description}</p>
                             )}
                             {hsn && (
-                              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider">
-                                HSN/SAC: <span className="font-mono font-bold text-slate-600">{hsn}</span>
+                              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider pt-0.5">
+                                HSN/SAC: <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1 py-0.5 rounded">{hsn}</span>
                               </p>
                             )}
                           </td>
                           
                           {/* Qty / Unit */}
-                          <td className="px-4 py-3 text-right font-bold text-slate-900 text-xs tabular-nums whitespace-nowrap">
-                            {item.quantity} <span className="text-[9px] font-semibold text-slate-500 uppercase ml-0.5">{item.unitOfMeasure || 'Nos'}</span>
+                          <td className="px-4 py-3.5 text-right font-bold text-slate-900 text-xs tabular-nums whitespace-nowrap">
+                            <span className="bg-slate-100 text-slate-800 font-black px-2 py-1 rounded-md border border-slate-200 text-xs">
+                              {item.quantity} <span className="text-[9px] font-semibold text-slate-500 uppercase ml-0.5">{item.unitOfMeasure || 'Nos'}</span>
+                            </span>
                           </td>
                           
                           {/* Est. Unit Price */}
-                          <td className="px-4 py-3 text-right font-black text-slate-900 text-xs tabular-nums">
+                          <td className="px-4 py-3.5 text-right font-black text-slate-900 text-xs tabular-nums">
                             {item.estimatedUnitPrice !== undefined && item.estimatedUnitPrice !== null ? (
-                              formatCurrency(item.estimatedUnitPrice)
+                              <span className="text-emerald-700 font-black">{formatCurrency(item.estimatedUnitPrice)}</span>
                             ) : (
                               '—'
                             )}
                           </td>
                           
                           {/* GST */}
-                          <td className="px-4 py-3 text-center font-bold text-slate-600 text-xs tabular-nums">
-                            {gstVal !== undefined && gstVal !== null && Number(gstVal) > 0 ? `${gstVal}%` : '—'}
+                          <td className="px-4 py-3.5 text-center font-bold text-slate-700 text-xs tabular-nums">
+                            {gstVal !== undefined && gstVal !== null && Number(gstVal) > 0 ? (
+                              <span className="bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded font-black text-xs">{gstVal}%</span>
+                            ) : '—'}
                           </td>
                           
                           {/* Specifications & Preferences */}
-                          <td className="px-4 py-3 text-xs text-slate-600 space-y-1">
+                          <td className="px-4 py-3.5 text-xs text-slate-600 space-y-1">
                             {brandPref ? (
-                              <div className="space-y-0.5">
-                                <p className="font-extrabold text-slate-400 text-[9px] uppercase tracking-wider">Brand Preference</p>
-                                <div className="flex flex-wrap items-center gap-1">
-                                  <span className="font-bold text-slate-700">{brandPref}</span>
+                              <div className="space-y-1">
+                                <p className="font-black text-slate-400 text-[9px] uppercase tracking-wider">Brand Preference</p>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-bold text-slate-900 text-xs">{brandPref}</span>
                                   {brandFlex && (
                                     <span className={cn(
-                                      "px-1 py-0.5 rounded text-[8px] uppercase font-black border",
+                                      "px-1.5 py-0.5 rounded text-[8px] uppercase font-black border",
                                       brandFlex.toLowerCase() === 'no'
-                                        ? "text-amber-700 bg-amber-50 border-amber-200"
+                                        ? "text-rose-700 bg-rose-50 border-rose-200"
                                         : "text-emerald-700 bg-emerald-50 border-emerald-200"
                                     )}>
                                       {brandFlex.toLowerCase() === 'no' ? 'Strict' : 'Flexible'}
@@ -1117,12 +1218,12 @@ export default function RfqDetailPage() {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-slate-400 italic text-[10px]">No brand preferences</span>
+                              <span className="text-slate-400 italic text-[11px]">No specific brand</span>
                             )}
                           </td>
                           
                           {/* Attachments */}
-                          <td className="px-4 py-3 text-center text-xs">
+                          <td className="px-4 py-3.5 text-center text-xs">
                             {files.length > 0 ? (
                               <div className="flex flex-col gap-1 items-center">
                                 {files.map((file: any, fidx: number) => (
@@ -1130,7 +1231,7 @@ export default function RfqDetailPage() {
                                     key={fidx}
                                     type="button"
                                     onClick={() => openFileAsset({ id: file.fileAssetId, fileAssetId: file.fileAssetId, originalName: file.fileName }, file.fileName)}
-                                    className="inline-flex items-center gap-1 text-[#12335f] hover:underline font-bold text-[10px]"
+                                    className="inline-flex items-center gap-1 text-[#12335f] hover:underline font-bold text-[10px] bg-blue-50 px-2 py-1 rounded border border-blue-100"
                                   >
                                     <FileText className="h-3 w-3 shrink-0" />
                                     <span className="truncate max-w-[100px]" title={file.fileName}>{file.fileName}</span>
@@ -1141,7 +1242,7 @@ export default function RfqDetailPage() {
                               <button
                                 type="button"
                                 onClick={() => openFileAsset({ id: fileId, fileAssetId: fileId, originalName: fileName || 'Specification' }, fileName || 'Specification')}
-                                className="inline-flex items-center gap-1 text-[#12335f] hover:underline font-bold text-[10px] mx-auto"
+                                className="inline-flex items-center gap-1 text-[#12335f] hover:underline font-bold text-[10px] bg-blue-50 px-2 py-1 rounded border border-blue-100 mx-auto"
                               >
                                 <FileText className="h-3 w-3 shrink-0" />
                                 <span className="truncate max-w-[100px]" title={fileName || 'Specification file'}>{fileName || 'Spec File'}</span>
@@ -1161,26 +1262,30 @@ export default function RfqDetailPage() {
 
           {/* Terms & Conditions */}
           {(eligibilityCriteria.length > 0 || termsAndConditions.length > 0) && (
-            <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-4">
-              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-                Terms & Conditions
+            <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
+              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-[#12335f]" /> Terms & Conditions
               </h2>
               {eligibilityCriteria.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-2">Eligibility Criteria</p>
-                  <ul className="list-disc pl-4 space-y-1.5">
+                <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-2 flex items-center gap-1">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-600" /> Eligibility Criteria
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1.5">
                     {eligibilityCriteria.map((c, idx) => (
-                      <li key={idx} className="text-xs font-medium text-slate-600 leading-normal">{c}</li>
+                      <li key={idx} className="text-xs font-semibold text-slate-700 leading-normal">{c}</li>
                     ))}
                   </ul>
                 </div>
               )}
               {termsAndConditions.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-2">Special Terms</p>
-                  <ul className="list-disc pl-4 space-y-1.5">
+                <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#12335f] mb-2 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5 text-indigo-600" /> Special Terms & Conditions
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1.5">
                     {termsAndConditions.map((t, idx) => (
-                      <li key={idx} className="text-xs font-medium text-slate-600 leading-normal">{t}</li>
+                      <li key={idx} className="text-xs font-semibold text-slate-700 leading-normal">{t}</li>
                     ))}
                   </ul>
                 </div>
@@ -1190,57 +1295,59 @@ export default function RfqDetailPage() {
         </div>
 
         {/* ═══ COLUMN 3: Buyer Info & Budget ═══ */}
-        <div className="space-y-6 flex flex-col">
+        <div id="buyer-info" className="scroll-mt-24 space-y-6 flex flex-col">
 
           {/* Buyer / Organization Info */}
-          <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-              Buyer Information
+          <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+            <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-[#12335f]" /> Buyer Information
             </h2>
             <div className="mt-4 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12335f]/10 text-[#12335f]">
+              <div className="flex items-center gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-100">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#12335f] text-white shadow-2xs">
                   <Building2 className="h-5 w-5" />
                 </div>
-                <div>
-                  <p className="text-sm font-black text-slate-900">{orgName}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-600 border border-emerald-100">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-slate-900 truncate" title={orgName}>{orgName}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[9px] font-black text-emerald-700 border border-emerald-200/80 shadow-2xs">
                       <ShieldCheck className="h-3 w-3 stroke-[2.5]" /> Verified Buyer
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Person</span>
-                <span className="text-xs font-bold text-slate-800 block mt-0.5">{contactPerson}</span>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email</span>
-                <span className="text-xs font-mono font-bold text-blue-600 block mt-0.5 hover:underline cursor-pointer">{email}</span>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone</span>
-                <span className="text-xs font-bold text-slate-800 block mt-0.5">{phone}</span>
-              </div>
-
-              {address !== '—' && (
-                <div className="flex items-start gap-3 pt-2">
-                  <MapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-                  <p className="text-xs font-semibold leading-relaxed text-slate-600">{address}</p>
+              <div className="space-y-3 pt-1">
+                <div className="p-3 rounded-xl bg-slate-50/40 border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Contact Person</span>
+                  <span className="text-xs font-bold text-slate-900 block mt-0.5">{contactPerson}</span>
                 </div>
-              )}
+
+                <div className="p-3 rounded-xl bg-slate-50/40 border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Email</span>
+                  <span className="text-xs font-mono font-bold text-blue-600 block mt-0.5 hover:underline cursor-pointer truncate" title={email}>{email}</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50/40 border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Phone</span>
+                  <span className="text-xs font-bold text-slate-900 block mt-0.5">{phone}</span>
+                </div>
+
+                {address !== '—' && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50/40 border border-slate-100">
+                    <MapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+                    <p className="text-xs font-semibold leading-relaxed text-slate-700">{address}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
           {/* Budget & Sanction */}
           {hasBudget && budgetDetails && (
-            <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100">
-                Budget & Sanction
+            <section className="border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+                <IndianRupee className="h-4 w-4 text-emerald-600" /> Budget & Financial Sanction
               </h2>
               <div className="mt-4 space-y-3">
                 {budgetDetails.budgetHead && <InfoRow label="Budget Head" value={budgetDetails.budgetHead} />}
@@ -1254,15 +1361,15 @@ export default function RfqDetailPage() {
                 {budgetDetails.costCenter && <InfoRow label="Cost Center" value={budgetDetails.costCenter} />}
               </div>
               {budgetDetails.justification && (
-                <div className="mt-4 rounded-2xl bg-amber-50/40 border border-amber-100 p-4">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Justification</span>
-                  <p className="mt-1.5 text-xs font-bold text-slate-800 leading-relaxed whitespace-pre-wrap">{budgetDetails.justification}</p>
+                <div className="mt-4 rounded-xl bg-amber-50/50 border border-amber-100 p-4">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800">Justification</span>
+                  <p className="mt-1 text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">{budgetDetails.justification}</p>
                 </div>
               )}
               {budgetDetails.remarks && (
-                <div className="mt-3 rounded-2xl bg-slate-50/40 border border-slate-100 p-4">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600">Remarks</span>
-                  <p className="mt-1.5 text-xs font-bold text-slate-800 leading-relaxed whitespace-pre-wrap">{budgetDetails.remarks}</p>
+                <div className="mt-3 rounded-xl bg-slate-50/60 border border-slate-100 p-4">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Remarks</span>
+                  <p className="mt-1 text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">{budgetDetails.remarks}</p>
                 </div>
               )}
             </section>
@@ -1281,10 +1388,12 @@ export default function RfqDetailPage() {
 
       {/* ── Full-width: Additional Details Accordion ── */}
       {detailSections.length > 0 && (
-        <section className="border border-slate-100 rounded-3xl bg-white p-6 shadow-sm space-y-4">
+        <section id="additional-metadata" className="scroll-mt-24 border border-slate-200/80 rounded-2xl bg-white p-6 shadow-sm space-y-4 transition-all duration-300 hover:shadow-md">
           <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center justify-between">
-            <span>Additional Details</span>
-            <span className="text-[10px] font-black uppercase bg-[#12335f]/5 text-[#12335f] px-2.5 py-1 rounded-full border border-[#12335f]/10">
+            <span className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-[#12335f]" /> Additional Specifications & Metadata
+            </span>
+            <span className="text-[10px] font-black uppercase bg-[#12335f]/5 text-[#12335f] px-3 py-1 rounded-full border border-[#12335f]/10">
               {detailSections.length} {detailSections.length === 1 ? 'Section' : 'Sections'}
             </span>
           </h2>
@@ -1306,24 +1415,24 @@ export default function RfqDetailPage() {
                 <div 
                   key={`${section.title}-${idx}`} 
                   className={cn(
-                    "rounded-2xl border transition-all duration-300 overflow-hidden",
+                    "rounded-xl border transition-all duration-300 overflow-hidden",
                     isOpen 
-                      ? "border-[#12335f]/25 bg-slate-50/30 shadow-sm border-l-4 border-l-[#12335f]" 
-                      : "border-slate-100 hover:border-slate-200 bg-white border-l-4 border-l-transparent"
+                      ? "border-[#12335f]/30 bg-slate-50/40 shadow-2xs border-l-4 border-l-[#12335f]" 
+                      : "border-slate-200/80 hover:border-slate-300 bg-white border-l-4 border-l-transparent"
                   )}
                 >
                   {/* Accordion Header */}
                   <button
                     type="button"
                     onClick={() => setActiveSection(isOpen ? null : idx)}
-                    className="group w-full flex items-center justify-between p-4 text-left font-black text-xs uppercase tracking-wider text-[#12335f] hover:bg-slate-50/50 transition-colors"
+                    className="group w-full flex items-center justify-between p-4 text-left font-black text-xs uppercase tracking-wider text-[#12335f] hover:bg-slate-50/60 transition-colors"
                   >
-                    <span className="flex items-center gap-2.5">
+                    <span className="flex items-center gap-3">
                       <span className={cn(
-                        "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors font-black",
+                        "flex h-8 w-8 items-center justify-center rounded-xl text-xs transition-colors font-black shadow-2xs",
                         isOpen ? "bg-[#12335f] text-white" : "bg-[#12335f]/10 text-[#12335f]"
                       )}>
-                        <SectionIcon className="h-3.5 w-3.5" />
+                        <SectionIcon className="h-4 w-4" />
                       </span>
                       <span className="transition-transform duration-200 group-hover:translate-x-0.5">
                         {section.title}
@@ -1337,14 +1446,14 @@ export default function RfqDetailPage() {
 
                   {/* Accordion Body */}
                   <div className={cn(
-                    "grid transition-all duration-300 ease-in-out border-t border-slate-100/60 bg-white",
+                    "grid transition-all duration-300 ease-in-out border-t border-slate-100 bg-white",
                     isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
                   )}>
                     <div className="overflow-hidden">
                       <div className="px-6 pb-6 pt-4">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                           {section.fields.map((field, fieldIdx) => (
-                            <div key={`${field.label}-${fieldIdx}`} className="rounded-xl border border-slate-100 bg-slate-50/30 p-4 hover:bg-slate-50/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
+                            <div key={`${field.label}-${fieldIdx}`} className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 hover:bg-slate-50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xs">
                               <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">{field.label}</p>
                               <p className="mt-1.5 text-xs font-bold leading-relaxed text-slate-800 break-words whitespace-pre-wrap">{formatDisplayValue(field.value, field.label)}</p>
                             </div>

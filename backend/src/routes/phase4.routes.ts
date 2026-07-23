@@ -675,24 +675,53 @@ const recordNotificationRead = async (targetUserId: number, notificationIds: num
 const slugFor = (name: string) =>
   name.trim().toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const assertTenderAccess = async (req: AuthRequest, tenderId: number) => {
-  let tender = await db.tender.findUnique({
-    where: { id: tenderId },
-    include: {
-      buyer: { include: { buyerProfile: true } },
-      tenderItems: true,
-        tenderDocuments: { include: { fileAsset: true } }
-    }
-  });
+const assertTenderAccess = async (req: AuthRequest, rawTenderId: number | string) => {
+  const isNumeric = typeof rawTenderId === 'number' || /^\d+$/.test(String(rawTenderId));
+  const numericId = isNumeric ? Number(rawTenderId) : null;
+  const stringId = String(rawTenderId);
 
-  if (!tender) {
-    const bid = await db.procurementBid.findUnique({
-      where: { id: tenderId },
+  let tender = null;
+  if (numericId) {
+    tender = await db.tender.findUnique({
+      where: { id: numericId },
       include: {
         buyer: { include: { buyerProfile: true } },
-        documents: { include: { fileAsset: true } }
+        tenderItems: true,
+        tenderDocuments: { include: { fileAsset: true } }
       }
     });
+  }
+  if (!tender && stringId) {
+    tender = await db.tender.findFirst({
+      where: { tenderId: stringId },
+      include: {
+        buyer: { include: { buyerProfile: true } },
+        tenderItems: true,
+        tenderDocuments: { include: { fileAsset: true } }
+      }
+    });
+  }
+
+  if (!tender) {
+    let bid = null;
+    if (numericId) {
+      bid = await db.procurementBid.findUnique({
+        where: { id: numericId },
+        include: {
+          buyer: { include: { buyerProfile: true } },
+          documents: true
+        }
+      });
+    }
+    if (!bid && stringId) {
+      bid = await db.procurementBid.findFirst({
+        where: { bidNumber: stringId },
+        include: {
+          buyer: { include: { buyerProfile: true } },
+          documents: true
+        }
+      });
+    }
 
     if (bid) {
       tender = {
@@ -6188,8 +6217,8 @@ router.get('/tenders/public', asyncRoute(async (req, res) => {
 }));
 
 router.get('/tenders/:id', optionalAuthenticate, asyncRoute(async (req, res) => {
-  const { id } = parse(idParams, req.params);
-  ok(res, await assertTenderAccess(req, id));
+  const tenderRef = req.params.id;
+  ok(res, await assertTenderAccess(req, tenderRef));
 }));
 
 router.put('/tenders/:id', authenticate, requirePermission('tender.update', orgScope), asyncRoute(async (req, res) => {

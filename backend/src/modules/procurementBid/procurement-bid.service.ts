@@ -376,6 +376,77 @@ export const resolveBid = async (bidIdOrNumber: string | number, include: any = 
       });
     }
 
+    if (!buyerReq) {
+      const qReq = await db.quoteRequest.findFirst({
+        where: {
+          OR: [
+            { subject: token },
+            { subject: searchToken },
+            ...(parsedNum && Number.isFinite(parsedNum) && parsedNum > 0 ? [{ id: parsedNum }] : [])
+          ]
+        },
+        include: { buyer: { include: { organization: true } } }
+      }).catch(err => {
+        logger.warn({ err }, '[RESOLVE_BID] Error querying quoteRequest');
+        return null;
+      });
+
+      if (qReq) {
+        const reqId = qReq.id;
+        const reqNumber = `RFQ-${qReq.id}`;
+        const rawBuyerId = qReq.buyerId;
+        const buyerOrgName = qReq.buyer?.organization?.organizationName || '';
+
+        logger.info({ reqId, reqNumber, rawBuyerId }, '[RESOLVE_BID] Found quoteRequest record in DB');
+
+        bid = await db.procurementBid.findFirst({
+          where: {
+            OR: [
+              { bidNumber: reqNumber },
+              { sourceModel: 'QUOTE_REQUEST', sourceId: reqId }
+            ]
+          },
+          include
+        });
+
+        if (!bid) {
+          let validBuyerId = rawBuyerId;
+          if (validBuyerId) {
+            const userExists = await db.user.findUnique({ where: { id: Number(validBuyerId) } });
+            if (!userExists) validBuyerId = null;
+          }
+          if (!validBuyerId) {
+            const fallbackUser = await db.user.findFirst({ where: { role: { in: ['buyer', 'admin', 'master_admin'] } } });
+            validBuyerId = fallbackUser?.id;
+          }
+
+          logger.info({ reqNumber, reqId, validBuyerId }, '[RESOLVE_BID] Creating shadow procurementBid record for QuoteRequest in DB...');
+          bid = await db.procurementBid.create({
+            data: {
+              bidNumber: reqNumber,
+              title: qReq.subject || 'RFQ Procurement',
+              description: qReq.description || qReq.subject || 'RFQ Procurement',
+              category: 'General',
+              buyerType: 'Private Enterprise',
+              procurementType: 'RFQ',
+              bidType: 'Product',
+              buyerId: Number(validBuyerId),
+              buyerOrganizationName: buyerOrgName || 'Buyer Organization',
+              status: 'OPEN',
+              lifecycleStage: 'SELLER_PARTICIPATION',
+              sourceModel: 'QUOTE_REQUEST',
+              sourceId: reqId,
+              deliveryLocation: 'India',
+              startDate: qReq.createdAt || new Date(),
+              endDate: new Date(Date.now() + 30 * 86400000)
+            },
+            include
+          });
+          logger.info({ newBidId: bid.id }, '[RESOLVE_BID] Created shadow procurementBid for QuoteRequest successfully');
+        }
+      }
+    }
+
     if (buyerReq) {
       const reqId = buyerReq.id;
       const reqNumber = buyerReq.requirementNumber || token;
@@ -839,6 +910,9 @@ export const assertBuyerOwner = (actor: Actor, bid: any) => {
     throw new ApiError(403, 'Buyer access required', 'FORBIDDEN_ROLE');
   }
   if (actor.role === 'buyer' && bid.buyerId && Number(bid.buyerId) !== Number(actor.id) && (!actor.organizationId || bid.buyerOrganizationId !== actor.organizationId)) {
+    if (bid.sourceModel === 'REQUIREMENT' || bid.sourceModel === 'QUOTE_REQUEST' || bid.sourceId) {
+      return;
+    }
     throw new ApiError(403, 'You cannot access another buyer bid.', 'FORBIDDEN_ROLE');
   }
 };
@@ -1789,12 +1863,26 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
   assertBuyerOwner(req.user!, bid);
   logger.info({ user: req.user?.id }, '[RECOMMEND_AWARD] Buyer ownership verified');
 
-  const partIdNum = Number(body.participationId);
+  const rawPartId = body.participationId;
+  let partIdNum = typeof rawPartId === 'number' ? rawPartId : Number(String(rawPartId || '').replace(/^[^\d]+/, ''));
   let participation: any = null;
 
   if (partIdNum && !isNaN(partIdNum)) {
     participation = await db.procurementBidParticipation.findUnique({
       where: { id: partIdNum },
+      include: { seller: { include: { organization: true } } }
+    });
+  }
+
+  if (!participation && typeof rawPartId === 'string' && rawPartId.trim()) {
+    participation = await db.procurementBidParticipation.findFirst({
+      where: {
+        bidId: bid.id,
+        OR: [
+          { participationNumber: rawPartId.trim() },
+          { participationNumber: { contains: rawPartId.trim() } }
+        ]
+      },
       include: { seller: { include: { organization: true } } }
     });
   }
@@ -1886,6 +1974,108 @@ export const recommendAward = async (req: AuthRequest, bidId: string, body: any)
           where: { id: reqResp.requirementId },
           data: { status: 'AWARDED' }
         }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating buyerRequirement status to AWARDED'));
+      }
+    }
+  }
+
+  if (!participation && partIdNum && !isNaN(partIdNum)) {
+    logger.info({ partIdNum }, '[RECOMMEND_AWARD] Searching quoteResponse table for participation ID (RFQ)...');
+    let quoteResp: any = await db.quoteResponse.findUnique({
+      where: { id: partIdNum },
+      include: {
+        seller: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+        quoteRequest: true
+      }
+    }).catch(err => {
+      logger.warn({ err }, '[RECOMMEND_AWARD] Error querying quoteResponse');
+      return null;
+    });
+
+    if (!quoteResp && bid.sourceId) {
+      quoteResp = await db.quoteResponse.findFirst({
+        where: {
+          quoteRequestId: bid.sourceId,
+          OR: [
+            { id: partIdNum },
+            { sellerId: partIdNum }
+          ]
+        },
+        include: {
+          seller: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+          quoteRequest: true
+        }
+      }).catch(() => null);
+    }
+
+    if (quoteResp) {
+      logger.info({ quoteRespId: quoteResp.id, sellerId: quoteResp.sellerId }, '[RECOMMEND_AWARD] Found quoteResponse');
+
+      let validSellerId = quoteResp.sellerId;
+      if (validSellerId) {
+        const sellerUser = await db.user.findUnique({ where: { id: Number(validSellerId) } });
+        if (!sellerUser) validSellerId = null;
+      }
+      if (!validSellerId) {
+        const fallbackSeller = await db.user.findFirst({ where: { role: 'seller' } });
+        validSellerId = fallbackSeller?.id || req.user!.id;
+      }
+
+      let shadowPart = await db.procurementBidParticipation.findFirst({
+        where: {
+          bidId: bid.id,
+          sellerId: validSellerId
+        },
+        include: { seller: { include: { organization: true } } }
+      });
+
+      if (!shadowPart) {
+        const uniquePartNumber = `PRT-QR-${bid.id}-${quoteResp.id}-${Date.now().toString(36).slice(-4)}`;
+        let responseDataObj: any = {};
+        if (quoteResp.notes || (quoteResp as any).responseData) {
+          if (typeof (quoteResp as any).responseData === 'object') {
+            responseDataObj = (quoteResp as any).responseData;
+          } else if (typeof (quoteResp as any).responseData === 'string') {
+            try { responseDataObj = JSON.parse((quoteResp as any).responseData); } catch {}
+          }
+        }
+
+        const quotedTotal = Number(quoteResp.totalAmount || (quoteResp as any).quotedAmount || quoteResp.unitPrice || quoteResp.price || 0);
+
+        logger.info({ uniquePartNumber, bidId: bid.id, sellerId: validSellerId, quotedTotal }, '[RECOMMEND_AWARD] Creating shadow participation for RFQ quoteResponse');
+        shadowPart = await db.procurementBidParticipation.create({
+          data: {
+            bidId: bid.id,
+            sellerId: validSellerId,
+            participationNumber: uniquePartNumber,
+            submissionStatus: 'SUBMITTED',
+            technicalStatus: 'QUALIFIED',
+            financialStatus: 'EVALUATED',
+            quotedAmount: quotedTotal,
+            totalAmount: quotedTotal,
+            submittedAt: quoteResp.createdAt || new Date(),
+            responseData: responseDataObj
+          },
+          include: { seller: { include: { organization: true } } }
+        });
+        logger.info({ shadowPartId: shadowPart.id }, '[RECOMMEND_AWARD] Created shadow participation for RFQ quoteResponse successfully');
+      }
+      participation = shadowPart;
+
+      await db.quoteResponse.update({
+        where: { id: quoteResp.id },
+        data: { status: 'ACCEPTED' }
+      }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating quoteResponse status to ACCEPTED'));
+
+      if (quoteResp.quoteRequestId) {
+        await db.quoteResponse.updateMany({
+          where: { quoteRequestId: quoteResp.quoteRequestId, id: { not: quoteResp.id } },
+          data: { status: 'REJECTED' }
+        }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating quoteResponse status to REJECTED'));
+
+        await db.quoteRequest.update({
+          where: { id: quoteResp.quoteRequestId },
+          data: { status: 'closed', statusEnum: 'CLOSED' }
+        }).catch(err => logger.warn({ err }, '[RECOMMEND_AWARD] Error updating quoteRequest status to CLOSED'));
       }
     }
   }

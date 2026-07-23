@@ -20,7 +20,7 @@ const actorFromReq = (req: AuthRequest): DeliveryActor => ({
   id: Number(req.user?.id),
   role: String(req.user?.role || ''),
   ipAddress: req.ip,
-  userAgent: req.headers['user-agent'] || undefined
+  userAgent: req.headers?.['user-agent'] || undefined
 });
 
 const isAdmin = (actor?: AuthenticatedUser | null) => actor?.role === 'admin' || actor?.role === 'master_admin';
@@ -184,37 +184,39 @@ export const createOrReuseProcurementPOForAward = async (req: AuthRequest, award
         sourceType: 'procurement_bid_award',
         sourceId: award.id,
         expectedDelivery: bid.bidValidityDate || bid.financialOpeningDate || null,
-        deliveryAddress: bid.deliveryLocation,
-        paymentTerms: (bid.termsAndConditions || []).find((term: string) => term.toLowerCase().includes('payment')) || null,
-        deliveryType: bid.bidType,
+        deliveryAddress: bid.deliveryLocation || 'India',
+        paymentTerms: Array.isArray(bid.termsAndConditions)
+          ? (bid.termsAndConditions.find((term: string) => typeof term === 'string' && term.toLowerCase().includes('payment')) || null)
+          : (typeof bid.termsAndConditions === 'string' ? bid.termsAndConditions : null),
+        deliveryType: bid.bidType || 'Product',
         metadata: {
           source: 'procurement_bid_award',
           bidId: bid.id,
-          bidNumber: bid.bidNumber,
+          bidNumber: bid.bidNumber || `BID-${bid.id}`,
           awardId: award.id,
           participationId: participation.id,
-          buyerOrganizationName: bid.buyerOrganizationName || buyer?.organization?.organizationName,
-          sellerOrganizationName: participation.seller?.organization?.organizationName || participation.seller?.name,
-          itemName: bid.category || bid.title,
-          description: participation.offeredItemDescription || bid.description,
-          quantity: bid.quantity,
-          unit: bid.unit,
+          buyerOrganizationName: bid.buyerOrganizationName || buyer?.organization?.organizationName || 'Buyer Organization',
+          sellerOrganizationName: participation.seller?.organization?.organizationName || participation.seller?.name || 'Seller Organization',
+          itemName: bid.category || bid.title || 'Procurement Item',
+          description: participation.offeredItemDescription || bid.description || '',
+          quantity: bid.quantity || 1,
+          unit: bid.unit || 'Nos',
           awardedAmount,
           baseAmount,
           gstRate,
           gstAmount,
           totalAmount: awardedAmount,
-          deliveryLocation: bid.deliveryLocation,
-          termsAndConditions: bid.termsAndConditions || [],
-          eligibilityCriteria: bid.eligibilityCriteria || [],
-          requiredDocuments: bid.requiredDocuments || [],
-          awardRemarks: award.remarks
+          deliveryLocation: bid.deliveryLocation || 'India',
+          termsAndConditions: Array.isArray(bid.termsAndConditions) ? bid.termsAndConditions : (bid.termsAndConditions ? [String(bid.termsAndConditions)] : []),
+          eligibilityCriteria: Array.isArray(bid.eligibilityCriteria) ? bid.eligibilityCriteria : (bid.eligibilityCriteria ? [String(bid.eligibilityCriteria)] : []),
+          requiredDocuments: Array.isArray(bid.requiredDocuments) ? bid.requiredDocuments : (bid.requiredDocuments ? [String(bid.requiredDocuments)] : []),
+          awardRemarks: award.remarks || 'Accepted by buyer'
         },
         items: {
           create: [{
-            itemName: bid.category || bid.title,
-            description: participation.offeredItemDescription || bid.description,
-            quantity: bid.quantity || 1,
+            itemName: bid.category || bid.title || 'Procurement Item',
+            description: participation.offeredItemDescription || bid.description || '',
+            quantity: typeof bid.quantity === 'number' ? bid.quantity : (parseInt(String(bid.quantity || '1'), 10) || 1),
             unitOfMeasure: bid.unit || 'Nos',
             unitPrice: baseAmount,
             taxRate: gstRate,
@@ -238,10 +240,10 @@ export const createOrReuseProcurementPOForAward = async (req: AuthRequest, award
         deliveryTrackingId: delivery.id,
         previousStatus: null,
         newStatus: 'CREATED',
-        changedById: req.user!.id,
-        actorRole: req.user!.role,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
+        changedById: req.user?.id || Number(finalBuyerId),
+        actorRole: req.user?.role || 'buyer',
+        ipAddress: req.ip || null,
+        userAgent: req.headers?.['user-agent'] || null,
         remarks: 'Delivery shell created from procurement award.'
       }
     });

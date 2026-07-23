@@ -44,6 +44,10 @@ const asyncRoute = (handler: (req: AuthRequest & { file?: Express.Multer.File },
     try {
       await handler(req, res);
     } catch (err: any) {
+      console.error('=================== [PROCUREMENT_ROUTE_ERROR] STACK TRACE ===================');
+      console.error(err?.stack || err);
+      console.error('=============================================================================');
+
       logger.error({
         err,
         message: err?.message,
@@ -59,7 +63,7 @@ const asyncRoute = (handler: (req: AuthRequest & { file?: Express.Multer.File },
       if (err instanceof ApiError) {
         return apiResponse.error(res, err.statusCode, err.message, err.code, err.details);
       }
-      return apiResponse.error(res, err?.statusCode || 500, err?.message || 'Unable to complete procurement request', err?.code || 'REQUEST_FAILED', err?.stack);
+      return apiResponse.error(res, err?.statusCode || 500, err?.message || 'Unable to complete procurement request', err?.code || 'REQUEST_FAILED', { stack: err?.stack });
     }
   };
 
@@ -98,8 +102,14 @@ const bidBaseSchema = z.object({
 
 const bidBodySchema = bidBaseSchema.refine(data => data.endDate > data.startDate, { message: 'End date must be after start date', path: ['endDate'] });
 
+const flexibleParticipationIdSchema = z.union([z.number(), z.string()]).transform(val => {
+  if (typeof val === 'number') return val;
+  const parsed = Number(String(val).replace(/^[^\d]+/, ''));
+  return isNaN(parsed) ? val : parsed;
+});
+
 const idParamSchema = z.object({ bidId: z.string().trim().min(1) });
-const participationParamSchema = idParamSchema.extend({ participationId: z.coerce.number().int().positive() });
+const participationParamSchema = idParamSchema.extend({ participationId: flexibleParticipationIdSchema });
 const clarificationParamSchema = idParamSchema.extend({ clarificationId: z.coerce.number().int().positive() });
 
 const financialQuoteSchema = z.object({
@@ -112,7 +122,7 @@ const financialQuoteSchema = z.object({
 });
 
 const clarificationSchema = z.object({
-  participationId: z.coerce.number().int().positive(),
+  participationId: flexibleParticipationIdSchema,
   clarificationType: z.string().trim().min(2).max(80),
   question: z.string().trim().min(5).max(3000),
   dueDate: z.coerce.date().optional()
@@ -120,7 +130,7 @@ const clarificationSchema = z.object({
 
 const technicalEvaluationSchema = z.object({
   evaluations: z.array(z.object({
-    participationId: z.coerce.number().int().positive(),
+    participationId: flexibleParticipationIdSchema,
     status: z.enum(['QUALIFIED', 'DISQUALIFIED']),
     remarks: z.string().trim().max(2000).optional(),
     score: z.coerce.number().min(0).max(100).optional()
@@ -834,7 +844,7 @@ router.post('/buyer/procurement-bids/:bidId/open-financial-evaluation', authenti
   return apiResponse.success(res, data, 200, 'Financial evaluation opened and L1/L2/L3/L4 ranking generated');
 }));
 
-router.post('/buyer/procurement-bids/:bidId/recommend-award', authenticate, requireAccountType('buyer', 'admin'), requirePermission('award.recommend'), validate({ params: idParamSchema, body: z.object({ participationId: z.coerce.number().int().positive(), remarks: z.string().trim().max(2000).optional(), adminOverrideReason: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
+router.post(['/buyer/procurement-bids/:bidId/recommend-award', '/buyer/bids/:bidId/recommend-award'], authenticate, requireAccountType('buyer', 'admin'), requirePermission('award.recommend'), validate({ params: idParamSchema, body: z.object({ participationId: flexibleParticipationIdSchema, remarks: z.string().trim().max(2000).optional(), adminOverrideReason: z.string().trim().max(2000).optional() }) }), asyncRoute(async (req, res) => {
   const data = await service.recommendAward(req, req.params.bidId, req.body);
   return apiResponse.created(res, data, 'Award recommendation created');
 }));

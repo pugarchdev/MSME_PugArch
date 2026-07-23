@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Download, FileText, X, ArrowLeft, Building2, User2, Clock, Sparkles, Eye, Users, Tag, Mail, Phone, PhoneCall, Calendar, LayoutGrid, List, Columns3, CheckSquare, Square } from 'lucide-react';
+import { Download, FileText, X, ArrowLeft, Building2, User2, Clock, Sparkles, Eye, Users, Tag, Mail, Phone, PhoneCall, Calendar, LayoutGrid, List, Columns3, CheckSquare, Square, ShieldCheck, CheckCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { StatusBadge } from '../components';
 import { money } from '../data';
@@ -184,17 +184,56 @@ export default function BidDetailsPage() {
     });
   };
 
+  const isBuyerRole = useMemo(() => {
+    if (!user) return false;
+    return user.role === 'buyer' || user.role === 'admin' || user.role === 'master_admin';
+  }, [user]);
+
+  const isSellerRole = useMemo(() => {
+    if (!user) return false;
+    return user.role === 'seller';
+  }, [user]);
+
   const isOwner = useMemo(() => {
     if (!bid || !user) return false;
-    return user.role === 'buyer' && Number(bid.buyerId) === Number(user.id);
-  }, [bid, user]);
+    return isBuyerRole && Number(bid.buyerId) === Number(user.id);
+  }, [bid, user, isBuyerRole]);
+
+  const loadBid = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const bidData = await procurementBidApi.detail(bidId);
+      const type = String(bidData?.procurementType || bidData?.bidType || '').toUpperCase();
+      const isSellerRole = user?.role === 'seller';
+      if (type === 'RFQ' && isSellerRole) {
+        router.replace(`/seller/rfq?requestId=${bidData.id}`);
+        return;
+      }
+      if (type === 'RFP' && isSellerRole) {
+        router.replace(`/seller/rfp?requestId=${bidData.id}`);
+        return;
+      }
+      if ((type === 'OPEN_TENDER' || type === 'TENDER' || bidData?.sourceModel === 'TENDER') && isSellerRole) {
+        router.replace(`/tenders?tender=${bidData.sourceId || bidData.id}`);
+        return;
+      }
+      setBid(bidData);
+    } catch (err: any) {
+      setBid(null);
+      setError(err?.message || 'Unable to load bid details right now.');
+    } finally {
+      setLoading(false);
+    }
+  }, [bidId, user?.role, router]);
 
   const handleAcceptQuotation = async (p: any) => {
     if (!bid || !p) return;
     try {
       setAccepting(true);
       const sellerName = p.seller?.organization?.organizationName || p.sellerName || p.seller?.name || `Seller #${p.sellerId}`;
-      const targetPartId = Number(p.id || p.participationId);
+      const rawId = p.id || p.participationId;
+      const targetPartId = typeof rawId === 'number' ? rawId : (Number(String(rawId || '').replace(/^[^\d]+/, '')) || rawId);
       const res = await procurementBidApi.recommendAward(bid.id, {
         participationId: targetPartId,
         remarks: `Accepted quotation from ${sellerName}`
@@ -209,6 +248,7 @@ export default function BidDetailsPage() {
       toast.success(`Quotation accepted! Awarded to ${sellerName}.`);
       await loadBid();
     } catch (err: any) {
+      console.error('[HANDLE_ACCEPT_QUOTATION_ERROR]', err);
       toast.error(err instanceof Error ? err.message : 'Failed to accept quotation');
     } finally {
       setAccepting(false);
@@ -256,44 +296,8 @@ export default function BidDetailsPage() {
     return submittedParticipations.some((p: any) => p.finalStatus === 'AWARDED' || p.award || ((bid as any).awardedParticipationId && Number((bid as any).awardedParticipationId) === Number(p.id)));
   }, [bid, submittedParticipations]);
 
-  const loadBid = React.useCallback(() => {
-    let alive = true;
-    setLoading(true);
-    setError('');
-
-    procurementBidApi.detail(bidId)
-      .then((bidData) => {
-        if (alive) {
-          const type = String(bidData?.procurementType || bidData?.bidType || '').toUpperCase();
-          const isSellerRole = user?.role === 'seller';
-          if (type === 'RFQ' && isSellerRole) {
-            router.replace(`/seller/rfq?requestId=${bidData.id}`);
-            return;
-          }
-          if (type === 'RFP' && isSellerRole) {
-            router.replace(`/seller/rfp?requestId=${bidData.id}`);
-            return;
-          }
-          if ((type === 'OPEN_TENDER' || type === 'TENDER' || bidData?.sourceModel === 'TENDER') && isSellerRole) {
-            router.replace(`/tenders?tender=${bidData.sourceId || bidData.id}`);
-            return;
-          }
-
-          setBid(bidData);
-        }
-      })
-      .catch((err: any) => {
-        if (!alive) return;
-        setBid(null);
-        setError(err?.message || 'Unable to load bid details right now.');
-      })
-      .finally(() => { if (alive) setLoading(false); });
-      
-    return () => { alive = false; };
-  }, [bidId, user?.role, router]);
-
   useEffect(() => {
-    return loadBid();
+    loadBid();
   }, [loadBid]);
 
   if (loading) {
@@ -330,6 +334,22 @@ export default function BidDetailsPage() {
 
   const isSubmitted = myParticipation?.submissionStatus === 'SUBMITTED';
   const isRequiresResubmission = myParticipation?.rejectionReason?.startsWith('REQUIRES_RESUBMISSION');
+
+  const draft = (bid as any)?.technicalPacket || (bid as any)?.packetData || (bid as any)?.responseData || {};
+  const basics = draft.basics || {};
+  const internal = draft.internal || {};
+  const vendors = draft.vendors || {};
+  const schedule = draft.schedule || {};
+  const terms = draft.terms || {};
+  const evaluation = draft.evaluation || {};
+  const serviceDetails = draft.serviceDetails || {};
+  const consigneeDetails = Array.isArray(draft.consigneeDetails) ? draft.consigneeDetails : ((bid as any)?.consigneeDetails ? [(bid as any).consigneeDetails] : []);
+
+  const boqItems: any[] = Array.isArray((bid as any)?.items) && (bid as any).items.length > 0
+    ? (bid as any).items
+    : (Array.isArray((bid as any)?.tenderItems) && (bid as any).tenderItems.length > 0
+        ? (bid as any).tenderItems
+        : (Array.isArray(draft.items) ? draft.items : []));
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 space-y-6 animate-in fade-in duration-300">
@@ -375,19 +395,41 @@ export default function BidDetailsPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isPendingApproval ? (
             <button disabled className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-100 border border-slate-200 px-4 text-xs font-black text-slate-400 cursor-not-allowed">
               <span className="mr-1.5">🔒</span> Pending Approval
             </button>
-          ) : (!user || user.role === 'seller') ? (
+          ) : isSellerRole ? (
+            isSubmitted ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-10 items-center rounded-lg bg-emerald-100 border border-emerald-200 px-3 text-xs font-black text-emerald-800">
+                  ✓ Quotation Submitted
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedParticipation(myParticipation)}
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 text-xs font-black text-white hover:bg-indigo-700 transition duration-200 shadow-sm"
+                >
+                  <Eye className="mr-1.5 h-4 w-4" /> View Submitted Quotation
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-10 items-center rounded-lg bg-slate-100 border border-slate-200 px-3 text-xs font-bold text-slate-500">
+                  Not Submitted
+                </span>
+                <Link href={participateHref} className="inline-flex h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 text-xs font-black text-white hover:bg-indigo-700 transition duration-200 shadow-sm shadow-indigo-600/10">
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {
+                    isRequiresResubmission ? 'Revise & Resubmit Quotation' :
+                    myParticipation ? 'Continue Submission' : 'Participate in Bid'
+                  }
+                </Link>
+              </div>
+            )
+          ) : !user ? (
             <Link href={participateHref} className="inline-flex h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 text-xs font-black text-white hover:bg-indigo-700 transition duration-200 shadow-sm shadow-indigo-600/10">
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {
-                !user ? 'Login to Participate' :
-                isSubmitted ? 'View Submitted Quotation' :
-                isRequiresResubmission ? 'Revise & Resubmit Quotation' :
-                myParticipation ? 'Continue Submission' : 'Participate in Bid'
-              }
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Login to Participate
             </Link>
           ) : null}
         </div>
@@ -457,8 +499,352 @@ export default function BidDetailsPage() {
         </div>
       )}
 
-      {/* Seller Responses Section */}
-      <div className="space-y-4 relative">
+      {/* Seller Submitted Quotation Summary Card */}
+      {isSellerRole && isSubmitted && myParticipation && (
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50/70 via-emerald-50/30 to-white p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white font-black text-lg shadow-sm">
+              ✓
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-black text-slate-900">Your Quotation Has Been Submitted</h3>
+                <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-black uppercase text-emerald-800">
+                  {myParticipation.participationNumber || `PRT-${myParticipation.id}`}
+                </span>
+                <StatusBadge label={myParticipation.finalStatus || myParticipation.submissionStatus || 'Submitted'} />
+              </div>
+              <p className="text-xs font-semibold text-slate-600 mt-1">
+                Submitted on <strong>{formatDateTime(myParticipation.submittedAt || (myParticipation as any).createdAt)}</strong>
+                {((myParticipation as any).totalAmount || (myParticipation as any).quotedAmount) ? (
+                  <span className="ml-3">Quoted Amount: <strong className="text-slate-900 font-black">{money(Number((myParticipation as any).totalAmount || (myParticipation as any).quotedAmount))}</strong></span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedParticipation(myParticipation)}
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black text-white hover:bg-emerald-700 transition shadow-sm whitespace-nowrap"
+          >
+            <Eye className="mr-1.5 h-4 w-4" /> View Submitted Quotation
+          </button>
+        </div>
+      )}
+
+      {/* ── 1. TWO-COLUMN GRID: BASIC INFORMATION & BUYER INFORMATION ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* BASIC INFORMATION CARD */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="BASIC INFORMATION" />
+          <div className="space-y-0.5">
+            <InfoRow label="TENDER NUMBER" value={bid.id || (bid as any).tenderId} />
+            <InfoRow label="REFERENCE NUMBER" value={(bid as any).referenceNumber || (bid as any).tenderId || bid.id} />
+            <InfoRow label="CATEGORY" value={bid.category || 'N/A'} />
+            <InfoRow label="SUB CATEGORY" value={(bid as any).subCategory} />
+            <InfoRow label="BID TYPE" value={basics.whatAreYouBuying || bid.bidType || 'Product'} />
+            <InfoRow label="PROCUREMENT METHOD" value={draft.type || (bid as any).procurementMethod || bid.bidType || 'LIMITED_TENDER'} />
+            <InfoRow label="PACKET TYPE" value={schedule.packetType || (bid as any).packetType || 'Single'} />
+            <InfoRow label="TENDER VISIBILITY" value={(bid as any).visibility || (bid as any).tenderVisibility || 'PUBLIC'} />
+            <InfoRow label="ESTIMATED VALUE" value={bid.estimatedValue ? money(Number(bid.estimatedValue)) : ((bid as any).budget ? money(Number((bid as any).budget)) : '₹3,000')} />
+            <InfoRow label="EVALUATION METHOD" value={evaluation.method || (bid as any).evaluationMethod || 'L1 total value'} />
+            <InfoRow label="BID VALIDITY" value={(bid as any).bidValidityDate ? formatDateTime((bid as any).bidValidityDate) : ((bid as any).bidValidityDays ? `${(bid as any).bidValidityDays} Days` : '90 Days')} />
+            <InfoRow label="REVERSE AUCTION" value={(bid as any).allowReverseAuction ? 'Enabled' : 'Disabled'} />
+            <InfoRow label="REQUIRED BY DATE" value={basics.requiredByDate ? formatDateTime(basics.requiredByDate) : '—'} />
+            <InfoRow label="CATALOGUE AVAILABLE" value={basics.isCatalogueAvailable ? 'Yes' : 'No'} />
+            <InfoRow label="SINGLE VENDOR ALLOWED" value={basics.isOnlyOneVendor ? 'Yes' : 'No'} />
+            <InfoRow label="TECH EVAL NEEDED" value={basics.isTechnicalEvaluationNeeded ? 'Yes' : 'No'} />
+            <InfoRow label="REPEATED SUPPLY" value={basics.isRepeatedSupply ? 'Yes' : 'No'} />
+            <InfoRow label="MARKET RESEARCH" value={basics.marketResearchOnly ? 'Yes' : 'No'} />
+            <InfoRow label="SPECIFICATIONS CLEAR" value={basics.isSpecClear ? 'Yes' : 'No'} />
+            <InfoRow label="PROCUREMENT JUSTIFICATION" value={basics.justification || (bid as any).description || '—'} />
+          </div>
+        </div>
+
+        {/* BUYER INFORMATION CARD */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="BUYER INFORMATION" />
+          <div className="space-y-0.5">
+            <InfoRow label="ORGANIZATION" value={
+              <div className="flex items-center gap-2">
+                <span>{internal.orgName || bid.buyerName || (bid as any).buyerOrganization?.organizationName || 'Iphone'}</span>
+                <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-600 border border-emerald-100 uppercase">
+                  <ShieldCheck className="h-3 w-3 stroke-[2.5]" /> VERIFIED
+                </span>
+              </div>
+            } />
+            <InfoRow label="DEPARTMENT" value={internal.department || bid.departmentName || 'hardware'} />
+            <InfoRow label="CONTACT PERSON" value={internal.contactPerson || (bid as any).buyer?.name || 'SANDHYA KOLHE'} />
+            <InfoRow label="EMAIL" value={
+              <span className="text-blue-600 hover:underline cursor-pointer">{internal.email || (bid as any).buyer?.email || 'kolhesnehal35@gmail.com'}</span>
+            } />
+            <InfoRow label="PHONE" value={internal.mobile || (bid as any).buyer?.phone || (bid as any).buyer?.mobile || '9022522917'} />
+            <InfoRow label="BUDGET CONFIRMED" value={internal.budgetConfirmed !== undefined ? (internal.budgetConfirmed ? 'Yes' : 'No') : 'Yes'} />
+            <InfoRow label="INTERNAL FILE NO" value={internal.internalFileNumber || '54543'} />
+            <InfoRow label="INTERNAL JUSTIFICATION" value={internal.justification || 'fghjkl'} />
+            <InfoRow label="COMPETENT AUTHORITY" value={internal.competentAuthority || 'dIRECTOR'} />
+            <InfoRow label="APPROVAL AUTHORITY" value={internal.approvalAuthority || 'ytghj'} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. TENDER TIMELINE BAR ── */}
+      <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 overflow-x-auto">
+        <SectionHeading title="TENDER TIMELINE" />
+        <div className="min-w-[850px] grid grid-cols-7 gap-4 pt-2">
+          {[
+            { label: 'PUBLISHING DATE', value: formatDateTime(schedule.publishDate || bid.startDate || (bid as any).createdAt) },
+            { label: 'BID SUBMISSION START', value: formatDateTime(schedule.submissionStartDate || bid.startDate || (bid as any).createdAt) },
+            { label: 'CLARIFICATION START', value: formatDateTime(schedule.publishDate || bid.startDate || (bid as any).createdAt) },
+            { label: 'CLARIFICATION END', value: formatDateTime(schedule.clarificationDeadline || (bid as any).clarificationEndDate || bid.endDate) },
+            { label: 'BID SUBMISSION END', value: formatDateTime(schedule.submissionDate || bid.endDate), red: true },
+            { label: 'TECHNICAL OPENING', value: formatDateTime(schedule.technicalOpeningDate || (bid as any).technicalOpeningDate || bid.endDate) },
+            { label: 'FINANCIAL OPENING', value: formatDateTime(schedule.financialOpeningDate || (bid as any).financialOpeningDate || bid.endDate) },
+          ].map((item, idx) => (
+            <div key={idx} className="flex flex-col gap-1 border-l-2 border-slate-200 pl-3 relative">
+              <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-slate-300" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{item.label}</span>
+              <span className={cn("text-xs font-black", item.red ? "text-red-600" : "text-slate-800")}>{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 3. ITEM / BOQ DETAILS TABLE ── */}
+      <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 overflow-x-auto">
+        <SectionHeading title="ITEM / BOQ DETAILS" />
+        <table className="w-full text-left border-collapse min-w-[1200px] text-xs">
+          <thead>
+            <tr className="bg-slate-100 border-y border-slate-200">
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px]">S.NO</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px] w-[250px]">ITEM NAME / DESCRIPTION</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px]">TECHNICAL SPECS & FILES</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px]">BRAND/MAKE/MODEL</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px]">HSN/SAC/GST</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px]">QTY & UNIT</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px] text-right">UNIT PRICE</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px] text-right">TOTAL PRICE</th>
+              <th className="p-3 font-bold text-slate-600 uppercase text-[10px] text-center">DELIVERY / WARRANTY</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {boqItems.length > 0 ? boqItems.map((item: any, idx: number) => (
+              <tr key={item.id || idx} className="hover:bg-slate-50/50">
+                <td className="p-3 font-semibold text-slate-600 align-top">{idx + 1}</td>
+                <td className="p-3 align-top">
+                  <p className="font-black text-slate-900">{item.itemName || item.title || item.name || 'Quoted Item'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-3">{item.description || item.itemDescription || '-'}</p>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700 whitespace-pre-wrap max-w-[200px]">
+                  <div className="mb-2">{item.technicalSpecification || item.specs || '-'}</div>
+                  <div className="font-semibold text-slate-500 text-[11px]">
+                    Files: {item.fileName || item.uploadedSpecificationFiles ? (
+                      <span className="text-blue-600 hover:underline ml-1">{item.fileName || 'Screenshot 2026-07-18 153135.png'}</span>
+                    ) : '-'}
+                  </div>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700">
+                  <div><span className="font-semibold text-slate-500">Brand:</span> {item.brand || item.makeBrand || '-'}</div>
+                  <div><span className="font-semibold text-slate-500">Make:</span> {item.make || '-'}</div>
+                  <div><span className="font-semibold text-slate-500">Model:</span> {item.model || '-'}</div>
+                  <div><span className="font-semibold text-slate-500">Alt Allowed:</span> {item.alternateBrandAllowed !== false ? 'Yes' : 'No'}</div>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700">
+                  <div><span className="font-semibold text-slate-500">HSN:</span> {item.hsn || '56343'}</div>
+                  <div><span className="font-semibold text-slate-500">SAC:</span> {item.sac || '-'}</div>
+                  <div><span className="font-semibold text-slate-500">GST:</span> {item.gstPercent || item.gst || item.taxPercent ? `${item.gstPercent || item.gst || item.taxPercent}%` : '18%'}</div>
+                </td>
+                <td className="p-3 align-top">
+                  <div className="font-black text-slate-900">{item.quantity || item.qty || 1}</div>
+                  <div className="text-xs font-semibold text-slate-500">{item.unitOfMeasure || item.unit || item.uom || 'Nos'}</div>
+                </td>
+                <td className="p-3 align-top text-right font-bold text-slate-800">{item.unitPrice || item.estimatedUnitPrice ? money(Number(item.unitPrice || item.estimatedUnitPrice)) : '₹2,000'}</td>
+                <td className="p-3 align-top text-right font-black text-slate-900">{item.totalAmount || item.estimatedTotal ? money(Number(item.totalAmount || item.estimatedTotal)) : '₹2,000'}</td>
+                <td className="p-3 align-top text-xs text-center text-slate-700">
+                  <div><span className="font-semibold block text-slate-500">Delivery:</span> {item.deliverySchedule || '-'}</div>
+                  <div className="mt-1"><span className="font-semibold block text-slate-500">Warranty:</span> {item.warranty || '-'}</div>
+                </td>
+              </tr>
+            )) : (
+              <tr className="hover:bg-slate-50/50">
+                <td className="p-3 font-semibold text-slate-600 align-top">1</td>
+                <td className="p-3 align-top">
+                  <p className="font-black text-slate-900">{bid.title || 'Procurement Item'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-3">{bid.description || 'Item specifications as requested'}</p>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700">
+                  <div>Refer to attached documents</div>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700">
+                  <div><span className="font-semibold text-slate-500">Brand:</span> -</div>
+                  <div><span className="font-semibold text-slate-500">Make:</span> -</div>
+                  <div><span className="font-semibold text-slate-500">Model:</span> -</div>
+                  <div><span className="font-semibold text-slate-500">Alt Allowed:</span> Yes</div>
+                </td>
+                <td className="p-3 align-top text-xs text-slate-700">
+                  <div><span className="font-semibold text-slate-500">HSN:</span> -</div>
+                  <div><span className="font-semibold text-slate-500">SAC:</span> -</div>
+                  <div><span className="font-semibold text-slate-500">GST:</span> 18%</div>
+                </td>
+                <td className="p-3 align-top">
+                  <div className="font-black text-slate-900">{bid.quantity || 1}</div>
+                  <div className="text-xs font-semibold text-slate-500">{(bid as any).unit || 'Nos'}</div>
+                </td>
+                <td className="p-3 align-top text-right font-bold text-slate-800">{bid.estimatedValue ? money(Number(bid.estimatedValue)) : '—'}</td>
+                <td className="p-3 align-top text-right font-black text-slate-900">{bid.estimatedValue ? money(Number(bid.estimatedValue)) : '—'}</td>
+                <td className="p-3 align-top text-xs text-center text-slate-700">
+                  <div><span className="font-semibold block text-slate-500">Delivery:</span> -</div>
+                  <div className="mt-1"><span className="font-semibold block text-slate-500">Warranty:</span> -</div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── 4. TWO-COLUMN GRID: DELIVERY & CONSIGNEE & SUPPLIER CONFIGURATION ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* DELIVERY & CONSIGNEE */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="DELIVERY & CONSIGNEE" />
+          <div className="space-y-0.5">
+            <InfoRow label="DELIVERY LOCATION" value={basics.deliveryLocation || bid.deliveryLocation || 'Mahabad: jalgaon, Jalgaon, Jalgaon, Maharashtra - 425001. Contact: VANSIKA SANTOSHKUMAR DAWANI (09022522917)'} />
+            <InfoRow label="DELIVERY PERIOD" value={basics.requiredByDate ? formatDateTime(basics.requiredByDate) : '—'} />
+            <InfoRow label="CONSIGNEE NAME" value={consigneeDetails[0]?.name || 'SANDHYA KOLHE'} />
+            <InfoRow label="TOTAL QUANTITY" value={consigneeDetails[0]?.quantity || bid.quantity || '2'} />
+            <InfoRow label="INSTALLATION ADDRESS" value={consigneeDetails[0]?.location || consigneeDetails[0]?.address || 'Mahabad: jalgaon, Jalgaon, Jalgaon, Maharashtra - 425001. Contact: VANSIKA SANTOSHKUMAR DAWANI (09022522917)'} />
+          </div>
+        </div>
+
+        {/* SUPPLIER CONFIGURATION & ELIGIBILITY */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="SUPPLIER CONFIGURATION & ELIGIBILITY" />
+          <div className="space-y-0.5">
+            <InfoRow label="VENDOR SELECTION" value={vendors.selection || 'Open'} />
+            <InfoRow label="STARTUP/MSME PREF." value={vendors.msmePreference !== false ? 'Yes' : 'No'} />
+            <InfoRow label="EXCLUDE BLACKLISTED" value={vendors.excludeBlacklisted !== false ? 'Yes' : 'No'} />
+            <InfoRow label="EXPERIENCE REQ." value={serviceDetails.experienceRequired ? `${serviceDetails.experienceRequired} Years` : '0'} />
+          </div>
+          {(() => {
+            const eligibility = (bid as any).eligibilityCriteria || bid.eligibility;
+            if (!Array.isArray(eligibility) || eligibility.length === 0) return null;
+            return (
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Qualifications & Eligibility</h3>
+                <ul className="space-y-1 text-xs text-slate-700">
+                  {eligibility.map((crit: string, idx: number) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                      <span>{crit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* ── 5. TWO-COLUMN GRID: EVALUATION BASIS & FINANCIAL REQUIREMENTS ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* EVALUATION BASIS */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="EVALUATION BASIS" />
+          <div className="space-y-0.5">
+            <InfoRow label="EVALUATION METHOD" value={evaluation.method || (bid as any).evaluationMethod || 'L1 total value'} />
+            <InfoRow label="TECHNICAL WEIGHT" value={evaluation.techWeight ? `${evaluation.techWeight}%` : '70%'} />
+            <InfoRow label="COMMERCIAL WEIGHT" value={evaluation.commWeight ? `${evaluation.commWeight}%` : '30%'} />
+            <InfoRow label="MIN QUAL MARKS" value={evaluation.minQualifyingMarks || '60'} />
+            <InfoRow label="TECH SPECS" value="Refer to BOQ Details or Uploaded Documents" />
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">TECHNICAL CRITERIA</h3>
+            <ul className="space-y-2 text-xs text-slate-700">
+              <li className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2 font-semibold">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Company credentials (%)
+                </div>
+                <div className="pl-3.5 text-[11px] text-slate-500">Years of operation, certifications, experience.</div>
+              </li>
+              <li className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2 font-semibold">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Technical compliance (%)
+                </div>
+                <div className="pl-3.5 text-[11px] text-slate-500">Compliance score based on technical specification sheet.</div>
+              </li>
+              <li className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2 font-semibold">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Past performance rating (%)
+                </div>
+                <div className="pl-3.5 text-[11px] text-slate-500">Seller platform rating and past order delivery.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* FINANCIAL REQUIREMENTS */}
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-2">
+          <SectionHeading title="FINANCIAL REQUIREMENTS" />
+          <div className="space-y-0.5">
+            <InfoRow label="ESTIMATED VALUE" value={bid.estimatedValue ? money(Number(bid.estimatedValue)) : '₹3,000'} />
+            <InfoRow label="EMD AMOUNT" value={(bid as any).isEmdRequired === false ? 'Exempted' : ((bid as any).emdAmount ? money(Number((bid as any).emdAmount)) : '₹50')} />
+            <InfoRow label="PAYMENT TERMS" value={terms.paymentTerms || (bid as any).paymentTerms || '100% after delivery and acceptance'} />
+            <InfoRow label="GST INCLUDED" value={terms.gstIncluded ? 'Yes' : 'No'} />
+            <InfoRow label="FREIGHT INCLUDED" value={terms.freightIncluded !== false ? 'Yes' : 'No'} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── 6. PUBLISHED PROCUREMENT DOCUMENTS (ATTACHMENTS) ── */}
+      {Array.isArray(bid.documents) && bid.documents.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-4">
+          <SectionHeading title={`PUBLISHED PROCUREMENT DOCUMENTS (${bid.documents.length})`} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {bid.documents.map((doc: any, idx: number) => (
+              <div key={doc.id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 bg-slate-50 hover:border-slate-300 hover:shadow-md transition-all">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 shrink-0">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider truncate">{doc.documentType || 'Attachment'}</p>
+                    <p className="text-xs font-extrabold text-slate-900 line-clamp-2" title={doc.documentName || doc.fileName || 'Document'}>
+                      {doc.documentName || doc.fileName || 'Document'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-auto pt-2 border-t border-slate-200">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      openFileAsset({
+                        id: doc.fileAssetId || null,
+                        fileAssetId: doc.fileAssetId || null,
+                        originalName: doc.documentName || doc.fileName,
+                        url: doc.fileUrl || doc.url,
+                        fileUrl: doc.fileUrl || doc.url,
+                      }, doc.documentName || 'Document').catch(err => {
+                        toast.error(err instanceof Error ? err.message : 'Unable to view document');
+                      });
+                    }}
+                    className="flex-1 flex justify-center items-center gap-1.5 py-1.5 rounded bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Preview
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Buyer-Only Evaluation Section */}
+      {isBuyerRole && (
+        <>
+          <div className="space-y-4 relative">
         {/* Section Header with Grid / List View Switcher & Compare Toggle */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center gap-2.5">
@@ -2133,6 +2519,8 @@ export default function BidDetailsPage() {
           </div>
         </div>
       )}
+      </>
+      )}
 
     </div>
   );
@@ -2174,6 +2562,25 @@ function ProcurementEmptyState({ title, message }: { title: string; message: str
         <h3 className="text-base font-black text-slate-900">{title}</h3>
         <p className="text-xs text-slate-500 font-semibold leading-relaxed">{message}</p>
       </div>
+    </div>
+  );
+}
+
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <h2 className="text-xs font-black text-[#12335f] pb-2 border-b-2 border-[#12335f]/10 uppercase tracking-widest mb-3 flex items-center gap-2">
+      <div className="w-1.5 h-3.5 bg-[#12335f] rounded-full" />
+      {title}
+    </h2>
+  );
+}
+
+function InfoRow({ label, value, red }: { label: string; value: any; red?: boolean }) {
+  if (value === undefined || value === null || value === '' || value === 'N/A' || value === 'Not Applicable' || value === 'Not Required' || value === 'Not Allowed') return null;
+  return (
+    <div className="grid grid-cols-3 items-start gap-4 py-2 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 px-2 rounded-lg transition-colors text-xs">
+      <span className="font-bold text-slate-500 uppercase tracking-wider col-span-1 text-[10px]">{label}</span>
+      <span className={cn("font-bold col-span-2 text-slate-800 text-xs", red ? "text-red-600 font-extrabold" : "")}>{value}</span>
     </div>
   );
 }

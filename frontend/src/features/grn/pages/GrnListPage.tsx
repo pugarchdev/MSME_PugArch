@@ -45,9 +45,7 @@ export default function GrnListPage() {
     const { data, isLoading, error, refetch, isFetching } = useGrns(filter === 'ALL' ? undefined : filter, { enabled: canViewGrns });
 
     const grns = data || [];
-    if (!canViewGrns) {
-        return <InlineError message="You do not have permission to view goods receipt notes." />;
-    }
+
     const visibleGrns = useMemo(() => {
         const text = search.trim().toLowerCase();
         return [...grns].filter(g => {
@@ -78,7 +76,12 @@ export default function GrnListPage() {
             return sortDirection === 'asc' ? result : -result;
         });
     }, [grns, search, sortDirection, sortKey]);
+
     const { page, pageSize, pageItems, total, setPage, setPageSize } = usePagination(visibleGrns, 10);
+
+    if (!canViewGrns) {
+        return <InlineError message="You do not have permission to view goods receipt notes." />;
+    }
 
     const toggleSort = (field: GrnSortKey) => {
         setSortDirection(prev => sortKey === field && prev === 'asc' ? 'desc' : 'asc');

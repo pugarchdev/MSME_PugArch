@@ -6685,7 +6685,12 @@ router.get('/purchase-orders', authenticate, asyncRoute(async (req, res) => {
       });
       orgUsers.forEach((u: any) => sellerIds.push(u.id));
     }
-    where = { sellerId: { in: Array.from(new Set(sellerIds)) } };
+    where = {
+      OR: [
+        { sellerId: { in: Array.from(new Set(sellerIds)) } },
+        ...(req.user?.organizationId ? [{ seller: { organizationId: req.user.organizationId } }] : [])
+      ]
+    };
   }
 
   if (query.status) where.status = query.status;

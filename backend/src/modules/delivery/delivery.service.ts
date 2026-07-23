@@ -801,6 +801,51 @@ export const deliveryService = {
           remarks: body.remarks
         }
       });
+
+      if (body.accepted) {
+        const existingGrn = await tx.goodsReceiptNote.findFirst({
+          where: { purchaseOrderId: delivery.purchaseOrderId }
+        });
+        if (!existingGrn) {
+          const po = await tx.purchaseOrder.findUnique({
+            where: { id: delivery.purchaseOrderId },
+            include: { items: true, buyer: true }
+          });
+          if (po) {
+            const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const count = await tx.goodsReceiptNote.count({
+              where: { createdAt: { gte: new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`) } }
+            });
+            const grnNumber = `GRN-${day}-${String(count + 1).padStart(4, '0')}`;
+
+            await tx.goodsReceiptNote.create({
+              data: {
+                grnNumber,
+                purchaseOrderId: po.id,
+                receivedById: actor.id,
+                organizationId: po.buyer?.organizationId || actor.organizationId || 1,
+                status: 'APPROVED',
+                approvedById: actor.id,
+                approvedAt: new Date(),
+                remarks: body.remarks || 'GRN created on delivery acceptance',
+                inspectionNote: body.inspectionStatus || 'Accepted by buyer',
+                items: {
+                  create: po.items.map((item: any) => ({
+                    purchaseOrderItemId: item.id,
+                    itemName: item.itemName || 'Item',
+                    orderedQty: Number(item.quantity || 1),
+                    receivedQty: Number(item.quantity || 1),
+                    acceptedQty: Number(item.quantity || 1),
+                    rejectedQty: Number(body.missingQuantity || 0),
+                    unitOfMeasure: item.unitOfMeasure || 'pcs'
+                  }))
+                }
+              }
+            });
+          }
+        }
+      }
+
       return transitioned;
     }, TX_OPTIONS);
     void safeAudit(actor, body.accepted ? 'delivery.buyer_accepted' : 'delivery.buyer_rejected', 'deliveryTracking', id, body);

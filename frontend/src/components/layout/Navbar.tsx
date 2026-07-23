@@ -644,6 +644,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse
     // Seller Orders
     { label: 'Orders', icon: Truck, roles: ['seller'], children: [
       { label: 'Purchase Orders', path: '/orders', icon: ShoppingCart, roles: ['seller'] },
+      { label: 'Goods Receipt Notes (GRN)', path: '/grn', icon: ClipboardCheck, roles: ['seller'] },
       { label: 'Repeat Orders', path: '/orders/repeat', icon: RotateCcw, roles: ['seller'] },
       { label: 'Delivery Management', path: '/seller/delivery-management', icon: ClipboardList, roles: ['seller'] },
       { label: 'Delivery Tracking', path: '/seller/delivery', icon: Truck, roles: ['seller'] }

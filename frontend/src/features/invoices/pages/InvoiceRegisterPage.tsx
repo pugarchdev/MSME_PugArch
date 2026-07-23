@@ -231,10 +231,17 @@ export default function InvoiceRegisterPage({ role = 'buyer' }: { role?: 'buyer'
     }
   }, [purchaseOrders]);
 
-  const selectedPurchaseOrder = purchaseOrders.find(po => po.id === selectedPurchaseOrderId) ?? null;
-  const acceptedPurchaseOrders = useMemo(
-    () => purchaseOrders.filter(po => ['accepted'].includes((po.status || po.poStatus || '').toLowerCase())),
+  const safePurchaseOrders = useMemo(
+    () => (Array.isArray(purchaseOrders) ? purchaseOrders : (purchaseOrders as any)?.purchaseOrders || (purchaseOrders as any)?.items || (purchaseOrders as any)?.records || []),
     [purchaseOrders]
+  );
+  const selectedPurchaseOrder = safePurchaseOrders.find(po => po.id === selectedPurchaseOrderId) ?? null;
+  const acceptedPurchaseOrders = useMemo(
+    () => safePurchaseOrders.filter(po => {
+      const st = String(po.status || po.poStatus || '').toLowerCase();
+      return st !== 'cancelled' && st !== 'rejected' && st !== 'draft';
+    }),
+    [safePurchaseOrders]
   );
   const filteredPurchaseOrders = useMemo(() => {
     const query = purchaseOrderSearch.trim().toLowerCase();

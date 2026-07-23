@@ -147,8 +147,61 @@ router.get(
     asyncRoute(async (req, res) => {
         ensureOrg(req);
         const { status } = req.query;
-        const where: any = { organizationId: orgId(req) };
-        if (status) where.status = status;
+        const uOrgId = orgId(req);
+        const uId = userId(req);
+
+        const orgCondition = [
+            { organizationId: uOrgId },
+            { purchaseOrder: { sellerId: uId } },
+            { purchaseOrder: { seller: { organizationId: uOrgId } } }
+        ];
+
+        const where: any = status ? { status, OR: orgCondition } : { OR: orgCondition };
+
+        // Auto-sync: generate GRNs for any accepted deliveries that do not have a GRN yet
+        const unSyncedAcceptedDeliveries = await prisma.deliveryTracking.findMany({
+            where: {
+                status: 'ACCEPTED',
+                purchaseOrder: { grns: { none: {} } }
+            },
+            include: { purchaseOrder: { include: { items: true, buyer: true } } }
+        });
+
+        for (const d of unSyncedAcceptedDeliveries) {
+            if (d.purchaseOrder) {
+                const po = d.purchaseOrder;
+                const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                const count = await prisma.goodsReceiptNote.count({
+                    where: { createdAt: { gte: new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`) } }
+                });
+                const grnNumber = `GRN-${day}-${String(count + 1).padStart(4, '0')}`;
+
+                await prisma.goodsReceiptNote.create({
+                    data: {
+                        grnNumber,
+                        purchaseOrderId: po.id,
+                        receivedById: po.buyerId,
+                        organizationId: po.buyer?.organizationId || uOrgId,
+                        status: 'APPROVED',
+                        approvedById: po.buyerId,
+                        approvedAt: d.updatedAt || new Date(),
+                        remarks: 'Auto-generated GRN on delivery acceptance',
+                        inspectionNote: 'Accepted by buyer',
+                        items: {
+                            create: po.items.map((item: any) => ({
+                                purchaseOrderItemId: item.id,
+                                itemName: item.itemName || 'Item',
+                                orderedQty: Number(item.quantity || 1),
+                                receivedQty: Number(item.quantity || 1),
+                                acceptedQty: Number(item.quantity || 1),
+                                rejectedQty: 0,
+                                unitOfMeasure: item.unitOfMeasure || 'pcs'
+                            }))
+                        }
+                    }
+                }).catch(() => undefined);
+            }
+        }
 
         const grns = await prisma.goodsReceiptNote.findMany({
             where,
@@ -236,8 +289,18 @@ router.get(
     asyncRoute(async (req, res) => {
         ensureOrg(req);
         const id = Number(req.params.id);
+        const uOrgId = orgId(req);
+        const uId = userId(req);
+
         const grn = await prisma.goodsReceiptNote.findFirst({
-            where: { id, organizationId: orgId(req) },
+            where: {
+                id,
+                OR: [
+                    { organizationId: uOrgId },
+                    { purchaseOrder: { sellerId: uId } },
+                    { purchaseOrder: { seller: { organizationId: uOrgId } } }
+                ]
+            },
             include: grnIncludes
         });
         if (!grn) throw new ApiError(404, 'GRN not found', 'GRN_NOT_FOUND');
